@@ -1,0 +1,11 @@
+pfad,seite,sekunden,peak_rss_mb,zeichen,baseline_zeichen,prompt,fehler
+A,04-einspaltig-sauber,9225.82,5679,2646,2707,,
+B,04-einspaltig-sauber,20.33,611,5884,2707,Parse this document page to Markdown.,
+B,04-einspaltig-sauber,17.57,611,2636,2707,OCR:,
+B,04-einspaltig-sauber,20.14,611,5985,2707,Convert the document to markdown.,
+B,04-einspaltig-sauber,19.89,611,5884,2707,Extract all text from this page in correct reading order as Markdown.,
+B,02-zweispalter-dicht,111.01,1138,15203,7040,Parse this document page to Markdown.,
+B,01-zweispalter-handschrift,110.3,1138,13376,8590,Parse this document page to Markdown.,
+B,05-diagramm-sekundaeranspruch,17.87,1138,6328,910,Parse this document page to Markdown.,
+B,06-diagramm-kausalitaet,14.96,1138,3313,987,Parse this document page to Markdown.,
+B,03-durchschlag-handschrift,13.47,1138,1932,754,Parse this document page to Markdown.,

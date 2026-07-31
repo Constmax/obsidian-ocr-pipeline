@@ -1,0 +1,21 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Virtualenvs
+.venv/
+.venv-*/
+
+# Benchmark-Artefakte: Seitenbilder aus urheberrechtlich geschütztem
+# Kursmaterial, Modellausgaben und Logs. Reproduzierbar via bench/build_bench.py.
+bench/*.png
+bench/*.baseline.txt
+bench/out-*/
+bench/pages.json
+*.log
+
+# Pipeline-Temporärdateien
+_tmp_ocr/
+map_page*.json
+*_FAILED_*.pdf
+*.bak
