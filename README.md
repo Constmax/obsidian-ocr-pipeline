@@ -138,8 +138,13 @@ eigenen Bestand reproduzierbar. Siehe [bench/BENCHMARK-SET.md](bench/BENCHMARK-S
 ## Stand
 
 Stufe 1 läuft produktiv über ~1.500 Scanseiten. Stufe 2 ist entschieden und
-implementiert, die Markdown-Zusammenbau-Schicht ist die jüngste und
-unfertigste Komponente. Nächster Schritt Richtung Plugin:
+implementiert; die Markdown-Zusammenbau-Schicht ist die jüngste und
+unfertigste Komponente. Gemessen: 98,5 % Wortgenauigkeit auf gesunden Seiten,
+aber **15 % der Seiten entgleisen** (Wiederholungsschleife oder Abbruch) und
+drücken die Gesamtzahl auf 93,3 %. Das Abfangen dieser Fälle ist der nächste
+Schritt.
+
+Offene Fehler, was noch nicht gebaut ist und die Reihenfolge:
 [docs/plugin-roadmap.md](docs/plugin-roadmap.md).
 
 ## Lizenz

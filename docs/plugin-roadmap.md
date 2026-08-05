@@ -86,15 +86,57 @@ Die ersten drei Punkte sind zusammen ein Nachmittag und machen aus dem Repo eine
 plugin-fähige Schnittstelle. Der große Brocken ist die Zusammenbau-Schicht — die
 entscheidet über die wahrgenommene Qualität, nicht die OCR-Engine.
 
+## Offene Fehler
+
+| | Was | Gewicht |
+|---|---|---|
+| 1 | **Entgleiste Seiten** — 15 % laufen in Schleifen oder brechen ab; erkannt, aber noch nicht abgefangen | hoch, misst der Benchmark |
+| 2 | **Lesereihenfolge** bricht noch auf einzelnen Seiten (`Klausur_2137` S. 7: 47,5 %) | mittel |
+| 3 | **Diagrammseite ohne Bild** — `Strafrecht AT VI` S. 8, kein Rückfall auf das Seitenbild | mittel, Behelf `--diagramm-seiten 8` |
+| 4 | **Ein Zweispalter zu wenig** — `Verwaltungsrecht AT Fall 8` S. 10, flacher Steg | bewusst gewählt (1 von 14) |
+| 5 | **Verschränkte Fußnotenblöcke** in 2131/2135/2143 | klein, dort auch der Restverlust von 1–2 Zeichen |
+| 6 | **Fußnotentext über den Seitenumbruch** wird abgeschnitten | klein |
+| 7 | **`**Beispiel:**` mitten im Satz**, `**A.**` ohne Titel (80 Fälle) | kosmetisch |
+| 8 | **Wortfehler** — jetzt beziffert: 1,5 % auf gesunden Seiten | gering |
+
+Dazu ungeprüft: **~140 Scanseiten mit unter 50 Zeichen im alten Textlayer**.
+Unklar, ob dort Inhalt fehlt oder die Seiten leer sind.
+
+## Noch nicht gebaut
+
+**Entgleisungserkennung.** Länge der Ausgabe gegen die Zeichenzahl des
+Textlayers, plus Zählung wiederholter n-Gramme; bei Verdacht die Seite mit
+anderer Kachelung neu rechnen. Beide Signale trennen die sechs Fälle im
+Benchmark sauber. Das ist der klare nächste Schritt — lokal, billig, und der
+Benchmark zeigt sofort, ob es wirkt.
+
+**Der LLM-Reparaturlauf** liegt auf Eis. Bei 98,5 % Wortgenauigkeit auf den
+funktionierenden Seiten steht der Ertrag nicht mehr gegen das Risiko, ein
+korrektes Normzitat zu „verbessern". Falls er doch kommt: der Benchmark misst
+ihn jetzt, und die Messlatte heißt 93,3 % Zitattreue — er darf sie nicht senken.
+
+**Der lokale Wörterbuchabgleich** (hunspell + juristische Begriffsliste) — aus
+demselben Grund entwertet, aber als Prüfhilfe weiter brauchbar.
+
+**Die Migration.** 701 `[[raw/…pdf]]`-Wikilinks zeigen noch auf die PDFs. Wartet
+auf die Entscheidung, wohin die Originale wandern — ohne sie sind die `.md` bei
+OCR-Seiten nicht belastbar.
+
+**Kleinkram:** `pages.json` gehört in `.gitignore` — in diesem Repo erledigt
+(`bench/pages.json`), im Vault noch offen.
+
 ## Reihenfolge
 
-1. **Scripts plugin-fähig machen** — Fortschritt, Exit-Codes, `--check`.
-2. **Zusammenbau-Schicht härten** — an einem Korpus von 20 Seiten mit
+1. **Entgleisungserkennung** — hebt die Gesamtzahlen von 93,3 % auf ~98,5 %.
+2. **Offener Fehler 3 und 7** — Diagramm-Rückfall aufs Seitenbild und die
+   Fettungs-Artefakte. Beide klein.
+3. **Scripts plugin-fähig machen** — Fortschritt, Exit-Codes, `--check`.
+4. **Zusammenbau-Schicht härten** — an einem Korpus von 20 Seiten mit
    handgeprüfter Referenz, nicht nach Gefühl. Das Harness dafür steht in `bench/`.
-3. **Plugin-Skelett** — TypeScript, esbuild, Kontextmenü, `spawn`,
+5. **Plugin-Skelett** — TypeScript, esbuild, Kontextmenü, `spawn`,
    Fortschrittsmodal. `~/Developer/ask-my-notes` ist die vorhandene Vorlage.
-4. **Settings-Tab** mit Preflight-Anzeige.
-5. Erst dann über Sidecar (Weg B) und Mobile nachdenken.
+6. **Settings-Tab** mit Preflight-Anzeige.
+7. Erst dann über Sidecar (Weg B) und Mobile nachdenken.
 
 ## Nicht-Ziele
 
