@@ -2,6 +2,10 @@
 __pycache__/
 *.pyc
 
+# Setup-Sicherungen: alte ~/bin-Verknüpfungen, die setup.sh vor dem Ersetzen
+# protokolliert (maschinenspezifisch, nicht ins Repo)
+.setup-bin-backup-*.txt
+
 # Virtualenvs
 .venv/
 .venv-*/
