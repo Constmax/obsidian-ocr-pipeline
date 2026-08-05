@@ -117,7 +117,7 @@ bash "$REPO/install.sh"
 say "Stufe 2 — MLX-venv (Status offen, wird bestmöglich versucht)"
 MLX_OK=0
 if mkvenv "$HOME/.venvs/mlxocr" "$PY312"; then
-    if "$HOME/.venvs/mlxocr/bin/pip" install -q -U pip mlx-vlm; then
+    if "$HOME/.venvs/mlxocr/bin/pip" install -q -U pip mlx-vlm pymupdf; then
         ln -sfn "$REPO/bin/pdf2md" "$HOME/bin/pdf2md"
         MLX_OK=1
         ok "mlx-vlm in ~/.venvs/mlxocr"
