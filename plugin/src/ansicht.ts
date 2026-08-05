@@ -154,7 +154,7 @@ export class OcrAbgleichAnsicht extends ItemView {
 			this.app,
 			mdSpalte,
 			this,
-			this.plugin.einstellungen.mdEagerLimit,
+			() => this.plugin.einstellungen.mdEagerLimit,
 		);
 		this.mdSpalte.beiVermessungNoetig = () => this.kopplung.neuVermessen();
 
@@ -163,10 +163,9 @@ export class OcrAbgleichAnsicht extends ItemView {
 			pdf: { scrollEl: this.pdfSpalte.scrollEl, elemente: () => this.pdfSpalte.elemente() },
 			md: { scrollEl: this.mdSpalte.scrollEl, elemente: () => this.mdSpalte.elemente() },
 		});
-		this.kopplung.aktiv = this.plugin.einstellungen.syncAktiv;
 		this.kopplung.beiSeite = (p) => this.seiteAnzeigen(p);
 
-		this.spaltenbreitenAnwenden(this.plugin.einstellungen.spaltenbreiten);
+		this.einstellungenAnwenden();
 		this.griffVerdrahten(griff1, 0, 1);
 		this.griffVerdrahten(griff2, 1, 2);
 
@@ -571,6 +570,13 @@ export class OcrAbgleichAnsicht extends ItemView {
 	}
 
 	// ── Spaltenbreiten ────────────────────────────────────────────────────────
+
+	/** Einstellungen uebernehmen, die eine OFFENE Ansicht anfassen — gerufen
+	 *  beim Aufbau und vom Einstellungs-Tab, damit Aenderungen sofort gelten. */
+	einstellungenAnwenden(): void {
+		this.kopplung.aktiv = this.plugin.einstellungen.syncAktiv;
+		this.spaltenbreitenAnwenden(this.plugin.einstellungen.spaltenbreiten);
+	}
 
 	private kleinknopf(
 		eltern: HTMLElement,

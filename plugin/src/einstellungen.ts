@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, normalizePath } from "obsidian";
+import { App, PluginSettingTab, Setting, TextComponent, normalizePath } from "obsidian";
 import type OcrVorschauPlugin from "./main.ts";
 
 export interface Einstellungen {
@@ -88,6 +88,83 @@ export class EinstellungenTab extends PluginSettingTab {
 						await this.plugin.einstellungenSpeichern();
 					}),
 			);
+
+		new Setting(containerEl)
+			.setName("Scroll-Kopplung")
+			.setDesc("PDF- und Markdown-Spalte synchron scrollen. Umschaltbar auch in der Ansicht.")
+			.addToggle((t) =>
+				t
+					.setValue(this.plugin.einstellungen.syncAktiv)
+					.onChange(async (wert) => {
+						this.plugin.einstellungen.syncAktiv = wert;
+						await this.plugin.einstellungenSpeichern();
+						this.plugin.offeneAnsicht()?.einstellungenAnwenden();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("PDF-Renderfaktor")
+			.setDesc(
+				"Obergrenze für die Rasterung — Speicherbremse, keine Qualitätswahl: " +
+					"ein A4-Canvas bei Faktor 2 ist bereits ~4,5 MB RGBA.",
+			)
+			.addSlider((s) =>
+				s
+					.setLimits(1, 4, 0.25)
+					.setValue(this.plugin.einstellungen.pdfZoomMax)
+					.onChange(async (wert) => {
+						this.plugin.einstellungen.pdfZoomMax = wert;
+						await this.plugin.einstellungenSpeichern();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Markdown-Eager-Limit")
+			.setDesc(
+				"Ab so vielen Seiten rendert die Markdown-Spalte nicht mehr vollständig " +
+					"im Voraus — Ventil für Ausreißer, im Normalfall nie erreicht.",
+			)
+			.addSlider((s) =>
+				s
+					.setLimits(0, 1000, 10)
+					.setValue(this.plugin.einstellungen.mdEagerLimit)
+					.onChange(async (wert) => {
+						this.plugin.einstellungen.mdEagerLimit = wert;
+						await this.plugin.einstellungenSpeichern();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Spaltenbreiten")
+			.setDesc(
+				"Seitenleiste · PDF · Markdown in Prozent. Verstellbar auch per Griff " +
+					"an den Spaltenrändern.",
+			)
+			.addText((t) => this.breitenFeld(t, 0))
+			.addText((t) => this.breitenFeld(t, 1))
+			.addText((t) => this.breitenFeld(t, 2));
+	}
+
+	/** Prozentfeld einer Spaltenbreite: Ungueltiges faellt auf den Standard
+	 *  zurueck, geklemmt wird auf 5–95 %. */
+	private breitenFeld(t: TextComponent, index: 0 | 1 | 2): void {
+		t
+			.setPlaceholder(String(STANDARD.spaltenbreiten[index]))
+			.setValue(String(this.plugin.einstellungen.spaltenbreiten[index]))
+			.onChange((wert) => {
+				const n = Number.parseInt(wert.trim(), 10);
+				const breiten = [...this.plugin.einstellungen.spaltenbreiten] as [
+					number,
+					number,
+					number,
+				];
+				breiten[index] = Number.isFinite(n)
+					? Math.min(Math.max(n, 5), 95)
+					: STANDARD.spaltenbreiten[index];
+				this.plugin.einstellungen.spaltenbreiten = breiten;
+				void this.plugin.einstellungenSpeichern();
+				this.plugin.offeneAnsicht()?.einstellungenAnwenden();
+			});
 	}
 
 	private ordnerFeld(
