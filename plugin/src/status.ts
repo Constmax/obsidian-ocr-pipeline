@@ -263,6 +263,13 @@ export function abgleichen(
 	}
 
 	// Regel 4 — Eintrag ohne Datei in den drei Ordnern.
+	//
+	// Damit diese Regel „ins Wiki uebernommen" ueberhaupt sehen kann, muss `pfad`
+	// einem Verschieben AUS den drei Ordnern heraus folgen. Das leistet
+	// `Bestand.pfadNachziehen` am `rename`-Ereignis. Ohne das zeigte `pfad` immer
+	// noch in den Vorschau-Ordner, `existiertImVault` waere dort stets falsch, und
+	// jede Uebernahme landete faelschlich in `entfernt` — mitsamt `notiz` und
+	// `geprueft-bis`, die das Manifest als einziges nicht wiederherstellen kann.
 	for (const [name, alt] of Object.entries(vorher.eintraege)) {
 		if (nachName.has(name)) continue;
 		if (alt.pfad.length > 0 && existiertImVault(alt.pfad)) {
@@ -303,6 +310,11 @@ export function entscheidungEintragen(
 				status,
 				pfad: neuerPfad,
 				entschieden: status === "offen" ? null : jetzt,
+				// `vorher` ist die Erinnerung an die Entscheidung VOR einer
+				// Neukonvertierung. Ist neu entschieden, ist sie beantwortet und
+				// gehoert weg — sonst zeigt die Seitenleiste spaeter ein
+				// „Vorher …" zu einem Zustand, den es nicht mehr gibt.
+				vorher: null,
 			},
 		},
 	};

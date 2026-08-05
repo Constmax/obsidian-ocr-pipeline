@@ -115,6 +115,17 @@ export class MarkdownSpalte {
 		}
 
 		const eager = vorschau.bloecke.length <= this.eagerLimit();
+		// Der Nicht-Eager-Fall rendert bewusst NICHT nach — es gibt keinen
+		// Nachlader. Das muss dastehen: eine Spalte voller „…" sieht sonst aus
+		// wie ein haengendes Laden, nicht wie eine Entscheidung.
+		if (!eager && this.darstellung === "gerendert") {
+			this.container.createDiv({
+				cls: "ocr-leer ocr-md-hinweis",
+				text:
+					`${vorschau.bloecke.length} Seiten — über der Grenze von ${this.eagerLimit()}. ` +
+					"Die Seiten bleiben ungerendert; „Quelltext“ zeigt den Text vollständig.",
+			});
+		}
 
 		for (const block of vorschau.bloecke) {
 			const el = this.container.createDiv({ cls: "ocr-md-seite" });
