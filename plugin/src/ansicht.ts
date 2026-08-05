@@ -734,8 +734,11 @@ function istEingabeziel(ziel: EventTarget | null): boolean {
 
 // ── Dialoge ──────────────────────────────────────────────────────────────────
 
-/** PDF fuer die manuelle Zuordnung waehlen. */
-class PdfAuswahlModal extends SuggestModal<TFile> {
+/**
+ * PDF aus dem Vault waehlen — fuer die manuelle Zuordnung hier und fuer den
+ * Konvertierungs-Befehl in main.ts.
+ */
+export class PdfAuswahlModal extends SuggestModal<TFile> {
 	onAuswahl: ((datei: TFile) => void) | null = null;
 
 	constructor(
