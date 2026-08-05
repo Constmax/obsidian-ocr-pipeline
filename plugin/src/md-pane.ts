@@ -41,7 +41,11 @@ export class MarkdownSpalte {
 		private eagerLimit: number,
 	) {
 		this.scrollEl = wurzel.createDiv({ cls: "ocr-md-scroll" });
-		this.container = this.scrollEl.createDiv({ cls: "ocr-md-inhalt" });
+		// `markdown-rendered` ist die Klasse, an der Obsidians Typographie-
+		// CSS haengt — ohne sie waeren Ueberschriften und Listen nackt.
+		this.container = this.scrollEl.createDiv({
+			cls: "ocr-md-inhalt markdown-rendered",
+		});
 	}
 
 	elemente(): Map<number, HTMLElement> {
@@ -69,7 +73,7 @@ export class MarkdownSpalte {
 		await this.zeichnen();
 	}
 
-	leeren(): void {
+	leeren(leertext?: string): void {
 		this.lauf++;
 		this.renderKind?.unload();
 		this.renderKind = null;
@@ -77,6 +81,9 @@ export class MarkdownSpalte {
 		this.container.empty();
 		this.vorschau = null;
 		this.datei = null;
+		if (leertext !== undefined) {
+			this.container.createDiv({ cls: "ocr-leer", text: leertext });
+		}
 	}
 
 	private async zeichnen(): Promise<void> {

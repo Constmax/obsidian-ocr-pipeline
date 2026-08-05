@@ -152,7 +152,7 @@ export class Bestand {
 		this.eintraege.sort((a, b) => a.name.localeCompare(b.name, "de"));
 
 		if (ergebnis.korrigiert.length > 0) {
-			console.info(
+			console.warn(
 				"OCR-Vorschau: Status aus Ordnerlage übernommen für",
 				ergebnis.korrigiert.join(", "),
 			);
@@ -245,13 +245,15 @@ export class Bestand {
 		return this.letzte !== null;
 	}
 
-	async rueckgaengig(): Promise<boolean> {
+	/** Macht die letzte Entscheidung rueckgaengig. Liefert den Namen der
+	 *  wiederhergestellten Datei, oder null, wenn nichts zurueckzunehmen war. */
+	async rueckgaengig(): Promise<string | null> {
 		const letzte = this.letzte;
-		if (letzte === null) return false;
+		if (letzte === null) return null;
 		const datei = this.app.vault.getFileByPath(letzte.nachPfad);
 		if (datei === null) {
 			this.letzte = null;
-			return false;
+			return null;
 		}
 		try {
 			const ordner = letzte.vonPfad.slice(0, letzte.vonPfad.lastIndexOf("/"));
@@ -259,7 +261,7 @@ export class Bestand {
 			await this.app.fileManager.renameFile(datei, letzte.vonPfad);
 		} catch (fehler) {
 			console.error("OCR-Vorschau: Rückgängig fehlgeschlagen", fehler);
-			return false;
+			return null;
 		}
 		this.manifest = {
 			...this.manifest,
@@ -270,7 +272,7 @@ export class Bestand {
 		};
 		this.letzte = null;
 		await this.abgleichen();
-		return true;
+		return letzte.name;
 	}
 
 	/** Anmerkungsfelder ändern, ohne die Datei anzufassen. */
@@ -289,5 +291,52 @@ export class Bestand {
 			bestand.eintrag = this.manifest.eintraege[name] as StatusEintrag;
 		}
 		this.speichernAnstossen();
+	}
+
+	/**
+	 * „Alte Fassung ersetzen" (Regel 6): benennt die alte Fassung einer
+	 * Neukonvertierung nach `_abgelehnt/<stem>-<altes-ocr-datum>.md` um, damit
+	 * der Basename fuer die frische Fassung frei wird. Nichts geht verloren:
+	 * die alte Fassung bleibt als Datei erhalten und bekommt ueber den
+	 * Abgleich einen eigenen Manifest-Eintrag.
+	 */
+	async alteFassungErsetzen(name: string): Promise<boolean> {
+		const e = this.e;
+		const akzeptiert = normalizePath(e.akzeptiertOrdner);
+		const abgelehnt = normalizePath(e.abgelehntOrdner);
+		const datei = this.app.vault
+			.getMarkdownFiles()
+			.find(
+				(f) =>
+					f.name === name &&
+					(f.parent?.path === akzeptiert || f.parent?.path === abgelehnt),
+			);
+		if (datei === undefined) return false;
+		const altesDatum = this.manifest.eintraege[name]?.["ocr-datum"] ?? "alt";
+		const ziel = normalizePath(`${abgelehnt}/${datei.basename}-${altesDatum}.md`);
+		if (ziel === datei.path) return false;
+		try {
+			await this.ordnerSicherstellen(abgelehnt);
+			await this.app.fileManager.renameFile(datei, ziel);
+		} catch (fehler) {
+			console.error("OCR-Vorschau: Alte Fassung nicht umbenennbar", fehler);
+			new Notice(`OCR-Vorschau: „${name}“ konnte nicht ersetzt werden.`);
+			return false;
+		}
+		// Die frische Fassung ist jetzt die einzige — zurueck zu einem offenen
+		// Eintrag; die Historie bleibt in `vorher` stehen.
+		this.manifest = {
+			...this.manifest,
+			eintraege: {
+				...this.manifest.eintraege,
+				[name]: {
+					...(this.manifest.eintraege[name] as StatusEintrag),
+					status: "offen",
+					entschieden: null,
+				},
+			},
+		};
+		await this.abgleichen();
+		return true;
 	}
 }

@@ -121,6 +121,12 @@ test("Marker mit Leerraumvarianten matcht", () => {
 	assert.equal(v.bloecke[1]?.herkunft, "ocr");
 });
 
+test("pdf2md-Format seit der Marker-Erweiterung: textlayer-Form", () => {
+	const v = vorschauParsen("%% S. 1 | textlayer %%\n\nText\n");
+	assert.equal(v.bloecke[0]?.herkunft, "textlayer");
+	assert.equal(v.bloecke[0]?.layout, undefined);
+});
+
 test("Frontmatter-Helfer lesen Zahlen und Text", () => {
 	const fm = { seiten: "14", "seiten-ocr": 9, titel: "  Fall 8 ", leer: "  " };
 	assert.equal(zahlAusFrontmatter(fm, "seiten"), 14);

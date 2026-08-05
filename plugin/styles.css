@@ -1,0 +1,553 @@
+/* OCR-Vorschau — Abgleich-Ansicht.
+ *
+ * Alle Klassen sind `ocr-`-praefixiert. Farben und Abstaende ueber Obsidians
+ * eigene CSS-Variablen, damit die Ansicht sich dem Theme anpasst.
+ */
+
+/* ── Rahmen ─────────────────────────────────────────────────────────────── */
+
+.view-content:has(> .ocr-abgleich) {
+	padding: 0;
+}
+
+.ocr-abgleich {
+	display: flex;
+	height: 100%;
+	min-height: 0;
+}
+
+.ocr-spalte {
+	flex: 0 0 var(--ocr-spalte-basis);
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.ocr-griff {
+	flex: none;
+	width: 4px;
+	cursor: col-resize;
+	background: transparent;
+	transition: background-color 0.15s ease;
+}
+
+.ocr-griff:hover {
+	background: var(--interactive-accent);
+}
+
+/* ── Spaltenkoepfe ──────────────────────────────────────────────────────── */
+
+.ocr-spaltenkopf {
+	flex: none;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+.ocr-kopf-zeile {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 24px;
+}
+
+.ocr-kopf-titel {
+	font-weight: var(--font-semibold);
+	font-size: var(--font-ui-small);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ocr-kopf-seiten {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+}
+
+.ocr-kopf-werkzeuge {
+	margin-left: auto;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+}
+
+.ocr-kopf-zoom {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	min-width: 38px;
+	text-align: center;
+}
+
+.ocr-fehlbanner {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 10px;
+	margin-top: 6px;
+	font-size: var(--font-ui-small);
+	color: var(--text-error);
+	background: var(--background-modifier-error);
+	border-radius: var(--radius-s);
+}
+
+/* ── Knöpfe ─────────────────────────────────────────────────────────────── */
+
+.ocr-knopf {
+	padding: 3px 10px;
+	font-size: var(--font-ui-small);
+	border-radius: var(--radius-s);
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	cursor: pointer;
+	border: 1px solid var(--background-modifier-border);
+	white-space: nowrap;
+}
+
+.ocr-knopf:hover {
+	background: var(--interactive-hover);
+}
+
+.ocr-knopf-klein {
+	padding: 1px 8px;
+	font-size: var(--font-ui-smaller);
+}
+
+.ocr-knopf-annehmen {
+	background: var(--color-green);
+	border-color: var(--color-green);
+	color: var(--text-on-accent);
+}
+
+.ocr-knopf-annehmen:hover {
+	background: var(--color-green);
+	filter: brightness(1.1);
+}
+
+.ocr-knopf-ablehnen {
+	background: var(--color-red);
+	border-color: var(--color-red);
+	color: var(--text-on-accent);
+}
+
+.ocr-knopf-ablehnen:hover {
+	background: var(--color-red);
+	filter: brightness(1.1);
+}
+
+.ocr-ikonknopf {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	color: var(--text-muted);
+}
+
+.ocr-ikonknopf:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.ocr-ikon {
+	display: flex;
+	width: 14px;
+	height: 14px;
+}
+
+.ocr-ikon .svg-icon {
+	width: 100%;
+	height: 100%;
+}
+
+/* ── Umschalter Gerendert/Quelltext ─────────────────────────────────────── */
+
+.ocr-umschalter {
+	display: flex;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	overflow: hidden;
+}
+
+.ocr-umschalter-option {
+	padding: 2px 8px;
+	font-size: var(--font-ui-smaller);
+	background: transparent;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.ocr-umschalter-option:hover {
+	background: var(--background-modifier-hover);
+}
+
+.ocr-umschalter-aktiv {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.ocr-umschalter-aktiv:hover {
+	background: var(--interactive-accent);
+}
+
+/* ── Linke Spalte: Liste ────────────────────────────────────────────────── */
+
+.ocr-liste-kopf {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+.ocr-liste-titel {
+	font-weight: var(--font-semibold);
+	font-size: var(--font-ui-small);
+}
+
+.ocr-filterzeile {
+	flex: none;
+	display: flex;
+	gap: 4px;
+	padding: 6px 10px 0;
+	flex-wrap: wrap;
+}
+
+.ocr-chip {
+	padding: 2px 8px;
+	font-size: var(--font-ui-smaller);
+	border-radius: 999px;
+	background: var(--interactive-normal);
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.ocr-chip:hover {
+	background: var(--interactive-hover);
+}
+
+.ocr-chip-aktiv {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.ocr-chip-aktiv:hover {
+	background: var(--interactive-accent);
+}
+
+.ocr-suchfeld {
+	flex: none;
+	margin: 6px 10px 0;
+	padding: 3px 8px;
+	font-size: var(--font-ui-small);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	color: var(--text-normal);
+}
+
+.ocr-liste {
+	flex: 1;
+	overflow-y: auto;
+	min-height: 0;
+	padding: 4px 6px 12px;
+}
+
+.ocr-liste-versteckt {
+	display: none;
+}
+
+.ocr-eintrag {
+	padding: 5px 8px;
+	margin-bottom: 2px;
+	border-left: 3px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+
+.ocr-eintrag:hover {
+	background: var(--background-modifier-hover);
+}
+
+.ocr-eintrag.ocr-selektiert {
+	background: var(--background-modifier-hover);
+	border-left-color: var(--interactive-accent);
+}
+
+.ocr-status-offen {
+	border-left-color: var(--text-muted);
+}
+
+.ocr-status-akzeptiert {
+	border-left-color: var(--color-green);
+}
+
+.ocr-status-abgelehnt {
+	border-left-color: var(--color-red);
+}
+
+.ocr-status-neu-erzeugt {
+	border-left-color: var(--color-orange);
+}
+
+.ocr-eintrag-ober {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.ocr-eintrag-stem {
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ocr-eintrag-unter {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	margin-top: 1px;
+}
+
+.ocr-warnpunkt {
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--color-yellow);
+}
+
+/* ── Badges ─────────────────────────────────────────────────────────────── */
+
+.ocr-badge {
+	display: inline-block;
+	padding: 0 6px;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+	border-radius: 999px;
+	white-space: nowrap;
+}
+
+.ocr-badge-textlayer {
+	background: var(--color-cyan);
+	color: var(--text-on-accent);
+}
+
+.ocr-badge-ocr {
+	background: var(--color-orange);
+	color: var(--text-on-accent);
+}
+
+.ocr-badge-diagramm {
+	background: var(--color-purple);
+	color: var(--text-on-accent);
+}
+
+.ocr-badge-neu {
+	background: var(--color-red);
+	color: var(--text-on-accent);
+}
+
+/* ── Leerzustaende ──────────────────────────────────────────────────────── */
+
+.ocr-leer {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 24px;
+	text-align: center;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.ocr-leer-titel {
+	font-weight: var(--font-semibold);
+}
+
+.ocr-leer-untertitel {
+	font-size: var(--font-ui-smaller);
+}
+
+.ocr-kopierbefehl {
+	margin: 8px 0;
+	padding: 6px 10px;
+	background: var(--background-primary);
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-smaller);
+	cursor: copy;
+	max-width: 100%;
+	overflow-x: auto;
+	text-align: left;
+}
+
+.ocr-kopierbefehl:hover {
+	border-color: var(--interactive-accent);
+}
+
+/* ── Mittlere Spalte: PDF ───────────────────────────────────────────────── */
+
+.ocr-pdf-scroll {
+	flex: 1;
+	overflow-y: auto;
+	min-height: 0;
+	background: var(--background-secondary);
+}
+
+.ocr-pdf-inhalt {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.ocr-pdf-stapel {
+	padding: 12px 16px 24px;
+	zoom: var(--ocr-pdf-zoom, 1);
+	transform-origin: top left;
+}
+
+.ocr-pdf-seite {
+	position: relative;
+	width: 100%;
+	aspect-ratio: var(--ocr-seitenverhaeltnis);
+	background: white;
+	border-radius: 2px;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+	margin-bottom: 12px;
+	overflow: hidden;
+}
+
+.ocr-pdf-canvas {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.ocr-pdf-seite-fehler {
+	background: var(--background-modifier-error);
+}
+
+.ocr-pdf-seitenfehler {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 12px;
+	text-align: center;
+	color: var(--text-error);
+	font-size: var(--font-ui-small);
+}
+
+/* ── Rechte Spalte: Markdown ────────────────────────────────────────────── */
+
+.ocr-md-scroll {
+	flex: 1;
+	overflow-y: auto;
+	min-height: 0;
+	background: var(--background-primary);
+}
+
+.ocr-md-inhalt {
+	padding: 8px 16px 40px;
+}
+
+.ocr-md-seite {
+	padding: 8px 0 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ocr-md-seite:last-child {
+	border-bottom: none;
+}
+
+.ocr-md-seitenkopf {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 4px;
+}
+
+.ocr-md-seitenzahl {
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	color: var(--text-muted);
+}
+
+.ocr-md-layout {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	font-style: italic;
+}
+
+.ocr-md-quelltext {
+	margin: 0;
+	padding: 8px;
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-smaller);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.ocr-md-platzhalter {
+	padding: 24px 0;
+	text-align: center;
+	color: var(--text-faint);
+}
+
+.ocr-embed-bild {
+	max-width: 100%;
+	border-radius: var(--radius-s);
+}
+
+.ocr-embed-fehlt {
+	color: var(--text-error);
+	font-size: var(--font-ui-smaller);
+}
+
+/* ── Dialoge und Einstellungen ──────────────────────────────────────────── */
+
+.ocr-notiz-feld {
+	width: 100%;
+	min-height: 120px;
+	padding: 8px;
+	font: inherit;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	color: var(--text-normal);
+	resize: vertical;
+}
+
+.ocr-einstellungen-hinweis {
+	margin: 0 0 16px;
+	padding: 8px 12px;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+}
+
+.ocr-pfad-hinweis {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-warning);
+}
