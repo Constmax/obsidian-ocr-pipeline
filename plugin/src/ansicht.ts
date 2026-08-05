@@ -84,7 +84,10 @@ export class OcrAbgleichAnsicht extends ItemView {
 			() => this.plugin.einstellungen.vorschauOrdner,
 		);
 		this.seitenleiste.beiAuswahl = (name) => void this.oeffnen(name);
-		this.seitenleiste.beiAktualisieren = () => this.aktualisieren();
+		// Der Knopf muss NEU ABGLEICHEN, nicht nur neu zeichnen: `aktualisieren`
+		// liest bloss `bestand.eintraege`, und genau die sind veraltet, wenn der
+		// Nutzer den Knopf drueckt.
+		this.seitenleiste.beiAktualisieren = () => void this.neuAbgleichen();
 		this.seitenleiste.beiEinstellungen = () => einstellungenOeffnen(this.plugin);
 
 		// ── Mitte: Original-PDF ─────────────────────────────────────────────────
@@ -123,14 +126,19 @@ export class OcrAbgleichAnsicht extends ItemView {
 		const mdZeile = mdKopf.createDiv({ cls: "ocr-kopf-zeile" });
 		mdZeile.createSpan({ cls: "ocr-kopf-titel", text: "Markdown" });
 		this.umschalter = mdZeile.createDiv({ cls: "ocr-umschalter" });
+		// Der Wert steht im dataset, nicht in der Beschriftung: ein Vergleich auf
+		// den sichtbaren Text ("Gerendert") trifft den Aufzaehlungswert
+		// ("gerendert") nie, und die Markierung bliebe fuer immer stehen.
 		const gerendertKnopf = this.umschalter.createEl("button", {
-			cls: "ocr-umschalter-option ocr-umschalter-aktiv",
+			cls: "ocr-umschalter-option",
 			text: "Gerendert",
 		});
+		gerendertKnopf.dataset["darstellung"] = "gerendert";
 		const quelltextKnopf = this.umschalter.createEl("button", {
 			cls: "ocr-umschalter-option",
 			text: "Quelltext",
 		});
+		quelltextKnopf.dataset["darstellung"] = "quelltext";
 		gerendertKnopf.addEventListener("click", () => this.darstellungSetzen("gerendert"));
 		quelltextKnopf.addEventListener("click", () => this.darstellungSetzen("quelltext"));
 		const mdWerkzeuge = mdZeile.createDiv({ cls: "ocr-kopf-werkzeuge" });
@@ -157,6 +165,10 @@ export class OcrAbgleichAnsicht extends ItemView {
 			() => this.plugin.einstellungen.mdEagerLimit,
 		);
 		this.mdSpalte.beiVermessungNoetig = () => this.kopplung.neuVermessen();
+		// Startmarkierung aus den Einstellungen, nicht fest auf „Gerendert":
+		// wer „Quelltext" als Standard gewaehlt hat, sah sonst die falsche
+		// Schaltflaeche hervorgehoben.
+		this.umschalterMarkieren(this.plugin.einstellungen.markdownAnsicht);
 
 		// ── Kopplung und Breiten ────────────────────────────────────────────────
 		this.kopplung = new Kopplung({
@@ -206,6 +218,12 @@ export class OcrAbgleichAnsicht extends ItemView {
 	/** Erster Eintrag der gefilterten Liste (ohne Auswahl zu verschieben). */
 	ersterSichtbar(): string | null {
 		return this.seitenleiste.ersterSichtbar();
+	}
+
+	/** Bestand frisch vom Dateisystem einlesen, dann neu zeichnen. */
+	private async neuAbgleichen(): Promise<void> {
+		await this.bestand.abgleichen();
+		this.aktualisieren();
 	}
 
 	aktualisieren(): void {
@@ -315,8 +333,12 @@ export class OcrAbgleichAnsicht extends ItemView {
 	private async entscheiden(lage: Ordnerlage): Promise<void> {
 		const name = this.seitenleiste.ausgewaehltName();
 		if (name === null) return;
-		const ok = await this.bestand.entscheiden(name, lage);
-		if (!ok) return;
+		const ergebnis = await this.bestand.entscheiden(name, lage);
+		if (ergebnis === "kollision") {
+			this.kollisionMelden(name, lage);
+			return;
+		}
+		if (ergebnis !== "ok") return;
 
 		const label =
 			lage === "akzeptiert" ? "Angenommen" : lage === "abgelehnt" ? "Abgelehnt" : "Zurückgesetzt";
@@ -334,6 +356,38 @@ export class OcrAbgleichAnsicht extends ItemView {
 		const naechster = this.seitenleiste.naechsterNach(name);
 		if (naechster !== null) void this.oeffnen(naechster);
 		else this.keineAuswahl();
+	}
+
+	/**
+	 * Der Zielname ist belegt — praktisch immer die alte Fassung einer
+	 * Neukonvertierung. Statt eines Fehlers den einen Weg anbieten, der hier
+	 * weiterfuehrt. „Alte Fassung ersetzen" loescht nichts: die alte Datei
+	 * wandert unter `<stem>-<ocr-datum>.md` nach _abgelehnt und behaelt dort
+	 * einen eigenen Eintrag.
+	 */
+	private kollisionMelden(name: string, lage: Ordnerlage): void {
+		const stem = name.replace(/\.md$/, "");
+		const notice = new Notice(
+			`„${stem}“ liegt im Zielordner bereits — vermutlich die vorige Fassung.`,
+			10000,
+		);
+		const knopf = notice.messageEl.createEl("button", {
+			cls: "ocr-knopf ocr-knopf-klein",
+			text: "Alte Fassung ersetzen und fortfahren",
+		});
+		knopf.addEventListener("click", () => {
+			notice.hide();
+			void this.ersetzenUndEntscheiden(name, lage);
+		});
+	}
+
+	private async ersetzenUndEntscheiden(name: string, lage: Ordnerlage): Promise<void> {
+		if (!(await this.bestand.alteFassungErsetzen(name))) {
+			new Notice(`OCR-Vorschau: „${name}“ konnte nicht ersetzt werden.`);
+			this.aktualisieren();
+			return;
+		}
+		await this.entscheiden(lage);
 	}
 
 	private async rueckgaengig(): Promise<void> {
@@ -398,8 +452,17 @@ export class OcrAbgleichAnsicht extends ItemView {
 
 	private darstellungSetzen(darstellung: Darstellung): void {
 		this.mdSpalte.darstellungSetzen(darstellung);
-		for (const option of this.umschalter.querySelectorAll(".ocr-umschalter-option")) {
-			option.toggleClass("ocr-umschalter-aktiv", option.getText() === darstellung);
+		this.umschalterMarkieren(darstellung);
+	}
+
+	private umschalterMarkieren(darstellung: Darstellung): void {
+		const optionen =
+			this.umschalter.querySelectorAll<HTMLElement>(".ocr-umschalter-option");
+		for (const option of optionen) {
+			option.toggleClass(
+				"ocr-umschalter-aktiv",
+				option.dataset["darstellung"] === darstellung,
+			);
 		}
 	}
 
@@ -438,8 +501,9 @@ export class OcrAbgleichAnsicht extends ItemView {
 					.setTitle("Alte Fassung ersetzen")
 					.setIcon("archive")
 					.onClick(() => {
-						void this.bestand.alteFassungErsetzen(name);
-						this.aktualisieren();
+						void this.bestand.alteFassungErsetzen(name).then(() => {
+							this.aktualisieren();
+						});
 					}),
 			);
 		}
@@ -447,10 +511,9 @@ export class OcrAbgleichAnsicht extends ItemView {
 			i
 				.setTitle("Status zurücksetzen")
 				.setIcon("rotate-ccw")
-				.onClick(() => {
-					void this.bestand.entscheiden(name, "offen");
-					this.aktualisieren();
-				}),
+				// Ueber denselben Weg wie die Hauptknoepfe, damit auch hier die
+				// Namenskollision aufgefangen wird statt in einem Fehler zu enden.
+				.onClick(() => void this.entscheiden("offen")),
 		);
 		menu.addItem((i) =>
 			i
@@ -497,8 +560,13 @@ export class OcrAbgleichAnsicht extends ItemView {
 	private tastenRegistrieren(): void {
 		const scope = this.scope;
 		if (scope === null) return;
+		// Obsidians Scope nimmt KEINE Ruecksicht auf fokussierte Eingabefelder.
+		// Ohne diese Pruefung tippt „Fall 8" in das Filterfeld der Seitenleiste
+		// nicht den Text, sondern loest „annehmen" aus und verschiebt eine Datei.
+		// `true` zurueckgeben heisst: nicht behandelt, das Feld bekommt die Taste.
 		const taste = (key: string, funktion: () => void) =>
-			scope.register([], key, () => {
+			scope.register([], key, (ereignis) => {
+				if (istEingabeziel(ereignis.target)) return true;
 				funktion();
 				return false;
 			});
@@ -654,6 +722,14 @@ export class OcrAbgleichAnsicht extends ItemView {
 			window.addEventListener("mouseup", loslassen);
 		});
 	}
+}
+
+/** Steht der Fokus in einem Feld, in das man schreibt? */
+function istEingabeziel(ziel: EventTarget | null): boolean {
+	if (ziel instanceof HTMLInputElement) return true;
+	if (ziel instanceof HTMLTextAreaElement) return true;
+	if (ziel instanceof HTMLSelectElement) return true;
+	return ziel instanceof HTMLElement && ziel.isContentEditable;
 }
 
 // ── Dialoge ──────────────────────────────────────────────────────────────────

@@ -31,6 +31,8 @@ export const STANDARD: Einstellungen = {
 	mdEagerLimit: 200,
 };
 
+const PFAD_ENTPRELLT_MS = 600;
+
 export class EinstellungenTab extends PluginSettingTab {
 	constructor(
 		app: App,
@@ -173,6 +175,10 @@ export class EinstellungenTab extends PluginSettingTab {
 		schluessel: "vorschauOrdner" | "akzeptiertOrdner" | "abgelehntOrdner" | "statusDatei",
 		istDatei = false,
 	): void {
+		// Entprellt: `onChange` feuert bei JEDEM Tastendruck. Ohne Verzoegerung
+		// wanderte jeder Zwischenstand eines getippten Pfades in die
+		// Einstellungen und stiesse dazu je einen Vault-Durchlauf an.
+		let timer: number | null = null;
 		const setting = new Setting(this.containerEl)
 			.setName(name)
 			.setDesc(beschreibung)
@@ -180,12 +186,16 @@ export class EinstellungenTab extends PluginSettingTab {
 				t
 					.setPlaceholder(STANDARD[schluessel])
 					.setValue(this.plugin.einstellungen[schluessel])
-					.onChange(async (wert) => {
-						const bereinigt = normalizePath(wert.trim() || STANDARD[schluessel]);
-						this.plugin.einstellungen[schluessel] = bereinigt;
-						await this.plugin.einstellungenSpeichern();
-						hinweisSetzen(bereinigt);
-						this.plugin.abgleichAnstossen();
+					.onChange((wert) => {
+						if (timer !== null) window.clearTimeout(timer);
+						timer = window.setTimeout(() => {
+							timer = null;
+							const bereinigt = normalizePath(wert.trim() || STANDARD[schluessel]);
+							this.plugin.einstellungen[schluessel] = bereinigt;
+							void this.plugin.einstellungenSpeichern();
+							hinweisSetzen(bereinigt);
+							this.plugin.abgleichAnstossen();
+						}, PFAD_ENTPRELLT_MS);
 					}),
 			);
 

@@ -30,6 +30,15 @@ interface LetzteAktion {
 	vorherigerEintrag: StatusEintrag;
 }
 
+/** Ausgang von `entscheiden`. `kollision` ist der einzige Wert, aus dem der
+ *  Aufrufer noch etwas anbieten kann — alle anderen sind erledigt. */
+export type EntscheidungErgebnis =
+	| "ok"
+	| "unveraendert"
+	| "unbekannt"
+	| "kollision"
+	| "fehler";
+
 /**
  * Haelt das Manifest, gleicht es mit den drei Ordnern ab und fuehrt die
  * Entscheidungen aus.
@@ -47,10 +56,6 @@ export class Bestand {
 	private schreibKette: Promise<void> = Promise.resolve();
 	private schreibTimer: number | null = null;
 	private letzte: LetzteAktion | null = null;
-	/** Pfad der Manifest-Datei waehrend eines eigenen Schreibvorgangs — damit
-	 *  der modify-Listener den eigenen Schreibvorgang nicht als Fremdaenderung
-	 *  deutet und einen Abgleich-Schreib-Kreisel startet. */
-	private eigenerSchreibvorgang = false;
 
 	constructor(
 		private app: App,
@@ -61,10 +66,44 @@ export class Bestand {
 		return this.einstellungen();
 	}
 
-	istManifestPfad(pfad: string): boolean {
+	/** Liegt der Pfad direkt in einem der drei Ordner? */
+	private inDreiOrdnern(pfad: string): boolean {
+		const e = this.e;
+		const schnitt = pfad.lastIndexOf("/");
+		const eltern = schnitt > 0 ? pfad.slice(0, schnitt) : "";
 		return (
-			this.eigenerSchreibvorgang && normalizePath(pfad) === normalizePath(this.e.statusDatei)
+			eltern === normalizePath(e.vorschauOrdner) ||
+			eltern === normalizePath(e.akzeptiertOrdner) ||
+			eltern === normalizePath(e.abgelehntOrdner)
 		);
+	}
+
+	/**
+	 * Zieht `pfad` nach, wenn eine bekannte Datei aus den drei Ordnern HERAUS
+	 * bewegt wird — der Normalfall ist die bewusste Uebernahme ins Wiki.
+	 *
+	 * Ohne das zeigte der Eintrag weiter in den Vorschau-Ordner, Regel 4 fraege
+	 * einen toten Pfad ab und koennte „uebernommen" nie von „geloescht"
+	 * unterscheiden: der Eintrag fiele weg und mit ihm `notiz` und
+	 * `geprueft-bis` — die beiden einzigen Felder, die sich nicht aus Ordnerlage
+	 * und Frontmatter neu aufbauen lassen.
+	 *
+	 * Ein Verschieben INNERHALB der drei Ordner braucht das nicht: dort findet
+	 * der Abgleich die Datei ohnehin wieder.
+	 */
+	pfadNachziehen(neuerPfad: string, alterPfad: string): void {
+		if (this.inDreiOrdnern(neuerPfad)) return;
+		if (!this.inDreiOrdnern(alterPfad)) return;
+		const name = alterPfad.slice(alterPfad.lastIndexOf("/") + 1);
+		const alt = this.manifest.eintraege[name];
+		if (alt === undefined || alt.pfad !== alterPfad) return;
+		this.manifest = {
+			...this.manifest,
+			eintraege: {
+				...this.manifest.eintraege,
+				[name]: { ...alt, pfad: neuerPfad },
+			},
+		};
 	}
 
 	/** Sammelt die .md aus den drei Ordnern.
@@ -182,9 +221,13 @@ export class Bestand {
 
 	private async schreiben(): Promise<void> {
 		const pfad = normalizePath(this.e.statusDatei);
-		const ordner = pfad.slice(0, pfad.lastIndexOf("/"));
+		// `lastIndexOf` liefert -1, wenn die Status-Datei direkt in der
+		// Vault-Wurzel liegt. Ein ungeprueftes slice(0, -1) schnitte dann das
+		// letzte Zeichen ab ("review-status.jso") und legte einen Ordner unter
+		// diesem Namen an.
+		const schnitt = pfad.lastIndexOf("/");
+		const ordner = schnitt > 0 ? pfad.slice(0, schnitt) : "";
 		try {
-			this.eigenerSchreibvorgang = true;
 			if (ordner.length > 0 && !(await this.app.vault.adapter.exists(ordner))) {
 				await this.app.vault.adapter.mkdir(ordner);
 			}
@@ -192,12 +235,6 @@ export class Bestand {
 		} catch (fehler) {
 			console.error("OCR-Vorschau: review-status.json nicht schreibbar", fehler);
 			new Notice("OCR-Vorschau: Status konnte nicht gespeichert werden.");
-		} finally {
-			// Erst im naechsten Tick freigeben — das modify-Ereignis des eigenen
-			// Schreibvorgangs kommt asynchron.
-			window.setTimeout(() => {
-				this.eigenerSchreibvorgang = false;
-			}, 0);
 		}
 	}
 
@@ -211,13 +248,23 @@ export class Bestand {
 		}
 	}
 
-	/** Verschiebt die Datei und traegt die Entscheidung ein. */
-	async entscheiden(name: string, lage: Ordnerlage): Promise<boolean> {
+	/**
+	 * Verschiebt die Datei und traegt die Entscheidung ein.
+	 *
+	 * `kollision` ist kein Fehler, sondern der Regelfall bei einer
+	 * Neukonvertierung: die frische Fassung liegt offen, die alte belegt den
+	 * Zielnamen bereits. Ohne eigene Rueckmeldung liefe genau der Zustand, fuer
+	 * den die ganze Regel-6-Mechanik existiert, in ein „konnte nicht verschoben
+	 * werden" — die beiden Hauptknoepfe waeren dort tot. Der Aufrufer bietet
+	 * stattdessen „Alte Fassung ersetzen" an.
+	 */
+	async entscheiden(name: string, lage: Ordnerlage): Promise<EntscheidungErgebnis> {
 		const bestand = this.eintraege.find((b) => b.name === name);
-		if (bestand === undefined) return false;
+		if (bestand === undefined) return "unbekannt";
 		const ziel = normalizePath(zielordner(lage, this.e));
 		const neuerPfad = normalizePath(`${ziel}/${bestand.datei.name}`);
-		if (neuerPfad === bestand.datei.path) return false;
+		if (neuerPfad === bestand.datei.path) return "unveraendert";
+		if (this.app.vault.getFileByPath(neuerPfad) !== null) return "kollision";
 
 		const vorherigerEintrag = { ...bestand.eintrag };
 		const vonPfad = bestand.datei.path;
@@ -227,7 +274,7 @@ export class Bestand {
 		} catch (fehler) {
 			console.error("OCR-Vorschau: Verschieben fehlgeschlagen", fehler);
 			new Notice(`OCR-Vorschau: „${name}“ konnte nicht verschoben werden.`);
-			return false;
+			return "fehler";
 		}
 
 		this.manifest = entscheidungEintragen(
@@ -239,11 +286,7 @@ export class Bestand {
 		);
 		this.letzte = { name, vonPfad, nachPfad: neuerPfad, vorherigerEintrag };
 		await this.abgleichen();
-		return true;
-	}
-
-	kannRueckgaengig(): boolean {
-		return this.letzte !== null;
+		return "ok";
 	}
 
 	/** Macht die letzte Entscheidung rueckgaengig. Liefert den Namen der
