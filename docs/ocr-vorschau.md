@@ -40,6 +40,24 @@ Regeln für alle, die diese Dateien erzeugen **oder lesen**:
 5. Andere Konsumenten als die Review-Ansicht gibt es nicht: weder
    `lint_wiki.py` noch `semantic_search.py` fassen diesen Ordner an.
 
+## Das Drei-Ordner-Modell
+
+Die Dateien wandern zwischen drei flachen Geschwisterordnern — die
+Ordnerlage **ist** der Status:
+
+```
+_ocr-vorschau/            offen (noch zu begutachten)
+_ocr-vorschau/_akzeptiert/  angenommen
+_ocr-vorschau/_abgelehnt/   abgelehnt (es wird nichts gelöscht)
+```
+
+`review-status.json` im selben Ordner ist nur ein **Cache mit Anmerkungen**
+(`notiz`, `geprüft-bis`, manuelle PDF-Zuordnung) und darf jederzeit gelöscht
+werden. Details zu den Abgleichregeln: [review-ansicht.md](review-ansicht.md).
+
+`_ocr-vorschau/assets/` bleibt wo es ist: Die drei Ordner teilen sich die
+Diagrammbilder (`![[…png]]`), sie werden **nicht** mitverschoben.
+
 ## Was im Frontmatter steht
 
 | Feld | Bedeutung |
