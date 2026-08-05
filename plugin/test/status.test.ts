@@ -314,6 +314,28 @@ test("Zuruecksetzen auf offen loescht den Entscheidungszeitpunkt", () => {
 	assert.equal(nachher.eintraege["Fall 8.md"]?.entschieden, null);
 });
 
+test("Eine neue Entscheidung loescht die Erinnerung an die alte", () => {
+	// `vorher` beantwortet die Frage „was galt vor der Neukonvertierung?". Ist
+	// neu entschieden, ist sie beantwortet — bliebe sie stehen, zeigte die
+	// Seitenleiste ein „Vorher …" zu einem Zustand, den es nicht mehr gibt.
+	const vorher = mitEintrag("Fall 8.md", {
+		status: "neu-erzeugt",
+		vorher: {
+			status: "akzeptiert",
+			entschieden: "2026-08-01T10:00:00+02:00",
+			"ocr-datum": "2026-07-30",
+		},
+	});
+	const nachher = entscheidungEintragen(
+		vorher,
+		"Fall 8.md",
+		"akzeptiert",
+		"_ocr-vorschau/_akzeptiert/Fall 8.md",
+		JETZT,
+	);
+	assert.equal(nachher.eintraege["Fall 8.md"]?.vorher, null);
+});
+
 test("zielordner bildet alle drei Lagen ab", () => {
 	assert.equal(zielordner("offen", ORDNER), "_ocr-vorschau");
 	assert.equal(zielordner("akzeptiert", ORDNER), "_ocr-vorschau/_akzeptiert");

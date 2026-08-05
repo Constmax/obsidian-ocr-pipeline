@@ -147,11 +147,6 @@ export class Seitenleiste {
 		return ziel.name;
 	}
 
-	/** Anzahl der Eintraege unter dem aktuellen Filter — fuer den Kopf. */
-	anzahl(): number {
-		return this.gefiltert().length;
-	}
-
 	private zeichnen(): void {
 		this.chipsAktualisieren();
 		const gefiltert = this.gefiltert();
@@ -197,12 +192,12 @@ export class Seitenleiste {
 			return;
 		}
 
-		for (const b of gefiltert) {
-			this.listeEl.appendChild(this.zeileBauen(b));
-		}
+		// `zeileBauen` haengt die Zeile schon an `listeEl` — ein zusaetzliches
+		// appendChild waere ein Wiederanhaengen desselben Knotens.
+		for (const b of gefiltert) this.zeileBauen(b);
 	}
 
-	private zeileBauen(b: Bestandseintrag): HTMLElement {
+	private zeileBauen(b: Bestandseintrag): void {
 		const zeile = this.listeEl.createDiv({ cls: "ocr-eintrag" });
 		zeile.addClass(`ocr-status-${b.eintrag.status}`);
 		zeile.toggleClass("ocr-selektiert", b.name === this.ausgewaehlt);
@@ -236,14 +231,17 @@ export class Seitenleiste {
 		if (unterzeile.length > 0) {
 			zeile.createDiv({ cls: "ocr-eintrag-unter", text: unterzeile });
 		}
-		return zeile;
 	}
 
+	/** Nur Zaehler > 0: „0 OCR · 0 Diagramm" unter einer sauberen
+	 *  Textlayer-Datei ist Rauschen, keine Information. */
 	private unterzeile(e: Bestandseintrag["eintrag"]): string {
 		const teile: string[] = [];
 		if (e.seiten !== null) teile.push(`${e.seiten} S.`);
-		if (e["seiten-ocr"] !== null) teile.push(`${e["seiten-ocr"]} OCR`);
-		if (e["seiten-diagramm"] !== null) teile.push(`${e["seiten-diagramm"]} Diagramm`);
+		if ((e["seiten-ocr"] ?? 0) > 0) teile.push(`${e["seiten-ocr"]} OCR`);
+		if ((e["seiten-diagramm"] ?? 0) > 0) {
+			teile.push(`${e["seiten-diagramm"]} Diagramm`);
+		}
 		return teile.join(" · ");
 	}
 

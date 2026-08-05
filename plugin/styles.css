@@ -514,6 +514,18 @@
 	color: var(--text-faint);
 }
 
+/* Erklaert die Platzhalter oben in der Spalte — sonst liest sich „…" wie ein
+   haengendes Laden. */
+.ocr-md-hinweis {
+	margin-bottom: 12px;
+	padding: 10px 12px;
+	border-radius: 6px;
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	text-align: left;
+}
+
 .ocr-embed-bild {
 	max-width: 100%;
 	border-radius: var(--radius-s);

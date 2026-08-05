@@ -27,7 +27,32 @@ export default class OcrVorschauPlugin extends Plugin {
 		const anstossen = () => this.abgleichAnstossen();
 		this.registerEvent(this.app.vault.on("create", anstossen));
 		this.registerEvent(this.app.vault.on("delete", anstossen));
-		this.registerEvent(this.app.vault.on("rename", anstossen));
+		this.registerEvent(
+			this.app.vault.on("rename", (datei, alterPfad) => {
+				// Vor dem Abgleich: eine Datei, die die drei Ordner verlaesst, nimmt
+				// ihren Eintrag mit. Sonst kann Regel 4 „ins Wiki uebernommen" nicht
+				// von „geloescht" unterscheiden.
+				this.bestand.pfadNachziehen(datei.path, alterPfad);
+				anstossen();
+			}),
+		);
+		// `modify` ist nicht verzichtbar: ein erneuter pdf2md-Lauf schreibt nach
+		// <out>/<stem>.md und ueberschreibt eine dort liegende Datei IN PLACE.
+		// Das ist weder create noch rename — ohne diesen Listener bliebe das neue
+		// `ocr-datum` ungesehen und Regel 6 erkennt die Neukonvertierung nicht.
+		//
+		// Gefiltert auf .md in den drei Ordnern. Das haelt den Abgleich von jedem
+		// beliebigen Notiz-Tastendruck im Vault fern und schliesst zugleich den
+		// Schreib-Kreisel strukturell aus: review-status.json ist .json, unser
+		// eigener Schreibvorgang kann diesen Listener also nie ausloesen.
+		this.registerEvent(
+			this.app.vault.on("modify", (datei) => {
+				if (!(datei instanceof TFile)) return;
+				if (datei.extension !== "md") return;
+				if (!this.istVorschauDatei(datei)) return;
+				anstossen();
+			}),
+		);
 
 		this.addRibbonIcon("columns-3", "OCR-Abgleich öffnen", () => {
 			void this.ansichtOeffnen();
@@ -72,6 +97,12 @@ export default class OcrVorschauPlugin extends Plugin {
 
 	onunload(): void {
 		if (this.abgleichTimer !== null) window.clearTimeout(this.abgleichTimer);
+		// Der Manifest-Schreibvorgang ist um 500 ms entprellt. Wird Obsidian
+		// innerhalb dieser Spanne nach einer Entscheidung geschlossen, stirbt der
+		// Timer mit dem Plugin und Notiz, `geprueft-bis` und der Zeitpunkt der
+		// Entscheidung waeren weg. `onunload` ist synchron, also nur anstossen —
+		// das genuegt, weil der Schreibvorgang damit sofort statt spaeter laeuft.
+		void this.bestand?.sofortSpeichern();
 	}
 
 	async einstellungenLaden(): Promise<void> {

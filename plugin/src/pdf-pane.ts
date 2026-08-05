@@ -120,20 +120,33 @@ export class PdfSpalte {
 	}
 
 	zoomen(schritt: number): void {
+		const vorher = this.zoom;
 		this.zoom = Math.min(Math.max(this.zoom + schritt, ZOOM_MIN), ZOOM_MAX);
+		if (this.zoom === vorher) return;
 		this.stapel.style.setProperty("--ocr-pdf-zoom", String(this.zoom));
 		// Zoom aendert alle Layout-Hoehen — die Kopplung muss neu vermessen,
 		// sonst springt die Markdown-Spalte auf tote Positionen.
 		this.beiVermessungNoetig?.();
+		// Und die Rasterung muss mit: ein vorhandener Canvas wird durch `zoom`
+		// nur hochskaliert. Ohne erzwungenes Neuzeichnen ist Vergroessern reine
+		// Unschaerfe statt mehr Detail.
+		for (const z of this.seiten.values()) {
+			if (z.sichtbar) this.zeichnenAnstossen(z.nr, true);
+		}
 	}
 
 	/** Laedt ein neues Dokument oder raeumt die Spalte (null). */
 	async oeffnen(datei: TFile | null): Promise<void> {
 		const lauf = ++this.lauf;
-		if (this.doc !== null) {
-			await this.doc.destroy().catch(() => undefined);
-			this.doc = null;
-		}
+		// `destroy` ist asynchron. Das alte Dokument SOFORT abhaengen, sonst
+		// greifen zwei schnell aufeinanderfolgende Aufrufe (zweimal `j`) beide auf
+		// dasselbe Dokument zu und zerstoeren es doppelt.
+		const alt = this.doc;
+		this.doc = null;
+		if (alt !== null) await alt.destroy().catch(() => undefined);
+		// Ab hier gilt der Laufcheck: ohne ihn raeumt der ueberholte Aufruf gleich
+		// den Stapel des neueren weg und baut seine eigenen Seiten hinein.
+		if (lauf !== this.lauf) return;
 		this.observer?.disconnect();
 		this.observer = null;
 		this.pdfDatei = null;
@@ -152,7 +165,7 @@ export class PdfSpalte {
 		this.pdfDatei = datei;
 		this.leerZustand.hide();
 		try {
-			await this.dokumentLaden(datei);
+			await this.dokumentLaden(datei, lauf);
 			if (lauf !== this.lauf) return; // inzwischen gewechselt
 			this.beobachten();
 		} catch (fehler) {
@@ -173,21 +186,33 @@ export class PdfSpalte {
 		this.doc = null;
 	}
 
-	private async dokumentLaden(datei: TFile): Promise<void> {
+	private async dokumentLaden(datei: TFile, lauf: number): Promise<void> {
 		if (typeof window.pdfjsLib === "undefined") await loadPdfJs();
 		const pdfjs = window.pdfjsLib as PdfJsLib;
 		const ladevorgang = pdfjs.getDocument({
 			url: this.app.vault.getResourcePath(datei),
 			// cMaps sind nicht optional: PDFs mit eingebetteten CID/Type0-Fonts —
 			// genau das Material hier — rendern sonst leer. Rezept aus Excalidraw.
+			// Fester Pfad in Obsidians App-Bundle: faellt er weg, bleiben CID-Fonts
+			// leer — sichtbar als weisse Seite trotz erfolgreichem Rendern.
 			cMapUrl: "/lib/pdfjs/cmaps/",
 			cMapPacked: true,
 			standardFontDataUrl: "/lib/pdfjs/standard_fonts/",
 		});
-		this.doc = await ladevorgang.promise;
+		const doc = await ladevorgang.promise;
+		// Erst nach dem Laufcheck uebernehmen — ein ueberholter Ladevorgang darf
+		// das inzwischen gueltige Dokument nicht verdraengen.
+		if (lauf !== this.lauf) {
+			void doc.destroy().catch(() => undefined);
+			return;
+		}
+		this.doc = doc;
 
-		for (let nr = 1; nr <= this.doc.numPages; nr++) {
-			const seite = await this.doc.getPage(nr);
+		for (let nr = 1; nr <= doc.numPages; nr++) {
+			const seite = await doc.getPage(nr);
+			// Jede Seite ist ein eigener await: ohne Check im Schleifenkoerper
+			// schoebe ein ueberholter Lauf seine Seiten in den fremden Stapel.
+			if (lauf !== this.lauf) return;
 			const viewport = seite.getViewport({ scale: 1 });
 			const el = this.stapel.createDiv({ cls: "ocr-pdf-seite" });
 			el.dataset["seite"] = String(nr);
@@ -210,7 +235,7 @@ export class PdfSpalte {
 				zuletztGenutzt: 0,
 			});
 		}
-		this.beiGeladen?.(datei.name, this.doc.numPages);
+		this.beiGeladen?.(datei.name, doc.numPages);
 	}
 
 	private beobachten(): void {
@@ -266,10 +291,16 @@ export class PdfSpalte {
 			if (z === undefined) continue;
 			if (z.gerendert && !auftrag.erzwingen) continue;
 			this.aktiveZeichnungen++;
-			void this.zeichnen(z).finally(() => {
-				this.aktiveZeichnungen--;
-				this.weitermachen();
-			});
+			// `.catch` ist Pflicht, nicht Vorsicht: `getPage` und der synchrone
+			// Wurf von `seiteZeichnen` (kein 2D-Kontext) liegen ausserhalb des
+			// try-Blocks in `zeichnen`. Mit blossem `.finally` entkaeme das als
+			// unbehandelte Rejection.
+			void this.zeichnen(z)
+				.catch((fehler: unknown) => this.seitenFehler(z, fehler))
+				.finally(() => {
+					this.aktiveZeichnungen--;
+					this.weitermachen();
+				});
 		}
 	}
 
@@ -280,6 +311,11 @@ export class PdfSpalte {
 		const seite = z.seite;
 		if (seite === null) return;
 		if (z.viewport === null) z.viewport = seite.getViewport({ scale: 1 });
+		// Eine erzwungene Wiederholung (Zoom, Resize) trifft auch Seiten, die
+		// beim letzten Mal gescheitert sind. Deren Fehleranzeige zuerst weg:
+		// sonst stapeln sich die Banner, oder eines bleibt ueber einer Seite
+		// stehen, die inzwischen laengst wieder zeichnet.
+		this.fehlerZuruecksetzen(z);
 		const skala = this.skalaFuer(z);
 		// Vor dem Neuzeichnen canceln: ohne das meldet pdf.js „Cannot use the
 		// same canvas during multiple render operations".
@@ -323,19 +359,34 @@ export class PdfSpalte {
 	}
 
 	/** Pixel-Skala: Seitenbreite in CSS-Pixeln gefuellt, scharf fuer den
-	 *  Bildschirm, gedeckelt durch die Speicherbremse aus den Einstellungen. */
+	 *  Bildschirm, gedeckelt durch die Speicherbremse aus den Einstellungen.
+	 *
+	 *  `zoom` liegt auf `.ocr-pdf-stapel`, also auf dem ELTERNelement. Die
+	 *  Seiten-Container messen sich darin in lokalen, unskalierten Koordinaten —
+	 *  ihre tatsaechliche Groesse auf dem Schirm ist `clientWidth * zoom`. Genau
+	 *  dieser Faktor muss in die Rasterung, sonst zeigt „200 %" dieselbe
+	 *  Pixelzahl, nur groesser gezogen. */
 	private skalaFuer(z: Seitenzustand): number {
 		const viewport = z.viewport;
 		if (viewport === null) return 1;
-		const breite = Math.max(z.el.clientWidth / this.zoom, 1);
+		const breite = Math.max(z.el.clientWidth * this.zoom, 1);
 		return Math.min(
 			(breite / viewport.width) * window.devicePixelRatio,
 			this.zoomMax(),
 		);
 	}
 
+	/** Fehlerzustand einer Seite loeschen — vor jedem Zeichenversuch. */
+	private fehlerZuruecksetzen(z: Seitenzustand): void {
+		z.el.removeClass("ocr-pdf-seite-fehler");
+		for (const banner of z.el.querySelectorAll(".ocr-pdf-seitenfehler")) {
+			banner.remove();
+		}
+	}
+
 	private seitenFehler(z: Seitenzustand, fehler: unknown): void {
 		console.error("OCR-Vorschau: Seite nicht darstellbar", z.nr, fehler);
+		this.fehlerZuruecksetzen(z);
 		// Als gerendert markieren, damit der Beobachter nicht in eine
 		// Endlosschleife laeuft; der Weg bleibt der PDF-Viewer von Obsidian.
 		z.gerendert = true;
@@ -354,8 +405,13 @@ export class PdfSpalte {
 			(z) => z.gerendert && z.task === null,
 		);
 		if (gepuffert.length <= MAX_CANVAS) return;
-		gepuffert.sort((a, b) => a.zuletztGenutzt - b.zuletztGenutzt);
-		for (const z of gepuffert.slice(0, gepuffert.length - MAX_CANVAS)) {
+		// Sichtbare Seiten sind nie Raeumkandidaten. Der IntersectionObserver
+		// meldet sich erst bei der naechsten Sichtbarkeitsaenderung wieder — eine
+		// geraeumte sichtbare Seite bliebe also leer stehen, bis der Nutzer
+		// wegscrollt und zurueckkommt.
+		const kandidaten = gepuffert.filter((z) => !z.sichtbar);
+		kandidaten.sort((a, b) => a.zuletztGenutzt - b.zuletztGenutzt);
+		for (const z of kandidaten.slice(0, gepuffert.length - MAX_CANVAS)) {
 			z.gerendert = false;
 			z.canvas.width = 0;
 			z.canvas.height = 0;
