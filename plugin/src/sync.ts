@@ -78,10 +78,10 @@ export class Kopplung {
 	private rafId: number | null = null;
 	private ausstehend: Array<[Spalte, number]> = [];
 	private abmelden: Array<() => void> = [];
+	private quellen: Record<Spalte, SyncQuelle>;
 
-	constructor(
-		private quellen: Record<Spalte, SyncQuelle>,
-	) {
+	constructor(quellen: Record<Spalte, SyncQuelle>) {
+		this.quellen = quellen;
 		for (const spalte of ["pdf", "md"] as const) {
 			const quelle = quellen[spalte];
 			const handler = () => this.beiScroll(spalte);

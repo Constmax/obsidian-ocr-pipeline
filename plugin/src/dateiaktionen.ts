@@ -3,6 +3,7 @@ import { App, Notice, TFile, normalizePath } from "obsidian";
 import type { Einstellungen } from "./einstellungen.ts";
 import {
 	abgleichen,
+	altesDatumAus,
 	entscheidungEintragen,
 	leeresManifest,
 	manifestLesen,
@@ -312,9 +313,25 @@ export class Bestand {
 					(f.parent?.path === akzeptiert || f.parent?.path === abgelehnt),
 			);
 		if (datei === undefined) return false;
-		const altesDatum = this.manifest.eintraege[name]?.["ocr-datum"] ?? "alt";
-		const ziel = normalizePath(`${abgelehnt}/${datei.basename}-${altesDatum}.md`);
-		if (ziel === datei.path) return false;
+		// Das Datum der ALTEN Fassung: das Frontmatter der Datei selbst,
+		// sonst die Erinnerung vor der Neukonvertierung. Der Eintrag traegt
+		// inzwischen das neue Datum — damit wuerde das Archiv falsch heissen.
+		const cache = this.app.metadataCache.getFileCache(datei);
+		const altesDatum = altesDatumAus(
+			this.manifest.eintraege[name],
+			cache?.frontmatter ?? {},
+		);
+		// Schon belegt (z.B. doppelte Ersetzung mit gleichem Datum)? Dann
+		// numerieren statt scheitern — die alte Fassung soll den Abgleich
+		// nie blockieren.
+		let ziel = normalizePath(`${abgelehnt}/${datei.basename}-${altesDatum}.md`);
+		let versuch = 2;
+		while (this.app.vault.getFileByPath(ziel) !== null) {
+			ziel = normalizePath(
+				`${abgelehnt}/${datei.basename}-${altesDatum}-${versuch}.md`,
+			);
+			versuch++;
+		}
 		try {
 			await this.ordnerSicherstellen(abgelehnt);
 			await this.app.fileManager.renameFile(datei, ziel);

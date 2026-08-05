@@ -45,8 +45,25 @@ export default class OcrVorschauPlugin extends Plugin {
 		});
 
 		this.registerEvent(
-			this.app.workspace.on("file-menu", (menu, datei) => {
-				this.dateiMenuBefuellen(menu, datei);
+			this.app.vault.on("modify", (datei) => {
+				if (!(datei instanceof TFile)) return;
+				if (datei.extension !== "md") return;
+				if (!this.istVorschauDatei(datei)) return;
+				anstossen();
+			}),
+		);
+		// `modify` meldet den Schreibvorgang, aber das neue `ocr-datum` steht
+		// erst nach Obsidians Nachparsen im metadataCache — und genau DAS liest
+		// `dateienSammeln`. Fuer Regel 6 dem Cache-Meldepunkt nachhoeren, mit
+		// demselben Filter: ein verzoegertes Parsen darf die Neukonvertierung
+		// nicht verpassen. Der eigene Manifest-Schreibvorgang ist .json und
+		// kommt hier nie an.
+		this.registerEvent(
+			this.app.metadataCache.on("changed", (datei) => {
+				if (!(datei instanceof TFile)) return;
+				if (datei.extension !== "md") return;
+				if (!this.istVorschauDatei(datei)) return;
+				anstossen();
 			}),
 		);
 
