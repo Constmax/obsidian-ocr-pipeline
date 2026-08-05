@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Wrapper für Stufe 2: führt pdf2md.py mit dem MLX-venv aus.
+# Wird von setup.sh nach ~/bin verlinkt; funktioniert von überall.
+
+set -euo pipefail
+
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+    TARGET="$(readlink "$SELF")"
+    case "$TARGET" in
+        /*) SELF="$TARGET" ;;
+        *) SELF="$(dirname "$SELF")/$TARGET" ;;
+    esac
+done
+SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+
+VENV_PY="$HOME/.venvs/mlxocr/bin/python"
+if [ ! -x "$VENV_PY" ]; then
+    echo "❌ MLX-venv fehlt (~/.venvs/mlxocr). Einmal ./setup.sh im Repo ausführen." >&2
+    exit 1
+fi
+
+exec "$VENV_PY" "$SCRIPT_DIR/../pdf2md/pdf2md.py" "$@"
