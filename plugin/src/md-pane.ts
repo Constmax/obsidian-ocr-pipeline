@@ -38,7 +38,9 @@ export class MarkdownSpalte {
 		private app: App,
 		wurzel: HTMLElement,
 		private eltern: Component,
-		private eagerLimit: number,
+		/** Getter statt Wert: eine Aenderung im Einstellungs-Tab wirkt sofort,
+		 *  ohne die Ansicht neu zu oeffnen. */
+		private readonly eagerLimit: () => number,
 	) {
 		this.scrollEl = wurzel.createDiv({ cls: "ocr-md-scroll" });
 		// `markdown-rendered` ist die Klasse, an der Obsidians Typographie-
@@ -112,7 +114,7 @@ export class MarkdownSpalte {
 			return;
 		}
 
-		const eager = vorschau.bloecke.length <= this.eagerLimit;
+		const eager = vorschau.bloecke.length <= this.eagerLimit();
 
 		for (const block of vorschau.bloecke) {
 			const el = this.container.createDiv({ cls: "ocr-md-seite" });
