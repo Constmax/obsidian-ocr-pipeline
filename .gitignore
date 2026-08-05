@@ -19,3 +19,11 @@ _tmp_ocr/
 map_page*.json
 *_FAILED_*.pdf
 *.bak
+
+# Plugin-Toolchain (Stufe 3). main.js ist ein Build-Artefakt — install-plugin.sh
+# baut aus den Quellen. data.json sind vault-eigene Einstellungen.
+plugin/node_modules/
+plugin/main.js
+plugin/main.js.map
+plugin/data.json
+plugin/*.tsbuildinfo
