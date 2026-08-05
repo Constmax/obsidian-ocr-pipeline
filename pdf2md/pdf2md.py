@@ -1607,11 +1607,17 @@ def main():
 
     md, t_ges, n_diag = [], time.perf_counter(), 0
 
-    def ablegen(nr, absaetze, diagramm, dt, chars, quelle, weg):
+    def ablegen(nr, absaetze, diagramm, dt, chars, quelle, weg, marker_zusatz):
         nonlocal n_diag
         # %% %% ist Obsidians eigene Kommentarsyntax und bleibt auch in der
         # Live-Vorschau unsichtbar; <!-- --> wird dort angezeigt.
-        kopf = f"%% S. {nr} %%\n\n"
+        # marker_zusatz ist Teil der Marker-Grammatik (docs/ocr-vorschau.md):
+        # die Review-Ansicht haengt Herkunfts-Badges und Layout-Info daran.
+        # Diagramm sticht: eine Seite, die als Bild eingebettet wird, ist
+        # keine Textseite, egal woher ihr Text stammt.
+        if diagramm:
+            marker_zusatz = "diagramm"
+        kopf = f"%% S. {nr} | {marker_zusatz} %%\n\n"
         zusatz = ""
         if diagramm:
             n_diag += 1
@@ -1645,13 +1651,15 @@ def main():
             absaetze = zusammenfuegen(zeilen)
             ablegen(nr, absaetze, diagramm, time.perf_counter() - t, chars,
                     "Textlayer, ohne Modell",
-                    getattr(zusammenfuegen, "verworfen", []))
+                    getattr(zusammenfuegen, "verworfen", []),
+                    "textlayer")
             continue
         # Kachelung ist eine LAYOUT-Entscheidung. Ein Laengsschnitt darf nur auf
         # echten Zweispaltern fallen; eine dichte einspaltige Seite wird
         # oben/unten getrennt, sonst zerschneidet man jede Zeile.
         if diagramm and a.diagramm_nur_bild:
-            ablegen(nr, [], True, time.perf_counter() - t, chars, "", [])
+            ablegen(nr, [], True, time.perf_counter() - t, chars, "", [],
+                    "ocr")
             continue                      # kein Text gewuenscht, keine Inferenz
 
         # Zu jeder Kachel ihr x-Fenster in Blattkoordinaten (0–1000). Nur damit
@@ -1688,7 +1696,8 @@ def main():
         dump.append({"seite": nr, "quelle": f"{art}, {modus}", "zeilen": zeilen})
         absaetze = zusammenfuegen(zeilen)
         ablegen(nr, absaetze, diagramm, time.perf_counter() - t, chars,
-                f"{art}, {modus}", getattr(zusammenfuegen, "verworfen", []))
+                f"{art}, {modus}", getattr(zusammenfuegen, "verworfen", []),
+                f"ocr | {art}, {modus}")
 
     ges = time.perf_counter() - t_ges
     # Welche Seiten exakt sind und welche erkannt, muss in der Datei stehen:

@@ -1,5 +1,22 @@
 # Installation & Troubleshooting
 
+## Plugin (Stufe 3)
+
+Voraussetzung: Node ≥ 22 und npm. Aus dem Repo:
+
+```bash
+VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh
+```
+
+- Prüft node/npm und `$VAULT_ROOT/.obsidian`, baut das Plugin (`npm run build`)
+  und **kopiert** `main.js`, `manifest.json` und `styles.css` nach
+  `$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/`.
+- Kopie ist Default: bei einem Vault in iCloud Drive verlieren Symlinks
+  Dateien. `--symlink` bleibt als Dev-Opt-in (nur lokal, nie iCloud).
+- Danach in Obsidian: Einstellungen → Community-Plugins → „OCR-Vorschau"
+  aktivieren, einmal `Cmd+R`.
+- Bedienung: [review-ansicht.md](review-ansicht.md).
+
 ## Einmalige Einrichtung
 
 ### Core-Tools

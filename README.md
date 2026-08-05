@@ -74,6 +74,16 @@ Vollständig mit Fehlerklassen: [bench/ERGEBNIS.md](bench/ERGEBNIS.md).
 nicht mechanisch korrigierbar. Die Original-PDFs bleiben die Quelle; jede
 erzeugte `.md` trägt einen Rücksprung-Link im Frontmatter.
 
+## Stufe 3 — Begutachtung
+
+`plugin/` ist ein Obsidian-Plugin: eine dreispaltige Ansicht, die die erzeugte
+Markdown-Datei seitenweise neben das Original-PDF stellt — links die
+Vorschau-Liste, mittig die Originalseiten, rechts das Markdown, scrollgekoppelt,
+mit **Annehmen / Ablehnen** per Tastatur und Rückgängig. Der
+Begutachtungs-Durchgang, der heute aus zwei Fenstern nebeneinander besteht,
+bekommt damit eine Oberfläche. Zweck und Bedienung:
+[docs/review-ansicht.md](docs/review-ansicht.md).
+
 ## Installation
 
 ```bash
@@ -83,6 +93,16 @@ erzeugte `.md` trägt einen Rücksprung-Link im Frontmatter.
 Legt Symlinks für `pdf-auto`, `pdf-combine`, `pdf-workflow`, `reprocess-raw` in
 `~/bin` an und prüft die Abhängigkeiten. Details und Troubleshooting:
 [docs/installation.md](docs/installation.md).
+
+Für das Plugin (Stufe 3) zusätzlich, mit dem Pfad des Ziel-Vaults:
+
+```bash
+VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh
+```
+
+Baut `plugin/` und kopiert `main.js`, `manifest.json` und `styles.css` nach
+`$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/`. Kopie ist Default (Symlinks
+verlieren in iCloud Dateien), `--symlink` bleibt als Dev-Opt-in.
 
 Kurzfassung der Systempakete:
 
@@ -127,6 +147,7 @@ Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
 bin/         Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
 pdf2md/      Stufe 2 — pdf2md.py, setup.sh
 bench/       Benchmark-Harness und Messergebnisse
+plugin/      Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
 docs/        Installation, Flag-Referenz, Bugreport, Vault-Integration
 skill/       Claude-Code-Skill (SKILL.md) zum Einbinden in einen Vault
 ```

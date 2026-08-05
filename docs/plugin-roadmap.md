@@ -125,6 +125,37 @@ OCR-Seiten nicht belastbar.
 **Kleinkram:** `pages.json` gehört in `.gitignore` — in diesem Repo erledigt
 (`bench/pages.json`), im Vault noch offen.
 
+## Vorgezogen: die Abgleich-Ansicht (v0.1)
+
+Dieser Abschnitt hält eine bewusste Abweichung fest, die nicht
+stillschweigend überholt werden soll. Details zur Ansicht selbst:
+[review-ansicht.md](review-ansicht.md).
+
+Der Reihenfolge unten liegt das Plugin-Skelett als **Schritt 5** zugrunde.
+Gebaut wurde aber zuerst etwas anderes, mit anderem Umfang:
+
+- **Anderer Umfang:** Die Abgleich-Ansicht **liest nur** — keine
+  Konvertierung, kein `spawn`, kein Fortschrittsmodal. Sie zeigt die von
+  Stufe 2 erzeugten `.md`-Dateien seitenweise neben dem Original-PDF und
+  verschiebt sie per **Annehmen / Ablehnen** zwischen drei Ordnern. Von
+  „Was das Plugin können soll" oben ist nichts davon im Bau.
+- **Warum vorgezogen:** Die 15 % entgleisten Seiten (siehe „Offene Fehler",
+  Nr. 1) erzwingen heute schon einen Menschendurchgang — Datei und PDF in
+  zwei Fenstern, von Hand abgleichen. Genau dieser Durchgang hat keine
+  Oberfläche, und er ist der kritische: Er ist das Werkzeug, mit dem sich die
+  Entgleisungen überhaupt auffinden lassen.
+- **Architektur:** Die Ansicht ist **Weg A ohne den spawn-Teil** — sie ruft
+  nur Obsidians eigene PDF.js-Bibliothek (`loadPdfJs`), keinen Kindprozess.
+  An der A/B/C-Entscheidung oben ändert sich nichts; B und C bleiben unberührt.
+- **Die drei Schnittstellen-Aufgaben bleiben unberührt:** Maschinenlesbarer
+  Fortschritt, Exit-Codes, Preflight — nichts davon ist durch die Ansicht
+  erledigt oder überflüssig geworden. Sie sind weiterhin offen, wenn das
+  eigentliche Plugin (Schritt 5) gebaut wird.
+
+Einzige Berührung mit der Pipeline: `pdf2md.py` schreibt die Seitenherkunft
+jetzt in den Marker (Vertrag: `docs/ocr-vorschau.md`, „Marker-Grammatik").
+Nicht brechend — die alte Form `%% S. n %%` wird weiterhin gelesen.
+
 ## Reihenfolge
 
 1. **Entgleisungserkennung** — hebt die Gesamtzahlen von 93,3 % auf ~98,5 %.
@@ -135,6 +166,9 @@ OCR-Seiten nicht belastbar.
    handgeprüfter Referenz, nicht nach Gefühl. Das Harness dafür steht in `bench/`.
 5. **Plugin-Skelett** — TypeScript, esbuild, Kontextmenü, `spawn`,
    Fortschrittsmodal. `~/Developer/ask-my-notes` ist die vorhandene Vorlage.
+   *Die Abgleich-Ansicht (v0.1) ist bereits gebaut — siehe den Abschnitt
+   „Vorgezogen" oben; sie ersetzt diesen Schritt nicht, sie enthält nur
+   keinen seiner Teile.*
 6. **Settings-Tab** mit Preflight-Anzeige.
 7. Erst dann über Sidecar (Weg B) und Mobile nachdenken.
 
