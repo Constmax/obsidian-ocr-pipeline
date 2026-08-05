@@ -158,6 +158,17 @@ Einzige Berührung mit der Pipeline: `pdf2md.py` schreibt die Seitenherkunft
 jetzt in den Marker (Vertrag: `docs/ocr-vorschau.md`, „Marker-Grammatik").
 Nicht brechend — die alte Form `%% S. n %%` wird weiterhin gelesen.
 
+## Gebaut danach: der Konvertierungs-Befehl (v0.2)
+
+Der erste Weg-A-Baustein steht: der Befehl **„PDF konvertieren und im
+OCR-Abgleich öffnen"**. Er wählt per Suggest-Modal eine PDF aus dem Vault,
+startet `~/bin/pdf2md <pdf> --out <vorschau-Ordner>` per `child_process.spawn`
+und öffnet den Abgleich mit dem Ergebnis. Rückmeldung bewusst nur per Notice.
+
+Bewusst **nicht** enthalten (bleiben offen, siehe „Was fehlt"): Fortschritts-
+anzeige, Abbruch-Button, maschinenlesbarer Fortschritt, Preflight, der
+Kontextmenü-Eintrag auf PDF-Dateien und ein konfigurierbarer pdf2md-Pfad.
+
 ## Reihenfolge
 
 1. ~~**Entgleisungserkennung**~~ — erledigt, 93,3 % → 98,5 %.

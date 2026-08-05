@@ -1,19 +1,34 @@
 // Plugin-Einstieg: Registrierung der Ansicht, Befehle, Ribbon, Datei-Menue
 // und die Vault-Listener, die den Abgleich anstossen.
 
-import { Menu, Plugin, TAbstractFile, TFile } from "obsidian";
+import { homedir } from "os";
+import { join } from "path";
+import {
+	FileSystemAdapter,
+	Menu,
+	Notice,
+	Plugin,
+	TAbstractFile,
+	TFile,
+	normalizePath,
+} from "obsidian";
 
-import { ANSICHT_TYP, OcrAbgleichAnsicht } from "./ansicht.ts";
+import { ANSICHT_TYP, OcrAbgleichAnsicht, PdfAuswahlModal } from "./ansicht.ts";
 import { Bestand } from "./dateiaktionen.ts";
 import { Einstellungen, EinstellungenTab, STANDARD } from "./einstellungen.ts";
+import { pdfKonvertieren } from "./konvertierung.ts";
 
 const ABGLEICH_ENTPRELLT_MS = 500;
+
+/** Lokale pdf2md-Installation — setup.sh legt den Symlink nach ~/bin an. */
+const PDF2MD_PFAD = join(homedir(), "bin", "pdf2md");
 
 export default class OcrVorschauPlugin extends Plugin {
 	einstellungen: Einstellungen = { ...STANDARD };
 	bestand!: Bestand;
 
 	private abgleichTimer: number | null = null;
+	private konvertiertGerade = false;
 
 	async onload(): Promise<void> {
 		await this.einstellungenLaden();
@@ -67,6 +82,11 @@ export default class OcrVorschauPlugin extends Plugin {
 			id: "abgleich-weiter",
 			name: "Zum nächsten Vorschau-Eintrag springen",
 			callback: () => this.offeneAnsicht()?.weiter(),
+		});
+		this.addCommand({
+			id: "pdf-konvertieren-und-abgleich",
+			name: "PDF konvertieren und im OCR-Abgleich öffnen",
+			callback: () => void this.pdfAuswaehlenUndKonvertieren(),
 		});
 
 		this.registerEvent(
@@ -146,6 +166,67 @@ export default class OcrVorschauPlugin extends Plugin {
 		else if (ansicht.aktiveName === null) {
 			const erster = ansicht.ersterSichtbar();
 			if (erster !== null) await ansicht.oeffnen(erster);
+		}
+	}
+
+	/**
+	 * Befehl „PDF konvertieren und im OCR-Abgleich öffnen": eine PDF aus dem
+	 * Vault waehlen, per pdf2md konvertieren, dann den Abgleich mit dem
+	 * Ergebnis oeffnen. Rückmeldung bewusst per Notice — Fortschrittsmodal
+	 * und Abbruch sind Roadmap-Themen.
+	 */
+	async pdfAuswaehlenUndKonvertieren(): Promise<void> {
+		if (this.konvertiertGerade) {
+			new Notice("OCR-Vorschau: Es läuft bereits eine Konvertierung.");
+			return;
+		}
+		const modal = new PdfAuswahlModal(
+			this.app,
+			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
+		);
+		modal.setPlaceholder("PDF für die Konvertierung suchen…");
+		modal.onAuswahl = (datei) => void this.konvertieren(datei);
+		modal.open();
+	}
+
+	private async konvertieren(datei: TFile): Promise<void> {
+		this.konvertiertGerade = true;
+		const name = datei.basename;
+		try {
+			const basis = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
+			const pdfAbs = join(basis, datei.path);
+			const outAbs = join(basis, normalizePath(this.einstellungen.vorschauOrdner));
+			new Notice(`OCR-Vorschau: Konvertiere „${name}“ …`);
+			const ergebnis = await pdfKonvertieren(pdfAbs, outAbs, PDF2MD_PFAD);
+			if (ergebnis.code !== 0) {
+				const stderrLetzte = ergebnis.stderrLetzte;
+				const stdoutLetzte = ergebnis.stdoutLetzte;
+				const detail =
+					(stderrLetzte.length > 0 ? stderrLetzte[stderrLetzte.length - 1] : undefined) ??
+					(stdoutLetzte.length > 0 ? stdoutLetzte[stdoutLetzte.length - 1] : undefined) ??
+					"";
+				new Notice(
+					`OCR-Vorschau: Konvertierung fehlgeschlagen (Code ${ergebnis.code ?? "Startfehler"})` +
+						(detail.length > 0 ? ` — ${detail}` : "") +
+						".",
+				);
+				return;
+			}
+			// Der Vault-Listener wuerde den neuen Eintrag frueher oder spaeter
+			// sehen; fuer den direkten Uebergang in die Ansicht ist der
+			// Bestand jetzt besser frisch.
+			await this.bestand.abgleichen();
+			const eintrag = `${name}.md`;
+			if (this.bestand.eintraege.some((b) => b.name === eintrag)) {
+				await this.ansichtOeffnen(eintrag);
+				new Notice(`OCR-Vorschau: „${name}“ fertig — Abgleich geöffnet.`);
+			} else {
+				new Notice(
+					`OCR-Vorschau: „${name}“ fertig, aber nicht im Vorschau-Ordner gelandet (Ziel: ${this.einstellungen.vorschauOrdner}).`,
+				);
+			}
+		} finally {
+			this.konvertiertGerade = false;
 		}
 	}
 
