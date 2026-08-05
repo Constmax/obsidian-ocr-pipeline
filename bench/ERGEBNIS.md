@@ -1025,3 +1025,458 @@ Gegenrichtung (vorher 1137 zweispaltig, jetzt 1005). Stichprobe von 6 zufällig
 gezogenen Wechseln im Bild geprüft: 5 eindeutig einspaltig, 1 gemischtes Layout
 (Textspalte oben, Anzeige unten) — dort ist der ganze Durchlauf ebenfalls
 richtig.
+
+---
+
+## Nachtrag 2026-07-31 (13): Fehlerbericht abgearbeitet
+
+Sieben gemeldete Befunde, davon zwei bereits durch Nachtrag 11/12 erledigt
+(Lesereihenfolge `Strafrecht AT VI` S. 3; Trennstriche in den WuV-Zellen).
+Die übrigen fünf, jeweils mit der Ursache:
+
+### Kopf- und Fusszeile in Tabellenzellen (WuV)
+
+`frage_antwort_raster` baute die Zellen aus den Rohzeilen — der Boilerplate-Test
+läuft aber in `zusammenfuegen`, und das sieht die fertige Tabelle nur noch als
+einen Block. `RA Dr. Michael Hein, M.A., LL.M. - 04/2026` stand damit mitten in
+den Antworten. Jetzt wird vor der Rasterprüfung gefiltert: **0 statt 5** solcher
+Zellen, die 33 Tabellen bleiben unverändert.
+
+### Städteliste des Briefkopfs (BGB AT Fall 3)
+
+Der Briefkopf trägt die Standorte fünfzeilig am rechten Blattrand. Die oberen
+drei Zeilen liegen in der Kopfzone und flogen raus, die unteren beiden nicht
+(gemessen y = 79 und 91 gegen `kopf` = 70). Einzeln greift auch die
+Städte-Regel nicht, die zwei Ortsnamen in einer Zeile verlangt — nach dem
+Kachelschnitt steht dort nur noch `Mainz - Man`.
+
+Neue, streng verankerte Regel: Ortsname am **Zeilenanfang**, dahinter höchstens
+ein angeschnittenes Wort. Trifft `Mainz - Man`, `Passau - Reg`, `Hamburg - H`;
+trifft **nicht** `OLG München - Urteil vom …` oder `München - 5 U 123/20`.
+Im gesamten vektoriellen Bestand **null** Treffer — die Regel wirkt nur dort,
+wo das Problem sitzt.
+
+### Fussnoten-Mapping
+
+Drei unabhängige Ursachen:
+
+1. **Feste x-Grenze.** `fussnotennummern_anbinden` verlangte x < 500. Auf
+   zweispaltigen Seiten beginnt der rechte Fussnotenblock aber bei 523 — 151
+   Nummern blieben unverbunden. Jetzt zählt der hängende Einzug: die Nummer
+   beginnt links von ihrem Text. Das trennt sie weiterhin von den
+   hochgestellten Verweiszeichen (x = 977 vor Text bei x = 98).
+2. **Definition beginnt mit Klammer.** `4 (= Wiederbeschaffungswert abzüglich
+   Restwert)` erfüllte das Anfangsmuster nicht und blieb im Text der
+   vorangehenden Fussnote stecken; der Verweis fand keine Definition.
+3. **Ziffer am Fettmarker.** `**Wiederbeschaffungsaufwand****4**` — die
+   Zusammenführung benachbarter Fettläufe verlangte Leerraum dazwischen.
+
+Ergebnis auf `BGB AT Fall 12`: 8 Definitionen, Verweise `[^1]`–`[^9]`, `[^12]`,
+`[^13]`. Nackt bleiben **2 Ziffern** (11, 15) — zu ihnen steht im Original kein
+Definitionstext.
+
+### Seitenzahlen auf Scanseiten — die nachgeholte Messung
+
+Gemessen an `Strafrecht AT VI`: die Seitenzahl liegt bei **y = 911…938**, die
+Regel griff ab 920. Vier von zwölf blieben deshalb stehen. Schwelle jetzt 905.
+
+Der Preis war zu prüfen, denn zwischen 905 und 920 stehen auch
+Fussnotennummern. Nach der Reparatur von `fussnotennummern_anbinden` bleiben
+dort im ganzen Bestand **54 nackte Zahlen — ausnahmslos Seitenzahlen**
+(fortlaufend eine je Seite, konstante x-Position). In der Ausgabe von
+`Strafrecht AT VI`: **0 statt 4**.
+
+### Markdown nach Zeilenumbruch
+
+- **Trennstrich vor fetter Fortsetzung.** `Berei-` / `**cherungsrecht, Rn.
+  395)**` — der Trennstrich-Test verlangte einen Kleinbuchstaben als erstes
+  Zeichen und sah stattdessen `*`. Die Fetterkennung arbeitet zeilenweise und
+  setzt die Auszeichnung mitten ins Wort.
+- **Ungerade Zahl von `**`.** Neuer Ausgleich am Absatzende — sonst färbt
+  Obsidian den Rest des Absatzes, und der Fehler ist erst im Rendern sichtbar.
+  Im Bestand jetzt **null** unbalancierte Absätze.
+- **Überschrift über zwei Zeilen.** `**IV. Exkurs: … – V**` / `**ZR 67/22**`
+  wurde getrennt, weil die 90-Zeichen-Grenze für Überschriften griff (die
+  vollständige hat 94). Die Grenze auf 110 zu heben brächte 133 weitere
+  Überschriften, darunter Inhaltsverzeichniszeilen mit Füllpunkten — verworfen.
+  Stattdessen die Ausnahme „Absatz besteht ausschliesslich aus fetten Läufen":
+  **57 lange Überschriften** kommen dazu, in der Stichprobe 10 von 12 echt.
+- **Pfeile als LaTeX.** Ein Muster je Befehl statt einer Liste je Schreibweise;
+  `$\Leftrightarrow$` war der letzte Rest im Bestand.
+
+### Kontrolle
+
+1426 vektorielle Seiten gegen den Stand vor dieser Sitzung: 254 Seiten mit
+abweichender Zeichenfolge, davon **251 mit mehr Text**. Drei verlieren 1–2
+Zeichen, alle in denselben spaltenweise verschränkten Fussnotenblöcken zweier
+Klausurlösungen, die schon vorher ineinanderliefen.
+
+### Offen
+
+`Strafrecht AT VI` S. 8 (Garanten-Diagramm) wird **nicht** als Diagrammseite
+erkannt — es ist kein Bild eingebettet, und der linearisierte Text verliert die
+räumliche Zuordnung. Behelf bis auf Weiteres: `--diagramm-seiten 8`.
+
+---
+
+## Nachtrag 2026-08-05 (14): Benchmark des OCR-Pfades
+
+`bench_ocr.py`. Vektorielle Seiten tragen ihren Text exakt im PDF — dieselbe
+Seite läuft zweimal durch dieselbe Pipeline: einmal über den Textlayer
+(= Wahrheit), einmal mit `--nur-ocr` erzwungen durchs Modell. Gemessen wird
+damit der **ganze** OCR-Pfad einschließlich Kachelung, Spaltenerkennung und
+Zusammenbau; ein Vergleich gegen rohen PDF-Text hätte genau das ausgeblendet.
+
+40 Seiten aus 40 verschiedenen Dateien, 1500–6000 Zeichen, keine Diagramme,
+in einem Sammel-PDF (beide Läufe sehen damit dieselben laufenden Kopfzeilen).
+17 401 Wörter, 225 Normzitate, 21 min auf dem M1 Air.
+
+### Drei Maße, weil sie verschiedene Entscheidungen tragen
+
+| | |
+|---|---|
+| Wortgenauigkeit | Multimengen-Vergleich, reihenfolgeunabhängig — der Anteil, den ein Reparaturlauf angehen könnte |
+| Reihenfolge | Sequenzähnlichkeit derselben Wörter — fällt sie ab, ist es Layout, und dagegen hilft kein Sprachmodell |
+| Zitattreue | Anteil der Normzitate, die unverändert wiederkommen — Messlatte für jeden späteren Eingriff |
+
+Das Zitatmuster verlangt beim Gesetzesnamen **zwei Großbuchstaben** (BGB, StGB,
+SPolG). Ohne das zog es das nächste beliebige Wort mit hinein (`§ 12 Eser`), und
+jede Abweichung dort zählte fälschlich als verlorenes Zitat.
+
+### Ergebnis
+
+| | alle 40 | ohne die 6 defekten |
+|---|---|---|
+| Wortgenauigkeit | 93,3 % | **98,5 %** |
+| Zitattreue | 87,6 % | **93,3 %** |
+| Reihenfolge (Median) | 97,4 % | 97,8 % |
+
+Median-Seite: 99,1 % Wortgenauigkeit, 100 % Zitattreue. 35 von 40 Seiten liegen
+über 95 %.
+
+### Der eigentliche Befund: entgleiste Generierung
+
+Die Aggregatzahlen werden von **6 Seiten (15 %)** getragen, deren Ausgabelänge
+grob falsch ist — und zwar nicht durch Lesefehler, sondern durch **Schleifen und
+Abbrüche des Modells**:
+
+| Seite | Länge zur Wahrheit | häufigstes 5-Gramm |
+|---|---|---|
+| `2131_Lösung` S. 4 | 347 % | `V. V. V. V. V.` — **1920×** |
+| `Unirep_FK_SR_LH_18_02` S. 14 | 658 % | `Haft, BT1, S. 58; Jescheck/Weigend,` — 106× |
+| `Klausur_2140_Lösung` S. 6 | 406 % | `Vgl. die Nachweise in BGHZ` — 64× |
+| `UNIREP_KK_ZR_LH_07_11` S. 8 | 352 % | aufsteigender Zähler `(1982) (1983) …` |
+| `Klausur_2136` S. 2 | 24 % | Abbruch |
+| `2143_SV` S. 2 | 74 % | Abbruch |
+
+Auf den 34 übrigen Seiten verliert der Pfad **12 von 179 Zitaten**, davon 8 auf
+einer einzigen Seite mit gestörter Lesereihenfolge (`Klausur_2137` S. 7,
+Reihenfolge 47,5 %). Ohne die bleiben **4 verlorene Zitate**.
+
+### Was daraus für den LLM-Reparaturlauf folgt
+
+Er zielt am Problem vorbei.
+
+- Auf den 85 % funktionierenden Seiten steht der Pfad bei **99 % Wortgenauigkeit**.
+  Was ein Sprachmodell dort noch holt, ist Politur — gegen das Risiko, ein
+  korrektes Normzitat zu „verbessern".
+- Auf den 15 % defekten Seiten **kann** es nicht helfen: der Inhalt ist nicht
+  da (Abbruch) oder durch eine Schleife ersetzt. Es müsste erfinden.
+
+Der Hebel liegt lokal und ist billig: **Entgleisungen erkennen und die Seite neu
+rechnen.** Zwei Signale, beide ohne Modell:
+
+1. Ausgabelänge gegen die Zeichenzahl des vorhandenen Textlayers — die Pipeline
+   kennt sie bereits und druckt sie je Seite.
+2. Wiederholte n-Gramme in der Ausgabe — bei allen vier Schleifen eindeutig
+   (1920×, 106×, 64×).
+
+Erst danach lohnt die Frage nach einem Reparaturlauf, und dann gegen diese
+Basiswerte gemessen.
+
+---
+
+## Nachtrag 2026-08-05 (15): Entgleisungen abgefangen, Spaltensteg repariert
+
+Umsetzung der drei Punkte aus Nachtrag 14. Alle Zahlen unten sind gemessen,
+nicht geschätzt; die Testskripte liegen als `regress_steg.py`,
+`regress_randlabel.py` und `bench_defekt.py` daneben.
+
+### 1. Entgleiste Generierung: erkennen, neu rechnen, kürzen
+
+Drei Bausteine in `pdf2md.py`, alle ohne zweites Modell:
+
+**`entgleist(text, erwartet, geeicht)`** — zwei Signale. `schleifenlaenge()`
+zählt das häufigste Wort-5-Gramm, **ziffernblind** (`\d+` → `#`). Ohne die
+Ziffernblindheit entgeht die häufigste Bauform überhaupt: `ZR_LH_07_11` S. 8
+lieferte `(1982) (1983) (1984) …` über 2000 Zeichen, wörtlich gezählt ist dort
+jedes 5-Gramm einmalig — der Zähler ist eine Schleife, die sich als Fortschritt
+tarnt. Ziffernblind kommt dasselbe 5-Gramm 275-mal. Gegenprobe über alle 40
+Seiten: **keine zweite Seite kommt über 6**, die entgleisten auf 64, 106, 275
+und 1920. Die Schwelle 8 liegt mitten in einer sehr breiten Lücke. Das zweite
+Signal ist die Ausgabelänge gegen eine Erwartung.
+
+Die Erwartung stammt aus der **Tintenmenge der Kachel**, nicht aus einer
+Aufteilung der Seitenerwartung — Kacheln tragen unterschiedlich viel Text. Der
+Umrechnungsfaktor kommt aus dem Textlayer derselben Seite, wenn es einen gibt
+(dann ist er exakt), sonst aus dem Korpusmittel von 18,8 Zeichen je 1000
+Tintenpixel bei 150 dpi. Weil diese beiden Fälle sehr verschieden genau sind,
+gibt es zwei Korridore: `(0,80 – 2,2)` geeicht, `(0,45 – 2,6)` grob. Der grobe
+muss die eigene Streuung des Korpusmittels (0,56–1,58) enthalten, sonst schlägt
+er auf jeder zweiten Scanseite an.
+
+Am Bestand geprüft, Seitenebene, gegen die 40 Benchmarkseiten:
+**6 von 6 entgleisten Seiten erkannt, 0 Fehlalarme auf den 34 gesunden.**
+
+**`kachel_zeilen()`** — bei Verdacht wird die Kachel waagerecht halbiert und
+neu gerechnet, die Teilkoordinaten werden zurück ins Elternbild gerechnet.
+Welche Fassung gewinnt, entscheidet `_guete()`: Schleife ist ein harter Malus,
+sonst zählt der Abstand zur Erwartung. Damit kann der Neuversuch nichts
+verschlimmern — liefert er weniger, wird er verworfen. Genau das ist bei
+`Klausur_2136` S. 2 passiert (Neuversuch 26649 Z., verworfen).
+
+**`schleife_kuerzen()`** — bleibt eine Schleife nach dem Neuversuch stehen, ist
+die Seite nicht zu retten, aber sie muss lesbar bleiben. Wiederholungen werden
+auf zwei Vorkommen gekürzt, innerhalb der Zeile und über Zeilen hinweg.
+Absichtlich zwei und nicht eins: die Stelle soll im Text sichtbar bleiben.
+Stilles Glätten wäre derselbe Fehler wie stilles Löschen.
+
+Der Zähler braucht auch hier einen eigenen, ziffernblinden Durchgang — und der
+läuft mit einer **viel** höheren Schwelle (`ZAEHLER_AB = 20` statt 3), weil
+ziffernblind auch `§§ 823, 826, 831, 840` wie eine Wiederholung aussieht. Eine
+Normenkette von vier Paragrafen soll keine werden; ein Zähler läuft in die
+Hunderte, eine Normenkette nicht über ein Dutzend. Stehen bleiben dabei die
+ersten zwei **echten** Vorkommen (`(1982) (1983)`), nicht zwei Kopien des
+ersten — die erfundene Spur wäre schlechter als gar keine.
+
+Beide Wege haben Gegenproben in `test_schleife.py`: Fließtext, Fußnotenblock
+und Normenkette müssen unverändert durchlaufen.
+
+### 2. Token-Budget aus der Tintenmenge
+
+Beim Messen fiel auf, dass die entgleisten Seiten auch die teuersten sind: eine
+Schleife hört von selbst nicht auf, sie läuft bis zum festen Deckel von 8192
+Token — gemessen ~8 min für **eine** Kachel auf dem M1. Eine volle A4-Seite
+Gutachten braucht aber nur rund 1700 Token.
+
+`_tokenbudget()` leitet den Deckel jetzt aus derselben Tintenschätzung ab
+(Zeichen ÷ 2,2 × 1,8 Reserve, gedeckelt auf 1024–8192). Ist er doch zu knapp,
+sieht `entgleist` einen Abbruch und die Kachel wird feiner geschnitten neu
+gerechnet — der Fehler heilt sich also selbst, während ein zu hohes Budget nur
+Zeit verbrennt.
+
+**Ein Nebeneffekt, der Arbeit gemacht hat:** das Budget schneidet eine Schleife
+mitten im Lauf ab, und damit verschwindet auch das Längensignal. `ZR_LH_07_11`
+S. 8 lief vorher bis 8249 Zeichen (341 % der Erwartung → sicher erkannt), mit
+Budget endet derselbe Zähler bei 2033 Zeichen — 84 % der Erwartung, also mitten
+im Normalbereich. Das Budget spart Zeit und macht den Längendetektor an genau
+der Stelle blind, an der er vorher zog. Deshalb ist die ziffernblinde
+5-Gramm-Zählung nicht Kür, sondern die Bedingung dafür, dass das Budget
+überhaupt gefahrlos gesetzt werden darf.
+
+### 3. Die sechs kaputten Seiten, vorher/nachher
+
+`bench_defekt.py`, Wahrheit aus dem Textlayer wie im großen Benchmark:
+
+| Seite | Wort | Zitate | Zeichen |
+|---|---|---|---|
+| `2131_Lösung` S. 4 | 62,1 % → **88,3 %** | 43 % → 64 % | 11362 → 13151 |
+| `2143_SV` S. 2 (Abbruch) | 72,2 % → **98,9 %** | 67 % → 67 % | 2159 → 3065 |
+| `ZR_LH_07_11` S. 8 (Zähler) | 0,9 % → **90,3 %** | 0 % → **100 %** | 8249 → 2276 |
+| `FK_SR` S. 14 | 99,0 % → 100 % | 100 % → 100 % | 12608 → **2151** |
+| `Klausur_2136` S. 2 | 23,2 % → 23,2 % | — | unverändert |
+| `2140_Lösung` S. 6 | 92,3 % → 92,4 % | 100 % → 100 % | 14395 → **4438** |
+
+**63,1 % → 85,0 % Wortgenauigkeit, 65,2 % → 87,0 % Zitattreue.** Fünf von sechs
+repariert. `Klausur_2136` S. 2 bleibt offen — dort liefert auch der Neuversuch
+keinen brauchbaren Lauf.
+
+### 4. Spaltensteg: jede Lücke prüfen, nicht nur die größte
+
+Der Befund aus Nachtrag 14, dass `Klausur_2137` S. 7 die Lesereihenfolge
+verliert (47,5 %, acht der zwölf verlorenen Zitate auf dieser einen Seite),
+hatte eine Ursache im **Textlayer-Pfad**, nicht im OCR. `_steg()` nahm die
+größte Lücke im x-Start-Histogramm als Kandidaten. Gemessen auf dieser Seite:
+
+| Position | Lücke | Anteil | Kreuzer |
+|---|---|---|---|
+| 505 (echter Steg) | 103 | 0,49 | **1** |
+| 817 (gewählt) | 122 | 0,01 | **49** |
+
+Ein halbes Dutzend eingerückter Einzelzeilen zwischen den Spalten zerlegt den
+echten Steg in kleine Sprünge, während am rechten Rand eine breitere Lücke ohne
+jede Bedeutung stehenbleibt. `_steg()` bewertet jetzt **alle** Lücken und
+rangiert nach wenigen Kreuzern zuerst, Breite danach — der Kreuzer ist das
+stärkere Signal, denn eine breite Lücke, durch die Zeilen laufen, ist kein Steg.
+
+Regression über alle 1426 vektoriellen Seiten (`regress_steg.py`):
+
+| | |
+|---|---|
+| unverändert | 1361 |
+| nur umsortiert | 11 |
+| **Spalten korrekt, Trennstriche aufgelöst** | **50** |
+| Zeichenverlust | 4 Seiten (−2, −2, −1, −1) |
+
+Die vier Verluste sind einzelne Ziffern in Fußnotenblöcken, die vorher ohnehin
+verschränkt waren; auf `2131_Lösung` S. 7 gewinnt die neue Fassung dafür die
+Fußnoten 30–32 zurück, die vorher komplett im Fließtext verschwanden.
+
+> **Zur Messmethode:** der Wortvergleich täuscht hier. Sind die Spalten richtig
+> getrennt, werden die Trennstriche aufgelöst — „Allge" + „meininteresses"
+> verschwinden zugunsten von „Allgemeininteresses". Wortweise sieht das nach
+> zwei verlorenen und einem gewonnenen Wort aus, obwohl kein Buchstabe fehlt.
+> Gemessen wird deshalb auf **Zeichenebene**, und dort muss auch die
+> Markdown-Auszeichnung heraus: ein geänderter Überschriftgrad sah im ersten
+> Lauf nach „6 Zeichen verloren" aus, es waren `#`.
+
+### 5. Randmarken vor ihren Block
+
+Hemmer setzt „Beispiel:", „Anmerkung:" & Co. in den linken Rand, senkrecht
+**mittig** zu dem Block, den sie beschriften. Nach y sortiert landet die Marke
+damit mitten im Satz — im Bestand: „stieß dabei aus Unachtsamkeit einen
+**Beispiel:** Blumentopf herunter".
+
+`randlabel_vorziehen()` erkennt sie am hängenden Einzug gegen die **lokale**
+Nachbarschaft (Spalten haben je eigene Einzüge) und läuft rückwärts bis zum
+Blockanfang; an einer Absatzlücke, einem Gliederungsmarker oder einer weiteren
+Randzeile ist Schluss.
+
+Regression: 2 Seiten geändert, **0 Zeichenverlust**. Beide Änderungen sind
+Verbesserungen — `**Beachte:**` stand vorher hinter dem Absatz, den es
+beschriftet.
+
+> **Zum Testrahmen:** der erste Anlauf baute alle 1426 Seiten zweimal komplett
+> neu auf und brauchte 25 min — für eine Regel, die im ganzen Bestand
+> 39 Zeilen anfasst. Der Aufwand steckte in PyMuPDFs Tabellensuche
+> (~0,5 s je Seite und Aufbau), die mit der Frage nichts zu tun hat. Mit
+> Vorfilter direkt auf `get_text("text")`: **3:25 min.**
+
+#### Der zweite Fall derselben Marke: sie ist keine Überschrift
+
+Die Gegenprobe auf einer echten Scanseite hat einen zweiten Weg gezeigt, auf dem
+dieselbe Marke Schaden anrichtet. Auf `Strafrecht AT VI` S. 3 steht „Beispiel:"
+**nicht** im Rand (gemessen: x0 = 166 wie der Rumpf), sondern als Vorspann
+derselben Zeile — das Modell gibt es trotzdem als eigene Zeile aus.
+`randlabel_vorziehen` schweigt dazu zu Recht. Dafür griff die
+Überschriften-Heuristik: kurz, vollständig fett, also Überschrift, also beginnt
+danach zwingend ein neuer Absatz. Ergebnis war ein Absatz `**Beispiel:**` und
+ein zweiter, der mitten im Satz anfängt — der Satz war zerrissen, nur anders als
+vorher.
+
+`ist_ueberschrift()` nimmt die reine Randmarke jetzt aus. Eine echte Überschrift
+(`**A. Grundsätzliches zum Unterlassen**`) trennt unverändert.
+
+Regression über alle 1426 vektoriellen Seiten (`regress_randmarke.py`):
+
+| | |
+|---|---|
+| unverändert | 1403 |
+| Absätze zusammengezogen | **23** |
+| Zeichen verloren | **0** |
+
+Alle 23 sind Verbesserungen desselben Musters — `**Ergebnis:**` / `**Anmerkung:**`
+/ `**Hinweis:**` läuft jetzt in seinen Satz ein statt darüber zu stehen. Auf die
+40 Benchmarkseiten wirkt sich die Regel nicht aus: dort kommt keine
+alleinstehende Marke vor (in keiner der beiden Darstellungen geprüft), die
+Messwerte unten sind davon also unberührt.
+
+### 6. Kachelüberlappung — und der Fehler, den sie zuerst verursacht hat
+
+Kacheln überlappen um `OVERLAP`, damit der Schnitt keine Zeile zerreißt; der
+Preis ist ein doppelt erkanntes Überlappungsband. Bei zwei Kacheln ist das eine
+Zeile, bei vier sind es drei — die Sache wird also genau dann wichtig, wenn eine
+entgleiste Seite feiner gekachelt neu gerechnet wird.
+
+Die erste Fassung verglich **zeilenweise** und war falsch. `parse_zeilen` fasst
+zu Absätzen zusammen; der erste Absatz der unteren Kachel *beginnt* zwar mit dem
+Überlappungsband, *trägt* aber den ganzen Rest der Seite mit sich. Er galt als
+Dublette und flog vollständig heraus. Auf `UNIREP_KK_ZR_LH_30_01` S. 9 hat das
+ein Drittel der Seite entfernt — **98,6 % → 58,0 % Wortgenauigkeit**, ohne jede
+Meldung. Zwei weitere gesunde Seiten verloren 6 Punkte auf demselben Weg.
+
+Aufgefallen ist es nur, weil der 40-Seiten-Lauf die gesunden Seiten getrennt
+ausweist. Auf die Gesamtzahl geschlagen wäre es unsichtbar geblieben: die
+reparierten Seiten haben mehr gewonnen als diese drei verloren.
+
+`ueberlappung_kuerzen()` schneidet jetzt **wortweise**: gesucht wird das längste
+Wortstück, das zugleich Ende des Vorhandenen und Anfang des Neuen ist, entfernt
+wird nur dieses Stück. Findet sich keins — die beiden Kacheln lesen dieselbe
+Zeile selten wortgleich —, bleibt alles stehen. Das ist die bewusste Richtung
+des Fehlers: **eine sichtbare Dopplung ist besser als ein unsichtbarer
+Verlust.** Ein Mindestmaß von 6 Wörtern und 30 Zeichen hält kurze
+Gliederungsmarker heraus, „aa)" steht auf einer Seite zu Recht mehrfach.
+
+Gegenprobe einzeln nachgemessen, nachdem die Nahtlogik korrigiert war:
+
+| Seite | vorher | erste Fassung | korrigiert |
+|---|---|---|---|
+| `ZR_LH_30_01` S. 9 | 98,6 % | 58,0 % | **98,6 %** |
+| `klausur-erbe` S. 5 | 97,7 % | 91,6 % | **97,3 %** |
+| `OER_LH_05_12` S. 9 | 98,8 % | 92,8 % | **98,8 %** |
+
+Dazu `test_naht.py` mit dem Fall, der die Seite gekostet hat, und der
+Gegenprobe, dass eine im Band abweichend gelesene Zeile lieber doppelt stehen
+bleibt als halb zu verschwinden.
+
+### 7. Gesamtergebnis: derselbe Benchmark, vorher und nachher
+
+Dieselben 40 Seiten, dieselbe Wahrheit aus dem Textlayer, einmal mit dem Stand
+von Nachtrag 14 und einmal mit dem hier beschriebenen. Gewichtet nach Wörtern
+bzw. Zitaten — eine 30-Wort-Seite soll nicht so schwer wiegen wie eine mit 800.
+
+| | Wortgenauigkeit | Zitattreue | Reihenfolge |
+|---|---|---|---|
+| **alle 40 Seiten** | 93,3 % → **98,5 %** | 87,6 % → **92,4 %** | 84,7 % → **93,7 %** |
+| davon vorher entgleist (6) | 64,8 % → **96,5 %** | 65,2 % → **87,0 %** | 32,7 % → **78,5 %** |
+| davon vorher gesund (34) | 98,5 % → **98,8 %** | 93,3 % → **93,9 %** | 94,2 % → **96,5 %** |
+
+Nicht wiedergegebene Normzitate: **32 → 17**. Keine einzige Seite ist
+zurückgegangen. Die sechs entgleisten im Einzelnen:
+
+| Seite | Wort | Zitate |
+|---|---|---|
+| `ZR_LH_07_11` S. 8 (Zähler) | 0,9 % → **100 %** | 0 % → **100 %** |
+| `Klausur_2136` S. 2 | 23,2 % → **99,3 %** | — |
+| `2143_SV` S. 2 (Abbruch) | 72,2 % → **98,9 %** | 67 % → 67 % |
+| `2131_Lösung` S. 4 | 62,1 % → **88,3 %** | 43 % → 64 % |
+| `FK_SR` S. 14 | 99,0 % → **100 %** | 100 % → 100 % |
+| `2140_Lösung` S. 6 | 92,3 % → 92,4 % | 100 % → 100 % |
+
+Dazu die Lesereihenfolge auf `Klausur_2137` S. 7 (Punkt 4): 88,3 % → **96,1 %**.
+
+> **Die getrennte Ausweisung ist nicht Kosmetik.** Der erste Lauf mit dem neuen
+> Stand kam auf 95,0 % gesamt und sah damit nach einem Erfolg aus. Getrennt
+> gerechnet zeigte dieselbe Messung, dass die gesunden Seiten von 98,5 % auf
+> 96,9 % **gefallen** waren — die Naht-Regression aus Punkt 6. Über alles
+> gemittelt war der Verlust unsichtbar, weil die reparierten Seiten mehr
+> gewonnen hatten. Eine Kennzahl, die Reparatur und Regression zu einer Zahl
+> verrechnet, verbirgt genau den Fehler, den man sucht.
+
+Die sechs Seiten sind damit nicht mehr die schwächsten. Was jetzt oben steht,
+ist gewöhnliche OCR-Ungenauigkeit: `2131_Lösung` S. 4 mit 88,3 % (und einer
+Reihenfolge von 49,7 % — eine mehrspaltige Seite, die noch nicht sauber
+getrennt wird), danach beginnt das Feld bei 95,7 %.
+
+### Was 8 GB RAM bedeuten
+
+Der erste Versuch, den vollen Benchmark neben einer Bestandsregression laufen zu
+lassen, endete mit SIGKILL für beide Prozesse. Das 4-bit-Modell belegt ~4 GB,
+PyMuPDF über 1426 Seiten den Rest. **OCR-Läufe auf dieser Maschine laufen
+allein.**
+
+### Was offen bleibt
+
+**Diagrammseiten ohne Bild-Fallback** — Punkt 3 aus Nachtrag 14 ist *nicht*
+umgesetzt. `ist_diagramm()` ist unverändert. Das war eine Entscheidung, keine
+Auslassung: die Erkennung ist auf handgeprüften Seiten kalibriert, und ein
+Eingriff ohne eigene Messreihe hätte nur Wahrscheinlichkeiten verschoben —
+gewonnene Diagrammseiten gegen verlorene Textseiten, ohne zu wissen, wie das
+Verhältnis steht. Der Ausweg bleibt `--diagramm-seiten 8` für
+`Strafrecht AT VI` S. 8.
+
+**`Klausur_2136` S. 2 im Einzellauf** — im vollen Lauf jetzt bei 99,3 %, im
+Sechs-Seiten-Lauf von `bench_defekt.py` blieb dieselbe Seite bei 23,2 %, weil
+`_guete` den Neuversuch (26649 Z. Schleife) verwarf. Der Unterschied liegt am
+Codestand zwischen beiden Läufen; die Zahlen in Abschnitt 3 stammen aus dem
+älteren und werden von der Tabelle oben abgelöst.

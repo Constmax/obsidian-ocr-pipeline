@@ -9,7 +9,8 @@ baut die Zeilen anhand ihrer <|LOC|>-Koordinaten zu Markdown zusammen.
 Erste Fassung der Zusammenbau-Schicht. Schreibt nach .ocr-bench/out-C/,
 fasst raw/ nicht an.
 """
-import argparse, json, re, statistics, sys, time
+import argparse, json, math, re, statistics, sys, time
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -39,6 +40,10 @@ STAEDTE = ("Augsburg Bayreuth Berlin Potsdam Bielefeld Bochum Bonn Bremen "
            "Lüneburg Mainz Mannheim Marburg Gießen München Münster Nürnberg "
            "Osnabrück Passau Regensburg Saarbrücken Trier Tübingen Stuttgart "
            "Wiesbaden Würzburg Rostock Dresden").split()
+
+STADT_FRAGMENT = re.compile(
+    r"^(?:" + "|".join(STAEDTE) + r")\s*[-–]\s*"
+    r"(?:[A-ZÄÖÜ][A-Za-zäöüß]{0,12}\.?)?$")
 
 BOILERPLATE = [
     re.compile(r"^Juristisches\s+Repetitorium"),
@@ -96,6 +101,14 @@ def ist_boilerplate(text, y=None, kopf=70, fuss=950):
         return True
     if t.count(" - ") >= 2 and sum(1 for s in STAEDTE if s in t) >= 2:
         return True
+    # Die Staedteliste im Briefkopf steht fuenfzeilig am rechten Blattrand und
+    # wird vom Kachelschnitt zerhackt: "Mainz - Man", "Passau - Reg". Die
+    # unteren Zeilen liegen ausserhalb der Kopfzone und blieben deshalb stehen.
+    # Streng verankert — Stadtname am Zeilenanfang, dahinter hoechstens ein
+    # angeschnittenes Wort — damit kein Zitat wie "OLG München - Urteil vom …"
+    # hineinlaeuft.
+    if STADT_FRAGMENT.match(t):
+        return True
 
     # Kurze Zeilen: Laengengrenze ersetzt die Zonenpruefung. Notwendig, weil das
     # Modell fuer manche Seiten gar keine Koordinaten liefert — dann ist y None.
@@ -106,9 +119,13 @@ def ist_boilerplate(text, y=None, kopf=70, fuss=950):
 
     # Blosse Seitenzahl. Stand bisher als eigener Absatz in der Ausgabe und
     # zerlegte bei Doppelseiten zusaetzlich das Spalten-Histogramm. Eigene,
-    # weitere Zone: die Hemmer-Skripte setzen sie auf 93 % Seitenhoehe, also
-    # oberhalb der Fusszone, in der die Textsignale greifen.
-    if (y is not None and (y <= 80 or y >= 920)
+    # weitere Zone: die Skripte setzen sie oberhalb der Fusszone, in der die
+    # Textsignale greifen. 905 statt 920 ist gemessen — auf den Scanseiten von
+    # "Strafrecht AT VI" liegt die Seitenzahl bei y = 911…938, vier von zwoelf
+    # blieben deshalb stehen. Was zwischen 905 und 920 sonst noch nackt
+    # herumsteht, sind nach dem Anbinden der Fussnotennummern nur noch
+    # Seitenzahlen (54 im Bestand, geprueft).
+    if (y is not None and (y <= 80 or y >= 905)
             and re.fullmatch(r"\d{1,4}", t)):
         return True
 
@@ -122,11 +139,17 @@ def ist_boilerplate(text, y=None, kopf=70, fuss=950):
     return False
 
 
+# Das Modell gibt Pfeile mal als Zeichen, mal als LaTeX aus. Ein Muster je
+# Befehl statt einer Liste je Schreibweise: die Dollarzeichen sind optional,
+# weil beide Formen vorkommen.
+PFEILE = {"rightarrow": "→", "Rightarrow": "⇒", "leftarrow": "←",
+          "Leftarrow": "⇐", "leftrightarrow": "↔", "Leftrightarrow": "⇔",
+          "downarrow": "↓", "Downarrow": "⇩", "uparrow": "↑", "to": "→",
+          "Longrightarrow": "⟹", "mapsto": "↦"}
+
 LATEX = [
-    (re.compile(r"\$\\rightarrow\$"), "→"),
-    (re.compile(r"\$\\Rightarrow\$"), "⇒"),
-    (re.compile(r"\$\\downarrow\$"), "↓"),
-    (re.compile(r"\$\\to\$"), "→"),
+    (re.compile(r"\$?\\(" + "|".join(PFEILE) + r")\$?(?![A-Za-z])"),
+     lambda m: PFEILE[m.group(1)]),
     (re.compile(r"\\\(\\underline\{\\text\{(.*?)\}\}\\\)"), r"\1"),
     (re.compile(r"\\underline\{(.*?)\}"), r"\1"),
     (re.compile(r"\\text\{(.*?)\}"), r"\1"),
@@ -136,7 +159,11 @@ LATEX = [
 ]
 
 # Fussnotendefinition am Seitenfuss: "1 Vgl. BGH, …" / "2 So auch MüKo-BGB, …"
-FN_DEF = re.compile(r"^(\d{1,2})\s+(?=[A-ZÄÖÜ„»§])(.+)$")
+# Die Klammer gehoert dazu: "4 (= Wiederbeschaffungswert abzüglich Restwert)"
+# blieb sonst im Text der vorangehenden Fussnote stecken, und der Verweis im
+# Fliesstext fand keine Definition.
+FN_ANFANG = r"[A-ZÄÖÜ„»§(]"
+FN_DEF = re.compile(r"^(\d{1,2})\s+(?=" + FN_ANFANG + r")(.+)$")
 
 
 def fussnoten_obsidian(absaetze):
@@ -158,7 +185,7 @@ def fussnoten_obsidian(absaetze):
         # Mehrere Definitionen koennen in einer Zeile stehen: "2 … 3 …"
         m = FN_DEF.match(p.strip())
         if m and int(m.group(1)) <= 99:
-            teile = re.split(r"(?<=[.\s])(?=\d{1,2}\s+[A-ZÄÖÜ„»§])", p.strip())
+            teile = re.split(r"(?<=[.\s])(?=\d{1,2}\s+" + FN_ANFANG + ")", p.strip())
             erkannt = False
             for t in teile:
                 mm = FN_DEF.match(t.strip())
@@ -240,7 +267,7 @@ def saeubern(s):
     s = re.sub(r"\|\s+(?=(BGB|StGB|GG|VwGO|VwVfG|ZPO|HGB)\b)", "I ", s)
     # Benachbarte Fett-Laeufe verschmelzen: der Textlayer trennt Spans oft
     # mitten in einer fetten Wortgruppe ("**gesetzliches** **Schuldverhaeltnis**").
-    s = re.sub(r"\*\*(\s+)\*\*", r"\1", s)
+    s = re.sub(r"\*\*(\s*)\*\*", r"\1", s)
     return s.rstrip()
 
 
@@ -262,7 +289,17 @@ def parse_zeilen(text):
 
 
 def _steg(mit_box):
-    """(Position des Spaltenstegs, vollbreite Zeilen) oder None."""
+    """(Position des Spaltenstegs, vollbreite Zeilen) oder None.
+
+    Geprueft wird JEDE Luecke im x-Start-Histogramm, nicht nur die groesste.
+    Die groesste allein taugt nicht als Kandidat: ein halbes Dutzend
+    eingerueckter oder zentrierter Einzelzeilen zwischen den Spalten zerlegt
+    den echten Steg in mehrere kleine Spruenge, waehrend am rechten Rand eine
+    breitere Luecke ohne jede Bedeutung stehenbleibt. Gemessen an
+    `Klausur_2137_Strafrecht_Loesung` S. 7: der echte Steg lag bei 505 (Luecke
+    103, ein Kreuzer), gewaehlt wurde 817 (Luecke 122, 49 Kreuzer) — die Seite
+    lief danach zeilenweise verschraenkt durch die Absatzlogik.
+    """
     if len(mit_box) < 8:
         return None
     # Kopf-/Fusszeilen zaehlen beim Steg nicht mit: sie gehoeren zu keiner
@@ -270,36 +307,49 @@ def _steg(mit_box):
     # zerlegt das Start-Histogramm genau dort, wo der Steg liegt.
     satz = [z for z in mit_box if not ist_boilerplate(z[0], z[1][1])] or mit_box
     starts = sorted(z[1][0] for z in satz)
-    # Luecke im x-Start-Histogramm suchen (Spaltensteg)
-    luecke, pos = 0, None
-    for a, b in zip(starts, starts[1:]):
-        if b - a > luecke:
-            luecke, pos = b - a, (a + b) / 2
-    if pos is None:
-        return None
     breite = max(z[1][2] for z in satz) - min(z[1][0] for z in satz)
+    if breite <= 0:
+        return None
     # Vollbreite Zeilen (Kopf/Fuss/Ueberschrift) bleiben an ihrer y-Position
     voll = [z for z in mit_box if z[1][2] - z[1][0] > breite * 0.6]
-    # Eine Luecke allein beweist keine zweite Spalte. Auf einer einspaltigen
-    # Seite reichen drei eingerueckte oder zentrierte Zeilen fuer eine Luecke
-    # von 30 % der Textbreite — und die Umsortierung zieht dann Zeilenreste an
-    # den Anfang ("Rechtshaengigkeit.", "ZR 67/22" vor ihrem eigenen Absatz).
-    # Also muss jede Seite des Stegs auch nennenswert besetzt sein.
-    n_links = sum(1 for z in mit_box if z[1][0] < pos)
-    anteil = min(n_links, len(mit_box) - n_links) / len(mit_box)
-    # Der harte Beweis ist nicht die Breite der Luecke, sondern dass keine
-    # Zeile sie ueberquert. Eine eingerueckte Passage erzeugt eine Luecke im
-    # Start-Histogramm, aber die Zeilen darueber und darunter laufen quer
-    # hindurch. Ein echter Spaltensteg wird von niemandem ueberschritten.
-    kreuzer = sum(1 for z in mit_box
-                  if z not in voll and z[1][0] < pos < z[1][2])
-    # Breite Luecke wie bisher — oder schmalere Luecke, die dafuer sauber ist.
-    # Nur ergaenzend, nie einschraenkend: was frueher gespalten wurde, wird es
-    # weiter, sonst verlieren die zweispaltigen Loesungsboegen ihre Trennung.
-    sauber = luecke >= breite * 0.08 and kreuzer <= 0.02 * len(mit_box)
-    if anteil < 0.25 or not (luecke >= breite * 0.25 or sauber):
+    bester = None
+    for a, b in zip(starts, starts[1:]):
+        if b <= a:
+            continue
+        luecke, pos = b - a, (a + b) / 2
+        # Eine Luecke allein beweist keine zweite Spalte. Auf einer
+        # einspaltigen Seite reichen drei eingerueckte oder zentrierte Zeilen
+        # fuer eine Luecke von 30 % der Textbreite — und die Umsortierung zieht
+        # dann Zeilenreste an den Anfang ("Rechtshaengigkeit.", "ZR 67/22" vor
+        # ihrem eigenen Absatz). Also muss jede Seite des Stegs auch
+        # nennenswert besetzt sein.
+        n_links = sum(1 for z in mit_box if z[1][0] < pos)
+        anteil = min(n_links, len(mit_box) - n_links) / len(mit_box)
+        if anteil < 0.25:
+            continue
+        # Der harte Beweis ist nicht die Breite der Luecke, sondern dass keine
+        # Zeile sie ueberquert. Eine eingerueckte Passage erzeugt eine Luecke
+        # im Start-Histogramm, aber die Zeilen darueber und darunter laufen
+        # quer hindurch. Ein echter Spaltensteg wird von niemandem
+        # ueberschritten.
+        kreuzer = sum(1 for z in mit_box
+                      if z not in voll and z[1][0] < pos < z[1][2])
+        # Breite Luecke wie bisher — oder schmalere Luecke, die dafuer sauber
+        # ist. Nur ergaenzend, nie einschraenkend: was frueher gespalten wurde,
+        # wird es weiter, sonst verlieren die zweispaltigen Loesungsboegen ihre
+        # Trennung.
+        sauber = luecke >= breite * 0.08 and kreuzer <= 0.02 * len(mit_box)
+        if not (luecke >= breite * 0.25 or sauber):
+            continue
+        # Rang: erst wenige Kreuzer, dann breite Luecke. Der Kreuzer ist das
+        # staerkere Signal — eine breite Luecke, durch die Zeilen laufen, ist
+        # kein Steg, eine schmale ohne Kreuzer sehr wohl.
+        rang = (-kreuzer, luecke)
+        if bester is None or rang > bester[0]:
+            bester = (rang, pos)
+    if bester is None:
         return None
-    return pos, voll
+    return bester[1], voll
 
 
 def spalten_trennen(zeilen, tiefe=0):
@@ -369,6 +419,12 @@ def frage_antwort_raster(links, rechts, tol=3):
     WuV-Boegen 3/3 bis 13/13 (>= 80 %), bei zweispaltiger Prosa 0/5, 0/3, 1/8
     (<= 13 %) — dort laufen die beiden Spalten unabhaengig.
     """
+    # Kopf- und Fusszeile fliegen VOR der Rasterpruefung raus. Sonst landet
+    # "RA Dr. Michael Hein, M.A., LL.M. - 04/2026" mitten in der Antwortzelle:
+    # zusammenfuegen() sieht die fertige Tabelle nur noch als einen Block und
+    # kommt mit seinem Boilerplate-Test nicht mehr an die einzelne Zeile heran.
+    links = [z for z in links if not ist_boilerplate(saeubern(z[0]), z[1][1])]
+    rechts = [z for z in rechts if not ist_boilerplate(saeubern(z[0]), z[1][1])]
     if len(links) < 6 or len(rechts) < 6:
         return None
     anfaenge = sorted(z[1][1] for z in links if _zeilenanfang(z[0]))
@@ -403,7 +459,7 @@ def frage_antwort_raster(links, rechts, tol=3):
                 s = s[:-1] + t
             else:
                 s = (s + " " + t) if s else t
-        s = re.sub(r"\*\*(\s+)\*\*", r"\1", s).strip()
+        s = re.sub(r"\*\*(\s*)\*\*", r"\1", s).strip()
         return re.sub(r"\s{2,}", " ", s).replace("|", r"\|")
 
     grenzen = [r[0][1][1] for r in reihen] + [10 ** 6]
@@ -460,9 +516,14 @@ AUFZAEHLUNG = re.compile(
     r"|[IVXL]{1,5}\.)(?=\s|$)"          # Zeilenende zaehlt: der Textlayer liefert
 )                                       # den Marker als eigenes, getrimmtes Fragment
 # Kastenartige Einschuebe im Hemmer-Layout beginnen einen eigenen Block
-SCHLAGWORT = re.compile(
-    r"^(Anmerkung|Hinweis|Merksatz|Merke|Ergebnis|Beachte|Achtung|Exkurs|"
-    r"Vertiefung|Klausurtipp|Zwischenergebnis)\s*:", re.I)
+SCHLAGWORT_WOERTER = (r"Anmerkung|Hinweis|Merksatz|Merke|Ergebnis|Beachte|"
+                      r"Achtung|Exkurs|Vertiefung|Klausurtipp|"
+                      r"Zwischenergebnis|Beispiele|Beispiel|Definition")
+SCHLAGWORT = re.compile(r"^(" + SCHLAGWORT_WOERTER + r")\s*:", re.I)
+# Dieselben Woerter, aber als ALLEINSTEHENDE Zeile — die Form, in der Hemmer
+# sie in den linken Rand setzt.
+RANDLABEL = re.compile(r"^\**\s*(?:" + SCHLAGWORT_WOERTER
+                       + r")\s*:?\s*\**$", re.I)
 
 # Ebenen der juristischen Gliederung in ihrer ueblichen Ordnung. Der Grad
 # beginnt bei ## — # bleibt dem Dokumenttitel vorbehalten. (1)/(a) stehen vor
@@ -499,12 +560,37 @@ def ohne_fett(text):
     return re.sub(r"\*\*", "", text).strip()
 
 
+def nur_fett(text):
+    """Besteht der Absatz ausschliesslich aus fetten Laeufen?
+
+    Auch ueber mehrere Zeilen hinweg ("**IV. Exkurs: … – V** **ZR 67/22**") —
+    solche Ueberschriften sind laenger als die 90-Zeichen-Grenze, und die
+    Grenze zu lockern hiesse 133 weitere Absaetze zu Ueberschriften zu machen,
+    darunter Inhaltsverzeichniszeilen mit Fuellpunkten.
+    """
+    return bool(text.strip()) and not re.sub(r"\*\*.*?\*\*", "", text,
+                                             flags=re.S).strip()
+
+
+def fett_ausgleichen(text):
+    """Ungerade Zahl von `**` heilen.
+
+    Entsteht beim Verschmelzen ueber einen Trennstrich hinweg, wenn nur eine
+    der beiden Zeilen fett erkannt wurde. Obsidian faerbt sonst den Rest des
+    Absatzes — der Fehler ist im Text unsichtbar und erst im Rendern zu sehen.
+    """
+    if text.count("**") % 2 == 0:
+        return text
+    i = text.rfind("**")
+    return text[:i] + text[i + 2:]
+
+
 # Alleinstehende Fussnotennummer und der Anfang ihres Textes
 FN_NUMMER = re.compile(r"^\**\s*(\d{1,2})\s*\**$")
 FN_TEXT = re.compile(r"^[A-ZÄÖÜ„»§]")
 
 
-def fussnotennummern_anbinden(zeilen, fuss=900, naehe=40, links=500):
+def fussnotennummern_anbinden(zeilen, fuss=900, naehe=40):
     """Ausgerueckte Fussnotennummer am Seitenfuss mit ihrem Text verbinden.
 
     Der Satz stellt die Nummer der Definition nach links aus; als eigene Zeile
@@ -513,15 +599,20 @@ def fussnotennummern_anbinden(zeilen, fuss=900, naehe=40, links=500):
     Nummer, und die Verweise im Text bleiben als nackte Ziffer am Wort kleben
     ("abzulehnen.9" statt "abzulehnen.[^9]").
 
-    Nicht betroffen sind die hochgestellten Verweiszeichen im Text: die stehen
-    am RECHTEN Rand (gemessen x=977 gegen x=8…53 der Definitionen).
+    Erkennungszeichen ist der haengende Einzug: die Nummer beginnt LINKS von
+    ihrem Text (gemessen 8 gegen 82, 53 gegen 137). Das trennt sie von den
+    hochgestellten Verweiszeichen im Fliesstext, die am rechten Rand stehen
+    (x = 977 vor einer Textzeile bei x = 98). Eine feste x-Grenze taugt dafuer
+    nicht: auf zweispaltigen Seiten beginnt der rechte Fussnotenblock bei 523
+    und blieb damit unerkannt — 151 Faelle im Bestand.
     """
     aus, i = [], 0
     while i < len(zeilen):
         z = zeilen[i]
         n = zeilen[i + 1] if i + 1 < len(zeilen) else None
         m = FN_NUMMER.match(z[0].strip())
-        if (m and n and z[1] and n[1] and z[1][1] >= fuss and z[1][0] < links
+        if (m and n and z[1] and n[1] and z[1][1] >= fuss
+                and z[1][0] <= n[1][0]
                 and abs(n[1][1] - z[1][1]) <= naehe
                 and FN_TEXT.match(n[0].lstrip("*").lstrip())):
             box = (min(z[1][0], n[1][0]), min(z[1][1], n[1][1]),
@@ -531,6 +622,74 @@ def fussnotennummern_anbinden(zeilen, fuss=900, naehe=40, links=500):
             continue
         aus.append(z)
         i += 1
+    return aus
+
+
+def ist_ueberschrift(text, nackt):
+    """Ist diese kurze, vollstaendig fette Zeile eine Ueberschrift?
+
+    Ausgenommen ist die blosse Randmarke ("**Beispiel:**", "**Merke**"). Die
+    gehoert VOR ihren Text, nicht darueber: als Ueberschrift gewertet setzt sie
+    `war_ueberschrift` und reisst den folgenden Satz ab. Auf `Strafrecht AT VI`
+    S. 3 wurde so aus "Beispiel: Mutter M putzt gerade die Fenster …" ein
+    Absatz "**Beispiel:**" und ein zweiter, der mitten im Satz beginnt.
+
+    Eigene Funktion, damit `regress_randmarke.py` die alte Fassung dagegen
+    rechnen kann.
+    """
+    return (text.startswith("**") and text.endswith("**")
+            and text.count("**") == 2 and len(nackt) <= 90
+            and not RANDLABEL.match(text.strip()))
+
+
+def randlabel_vorziehen(zeilen, normal, ausrueckung=25, fenster=8):
+    """Ausgerueckte Randbeschriftung an den Anfang ihres Blocks ziehen.
+
+    Hemmer setzt "Beispiel:", "Anmerkung:" & Co. in den linken Rand, und zwar
+    senkrecht MITTIG zu dem Block, den sie beschriften. Nach y sortiert landet
+    die Marke damit irgendwo im Fliesstext — im Bestand mitten im Satz:
+    "stiess dabei aus Unachtsamkeit einen **Beispiel:** Blumentopf herunter".
+    Sie gehoert vor den Block, nicht in ihn.
+
+    Erkennungszeichen ist wie bei den Fussnotennummern der haengende Einzug:
+    die Marke beginnt links vom Rumpf ihrer Nachbarschaft. Der Rumpf wird
+    lokal bestimmt, nicht ueber die Seite — auf zweispaltigen Seiten haben
+    die Spalten je eigene Einzuege.
+
+    Rueckwaerts gelaufen wird nur innerhalb des Blocks: an einer Absatzluecke,
+    einem Gliederungsmarker oder einer weiteren Randzeile ist Schluss.
+    """
+    if not normal or len(zeilen) < 4:
+        return zeilen
+    aus = list(zeilen)
+    for i in range(1, len(aus)):
+        z = aus[i]
+        if not z[1] or not RANDLABEL.match(z[0].strip()):
+            continue
+        nah = [x for x in aus[max(0, i - fenster):i + fenster + 1]
+               if x[1] and x is not z]
+        if len(nah) < 4:
+            continue
+        rumpf = statistics.median([x[1][0] for x in nah])
+        if z[1][0] > rumpf - ausrueckung:
+            continue                          # steht nicht im Rand
+        j, letztes_y = i, None
+        while j > 0:
+            vor = aus[j - 1]
+            if not vor[1] or vor[1][0] < rumpf - ausrueckung:
+                break                         # Sonderzeile oder zweite Marke
+            if letztes_y is not None and vor[1][3] < letztes_y - 1.6 * normal:
+                break                         # Absatzluecke
+            # Sternchen ganz heraus, nicht nur vorne abgestreift: der Textlayer
+            # zeichnet den Marker oft allein aus ("**1.** Der Anspruch …"),
+            # dann steht hinter dem Punkt kein Leerzeichen und AUFZAEHLUNG
+            # greift nicht.
+            if AUFZAEHLUNG.match(re.sub(r"\*+", "", vor[0]).lstrip()):
+                break                         # Gliederungspunkt bleibt oben
+            letztes_y = vor[1][1]
+            j -= 1
+        if j < i:
+            aus.insert(j, aus.pop(i))
     return aus
 
 
@@ -592,6 +751,9 @@ def zusammenfuegen(zeilen):
     ys = [z[1][1] for z in zeilen if z[1]]
     abstaende = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 200]
     normal = statistics.median(abstaende) if abstaende else None
+    # Vor kurze_zeilen(): die Nachbarschaftsfenster dort rechnen mit der
+    # Reihenfolge, die Randmarke soll sie nicht mehr verschieben.
+    zeilen = randlabel_vorziehen(zeilen, normal)
     kurz, block = kurze_zeilen(zeilen)
 
     aus, puffer, letztes_y, verworfen = [], "", None, []
@@ -622,17 +784,19 @@ def zusammenfuegen(zeilen):
 
         # Ein Trennstrich am Zeilenende ist fuer sich schon Beweis der
         # Fortsetzung — er gilt unabhaengig von jeder Abstandsheuristik.
-        trennstrich = (puffer.endswith("-") and not KEIN_JOIN.match(text)
-                       and text[:1].islower())
+        # Auch dann, wenn die Folgezeile fett anfaengt: die Fetterkennung
+        # arbeitet zeilenweise und setzt die Auszeichnung mitten ins Wort
+        # ("Berei-" / "**cherungsrecht, Rn. 395)**").
+        weiter = text.lstrip("*")
+        trennstrich = (puffer.rstrip("*").endswith("-")
+                       and not KEIN_JOIN.match(weiter) and weiter[:1].islower())
 
         # Marker-Pruefung ohne Fett-Sternchen: "**I. Der Ausgangspunkt**" ist
         # ein Gliederungsmarker. Die Sternchen setzt entweder fett_markieren()
         # oder der Textlayer — beide laufen vorher, und beide wuerden hier
         # sonst jeden Marker unsichtbar machen.
         nackt = text.lstrip("*").lstrip()
-        # Eine kurze, vollstaendig fette Zeile ist eine Ueberschrift.
-        ueberschrift = (text.startswith("**") and text.endswith("**")
-                        and text.count("**") == 2 and len(nackt) <= 90)
+        ueberschrift = ist_ueberschrift(text, nackt)
         # Zwei Gruende, warum eine fette Zeile KEINE Ueberschrift ist, sondern
         # die Fortsetzung der laufenden: die Vorzeile reichte im Blocksatz bis
         # an den Rand, oder die Zeile steht auf dem Fortsetzungseinzug des
@@ -682,7 +846,7 @@ def zusammenfuegen(zeilen):
 
         if puffer and not neu:
             if trennstrich:
-                puffer = puffer[:-1] + text
+                puffer = puffer.rstrip("*")[:-1] + weiter
             else:
                 puffer = puffer + " " + text
         else:
@@ -697,15 +861,20 @@ def zusammenfuegen(zeilen):
         # laengerem Fliesstext hinter dem Marker traegt die Regel nichts mehr
         # bei, wuerde aber auf Kachelseiten ohne Koordinaten (Zeichenmass
         # statt Rand) mitten im Satz schneiden.
-        war_ueberschrift = ((ueberschrift and puffer == text)
+        # Reicht die fette Zeile im Blocksatz bis an den Rand, ist die
+        # Ueberschrift nicht zu Ende — sie laeuft in der naechsten weiter
+        # ("**IV. Exkurs: … – V**" / "**ZR 67/22**").
+        war_ueberschrift = ((ueberschrift and puffer == text
+                             and not (block[i] and not kurz[i]))
                             or (kurz[i] and ebene(puffer) is not None
-                                and len(ohne_fett(puffer)) <= 90))
+                                and (len(ohne_fett(puffer)) <= 90
+                                     or nur_fett(puffer))))
         letztes_y, letzte_marke, vorher = y, marke, i
     if puffer:
         aus.append(puffer)
     # Erst hier, nicht in saeubern(): "**a** **b**" entsteht ueberhaupt erst
     # beim Verschmelzen zweier Zeilen, also nach der zeilenweisen Saeuberung.
-    aus = [re.sub(r"\*\*(\s+)\*\*", r"\1", p) for p in aus]
+    aus = [fett_ausgleichen(re.sub(r"\*\*(\s*)\*\*", r"\1", p)) for p in aus]
     zusammenfuegen.verworfen = verworfen
     return gliederung_auszeichnen(fussnoten_obsidian(aus))
 
@@ -740,8 +909,8 @@ def gliederung_auszeichnen(absaetze, max_ueberschrift=90):
         # ist mit der h.M. aber abzulehnen."), Fettschrift dafuer: Hemmer setzt
         # die Gliederungspunkte fett, auch die mit Punkt am Ende ("1. Anspruch
         # aus § 985 BGB auf Rueckgabe des **Bargeldes.**").
-        if len(blank) <= max_ueberschrift and (not SATZENDE.search(blank)
-                                               or "**" in roh):
+        if ((len(blank) <= max_ueberschrift or nur_fett(roh))
+                and (not SATZENDE.search(blank) or "**" in roh)):
             aus.append("#" * grad + " " + blank)
         elif not roh.startswith("**"):
             marke, rest = roh.split(None, 1) if " " in roh else (roh, "")
@@ -1358,7 +1527,7 @@ def fragmente_verschmelzen(zeilen, W, luecke=0.15, max_pt=60):
                    and r[i + 1][1][0] >= box[2]
                    and r[i + 1][1][0] - box[2] < min(luecke * W, max_pt)):
                 t2, b2 = r[i + 1][0], r[i + 1][1]
-                text = re.sub(r"\*\*(\s+)\*\*", r"\1",
+                text = re.sub(r"\*\*(\s*)\*\*", r"\1",
                               text.rstrip() + " " + t2.lstrip())
                 box = (box[0], min(box[1], b2[1]), b2[2], max(box[3], b2[3]))
                 i += 1
@@ -1519,7 +1688,14 @@ def kacheln_senkrecht(png, steg):
 
 def kacheln_waagerecht(png, teile=2):
     """Dichte EINSPALTIGE Seite oben/unten trennen — ein Mittelschnitt laengs
-    wuerde hier jede Zeile zerschneiden."""
+    wuerde hier jede Zeile zerschneiden.
+
+    Liefert (Pfad, y_oben, y_unten) mit den Schnittgrenzen als Anteil der
+    Elternhoehe. Die Grenzen braucht der Aufrufer, um die kachelrelativen
+    Modellkoordinaten zurueck ins Elternbild zu rechnen — ohne das laesst sich
+    eine Kachel nicht noch einmal teilen, weil die Teilstuecke sonst alle bei
+    y = 0 anfangen.
+    """
     from PIL import Image
     im = Image.open(png)
     w, h = im.size
@@ -1530,8 +1706,331 @@ def kacheln_waagerecht(png, teile=2):
         y1 = min(int(h * (i + 1) / teile) + ov, h)
         p = png.with_name(f"{png.stem}_T{i+1}.png")
         im.crop((0, y0, w, y1)).save(p)
-        aus.append(p)
+        aus.append((p, y0 / h, y1 / h))
     return aus
+
+
+# --- Entgleiste Generierung -------------------------------------------------
+
+# Ab wie vielen Wiederholungen desselben 5-Gramms die Ausgabe als Schleife
+# gilt. Gemessen im 40-Seiten-Benchmark ziffernblind (siehe schleifenlaenge):
+# gesunde Seiten kommen auf hoechstens 6, die entgleisten auf 64, 106, 275 und
+# 1920. Dazwischen liegt so viel Luft, dass der genaue Wert kaum zaehlt.
+SCHLEIFE_AB = 8
+# Wieviele Wiederholungen es beim ZIFFERNBLINDEN Zusammenstreichen braucht.
+# Deutlich hoeher als SCHLEIFE_AB, weil ziffernblind auch echte Aufzaehlungen
+# ("§§ 823, 826, 831, 840", Fussnotennummern, Tabellenspalten) wie eine
+# Wiederholung aussehen. Ein Zaehler laeuft in die Hunderte, eine Normenkette
+# nicht ueber ein Dutzend.
+ZAEHLER_AB = 20
+# Zeichen je 1000 Tintenpixel bei 150 dpi, Median ueber dieselben 40 Seiten
+# (Spanne 10,5–29,6). Grobe Schaetzung — aber die einzige, die ohne Textlayer
+# auskommt, und damit die einzige, die auf echten Scans ueberhaupt greift.
+# Liegt ein Textlayer vor, wird der Faktor daraus je Seite neu bestimmt und
+# die Streuung faellt weg.
+ZEICHEN_JE_TINTE = 18.8 / 1000
+# Erlaubter Korridor um die erwartete Zeichenzahl — zwei Fassungen, weil der
+# Massstab zwei sehr verschiedene Guetegrade hat.
+#
+#   GEEICHT   Der Faktor stammt aus dem Textlayer DERSELBEN Seite. Gemessen
+#             ueber die 40 Benchmarkseiten: gesunde Ausgaben liegen bei
+#             0,87–1,18 der Textlayerlaenge, die beiden Abbrueche bei 0,23 und
+#             0,75, die vier Schleifen bei 1,98–5,93. 0,80 trennt knapp, aber
+#             sauber; ein Fehlalarm kostet ohnehin nur Rechenzeit, weil
+#             `_guete` den Neuversuch verwirft, wenn er nichts bringt.
+#   GROB      Der Faktor ist das Korpusmittel. Dessen eigene Streuung betraegt
+#             0,56–1,58 (10,5–29,6 Zeichen je 1000 Tintenpixel), der Korridor
+#             muss sie enthalten — sonst schlaegt er auf jeder zweiten
+#             Scanseite an. Er faengt damit nur die groben Faelle. Das ist der
+#             Preis dafuer, auf einem echten Scan ueberhaupt etwas zu messen.
+KORRIDOR_GEEICHT = (0.80, 2.2)
+KORRIDOR_GROB = (0.45, 2.6)
+
+
+# Token-Budget je Kachel. Ein fester Deckel von 8192 ist auf gesunden Seiten
+# nie noetig — eine volle A4-Seite Gutachten hat rund 5000 Zeichen, also etwa
+# 1700 Token — kostet aber auf jeder entgleisten Seite die volle Rechenzeit:
+# eine Schleife hoert von selbst nicht auf, sie laeuft bis zum Deckel. Gemessen
+# auf dem M1: ~8 min fuer eine einzige Kachel.
+#
+# Die Seite verraet dagegen, wie viel Text auf ihr steht — dieselbe
+# Tintenschaetzung, die schon die Entgleisung erkennt. Der Zuschlag ist
+# absichtlich grosszuegig: wird das Budget doch zu knapp, sieht `entgleist`
+# einen Abbruch und die Kachel wird feiner geschnitten neu gerechnet, wobei
+# jedes Teilstueck sein eigenes Budget bekommt. Der Fehler heilt sich also,
+# waehrend ein zu hohes Budget nur Zeit verbrennt.
+TOKEN_JE_ZEICHEN = 1 / 2.2        # deutsche Prosa, mit Reserve
+TOKEN_MIN, TOKEN_MAX = 1024, 8192
+
+
+def _tokenbudget(erwartet, grosszuegig=1.8):
+    if not erwartet or erwartet < 300:
+        return TOKEN_MAX
+    return int(min(max(erwartet * TOKEN_JE_ZEICHEN * grosszuegig, TOKEN_MIN),
+                   TOKEN_MAX))
+
+
+def _tintenmenge(png, dpi=150):
+    """Tintenpixel des Bildes, auf 150 dpi normiert.
+
+    Die Normierung ist noetig, weil die Pixelzahl mit dem Quadrat der
+    Aufloesung waechst — ohne sie haengt jede Schwelle an --dpi.
+    """
+    import numpy as np
+    from PIL import Image
+    g = np.asarray(Image.open(png).convert("L"))
+    return float((g < 160).sum()) * (150.0 / max(dpi, 1)) ** 2
+
+
+def schleifenlaenge(text, n=5):
+    """Wie oft kommt das haeufigste n-Gramm vor?
+
+    Das Modell entgleist auf zwei Weisen, und das ist die eine: es wiederholt
+    eine Wortfolge, bis das Token-Budget erschoepft ist. Wortweise gezaehlt
+    statt zeilenweise, weil die Wiederholung nicht an Zeilengrenzen haengt.
+
+    Ziffern werden vorher zu `#` eingeebnet. Sonst entgeht die haeufigste
+    Bauform ueberhaupt — der aufsteigende Zaehler. `UNIREP_KK_ZR_LH_07_11`
+    S. 8 lieferte "(1982) (1983) (1984) …" ueber 2000 Zeichen; woertlich
+    gezaehlt ist dort jedes 5-Gramm einmalig (Wert 1), ziffernblind kommt
+    dasselbe 275-mal. Gegenprobe ueber alle 40 Benchmark-Seiten: keine zweite
+    Seite kommt ziffernblind ueber 6, die Schwelle liegt bei 8.
+    """
+    w = [re.sub(r"\d+", "#", x) for x in re.findall(r"\S+", text)]
+    if len(w) < 2 * n:
+        return 0
+    haeufig = Counter(tuple(w[i:i + n]) for i in range(len(w) - n + 1))
+    return haeufig.most_common(1)[0][1]
+
+
+def entgleist(text, erwartet=None, geeicht=False):
+    """(Grund, Kennzahl) — oder (None, 0.0), wenn die Ausgabe plausibel ist.
+
+    Zwei Signale, beide ohne zweites Modell:
+
+      Schleife   wiederholtes n-Gramm. Faengt die drei Faelle, in denen
+                 dieselbe Zeile hundertfach kommt.
+      Laenge     Abstand zur erwarteten Zeichenzahl. Faengt den vierten
+                 Schleifenfall — einen aufsteigenden Zaehler, dessen n-Gramme
+                 alle verschieden sind — und beide Abbrueche.
+    """
+    s = schleifenlaenge(text)
+    if s >= SCHLEIFE_AB:
+        return "Schleife", float(s)
+    if erwartet and erwartet >= 300:
+        unten, oben = KORRIDOR_GEEICHT if geeicht else KORRIDOR_GROB
+        q = len(text) / erwartet
+        if q > oben:
+            return "zu lang", q
+        if q < unten:
+            return "Abbruch", q
+    return None, 0.0
+
+
+def _guete(text, erwartet):
+    """Wie glaubwuerdig ist diese Ausgabe? Kleiner ist besser.
+
+    Entscheidet zwischen erstem Versuch und Neuversuch. Eine Schleife ist ein
+    harter Malus — ein schleifenfreier Lauf gewinnt immer, egal wie kurz. Sonst
+    zaehlt der Abstand zur erwarteten Menge, und ohne Massstab die Menge selbst:
+    beim Abbruch ist mehr Text immer der bessere Text.
+    """
+    strafe = 10.0 if schleifenlaenge(text) >= SCHLEIFE_AB else 0.0
+    if erwartet and erwartet >= 300:
+        return strafe + abs(math.log(max(len(text), 1) / erwartet))
+    return strafe - min(len(text), 20000) / 20000.0
+
+
+def _lauf_kuerzen(stuecke, mindest, behalten=2, schluessel=None):
+    """Aufeinanderfolgende Wiederholungen einer Periode zusammenstreichen.
+
+    `schluessel` ist eine gleich lange Liste von Vergleichswerten. Damit laesst
+    sich unscharf vergleichen (z.B. ziffernblind) und trotzdem das Original
+    ausgeben: stehen bleiben die ersten `behalten` ECHTEN Vorkommen, nicht
+    `behalten` Kopien des ersten — bei einem Zaehler ist "(1982) (1983) …" die
+    aussagekraeftige Spur, "(1982) (1982)" waere eine erfundene.
+    """
+    k = stuecke if schluessel is None else schluessel
+    aus, i = [], 0
+    while i < len(stuecke):
+        for p in range(1, 5):                     # Periodenlaenge 1–4
+            if i + p > len(stuecke):
+                continue
+            n = 1
+            while k[i + n * p:i + (n + 1) * p] == k[i:i + p]:
+                n += 1
+            if n >= mindest:
+                aus += stuecke[i:i + behalten * p]
+                i += n * p
+                break
+        else:
+            aus.append(stuecke[i])
+            i += 1
+    return aus
+
+
+def schleife_kuerzen(zeilen, mindest=3):
+    """Stehengebliebene Wiederholungen zusammenstreichen.
+
+    Greift nur, wenn der Neuversuch die Schleife NICHT beseitigt hat. Dann ist
+    die Seite ohnehin unvollstaendig — aber ein Block, in dem dieselbe
+    Wortfolge sechzig- oder zweitausendfach steht, macht sie zusaetzlich
+    unlesbar und ueberschwemmt jede Volltextsuche. Zwei Durchlaeufe: erst
+    innerhalb der Zeile ("V. V. V. V. …"), dann ueber Zeilen hinweg (dieselbe
+    Fussnote hundertfach).
+
+    Stehen bleiben zwei Vorkommen. Das ist Absicht: die Stelle soll im Text
+    sichtbar bleiben, damit klar ist, dass hier etwas schiefging — stilles
+    Glaetten waere derselbe Fehler wie stilles Loeschen.
+
+    Der Zaehler ("(1982) (1983) (1984) …") braucht einen eigenen, ziffernblinden
+    Durchgang, weil dort kein Wort dem anderen gleicht. Er laeuft mit deutlich
+    hoeherer Schwelle (ZAEHLER_AB statt `mindest`), denn ziffernblind sieht
+    "§§ 823, 826, 831, 840" wie eine Wiederholung aus — eine Aufzaehlung von
+    vier Normen soll keine werden.
+    """
+    gekuerzt = []
+    for z in zeilen:
+        w = z[0].split(" ")
+        if len(w) >= 3 * mindest:
+            neu = _lauf_kuerzen(w, mindest)
+            if len(neu) >= 3 * ZAEHLER_AB:
+                neu = _lauf_kuerzen(
+                    neu, ZAEHLER_AB,
+                    schluessel=[re.sub(r"\d+", "#", x) for x in neu])
+            neu = " ".join(neu)
+            if neu != z[0]:
+                z = [neu] + list(z[1:])
+        gekuerzt.append(z)
+    schluessel = [re.sub(r"[^0-9a-zäöüß]+", "", z[0].lower()) for z in gekuerzt]
+    behalten, i = [], 0
+    while i < len(gekuerzt):
+        n = 1
+        while (i + n < len(gekuerzt) and schluessel[i + n] == schluessel[i]
+               and len(schluessel[i]) >= 8):
+            n += 1
+        behalten += gekuerzt[i:i + (2 if n >= mindest else n)]
+        i += n
+    return behalten
+
+
+def _nahtworte(zeilen):
+    """(normalisiertes Wort, Zeilenindex, Wortindex) fuer den Nahtvergleich."""
+    aus = []
+    for i, z in enumerate(zeilen):
+        for j, w in enumerate(z[0].split()):
+            k = re.sub(r"[^0-9a-zäöüß]+", "", w.lower())
+            if k:
+                aus.append((k, i, j))
+    return aus
+
+
+def ueberlappung_kuerzen(vorhanden, neu, fenster=150, mindest=6):
+    """Doppelten Text an der Kachelnaht abschneiden — wortweise.
+
+    Kacheln ueberlappen um OVERLAP, damit der Schnitt keine Zeile zerreisst.
+    Der Preis ist, dass das Ueberlappungsband zweimal erkannt wird.
+
+    Zeilenweise zu vergleichen war falsch und hat im 40-Seiten-Lauf echten Text
+    geloescht: `parse_zeilen` fasst zu Absaetzen zusammen, und der erste Absatz
+    der unteren Kachel FAENGT mit dem Ueberlappungsband an, traegt aber den
+    ganzen Rest der Seite mit sich. Auf `UNIREP_KK_ZR_LH_30_01` S. 9 wurde so
+    ein Drittel der Seite still entfernt (98,6 % → 58,0 % Wortgenauigkeit) —
+    genau die Sorte Fehler, die ohne Original niemandem auffaellt.
+
+    Gesucht wird darum das laengste Wortstueck, das zugleich Ende des
+    Vorhandenen und Anfang des Neuen ist; abgeschnitten wird nur dieses Stueck.
+    Findet sich keins — die beiden Kacheln lesen dieselbe Zeile selten
+    wortgleich —, bleibt alles stehen. Das ist Absicht: eine sichtbare
+    Dopplung ist der bessere Fehler als ein unsichtbarer Verlust.
+    """
+    if not vorhanden or not neu:
+        return neu
+    schwanz = [w for w, _, _ in _nahtworte(vorhanden)][-fenster:]
+    kopf = _nahtworte(neu)[:fenster]
+    kopfworte = [w for w, _, _ in kopf]
+    for k in range(min(len(schwanz), len(kopfworte)), mindest - 1, -1):
+        if schwanz[-k:] != kopfworte[:k]:
+            continue
+        if sum(len(w) for w in kopfworte[:k]) < 30:
+            continue                  # zu wenig Substanz, z.B. "aa) bb) cc)"
+        _, zeile, wort = kopf[k - 1]
+        aus = []
+        for i, z in enumerate(neu):
+            if i < zeile:
+                continue
+            if i == zeile:
+                rest = " ".join(z[0].split()[wort + 1:])
+                if not rest:
+                    continue
+                z = [rest] + list(z[1:])
+            aus.append(z)
+        return aus
+    return neu
+
+
+def kachel_zeilen(png, ocr, mit_fett, faktor, dpi, geeicht=False,
+                  tiefe=0, max_tiefe=1):
+    """Eine Kachel erkennen — und bei entgleister Generierung neu rechnen.
+
+    Der Benchmark zeigt: auf 85 % der Seiten liegt der OCR-Pfad bei 99 %
+    Wortgenauigkeit, die schlechten Gesamtzahlen kommen von 15 % Seiten, auf
+    denen das Modell in eine Schleife laeuft oder mitten im Satz abbricht. Das
+    ist kein Lesefehler, sondern ein Fehler der Generierung — dieselbe Kachel
+    kleiner geschnitten braucht kuerzere Laeufe und kommt dann meist durch.
+
+    Die Auswahl zwischen erstem Versuch und Neuversuch faellt an `_guete`,
+    nicht am Gefuehl. Damit kann der Neuversuch nichts verschlimmern: liefert
+    er weniger als der erste, wird er verworfen.
+
+    `faktor` ist Zeichen je Tintenpixel. Er kommt entweder aus dem Textlayer
+    derselben Seite (dann ist er exakt) oder aus dem Korpusmittel (dann grob).
+    Die Erwartung wird je Kachel aus deren eigener Tinte berechnet, nicht durch
+    Teilen der Seitenerwartung — Kacheln tragen unterschiedlich viel Text.
+    """
+    erwartet = _tintenmenge(png, dpi) * faktor if faktor else None
+    zeilen = parse_zeilen(ocr(png, _tokenbudget(erwartet)))
+    if mit_fett:
+        zeilen = fett_markieren(zeilen, png)
+    text = "\n".join(z[0] for z in zeilen)
+    grund, kennzahl = entgleist(text, erwartet, geeicht)
+    if grund is None:
+        return zeilen, []
+    marke = (f"{grund} {kennzahl:.0f}×" if grund == "Schleife"
+             else f"{grund} {kennzahl:.0%}")
+    if tiefe >= max_tiefe:
+        if grund == "Schleife":
+            vorher = len(zeilen)
+            zeilen = schleife_kuerzen(zeilen)
+            return zeilen, [f"{png.stem}: {marke}, nicht behoben — "
+                            f"Wiederholung gekuerzt ({vorher} → "
+                            f"{len(zeilen)} Zeilen)"]
+        return zeilen, [f"{png.stem}: {marke}, nicht behoben"]
+    neu, spur = [], []
+    for teil, oben, unten in kacheln_waagerecht(png, 2):
+        z, s = kachel_zeilen(teil, ocr, mit_fett, faktor, dpi, geeicht,
+                             tiefe + 1, max_tiefe)
+        spur += s
+        hoch = unten - oben
+        for e in z:            # kachelrelatives y zurueck ins Elternbild
+            if e[1]:
+                e[1] = (e[1][0], int((oben + e[1][1] / 1000 * hoch) * 1000),
+                        e[1][2], int((oben + e[1][3] / 1000 * hoch) * 1000))
+        neu += ueberlappung_kuerzen(neu, z)
+    neu_text = "\n".join(e[0] for e in neu)
+    if _guete(neu_text, erwartet) < _guete(text, erwartet):
+        gewaehlt, notiz = neu, (f"{marke} → neu gekachelt, "
+                                f"{len(text)} → {len(neu_text)} Z.")
+    else:
+        gewaehlt, notiz = zeilen, (f"{marke} → Neuversuch verworfen "
+                                   f"({len(neu_text)} Z. waren nicht besser)")
+    # Auch der gewaehlte Lauf kann noch eine Schleife enthalten — dann ist die
+    # Seite nicht zu retten, aber sie muss wenigstens lesbar bleiben.
+    if schleifenlaenge("\n".join(e[0] for e in gewaehlt)) >= SCHLEIFE_AB:
+        vorher = len(gewaehlt)
+        gewaehlt = schleife_kuerzen(gewaehlt)
+        notiz += f"; Wiederholung gekuerzt ({vorher} → {len(gewaehlt)} Zeilen)"
+    return gewaehlt, spur + [f"{png.stem}: {notiz}"]
 
 
 def main():
@@ -1550,6 +2049,10 @@ def main():
                     help="Fetterkennung ueber Tintendichte abschalten")
     ap.add_argument("--nur-ocr", action="store_true",
                     help="Textlayer ignorieren, alles durchs Modell (Vergleich)")
+    ap.add_argument("--neuversuche", type=int, default=1,
+                    help="Wie oft eine entgleiste Kachel feiner geschnitten "
+                         "neu gerechnet wird (0 schaltet die Reparatur ab, "
+                         "die Erkennung bleibt und wird protokolliert)")
     ap.add_argument("--zeilen-dump", type=Path, default=None,
                     help="Zeilen mit Boxen je Seite als JSON ablegen. Nur damit "
                          "laesst sich die Absatzlogik auf Scanseiten aendern, "
@@ -1600,14 +2103,16 @@ def main():
         config = load_config(MODEL)
         formatted = apply_chat_template(processor, config, PROMPT, num_images=1)
 
-        def ocr(img):
+        def ocr(img, max_tokens=TOKEN_MAX):
             res = generate(model, processor, formatted, image=[str(img)],
-                           max_tokens=8192, temperature=0.0, verbose=False)
+                           max_tokens=max_tokens, temperature=0.0,
+                           verbose=False)
             return res if isinstance(res, str) else getattr(res, "text", str(res))
 
-    md, t_ges, n_diag = [], time.perf_counter(), 0
+    md, t_ges, n_diag, n_entgleist = [], time.perf_counter(), 0, 0
 
-    def ablegen(nr, absaetze, diagramm, dt, chars, quelle, weg, marker_zusatz):
+    def ablegen(nr, absaetze, diagramm, dt, chars, quelle, weg, spur=(),
+                marker_zusatz=None):
         nonlocal n_diag
         # %% %% ist Obsidians eigene Kommentarsyntax und bleibt auch in der
         # Live-Vorschau unsichtbar; <!-- --> wird dort angezeigt.
@@ -1638,6 +2143,8 @@ def main():
             print(f"     verworfen ({len(weg)}): "
                   + " ¦ ".join(w[:34] for w in weg[:6])
                   + (" …" if len(weg) > 6 else ""))
+        for zeile in spur:
+            print(f"     ⚠ {zeile}")
 
     dump = []
 
@@ -1674,30 +2181,44 @@ def main():
         elif chars >= a.kachel_ab:
             modus = "waagerecht"
             # Waagerechter Schnitt verschiebt y — Kastenzuordnung waere falsch.
-            teile = [(p, None) for p in kacheln_waagerecht(png)]
+            teile = [(p, None) for p, _, _ in kacheln_waagerecht(png)]
         else:
             modus = "ganz"
             teile = [(png, (0, 1000))]
+
+        # Massstab fuer die Laengenpruefung. Traegt die Seite einen Textlayer
+        # (Vergleichslauf mit --nur-ocr, oder ein Scan mit Rest-Textlayer),
+        # wird der Faktor daraus bestimmt und ist dann exakt fuer diese Seite.
+        # Sonst bleibt das Korpusmittel — grob, aber besser als kein Massstab:
+        # es faengt die groben Faelle, und die sind es, um die es geht.
+        tinte = _tintenmenge(png, a.dpi)
+        geeicht = chars >= 400 and tinte > 0
+        faktor = chars / tinte if geeicht else ZEICHEN_JE_TINTE
 
         # Wichtig: in einer bereits geschnittenen Kachel darf die
         # Spaltentrennung NICHT erneut laufen. Die Kachel ist eine einzelne
         # Spalte; der Algorithmus wuerde dort die Gliederungs-Einrueckung
         # (Marker links, Fliesstext eingerueckt) als zweite Spalte deuten und
         # die Absatz-Schlusszeilen nach vorne ziehen.
-        zeilen = []
+        zeilen, spur = [], []
         for teil, fenster in teile:
-            geparst = parse_zeilen(ocr(teil))
-            if not a.kein_fett:
-                geparst = fett_markieren(geparst, teil)
+            geparst, s = kachel_zeilen(teil, ocr, not a.kein_fett, faktor,
+                                       a.dpi, geeicht,
+                                       max_tiefe=a.neuversuche)
+            spur += s
             if fenster:
                 geparst = kaesten_zuordnen(geparst, kaesten, fenster)
-            zeilen += (spalten_trennen(geparst) if len(teile) == 1
-                       else sorted(geparst, key=lambda z: z[1][1] if z[1] else 0))
+            geordnet = (spalten_trennen(geparst) if len(teile) == 1
+                        else sorted(geparst,
+                                    key=lambda z: z[1][1] if z[1] else 0))
+            zeilen += ueberlappung_kuerzen(zeilen, geordnet)
+        if spur:
+            n_entgleist += 1
         dump.append({"seite": nr, "quelle": f"{art}, {modus}", "zeilen": zeilen})
         absaetze = zusammenfuegen(zeilen)
         ablegen(nr, absaetze, diagramm, time.perf_counter() - t, chars,
                 f"{art}, {modus}", getattr(zusammenfuegen, "verworfen", []),
-                f"ocr | {art}, {modus}")
+                spur, f"ocr | {art}, {modus}")
 
     ges = time.perf_counter() - t_ges
     # Welche Seiten exakt sind und welche erkannt, muss in der Datei stehen:
@@ -1706,6 +2227,9 @@ def main():
             f"seiten: {len(seiten)}\n"
             f"seiten-textlayer: {len(seiten) - n_ocr}\nseiten-ocr: {n_ocr}\n"
             + (f"seiten-diagramm: {n_diag}\n" if n_diag else "")
+            # Auffaellig gewordene Seiten benennen, nicht verschweigen: auf
+            # ihnen ist die Ausgabe auch nach dem Neuversuch unsicher.
+            + (f"seiten-entgleist: {n_entgleist}\n" if n_entgleist else "")
             + (f"ocr-modell: {MODEL}\n" if n_ocr else "")
             + f"ocr-datum: {date.today().isoformat()}\n---\n")
     # Anklickbarer Rueckgriff aufs Original. Bei OCR-Seiten ist er Pflicht, nicht

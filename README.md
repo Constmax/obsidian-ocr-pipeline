@@ -60,6 +60,11 @@ Markdown zusammen. Seiten mit brauchbarem Textlayer werden verlustfrei
 übernommen statt neu gelesen; Diagrammseiten kommen als Bild plus Text in einem
 eingeklappten Callout.
 
+Entgleist die Generierung — eine Wortfolge wiederholt sich, ein Zähler läuft
+davon, die Ausgabe bricht ab —, wird das erkannt, die Kachel feiner geschnitten
+neu gerechnet und die bessere Fassung genommen. Was sich nicht reparieren lässt,
+steht im Lauf-Protokoll; still verworfen wird nichts.
+
 Ergebnis der Engine-Auswahl, gemessen auf 6 repräsentativen Seiten:
 
 | | PaddlePaddle CPU | MLX ohne Kachelung | **MLX + Kachelung** |
@@ -68,7 +73,15 @@ Ergebnis der Engine-Auswahl, gemessen auf 6 repräsentativen Seiten:
 | Peak-RSS | 5.679 MB | 1.138 MB | **1.138 MB** |
 | Hochrechnung 2.922 Seiten | ~312 Tage | unbrauchbar | **~30 h** |
 
-Vollständig mit Fehlerklassen: [bench/ERGEBNIS.md](bench/ERGEBNIS.md).
+Genauigkeit, gemessen auf 40 Seiten quer durch den Bestand gegen den Textlayer
+derselben Seiten (`bench/bench_ocr.py`):
+
+| | Wortgenauigkeit | Zitattreue | Reihenfolge |
+|---|---|---|---|
+| alle 40 Seiten | **98,5 %** | **92,4 %** | **93,7 %** |
+
+Vollständig mit Fehlerklassen und Vorher-Zahlen:
+[bench/ERGEBNIS.md](bench/ERGEBNIS.md).
 
 **Wichtig:** OCR-Wortfehler (`Verhaltungsakte`, `Rechtsbehelsfebehrung`) sind
 nicht mechanisch korrigierbar. Die Original-PDFs bleiben die Quelle; jede
@@ -159,11 +172,17 @@ eigenen Bestand reproduzierbar. Siehe [bench/BENCHMARK-SET.md](bench/BENCHMARK-S
 ## Stand
 
 Stufe 1 läuft produktiv über ~1.500 Scanseiten. Stufe 2 ist entschieden und
-implementiert; die Markdown-Zusammenbau-Schicht ist die jüngste und
-unfertigste Komponente. Gemessen: 98,5 % Wortgenauigkeit auf gesunden Seiten,
-aber **15 % der Seiten entgleisen** (Wiederholungsschleife oder Abbruch) und
-drücken die Gesamtzahl auf 93,3 %. Das Abfangen dieser Fälle ist der nächste
-Schritt.
+implementiert; die Markdown-Zusammenbau-Schicht ist die jüngste Komponente.
+
+Die Entgleisungen, die zuletzt 15 % der Seiten trafen und die Gesamtzahl auf
+93,3 % drückten, sind abgefangen: **98,5 % über alle 40 Benchmarkseiten**, keine
+Seite unter dem Stand davor. Was bleibt, ist gewöhnliche OCR-Ungenauigkeit —
+und eine mehrspaltige Seite, deren Lesereihenfolge noch nicht sitzt.
+
+Nicht umgesetzt: der Bild-Fallback für Diagrammseiten. Die Erkennung
+(`ist_diagramm`) ist auf handgeprüften Seiten kalibriert, und ein Eingriff ohne
+eigene Messreihe würde nur gewonnene Diagrammseiten gegen verlorene Textseiten
+tauschen. Der Ausweg bleibt `--diagramm-seiten <nr>`.
 
 Offene Fehler, was noch nicht gebaut ist und die Reihenfolge:
 [docs/plugin-roadmap.md](docs/plugin-roadmap.md).
