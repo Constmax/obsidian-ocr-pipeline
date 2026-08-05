@@ -13,6 +13,33 @@ Dieser Ordner folgt **nicht** den Wiki-Konventionen aus `AGENTS.md`:
 Wer daraus Wiki-Seiten machen will, nimmt `/jura-ingest` — nicht diese Dateien
 verschieben.
 
+## Marker-Grammatik (Vertrag)
+
+`pdf2md.py` trennt Seiten durch eine Kommentarzeile, die Obsidian ohnehin
+versteht:
+
+```
+%% S. {nr} | {herkunft} | {layout} %%
+```
+
+| Teil | Bedeutung | erlaubte Werte |
+|---|---|---|
+| `nr` | Seitennummer im PDF, 1-basiert | Zahl |
+| `herkunft` | Woher der Text stammt | `textlayer` \| `ocr` \| `diagramm` |
+| `layout` | nur bei OCR-Seiten, optional | z.B. `zweispaltig, senkrecht @48%`, `waagerecht`, `ganz` |
+
+Regeln für alle, die diese Dateien erzeugen **oder lesen**:
+
+1. `diagramm` sticht: eine Seite, deren Text als Bild eingebettet wird, ist
+   keine Textseite — egal ob der Textlayer sie hätte liefern können.
+2. Die alte Form `%% S. n %%` ohne Zusatz bleibt gültig und wird von der
+   Review-Ansicht weiterhin gelesen — dort fehlt dann nur das Herkunfts-Badge.
+3. Leser raten **nie**: unbekannte oder kaputte Zusätze werden als Layout
+   durchgereicht, nicht als Herkunft interpretiert.
+4. Ein `%% S. n %%` innerhalb eines Codeblocks ist **keine** Seitengrenze.
+5. Andere Konsumenten als die Review-Ansicht gibt es nicht: weder
+   `lint_wiki.py` noch `semantic_search.py` fassen diesen Ordner an.
+
 ## Was im Frontmatter steht
 
 | Feld | Bedeutung |
