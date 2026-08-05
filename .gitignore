@@ -14,6 +14,15 @@ bench/out-*/
 bench/pages.json
 *.log
 
+# Arbeitsverzeichnisse der Mess- und Diagnoseskripte. Enthalten Seitenbilder
+# und Modellausgaben aus demselben geschützten Kursmaterial; erzeugt von
+# bench_ocr.py, bench_defekt.py, nachspiel.py und den *_debug.py-Skripten.
+bench/bench-lauf/
+bench/defekt-lauf/
+bench/nachspiel-lauf/
+bench/kachel-debug/
+bench/randlabel-debug/
+
 # Pipeline-Temporärdateien
 _tmp_ocr/
 map_page*.json

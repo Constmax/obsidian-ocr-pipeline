@@ -90,30 +90,32 @@ entscheidet über die wahrgenommene Qualität, nicht die OCR-Engine.
 
 | | Was | Gewicht |
 |---|---|---|
-| 1 | **Entgleiste Seiten** — 15 % laufen in Schleifen oder brechen ab; erkannt, aber noch nicht abgefangen | hoch, misst der Benchmark |
-| 2 | **Lesereihenfolge** bricht noch auf einzelnen Seiten (`Klausur_2137` S. 7: 47,5 %) | mittel |
+| ~~1~~ | ~~**Entgleiste Seiten** — 15 % laufen in Schleifen oder brechen ab~~ | **erledigt**, 6 von 6 abgefangen |
+| ~~2~~ | ~~**Lesereihenfolge** `Klausur_2137` S. 7 (47,5 %)~~ | **erledigt**, Seite jetzt 96,1 % |
 | 3 | **Diagrammseite ohne Bild** — `Strafrecht AT VI` S. 8, kein Rückfall auf das Seitenbild | mittel, Behelf `--diagramm-seiten 8` |
 | 4 | **Ein Zweispalter zu wenig** — `Verwaltungsrecht AT Fall 8` S. 10, flacher Steg | bewusst gewählt (1 von 14) |
 | 5 | **Verschränkte Fußnotenblöcke** in 2131/2135/2143 | klein, dort auch der Restverlust von 1–2 Zeichen |
 | 6 | **Fußnotentext über den Seitenumbruch** wird abgeschnitten | klein |
-| 7 | **`**Beispiel:**` mitten im Satz**, `**A.**` ohne Titel (80 Fälle) | kosmetisch |
-| 8 | **Wortfehler** — jetzt beziffert: 1,5 % auf gesunden Seiten | gering |
+| ~~7~~ | ~~**`**Beispiel:**` mitten im Satz**~~ | **erledigt**, beide Bauformen |
+| 8 | **Wortfehler** — jetzt beziffert: 1,2 % über alle 40 Seiten | gering |
+| 9 | **Mehrspaltige Lesereihenfolge** — `2131_Lösung` S. 4 liegt bei 49,7 % | neu, jetzt der größte Einzelposten |
+
+Zu Punkt 7: die Randmarke hatte **zwei** Bauformen, und nur eine war bekannt.
+Ausgerückt in den linken Rand (Hemmer-Skripte) → `randlabel_vorziehen()` holt
+sie an den Blockanfang. Als Vorspann derselben Zeile → sie galt als Überschrift
+und riss den Satz ab; `ist_ueberschrift()` nimmt sie jetzt aus. Der
+`**A.**`-Teil desselben Punktes war kein Fehler: die Marker tragen ihren Titel
+hinter sich, das ist korrektes Markdown.
 
 Dazu ungeprüft: **~140 Scanseiten mit unter 50 Zeichen im alten Textlayer**.
 Unklar, ob dort Inhalt fehlt oder die Seiten leer sind.
 
 ## Noch nicht gebaut
 
-**Entgleisungserkennung.** Länge der Ausgabe gegen die Zeichenzahl des
-Textlayers, plus Zählung wiederholter n-Gramme; bei Verdacht die Seite mit
-anderer Kachelung neu rechnen. Beide Signale trennen die sechs Fälle im
-Benchmark sauber. Das ist der klare nächste Schritt — lokal, billig, und der
-Benchmark zeigt sofort, ob es wirkt.
-
-**Der LLM-Reparaturlauf** liegt auf Eis. Bei 98,5 % Wortgenauigkeit auf den
-funktionierenden Seiten steht der Ertrag nicht mehr gegen das Risiko, ein
-korrektes Normzitat zu „verbessern". Falls er doch kommt: der Benchmark misst
-ihn jetzt, und die Messlatte heißt 93,3 % Zitattreue — er darf sie nicht senken.
+**Der LLM-Reparaturlauf** liegt auf Eis. Bei 98,5 % Wortgenauigkeit über alle
+Seiten steht der Ertrag nicht mehr gegen das Risiko, ein korrektes Normzitat zu
+„verbessern". Falls er doch kommt: der Benchmark misst ihn jetzt, und die
+Messlatte heißt **92,4 % Zitattreue** — er darf sie nicht senken.
 
 **Der lokale Wörterbuchabgleich** (hunspell + juristische Begriffsliste) — aus
 demselben Grund entwertet, aber als Prüfhilfe weiter brauchbar.
@@ -158,19 +160,22 @@ Nicht brechend — die alte Form `%% S. n %%` wird weiterhin gelesen.
 
 ## Reihenfolge
 
-1. **Entgleisungserkennung** — hebt die Gesamtzahlen von 93,3 % auf ~98,5 %.
-2. **Offener Fehler 3 und 7** — Diagramm-Rückfall aufs Seitenbild und die
-   Fettungs-Artefakte. Beide klein.
-3. **Scripts plugin-fähig machen** — Fortschritt, Exit-Codes, `--check`.
-4. **Zusammenbau-Schicht härten** — an einem Korpus von 20 Seiten mit
+1. ~~**Entgleisungserkennung**~~ — erledigt, 93,3 % → 98,5 %.
+2. **Offener Fehler 9** — mehrspaltige Lesereihenfolge (`2131_Lösung` S. 4).
+   Der größte verbliebene Einzelposten, und der Steg-Code ist frisch angefasst.
+3. **Offener Fehler 3** — Diagramm-Rückfall aufs Seitenbild. Braucht zuerst eine
+   Stichprobe handmarkierter Diagrammseiten; ohne die verschiebt jede Änderung
+   an `ist_diagramm()` nur Wahrscheinlichkeiten.
+4. **Scripts plugin-fähig machen** — Fortschritt, Exit-Codes, `--check`.
+5. **Zusammenbau-Schicht härten** — an einem Korpus von 20 Seiten mit
    handgeprüfter Referenz, nicht nach Gefühl. Das Harness dafür steht in `bench/`.
-5. **Plugin-Skelett** — TypeScript, esbuild, Kontextmenü, `spawn`,
+6. **Plugin-Skelett** — TypeScript, esbuild, Kontextmenü, `spawn`,
    Fortschrittsmodal. `~/Developer/ask-my-notes` ist die vorhandene Vorlage.
    *Die Abgleich-Ansicht (v0.1) ist bereits gebaut — siehe den Abschnitt
    „Vorgezogen" oben; sie ersetzt diesen Schritt nicht, sie enthält nur
    keinen seiner Teile.*
-6. **Settings-Tab** mit Preflight-Anzeige.
-7. Erst dann über Sidecar (Weg B) und Mobile nachdenken.
+7. **Settings-Tab** mit Preflight-Anzeige.
+8. Erst dann über Sidecar (Weg B) und Mobile nachdenken.
 
 ## Nicht-Ziele
 
