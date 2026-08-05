@@ -43,6 +43,10 @@ export default defineConfig([
 			// node:test() liefert ein Promise, das auf Top-Level nicht
 			// abgewartet werden muss — die Registrierung ist der Effekt.
 			"@typescript-eslint/no-floating-promises": "off",
+			// sync.test.ts baut `window` als Laufzeit-Shim nach — node kennt
+			// das Global nicht, genau darum sind die Fensterregeln hier falsch.
+			"obsidianmd/no-global-this": "off",
+			"obsidianmd/prefer-window-timers": "off",
 		},
 	},
 ]);

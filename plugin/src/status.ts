@@ -132,6 +132,21 @@ function neuerEintrag(
 	};
 }
 
+/** `ocr-datum` der ALTEN Fassung bei einer Ersetzung (Regel 6): erst das
+ *  Frontmatter der Datei selbst — deren Wahrheit —, dann die Erinnerung an
+ *  den Zustand vor der Neukonvertierung. Der Eintrag einer Neukonvertierung
+ *  traegt inzwischen das NEUE Datum; das waere der falsche Dateiname. */
+export function altesDatumAus(
+	eintrag: StatusEintrag | undefined,
+	frontmatter: Record<string, unknown>,
+): string {
+	return (
+		textAusFrontmatter(frontmatter, "ocr-datum") ??
+		eintrag?.vorher?.["ocr-datum"] ??
+		"alt"
+	);
+}
+
 export interface AbgleichErgebnis {
 	manifest: StatusManifest;
 	/** Namen, deren Status aus der Ordnerlage korrigiert wurde (Regel 2). */

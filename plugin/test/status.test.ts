@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
 	abgleichen,
+	altesDatumAus,
 	entscheidungEintragen,
 	leeresManifest,
 	manifestLesen,
@@ -317,4 +318,32 @@ test("zielordner bildet alle drei Lagen ab", () => {
 	assert.equal(zielordner("offen", ORDNER), "_ocr-vorschau");
 	assert.equal(zielordner("akzeptiert", ORDNER), "_ocr-vorschau/_akzeptiert");
 	assert.equal(zielordner("abgelehnt", ORDNER), "_ocr-vorschau/_abgelehnt");
+});
+
+test("altesDatumAus: Frontmatter der alten Datei schlaegt die Erinnerung", () => {
+	const eintrag = mitEintrag("Fall 8.md", {
+		"ocr-datum": "2026-07-30",
+		vorher: {
+			status: "akzeptiert",
+			entschieden: JETZT,
+			"ocr-datum": "2026-06-01",
+		},
+	}).eintraege["Fall 8.md"];
+	assert.equal(altesDatumAus(eintrag, { "ocr-datum": "2026-06-15" }), "2026-06-15");
+});
+
+test("altesDatumAus: der Eintrag einer Neukonvertierung traegt das NEUE Datum — genutzt wird die Erinnerung", () => {
+	const eintrag = mitEintrag("Fall 8.md", {
+		"ocr-datum": "2026-07-30",
+		vorher: {
+			status: "akzeptiert",
+			entschieden: JETZT,
+			"ocr-datum": "2026-06-01",
+		},
+	}).eintraege["Fall 8.md"];
+	assert.equal(altesDatumAus(eintrag, {}), "2026-06-01");
+});
+
+test("altesDatumAus: ohne Anhaltspunkt bleibt 'alt'", () => {
+	assert.equal(altesDatumAus(undefined, {}), "alt");
 });
