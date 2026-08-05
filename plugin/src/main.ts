@@ -3,6 +3,7 @@
 
 import { homedir } from "os";
 import { join } from "path";
+import { existsSync } from "fs";
 import {
 	FileSystemAdapter,
 	Menu,
@@ -196,6 +197,12 @@ export default class OcrVorschauPlugin extends Plugin {
 			const basis = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
 			const pdfAbs = join(basis, datei.path);
 			const outAbs = join(basis, normalizePath(this.einstellungen.vorschauOrdner));
+			if (!existsSync(PDF2MD_PFAD)) {
+				new Notice(
+					`OCR-Vorschau: pdf2md nicht gefunden unter ${PDF2MD_PFAD}. Bitte setup.sh ausführen.`,
+				);
+				return;
+			}
 			new Notice(`OCR-Vorschau: Konvertiere „${name}“ …`);
 			const ergebnis = await pdfKonvertieren(pdfAbs, outAbs, PDF2MD_PFAD);
 			if (ergebnis.code !== 0) {
