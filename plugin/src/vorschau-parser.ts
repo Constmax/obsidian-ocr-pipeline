@@ -1,10 +1,11 @@
 // Zerlegt eine von pdf2md.py erzeugte .md in Seitenbloecke.
 //
 // Warum ueberhaupt zerlegen: `%%…%%` ist Obsidians Kommentarsyntax und in der
-// Leseansicht unsichtbar (pdf2md.py:1612-1613 hat sie genau deshalb gewaehlt).
-// Im gerenderten Markdown gibt es am Marker also KEINEN DOM-Knoten, an dem sich
-// die Scroll-Kopplung verankern liesse. Loesung: am Marker trennen und jeden
-// Block in einen eigenen Container rendern — der Container ist der Anker.
+// Leseansicht unsichtbar (pdf2md.py, main() — Seitenmarker — hat sie genau
+// deshalb gewaehlt). Im gerenderten Markdown gibt es am Marker also KEINEN
+// DOM-Knoten, an dem sich die Scroll-Kopplung verankern liesse. Loesung: am
+// Marker trennen und jeden Block in einen eigenen Container rendern — der
+// Container ist der Anker.
 //
 // Nebenwirkung, positiv: pdf2md.py haengt Fussnotendefinitionen pro Seite an.
 // Blockweises Rendern behebt damit die Kollision gleichlautender
@@ -23,17 +24,18 @@ const MARKER = /^%%\s*S\.\s*(\d+)\s*(?:\|(.*?))?\s*%%\s*$/;
 /** Zeile, die einen Codeblock oeffnet oder schliesst (``` oder ~~~). */
 const ZAUN = /^\s{0,3}(`{3,}|~{3,})/;
 
-/** `Quelle: [[raw/ZR/skript.pdf]]` — pdf2md.py:1705. */
+/** `Quelle: [[raw/ZR/skript.pdf]]` — pdf2md.py, main() — Quelle-Zeile. */
 const QUELLE_LINK = /^Quelle:\s*\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*$/;
 
 const HERKUENFTE: readonly string[] = ["textlayer", "ocr", "diagramm"];
 
 /** Flaches `key: value` aus dem YAML-Frontmatter.
  *
- *  Bewusst kein YAML-Parser: pdf2md.py:1696-1701 schreibt ausschliesslich
- *  flache Skalare. Im Plugin ist ohnehin `metadataCache.getFileCache()` die
- *  bessere Quelle; diese Funktion dient dem Testbarkeit-Fall und als Rueckfall,
- *  wenn der Cache eine Datei noch nicht erfasst hat. */
+ *  Bewusst kein YAML-Parser: pdf2md.py, main() — Frontmatter — schreibt
+ *  ausschliesslich flache Skalare. Im Plugin ist ohnehin
+ *  `metadataCache.getFileCache()` die bessere Quelle; diese Funktion dient dem
+ *  Testbarkeit-Fall und als Rueckfall, wenn der Cache eine Datei noch nicht
+ *  erfasst hat. */
 function frontmatterLesen(zeilen: string[]): {
 	daten: Record<string, string>;
 	rest: number;
@@ -48,9 +50,10 @@ function frontmatterLesen(zeilen: string[]): {
 		if (doppelpunkt <= 0) continue;
 		const schluessel = zeile.slice(0, doppelpunkt).trim();
 		let wert = zeile.slice(doppelpunkt + 1).trim();
-		// pdf2md.py:1696 schreibt `quelle-pdf` unquotiert. Enthaelt der Pfad
-		// Anfuehrungszeichen, sind sie hier zu entfernen; ein Pfad mit ':'
-		// bricht das Frontmatter ohnehin — dafuer gibt es den Quelle-Link.
+		// pdf2md.py, main() — Frontmatter — schreibt `quelle-pdf` unquotiert.
+		// Enthaelt der Pfad Anfuehrungszeichen, sind sie hier zu entfernen; ein
+		// Pfad mit ':' bricht das Frontmatter ohnehin — dafuer gibt es den
+		// Quelle-Link.
 		if (
 			(wert.startsWith('"') && wert.endsWith('"') && wert.length > 1) ||
 			(wert.startsWith("'") && wert.endsWith("'") && wert.length > 1)
