@@ -177,7 +177,8 @@ Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
 
 ```
 bin/         Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
-pdf2md/      Stufe 2 — pdf2md.py, setup.sh
+pdf2md/      Stufe 2 — pdf2md.py (CLI) + layout.py + ocr.py + zusammenbau.py,
+             Testsuite in pdf2md/test/ (pytest, ohne MLX lauffaehig)
 bench/       Benchmark-Harness und Messergebnisse
 plugin/      Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
 docs/        Installation, Flag-Referenz, Bugreport, Vault-Integration

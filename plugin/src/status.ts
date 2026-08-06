@@ -190,9 +190,9 @@ export function abgleichen(
 	const eintraege: Record<string, StatusEintrag> = {};
 
 	for (const [name, gefunden] of nachName) {
-		// Die Datei im offenen Ordner ist immer die frischeste: pdf2md.py:1706
-		// schreibt ausschliesslich nach <out>/<stem>.md und kennt die
-		// Unterordner nicht.
+		// Die Datei im offenen Ordner ist immer die frischeste: pdf2md.py,
+		// main() — Ausgabedatei — schreibt ausschliesslich nach
+		// <out>/<stem>.md und kennt die Unterordner nicht.
 		const offene = gefunden.find((d) => d.lage === "offen");
 		const entschiedene = gefunden.find((d) => d.lage !== "offen");
 		const massgeblich = offene ?? entschiedene;

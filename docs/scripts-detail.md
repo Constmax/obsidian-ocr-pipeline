@@ -242,3 +242,27 @@ Mit MediaBox-Fix (automatisch) sind selbst große Scans RAM-sicher:
 **`detect_safe_jobs()`** erkennt die RAM-Größe automatisch und setzt `--jobs` auf 1 für 8-GB-Macs. Kann mit `--jobs N` überschrieben werden.
 
 `ocrmypdf --max-image-mpixels` wird in `build_ocr_args` auf 400 MP gesetzt (genug für Edge-Cases ohne MediaBox-Fix) — als Aufruf-Flag, nicht als Umgebungsvariable, da ocrmypdf `PILLOW_MAX_IMAGE_PIXELS` nicht auswertet.
+
+## Stufe 2: Modulaufteilung (`pdf2md/`, Issue #8)
+
+`pdf2md.py` ist seit dem Split nur noch CLI und Seitenlauf; die übrigen
+Schichten liegen in drei Modulen, die Importrichtung läuft strikt einseitig:
+
+```
+pdf2md.py (CLI/Orchestrierung)
+   ├── layout.py       Geometrie: Spalten, Kästen, Tabellen, Diagramme
+   ├── ocr.py          Kachelung, Modellaufruf, Entgleisung/Reparatur
+   └── zusammenbau.py  Markdown-Zusammenbau (reine Funktionen) — testbar
+```
+
+Der Zusammenbau ist die testbare Schicht: `python3 -m pytest pdf2md/test -q`
+läuft ohne MLX, ohne fitz und ohne Vault-Bestand (Golden-Snapshot in
+`pdf2md/test/daten/snapshot.json`; `pytest` steht in
+`pdf2md/requirements.txt`). Die schweren Importe (fitz, numpy, PIL, mlx_vlm)
+liegen in allen Modulen funktionslokal — nur so bleibt der Modulimport
+abhängigkeitsfrei.
+
+**Vault-Kopie**: `.ocr-bench/` im Vault ist flach (siehe `bench/pfade.py`,
+Zwei-Orte-Konvention) und braucht nach dem Split **vier** Dateien:
+`pdf2md.py`, `layout.py`, `ocr.py`, `zusammenbau.py`. Fehlt eine, schlägt der
+nächste Lauf mit `ModuleNotFoundError` fehl.
