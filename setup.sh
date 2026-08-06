@@ -10,6 +10,11 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VAULT_ROOT="${VAULT_ROOT:-$(dirname "$REPO")}"
+# venv-Konvention: alle Pipeline-venvs liegen unter $VENV_ROOT (Default
+# ~/.venvs). Das ist die eine benannte Stelle — bin/pdf2md, bin/pdf-lib.sh
+# und bin/reprocess-raw.sh leiten ihre Kandidaten-Pfade daraus ab.
+# Überschreibbar: VENV_ROOT=<pfad> ./setup.sh
+VENV_ROOT="${VENV_ROOT:-$HOME/.venvs}"
 export PATH="$HOME/bin:$PATH"
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -83,16 +88,16 @@ mkvenv() { # $1 = venv-Pfad, $2 = Python-Interpreter
     [ -d "$1" ] || uv venv --seed --python "$2" "$1"
 }
 
-mkvenv "$HOME/.venvs/ocrmypdf" "$PY312"
+mkvenv "$VENV_ROOT/ocrmypdf" "$PY312"
 # ocrmypdf bewusst auf 17.8.0 gepinnt: die bin/-Skripte nutzen die 17.8-CLI
 # (--engine auto|apple|tesseract). Neuere Versionen (>=17.10) heißen das
 # Flag --ocr-engine und registrieren appleocr selbst als Plugin (entry point).
 # ocrmypdf-appleocr 0.3.4: ab 0.4.0 registriert sich das Paket per entry
 # point selbst und kollidiert mit dem --plugin-Check in install.sh.
 # Upgrade-Pfad: Skripte auf die neue CLI umstellen, dann Pin lösen.
-"$HOME/.venvs/ocrmypdf/bin/pip" install -q -U pip "ocrmypdf==17.8.0" "ocrmypdf-appleocr==0.3.4"
+"$VENV_ROOT/ocrmypdf/bin/pip" install -q -U pip "ocrmypdf==17.8.0" "ocrmypdf-appleocr==0.3.4"
 mkdir -p "$HOME/bin"
-ln -sfn "$HOME/.venvs/ocrmypdf/bin/ocrmypdf" "$HOME/bin/ocrmypdf"
+ln -sfn "$VENV_ROOT/ocrmypdf/bin/ocrmypdf" "$HOME/bin/ocrmypdf"
 ok "ocrmypdf + Apple-Vision-Plugin"
 
 # ─────────────────────────────────────────────── ④ PATH (~/bin)
@@ -126,11 +131,11 @@ bash "$REPO/install.sh"
 # ─────────────────────────────── ⑥ Stufe-2-venv + pdf2md-Wrapper
 say "Stufe 2 — MLX-venv (Status offen, wird bestmöglich versucht)"
 MLX_OK=0
-if mkvenv "$HOME/.venvs/mlxocr" "$PY312"; then
-    if "$HOME/.venvs/mlxocr/bin/pip" install -q -U pip mlx-vlm pymupdf; then
+if mkvenv "$VENV_ROOT/mlxocr" "$PY312"; then
+    if "$VENV_ROOT/mlxocr/bin/pip" install -q -U pip -r "$REPO/pdf2md/requirements.txt"; then
         ln -sfn "$REPO/bin/pdf2md" "$HOME/bin/pdf2md"
         MLX_OK=1
-        ok "mlx-vlm in ~/.venvs/mlxocr"
+        ok "mlx-vlm in $VENV_ROOT/mlxocr"
     else
         warn "mlx-vlm-Installation fehlgeschlagen — Stufe 2 ohne Modell, Stufe 1 + Plugin funktionieren"
     fi
@@ -201,7 +206,7 @@ else
     echo "   FEHLT   Tesseract 'deu'"
     FAIL=1
 fi
-if [ "$MLX_OK" = 1 ] && "$HOME/.venvs/mlxocr/bin/python" -c "import mlx_vlm" 2>/dev/null; then
+if [ "$MLX_OK" = 1 ] && "$VENV_ROOT/mlxocr/bin/python" -c "import mlx_vlm" 2>/dev/null; then
     ok "mlx-vlm importierbar"
 else
     warn "mlx-vlm nicht importierbar (Stufe 2 offen)"
