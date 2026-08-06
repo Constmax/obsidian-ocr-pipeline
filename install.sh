@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Verlinkt die Stufe-1-CLIs nach ~/bin und prüft die Abhängigkeiten.
+# Baustein von setup.sh: verlinkt die Stufe-1-CLIs nach ~/bin und prüft die
+# Abhängigkeiten. Installiert nichts selbst — für die Einrichtung ./setup.sh
+# im Repo-Root verwenden.
 # Idempotent — mehrfaches Ausführen ist unschädlich.
 
 set -euo pipefail
@@ -47,7 +49,7 @@ echo "== Engines"
 if ocrmypdf --plugin ocrmypdf_appleocr --help >/dev/null 2>&1; then
     echo "   ok      Apple Vision Plugin"
 else
-    echo "   fehlt   Apple Vision Plugin (~/.venvs/ocrmypdf/bin/pip install ocrmypdf-appleocr)"
+    echo "   fehlt   Apple Vision Plugin (\${VENV_ROOT:-~/.venvs}/ocrmypdf/bin/pip install ocrmypdf-appleocr)"
 fi
 if tesseract --list-langs 2>/dev/null | grep -qx deu; then
     echo "   ok      Tesseract Sprachpaket 'deu'"
@@ -57,7 +59,7 @@ fi
 
 echo
 echo "== Python (für column_tools.py / --split-columns)"
-for candidate in "$HOME/.venvs/ocrmypdf/bin/python3" python3; do
+for candidate in "${VENV_ROOT:-$HOME/.venvs}/ocrmypdf/bin/python3" python3; do
     if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import pikepdf" 2>/dev/null; then
         echo "   ok      pikepdf in $candidate"
         PIKEPDF_OK=1
@@ -69,7 +71,7 @@ done
 if [ ${#MISSING[@]} -gt 0 ]; then
     echo
     echo "Fehlende Kernwerkzeuge: ${MISSING[*]}"
-    echo "  brew install ocrmypdf img2pdf qpdf tesseract-lang ghostscript poppler"
+    echo "  einmal ./setup.sh im Repo-Root ausführen (brew-Pakete + ocrmypdf-venv)"
     exit 1
 fi
 
@@ -80,4 +82,4 @@ case ":$PATH:" in
 esac
 
 echo
-echo "Fertig. Stufe 2 (PDF → Markdown) separat einrichten: pdf2md/setup.sh"
+echo "Fertig. Stufe 2 (PDF → Markdown) und das Plugin richten sich über ./setup.sh im Repo-Root ein."
