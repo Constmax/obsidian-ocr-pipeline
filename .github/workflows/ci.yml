@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  plugin:
+    name: Plugin (check, lint, test, main.js-vergleich)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - name: Abhaengigkeiten (reproduzierbar aus package-lock.json)
+        run: npm ci
+      - name: Typecheck
+        run: npm run check
+      - name: Lint
+        run: npm run lint
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Eingecheckten Build verifizieren
+        run: |
+          if ! git diff --exit-code -- main.js; then
+            echo "!! main.js weicht von src/ ab: 'npm run build' ausfuehren und main.js mitcommitten."
+            exit 1
+          fi
+          echo "ok  main.js entspricht src/"
+
+  shell:
+    name: Shell (shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck installieren
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Shell-Skripte pruefen
+        run: shellcheck -x -P bin setup.sh install.sh bin/*.sh bin/pdf2md plugin/install-plugin.sh
+
+  python:
+    name: Python (pytest, Golden-Snapshot)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pytest installieren
+        run: pip install pytest
+      - name: Tests (Nahtentdopplung, Randmarken, Schleifen, Golden-Snapshot)
+        run: python -m pytest pdf2md/test -q
