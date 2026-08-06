@@ -56,7 +56,7 @@ say "Stufe 1 — ocrmypdf-venv"
 # Homebrew-Python-Bottles haben auf macOS ein kaputtes pyexpat
 # (Symbol not found: _XML_SetAllocTrackerActivationThreshold).
 uv python install 3.12 >/dev/null 2>&1 || true
-PY312="$(ls "$HOME/.local/share/uv/python"/cpython-3.12*/bin/python3.12 2>/dev/null | head -1)"
+PY312="$(find "$HOME/.local/share/uv/python" -path '*/cpython-3.12*/bin/python3.12' 2>/dev/null | head -1)"
 [ -n "$PY312" ] || PY312="$(uv python find 3.12 | head -1)"
 [ -n "$PY312" ] || { echo "!! kein Python 3.12 gefunden (uv python install 3.12)"; exit 1; }
 if ! "$PY312" -c "import pyexpat" >/dev/null 2>&1; then
@@ -90,7 +90,11 @@ say "PATH (~/bin)"
 if grep -q 'HOME/bin' "$HOME/.zshrc" 2>/dev/null; then
     ok "export PATH=\"\$HOME/bin:\$PATH\" schon in ~/.zshrc"
 else
-    printf '\n# obsidian-ocr-pipeline\nexport PATH="$HOME/bin:$PATH"\n' >> "$HOME/.zshrc"
+    cat >> "$HOME/.zshrc" <<'ZEILEN'
+
+# obsidian-ocr-pipeline
+export PATH="$HOME/bin:$PATH"
+ZEILEN
     echo "   ergänzt in ~/.zshrc (neues Terminal nötig; dieser Lauf nutzt es bereits)"
 fi
 
