@@ -1,5 +1,7 @@
 # obsidian-ocr-pipeline
 
+![CI](https://github.com/Constmax/obsidian-ocr-pipeline/actions/workflows/ci.yml/badge.svg)
+
 OCR-Pipeline für gescannte juristische Skripte, Fälle und Klausuren — von der
 Ordnerfotografie bis zur durchsuchbaren Markdown-Seite im Obsidian-Vault.
 
@@ -188,6 +190,24 @@ skill/       Claude-Code-Skill (SKILL.md) zum Einbinden in einen Vault
 Die Benchmark-**Seitenbilder** liegen bewusst nicht im Repo: sie sind Scans aus
 urheberrechtlich geschütztem Kursmaterial und mit `bench/build_bench.py` aus dem
 eigenen Bestand reproduzierbar. Siehe [bench/BENCHMARK-SET.md](bench/BENCHMARK-SET.md).
+
+## CI
+
+Jeder Push und PR läuft durch drei unabhängige Jobs (`.github/workflows/ci.yml`):
+
+- **plugin** — `npm ci`, tsc, eslint, Tests, Build und der Kern: ein
+  `git diff` gegen das eingecheckte `main.js`. Ein PR, der `src/` ändert ohne
+  neu zu bauen, wird damit rot.
+- **shell** — shellcheck über alle sieben Shell-Skripte (`setup.sh`,
+  `install.sh`, `bin/*.sh`, `bin/pdf2md`, `plugin/install-plugin.sh`).
+- **python** — `pytest pdf2md/test`: Nahtentdopplung, Randmarken,
+  Schleifenerkennung und der Golden-Snapshot aus Issue #8 — ohne Modell, ohne
+  Vault-Bestand.
+
+Lokal genügt für den Plugin-Teil `npm run lint && npm run check && npm test &&
+npm run build`, für die Skripte `shellcheck -x -P bin setup.sh install.sh
+bin/*.sh bin/pdf2md plugin/install-plugin.sh` und für Python
+`python3 -m pytest pdf2md/test`.
 
 ## Stand
 
