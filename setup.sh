@@ -44,6 +44,16 @@ else
     esac
 fi
 command -v brew >/dev/null 2>&1 || { echo "!! brew nicht verfügbar"; exit 1; }
+# Der nicht-interaktive Homebrew-Installer schreibt nicht in ~/.zprofile — das
+# eval oben wirkt nur im laufenden Prozess. Sonst fehlen in neuen Terminals
+# gs, tesseract, qpdf, pdfinfo, und die Verifikation in ⑧ sieht sie nur,
+# weil sie im Prozess mit dem eval-PATH läuft.
+if grep -q 'brew shellenv' "$HOME/.zprofile" 2>/dev/null; then
+    ok "brew shellenv schon in ~/.zprofile"
+else
+    printf '\n# obsidian-ocr-pipeline\neval "$(%s/bin/brew shellenv)"\n' "$(brew --prefix)" >> "$HOME/.zprofile"
+    echo "   brew shellenv ergänzt in ~/.zprofile (neues Terminal nötig)"
+fi
 
 # ─────────────────────────────────────────────── ② brew bundle
 say "Systempakete (brew bundle)"
@@ -55,9 +65,9 @@ say "Stufe 1 — ocrmypdf-venv"
 # Python 3.12 via uv (python-build-standalone): bundelt expat selbst mit.
 # Homebrew-Python-Bottles haben auf macOS ein kaputtes pyexpat
 # (Symbol not found: _XML_SetAllocTrackerActivationThreshold).
-uv python install 3.12 >/dev/null 2>&1 || true
-PY312="$(ls "$HOME/.local/share/uv/python"/cpython-3.12*/bin/python3.12 2>/dev/null | head -1)"
-[ -n "$PY312" ] || PY312="$(uv python find 3.12 | head -1)"
+uv python install 3.12 >/dev/null || true          # stderr sichtbar lassen
+PY312="$(ls "$HOME/.local/share/uv/python"/cpython-3.12*/bin/python3.12 2>/dev/null | head -1 || true)"
+[ -n "$PY312" ] || PY312="$(uv python find 3.12 2>/dev/null | head -1 || true)"
 [ -n "$PY312" ] || { echo "!! kein Python 3.12 gefunden (uv python install 3.12)"; exit 1; }
 if ! "$PY312" -c "import pyexpat" >/dev/null 2>&1; then
     echo "!! Python $PY312 hat ein kaputtes pyexpat (libexpat-Problem auf macOS)."
@@ -159,7 +169,8 @@ fi
 # ─────────────────────────────────────────────── ⑧ Verifikation
 say "Verifikation"
 FAIL=0
-for cmd in pdf-auto pdf-combine pdf-workflow reprocess-raw pdf2md ocrmypdf qpdf gs img2pdf tesseract pdfinfo pdftotext; do
+WARN=0
+for cmd in pdf-auto pdf-combine pdf-workflow reprocess-raw ocrmypdf qpdf gs img2pdf tesseract pdfinfo pdftotext; do
     if command -v "$cmd" >/dev/null 2>&1; then
         ok "$cmd"
     else
@@ -167,10 +178,22 @@ for cmd in pdf-auto pdf-combine pdf-workflow reprocess-raw pdf2md ocrmypdf qpdf 
         FAIL=1
     fi
 done
+if [ "$MLX_OK" = 1 ]; then
+    if command -v pdf2md >/dev/null 2>&1; then
+        ok "pdf2md"
+    else
+        echo "   FEHLT   pdf2md"
+        FAIL=1
+    fi
+else
+    warn "pdf2md fehlt (Stufe 2 offen)"
+    WARN=1
+fi
 if ocrmypdf --plugin ocrmypdf_appleocr --help >/dev/null 2>&1; then
     ok "Apple-Vision-Plugin"
 else
     warn "Apple-Vision-Plugin nicht nutzbar"
+    WARN=1
 fi
 if tesseract --list-langs 2>/dev/null | grep -qx deu; then
     ok "Tesseract-Sprachpaket 'deu'"
@@ -182,12 +205,18 @@ if [ "$MLX_OK" = 1 ] && "$HOME/.venvs/mlxocr/bin/python" -c "import mlx_vlm" 2>/
     ok "mlx-vlm importierbar"
 else
     warn "mlx-vlm nicht importierbar (Stufe 2 offen)"
+    WARN=1
 fi
-if [ -f "$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/main.js" ]; then
-    ok "Plugin in $VAULT_ROOT/.obsidian/plugins/ocr-vorschau/"
+if [ -d "$VAULT_ROOT/.obsidian" ]; then
+    if [ -f "$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/main.js" ]; then
+        ok "Plugin in $VAULT_ROOT/.obsidian/plugins/ocr-vorschau/"
+    else
+        echo "   FEHLT   Plugin-Dateien (Stufe 3)"
+        FAIL=1
+    fi
 else
-    echo "   FEHLT   Plugin-Dateien (Stufe 3)"
-    FAIL=1
+    warn "kein .obsidian/ — Plugin-Schritt übersprungen (Stufe 1+2 sind installiert)"
+    WARN=1
 fi
 
 echo
@@ -195,5 +224,9 @@ if [ "$FAIL" = 1 ]; then
     echo "Fertig — mit Fehlern (siehe oben)."
     exit 1
 fi
-echo "Fertig. Obsidian neu laden (Cmd+R), dann ist alles einsatzbereit."
+if [ "$WARN" = 1 ]; then
+    echo "Fertig — mit offenen Punkten (siehe ⚠)."
+else
+    echo "Fertig. Obsidian neu laden (Cmd+R), dann ist alles einsatzbereit."
+fi
 echo "Hinweis: für neue Shells einmal ein neues Terminal öffnen (PATH-Änderung in ~/.zshrc)."
