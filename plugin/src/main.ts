@@ -21,7 +21,7 @@ import { pdfKonvertieren } from "./konvertierung.ts";
 
 const ABGLEICH_ENTPRELLT_MS = 500;
 
-/** Lokale pdf2md-Installation — setup.sh legt den Symlink nach ~/bin an. */
+/** Lokale pdf2md-Installation — install.sh legt den Symlink nach ~/bin an. */
 const PDF2MD_PFAD = join(homedir(), "bin", "pdf2md");
 
 export default class OcrVorschauPlugin extends Plugin {
@@ -191,20 +191,40 @@ export default class OcrVorschauPlugin extends Plugin {
 	}
 
 	private async konvertieren(datei: TFile): Promise<void> {
+		// Erneute Pruefung hier (nicht nur in pdfAuswaehlenUndKonvertieren):
+		// zwei Befehlsaufrufe koennen je ein Modal oeffnen, bevor der erste
+		// eine Auswahl trifft. Check und Setzen der Flagge muessen darum an
+		// derselben Stelle direkt vor dem eigentlichen Start liegen.
+		if (this.konvertiertGerade) {
+			new Notice("OCR-Vorschau: Es läuft bereits eine Konvertierung.");
+			return;
+		}
 		this.konvertiertGerade = true;
 		const name = datei.basename;
+		let laufendeNotice: Notice | null = null;
 		try {
-			const basis = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
-			const pdfAbs = join(basis, datei.path);
-			const outAbs = join(basis, normalizePath(this.einstellungen.vorschauOrdner));
+			const adapter = this.app.vault.adapter;
+			if (!(adapter instanceof FileSystemAdapter)) {
+				new Notice("OCR-Vorschau: Konvertierung braucht Dateisystemzugriff (Desktop).");
+				return;
+			}
+			const basis = adapter.getBasePath();
 			if (!existsSync(PDF2MD_PFAD)) {
 				new Notice(
-					`OCR-Vorschau: pdf2md nicht gefunden unter ${PDF2MD_PFAD}. Bitte setup.sh ausführen.`,
+					`OCR-Vorschau: pdf2md nicht gefunden unter ${PDF2MD_PFAD}. Bitte install.sh ausführen.`,
 				);
 				return;
 			}
-			new Notice(`OCR-Vorschau: Konvertiere „${name}“ …`);
-			const ergebnis = await pdfKonvertieren(pdfAbs, outAbs, PDF2MD_PFAD);
+			// Vault-relative Pfade, Kindprozess mit cwd=Vault-Wurzel: pdf2md.py
+			// schreibt den PDF-Pfad unveraendert in `quelle-pdf` und den
+			// `Quelle: [[…]]`-Link der erzeugten Notiz. Ein absoluter,
+			// maschinenspezifischer Pfad waere dort ein toter Link.
+			const pdfRel = datei.path;
+			const outRel = normalizePath(this.einstellungen.vorschauOrdner);
+			laufendeNotice = new Notice(`OCR-Vorschau: Konvertiere „${name}“ …`, 0);
+			const ergebnis = await pdfKonvertieren(pdfRel, outRel, PDF2MD_PFAD, basis);
+			laufendeNotice.hide();
+			laufendeNotice = null;
 			if (ergebnis.code !== 0) {
 				const stderrLetzte = ergebnis.stderrLetzte;
 				const stdoutLetzte = ergebnis.stdoutLetzte;
@@ -212,8 +232,9 @@ export default class OcrVorschauPlugin extends Plugin {
 					(stderrLetzte.length > 0 ? stderrLetzte[stderrLetzte.length - 1] : undefined) ??
 					(stdoutLetzte.length > 0 ? stdoutLetzte[stdoutLetzte.length - 1] : undefined) ??
 					"";
+				const codeText = ergebnis.code === null ? "Startfehler" : `Code ${ergebnis.code}`;
 				new Notice(
-					`OCR-Vorschau: Konvertierung fehlgeschlagen (Code ${ergebnis.code ?? "Startfehler"})` +
+					`OCR-Vorschau: Konvertierung fehlgeschlagen (${codeText})` +
 						(detail.length > 0 ? ` — ${detail}` : "") +
 						".",
 				);
@@ -233,6 +254,7 @@ export default class OcrVorschauPlugin extends Plugin {
 				);
 			}
 		} finally {
+			laufendeNotice?.hide();
 			this.konvertiertGerade = false;
 		}
 	}

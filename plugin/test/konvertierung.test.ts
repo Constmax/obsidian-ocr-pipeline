@@ -10,25 +10,29 @@ import {
 
 /** Kindprozess-Attrappe: EventEmitter mit stdout/stderr, wie `spawn` sie liefert. */
 class FakeKind extends EventEmitter {
-	stdout = new EventEmitter();
-	stderr = new EventEmitter();
+	stdout = Object.assign(new EventEmitter(), { setEncoding: () => {} });
+	stderr = Object.assign(new EventEmitter(), { setEncoding: () => {} });
 	kill = () => true;
 }
 
-function spawnAttrappe(aufrufe: Array<{ befehl: string; args: string[] }>, kind: FakeKind): SpawnFunktion {
-	return (befehl: string, args: readonly string[]) => {
-		aufrufe.push({ befehl, args: [...args] });
+function spawnAttrappe(
+	aufrufe: Array<{ befehl: string; args: string[]; optionen: unknown }>,
+	kind: FakeKind,
+): SpawnFunktion {
+	return (befehl: string, args: readonly string[], optionen?: object) => {
+		aufrufe.push({ befehl, args: [...args], optionen });
 		return kind as unknown as ReturnType<SpawnFunktion>;
 	};
 }
 
-test("ruft pdf2md mit --out auf und liefert Exit-Code 0 mit den Zeilen", async () => {
-	const aufrufe: Array<{ befehl: string; args: string[] }> = [];
+test("ruft pdf2md mit --out und cwd auf und liefert Exit-Code 0 mit den Zeilen", async () => {
+	const aufrufe: Array<{ befehl: string; args: string[]; optionen: unknown }> = [];
 	const kind = new FakeKind();
 	const versprechen = pdfKonvertieren(
-		"/vault/raw/fall-01.pdf",
-		"/vault/_ocr-vorschau",
+		"raw/fall-01.pdf",
+		"_ocr-vorschau",
 		"/Users/test/bin/pdf2md",
+		"/vault",
 		spawnAttrappe(aufrufe, kind),
 	);
 
@@ -41,7 +45,8 @@ test("ruft pdf2md mit --out auf und liefert Exit-Code 0 mit den Zeilen", async (
 	assert.deepEqual(aufrufe, [
 		{
 			befehl: "/Users/test/bin/pdf2md",
-			args: ["/vault/raw/fall-01.pdf", "--out", "/vault/_ocr-vorschau"],
+			args: ["raw/fall-01.pdf", "--out", "_ocr-vorschau"],
+			optionen: { cwd: "/vault", stdio: ["ignore", "pipe", "pipe"] },
 		},
 	]);
 	assert.equal(ergebnis.code, 0);
@@ -52,12 +57,35 @@ test("ruft pdf2md mit --out auf und liefert Exit-Code 0 mit den Zeilen", async (
 	assert.deepEqual(ergebnis.stderrLetzte, []);
 });
 
+test("Zeile ueber zwei data-Ereignisse verteilt zaehlt als eine", async () => {
+	const kind = new FakeKind();
+	const versprechen = pdfKonvertieren(
+		"raw/fall-01.pdf",
+		"_ocr-vorschau",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnAttrappe([], kind),
+	);
+
+	kind.stdout.emit("data", "→ S.1: 12.3 s | 100 Z. Text");
+	kind.stdout.emit("data", "layer → OCR\n");
+	kind.stdout.emit("data", "letzte Zeile ohne Zeilenumbruch");
+	kind.emit("close", 0);
+
+	const ergebnis = await versprechen;
+	assert.deepEqual(ergebnis.stdoutLetzte, [
+		"→ S.1: 12.3 s | 100 Z. Textlayer → OCR",
+		"letzte Zeile ohne Zeilenumbruch",
+	]);
+});
+
 test("Exit-Code ungleich 0: stderr-Zeilen kommen mit, nur die letzten 5", async () => {
 	const kind = new FakeKind();
 	const versprechen = pdfKonvertieren(
-		"/vault/raw/kaputt.pdf",
-		"/vault/_ocr-vorschau",
+		"raw/kaputt.pdf",
+		"_ocr-vorschau",
 		"/Users/test/bin/pdf2md",
+		"/vault",
 		spawnAttrappe([], kind),
 	);
 
@@ -75,9 +103,10 @@ test("Exit-Code ungleich 0: stderr-Zeilen kommen mit, nur die letzten 5", async 
 test("Fehler beim Start (Kind wirft 'error') ergibt code null", async () => {
 	const kind = new FakeKind();
 	const versprechen = pdfKonvertieren(
-		"/vault/raw/x.pdf",
-		"/vault/_ocr-vorschau",
+		"raw/x.pdf",
+		"_ocr-vorschau",
 		"/Users/test/bin/pdf2md",
+		"/vault",
 		spawnAttrappe([], kind),
 	);
 
@@ -93,9 +122,10 @@ test("Fehler beim Start (Kind wirft 'error') ergibt code null", async () => {
 
 test("spawnFn wirft synchron: code null, Meldung in stderrLetzte", async () => {
 	const ergebnis: KonvertierenErgebnis = await pdfKonvertieren(
-		"/vault/raw/x.pdf",
-		"/vault/_ocr-vorschau",
+		"raw/x.pdf",
+		"_ocr-vorschau",
 		"/Users/test/bin/pdf2md",
+		"/vault",
 		() => {
 			throw new Error("spawn nicht verfuegbar");
 		},
