@@ -21,17 +21,13 @@ import time
 from datetime import date
 from pathlib import Path
 
-# TEMPORAERER KOMPATIBILITAETS-SHIM (Issue #8): re-exportiert die verschobenen Namen,
-# damit bench/*.py und pdf2md/test zwischen den Commits des Splits weiterlaufen.
-# Wird in Commit 6 ersatzlos entfernt, sobald bench direkt aus zusammenbau/layout/ocr importiert.
 import zusammenbau
-from zusammenbau import *
-from layout import *
-from layout import (_bloecke, _cluster, _entdoppeln, _laengster_lauf,
-                    _steg, _tintensteg, _verschmelzen, _zeilenanfang, _zelle)
-from ocr import *
-from ocr import (_guete, _lauf_kuerzen, _nahtworte, _tintenmenge,
-                _tokenbudget)
+from zusammenbau import als_callout, entpua, fragmente_verschmelzen, zusammenfuegen
+from layout import (bildanteil, kaesten_erkennen, kaesten_zuordnen,
+                   layout_erkennen, spalten_trennen, tabellen_markdown)
+from ocr import (OVERLAP, TOKEN_MAX, ZEICHEN_JE_TINTE, _tintenmenge,
+               kachel_zeilen, kacheln_senkrecht, kacheln_waagerecht,
+               ueberlappung_kuerzen)
 #!/usr/bin/env python3
 """Pfad C, Ende-zu-Ende: PDF → Markdown.
 

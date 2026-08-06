@@ -13,8 +13,9 @@ Argument ist die Seitennummer im Sammel-PDF `bench-lauf/bench-seiten.pdf`.
 """
 import sys
 
-from pfade import BENCH                       # legt pdf2md.py auf sys.path
+from pfade import BENCH                       # legt pdf2md/ auf sys.path
 import pdf2md as M
+import ocr as O
 
 
 def main():
@@ -41,25 +42,25 @@ def main():
     formatted = apply_chat_template(processor, load_config(M.MODEL), M.PROMPT,
                                     num_images=1)
 
-    def ocr(img, max_tokens=M.TOKEN_MAX):
+    def ocr(img, max_tokens=O.TOKEN_MAX):
         res = generate(model, processor, formatted, image=[str(img)],
                        max_tokens=max_tokens, temperature=0.0, verbose=False)
         return res if isinstance(res, str) else getattr(res, "text", str(res))
 
-    tinte_seite = M._tintenmenge(png, 150)
+    tinte_seite = O._tintenmenge(png, 150)
     geeicht = chars >= 400 and tinte_seite > 0
-    faktor = chars / tinte_seite if geeicht else M.ZEICHEN_JE_TINTE
+    faktor = chars / tinte_seite if geeicht else O.ZEICHEN_JE_TINTE
     print(f"Seite {nr}: {chars} Zeichen Textlayer, Tinte {tinte_seite:.0f}, "
           f"Faktor {faktor:.5f} ({'geeicht' if geeicht else 'grob'})\n")
 
-    kacheln = M.kacheln_waagerecht(png, 2)
+    kacheln = O.kacheln_waagerecht(png, 2)
     gesamt = 0
     for i, (teil, oben, unten) in enumerate(kacheln, start=1):
-        tinte = M._tintenmenge(teil, 150)
+        tinte = O._tintenmenge(teil, 150)
         erwartet = tinte * faktor
-        budget = M._tokenbudget(erwartet)
+        budget = O._tokenbudget(erwartet)
         roh = ocr(teil, budget)
-        grund, kennzahl = M.entgleist(roh, erwartet, geeicht)
+        grund, kennzahl = O.entgleist(roh, erwartet, geeicht)
         gesamt += len(roh)
         print(f"Kachel {i} (y {oben:.2f}–{unten:.2f}): Tinte {tinte:.0f}, "
               f"erwartet {erwartet:.0f} Z., Budget {budget} Token")

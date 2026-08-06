@@ -20,8 +20,9 @@ die Regel falsch und nicht der Bestand.
 import json, sys
 from pathlib import Path
 
-from pfade import BENCH, WURZEL as VAULT   # legt pdf2md.py auf sys.path
+from pfade import BENCH, WURZEL as VAULT   # legt pdf2md/ auf sys.path
 import pdf2md as M
+import zusammenbau as Z
 from regress_steg import buchstaben, seite_bauen, woerter
 
 
@@ -33,7 +34,7 @@ def main():
     for s in seiten:
         nach_datei.setdefault(s["file"], []).append(s["page"])
 
-    echt = M.randlabel_vorziehen
+    echt = Z.randlabel_vorziehen
     n, gleich, geaendert, verlust = 0, 0, [], []
     for datei in sorted(nach_datei):
         pfad = VAULT / datei
@@ -43,7 +44,7 @@ def main():
         for p in doc:
             if p.rotation:
                 p.remove_rotation()
-        M.LAUFEND = M.laufende_zeilen(doc)
+        Z.laufend_setzen(M.laufende_zeilen(doc))
         for nr in sorted(nach_datei[datei]):
             if nr > doc.page_count:
                 continue
@@ -53,17 +54,17 @@ def main():
             # tun. Bewusst direkt auf get_text() und nicht ueber
             # textlayer_zeilen() — das ruft selbst schon die Tabellensuche auf,
             # und genau die soll hier gespart werden.
-            if not any(M.RANDLABEL.match(zeile.strip())
+            if not any(Z.RANDLABEL.match(zeile.strip())
                        for zeile in page.get_text("text").splitlines()):
                 gleich += 1
                 continue
             try:
-                M.randlabel_vorziehen = lambda z, *r, **k: z
+                Z.randlabel_vorziehen = lambda z, *r, **k: z
                 a = seite_bauen(page)
-                M.randlabel_vorziehen = echt
+                Z.randlabel_vorziehen = echt
                 b = seite_bauen(page)
             except Exception as e:
-                M.randlabel_vorziehen = echt
+                Z.randlabel_vorziehen = echt
                 print(f"  FEHLER {datei} S.{nr}: {e}")
                 continue
             if a == b:
