@@ -7,8 +7,8 @@ Kein Modell noetig — die Regel arbeitet auf geparsten Zeilen.
 """
 import sys
 
-import pfade                                  # legt pdf2md.py auf sys.path
-import pdf2md as M
+import pfade                                  # legt pdf2md/ auf sys.path
+import ocr as O
 
 fehler = 0
 
@@ -36,7 +36,7 @@ unten = [z("Infolgedessen ist L kein Besitzer und nur M ist Besitzer des "
            "Mehls. Ob es dem M abhanden gekommen ist, richtet sich nach "
            "Paragraf 935 BGB."),
          z("Fussnote 13: BGH NJW 2014, 1524.")]
-raus = M.ueberlappung_kuerzen(oben, unten)
+raus = O.ueberlappung_kuerzen(oben, unten)
 pruefe("Fortsetzung bleibt erhalten",
        raus[0][0], "dem M abhanden gekommen ist, richtet sich nach "
                    "Paragraf 935 BGB.")
@@ -47,21 +47,21 @@ oben = [z("Die Voraussetzungen des Paragraf 823 Absatz 1 BGB liegen vor.")]
 unten = [z("Die Voraussetzungen des Paragraf 823 Absatz 1 BGB liegen vor."),
          z("Ein Schaden ist entstanden.")]
 pruefe("ganze Dublette entfaellt",
-       [x[0] for x in M.ueberlappung_kuerzen(oben, unten)],
+       [x[0] for x in O.ueberlappung_kuerzen(oben, unten)],
        ["Ein Schaden ist entstanden."])
 
 # 3. Kein Ueberlappungsband: nichts anfassen.
 oben = [z("Der Anspruch ist nach Paragraf 985 BGB begruendet und faellig.")]
 unten = [z("Ein ganz anderer Gedanke beginnt hier ohne jede Wiederholung.")]
 pruefe("ohne Naht unveraendert",
-       [x[0] for x in M.ueberlappung_kuerzen(oben, unten)],
+       [x[0] for x in O.ueberlappung_kuerzen(oben, unten)],
        ["Ein ganz anderer Gedanke beginnt hier ohne jede Wiederholung."])
 
 # 4. Kurze Gliederungsmarker sind keine Naht — "aa)" darf mehrfach vorkommen.
 oben = [z("aa) bb) cc) dd) ee) ff)")]
 unten = [z("aa) bb) cc) dd) ee) ff)"), z("Weiterer Text.")]
 pruefe("Marker loesen keine Kuerzung aus",
-       len(M.ueberlappung_kuerzen(oben, unten)), 2)
+       len(O.ueberlappung_kuerzen(oben, unten)), 2)
 
 # 5. Abweichende Erkennung im Band: lieber doppelt als verloren.
 oben = [z("Anknuepfungspunkt waere also, dass H trotz des aus der "
@@ -69,13 +69,13 @@ oben = [z("Anknuepfungspunkt waere also, dass H trotz des aus der "
 unten = [z("Anknuepfungspunkt waere also, dass H trotz des aus der "
            "Besitzverschaffung folgenden Anscheins nicht nachgeforscht hat. "
            "Fuer eine Nachforschungsobliegenheit spricht wenig.")]
-raus = M.ueberlappung_kuerzen(oben, unten)
+raus = O.ueberlappung_kuerzen(oben, unten)
 pruefe("Rest bleibt trotz Lesefehler erhalten",
        "Nachforschungsobliegenheit" in raus[0][0], True)
 
 # 6. Leere Eingaben.
-pruefe("leer links", M.ueberlappung_kuerzen([], unten), unten)
-pruefe("leer rechts", M.ueberlappung_kuerzen(oben, []), [])
+pruefe("leer links", O.ueberlappung_kuerzen([], unten), unten)
+pruefe("leer rechts", O.ueberlappung_kuerzen(oben, []), [])
 
 print(f"\n{'alles gruen' if not fehler else str(fehler) + ' Fehler'}")
 sys.exit(1 if fehler else 0)

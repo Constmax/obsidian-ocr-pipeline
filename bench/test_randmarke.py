@@ -17,8 +17,8 @@ einen Satz in zwei Absaetze, und der zweite beginnt mitten drin.
 """
 import sys
 
-import pfade                                  # legt pdf2md.py auf sys.path
-import pdf2md as M
+import pfade                                  # legt pdf2md/ auf sys.path
+import zusammenbau as Z
 
 fehler = 0
 
@@ -37,7 +37,7 @@ def z(text, x0, y0, x1):
 
 
 print("Marke auf gleicher Hoehe wie der Rumpf → laeuft in den Satz")
-raus = M.zusammenfuegen([
+raus = Z.zusammenfuegen([
     z("**Beispiel:**", 166, 98, 237),
     z("Mutter M putzt gerade die Fenster ihrer Terrasse und stoesst dabei "
       "aus Unachtsamkeit einen", 166, 97, 899),
@@ -48,7 +48,7 @@ pruefe("Marke steht vorn",
 pruefe("Satz bleibt ganz", raus[0].endswith("den Dieb D trifft."), True)
 
 print("\nEchte Ueberschrift trennt weiterhin")
-raus = M.zusammenfuegen([
+raus = Z.zusammenfuegen([
     z("**A. Grundsaetzliches zum Unterlassen**", 166, 98, 600),
     z("Zu unterscheiden sind das unechte und das echte Unterlassungsdelikt.",
       166, 120, 899)])
@@ -64,7 +64,7 @@ zeilen = [z("Der Garant ist zur Abwendung des Erfolges verpflichtet, so dass "
           z("Daran schliesst sich die Frage der Garantenstellung an.",
             200, 136, 900),
           z("Sie ist der Kern jeder Unterlassungspruefung.", 200, 154, 900)]
-aus = M.randlabel_vorziehen(zeilen, 18)
+aus = Z.randlabel_vorziehen(zeilen, 18)
 pruefe("Marke jetzt an erster Stelle", aus[0][0], "**Merke:**")
 pruefe("keine Zeile verloren", len(aus), len(zeilen))
 pruefe("Rumpf unveraendert sortiert",
@@ -77,7 +77,7 @@ zeilen = [z("Der Garant ist zur Abwendung des Erfolges verpflichtet.",
           z("Die Garantenstellung ist der Kern der Pruefung.", 200, 136, 900),
           z("Sie folgt aus Gesetz, Vertrag oder Ingerenz.", 200, 154, 900)]
 pruefe("Reihenfolge unangetastet",
-       [x[0] for x in M.randlabel_vorziehen(zeilen, 18)],
+       [x[0] for x in Z.randlabel_vorziehen(zeilen, 18)],
        [x[0] for x in zeilen])
 
 print(f"\n{'alles gruen' if not fehler else str(fehler) + ' Fehler'}")
