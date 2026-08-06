@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Verlinkt die Stufe-1-CLIs nach ~/bin und prüft die Abhängigkeiten.
+# Baustein von setup.sh: verlinkt die Stufe-1-CLIs nach ~/bin und prüft die
+# Abhängigkeiten. Installiert nichts selbst — für die Einrichtung ./setup.sh
+# im Repo-Root verwenden.
 # Idempotent — mehrfaches Ausführen ist unschädlich.
 
 set -euo pipefail
@@ -69,7 +71,7 @@ done
 if [ ${#MISSING[@]} -gt 0 ]; then
     echo
     echo "Fehlende Kernwerkzeuge: ${MISSING[*]}"
-    echo "  brew install ocrmypdf img2pdf qpdf tesseract-lang ghostscript poppler"
+    echo "  einmal ./setup.sh im Repo-Root ausführen (brew-Pakete + ocrmypdf-venv)"
     exit 1
 fi
 
@@ -80,4 +82,4 @@ case ":$PATH:" in
 esac
 
 echo
-echo "Fertig. Stufe 2 (PDF → Markdown) separat einrichten: pdf2md/setup.sh"
+echo "Fertig. Stufe 2 (PDF → Markdown) und das Plugin richten sich über ./setup.sh im Repo-Root ein."
