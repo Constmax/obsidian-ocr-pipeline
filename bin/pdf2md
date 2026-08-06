@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wrapper fuer Stufe 2: fuehrt pdf2md.py mit dem MLX-venv aus.
-# Wird von setup.sh nach ~/bin verlinkt; funktioniert von ueberall.
+# Wird von install.sh nach ~/bin verlinkt; funktioniert von ueberall.
 
 set -euo pipefail
 
@@ -14,9 +14,24 @@ while [ -L "$SELF" ]; do
 done
 SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 
-VENV_PY="$HOME/.venvs/mlxocr/bin/python"
-if [ ! -x "$VENV_PY" ]; then
-	echo "pdf2md: MLX-venv fehlt (~/.venvs/mlxocr). Einmal setup.sh ausfuehren." >&2
+# pdf2md/setup.sh legt das venv unter $VAULT_ROOT/.venv-mlxocr an (Vault-Root
+# ist ueblicherweise auch das Arbeitsverzeichnis, aus dem heraus konvertiert
+# wird — so ruft es auch das Plugin auf). ~/.venvs/mlxocr bleibt als
+# Fallback fuer manuell woanders angelegte venvs.
+VENV_PY=""
+for kandidat in \
+	"${VAULT_ROOT:-}/.venv-mlxocr/bin/python" \
+	"$PWD/.venv-mlxocr/bin/python" \
+	"$HOME/.venvs/mlxocr/bin/python"
+do
+	if [ -n "$kandidat" ] && [ -x "$kandidat" ]; then
+		VENV_PY="$kandidat"
+		break
+	fi
+done
+
+if [ -z "$VENV_PY" ]; then
+	echo "pdf2md: MLX-venv nicht gefunden (weder \$VAULT_ROOT/.venv-mlxocr noch ~/.venvs/mlxocr). Einmal pdf2md/setup.sh ausfuehren." >&2
 	exit 1
 fi
 

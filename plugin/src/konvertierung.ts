@@ -36,20 +36,49 @@ function sammle(letzte: string[], zeile: string): void {
 }
 
 /**
- * Startet `pdf2md <pdf> --out <out>` und loest auf, sobald der Prozess
- * endet (exit, Fehler beim Start oder beim Kind). Der Aufrufer entscheidet
- * anhand von `code` und den Zeilen, was er dem Nutzer zeigt.
+ * Puffert einen Datenstrom zeilenweise: `data`-Ereignisse zerschneiden nicht
+ * an Zeilengrenzen, eine Zeile kann also ueber mehrere Aufrufe verteilt sein.
+ * Der Rest ohne abschliessendes `\n` wartet auf den naechsten Aufruf; `flush`
+ * gibt ihn am Stromende (auch ohne trennendes `\n`) noch mit.
+ */
+function zeilenPuffer(letzte: string[]): { schreibe: (stueck: string) => void; flush: () => void } {
+	let rest = "";
+	return {
+		schreibe(stueck: string): void {
+			const teile = (rest + stueck).split("\n");
+			rest = teile.pop() ?? "";
+			for (const zeile of teile) sammle(letzte, zeile);
+		},
+		flush(): void {
+			if (rest.length > 0) sammle(letzte, rest);
+			rest = "";
+		},
+	};
+}
+
+/**
+ * Startet `pdf2md <pdf> --out <out>` mit `cwd` als Arbeitsverzeichnis und
+ * loest auf, sobald der Prozess endet (exit, Fehler beim Start oder beim
+ * Kind). Der Aufrufer entscheidet anhand von `code` und den Zeilen, was er
+ * dem Nutzer zeigt.
+ *
+ * `pdf` und `out` sollten relativ zu `cwd` sein (typischerweise die
+ * Vault-Wurzel): pdf2md.py schreibt den PDF-Pfad unveraendert in die
+ * erzeugte Notiz (`quelle-pdf`, `Quelle: [[…]]`) — nur ein Vault-relativer
+ * Pfad ergibt dort einen aufloesbaren Link.
  */
 export function pdfKonvertieren(
-	pdfAbs: string,
-	outAbs: string,
+	pdf: string,
+	out: string,
 	pdf2md: string,
+	cwd: string,
 	spawnFn: SpawnFunktion = spawn,
 ): Promise<KonvertierenErgebnis> {
 	return new Promise((erledigt) => {
 		let kind: ChildProcess;
 		try {
-			kind = spawnFn(pdf2md, [pdfAbs, "--out", outAbs], {
+			kind = spawnFn(pdf2md, [pdf, "--out", out], {
+				cwd,
 				stdio: ["ignore", "pipe", "pipe"],
 			});
 		} catch (fehler) {
@@ -58,15 +87,21 @@ export function pdfKonvertieren(
 		}
 		const stdoutLetzte: string[] = [];
 		const stderrLetzte: string[] = [];
-		kind.stdout?.on("data", (stueck) => {
-			for (const zeile of String(stueck).split("\n")) sammle(stdoutLetzte, zeile);
+		const stdoutPuffer = zeilenPuffer(stdoutLetzte);
+		const stderrPuffer = zeilenPuffer(stderrLetzte);
+		kind.stdout?.setEncoding("utf8");
+		kind.stderr?.setEncoding("utf8");
+		kind.stdout?.on("data", (stueck) => stdoutPuffer.schreibe(String(stueck)));
+		kind.stderr?.on("data", (stueck) => stderrPuffer.schreibe(String(stueck)));
+		kind.on("error", (fehler) => {
+			stdoutPuffer.flush();
+			stderrPuffer.flush();
+			erledigt({ code: null, stdoutLetzte, stderrLetzte: [...stderrLetzte, String(fehler)] });
 		});
-		kind.stderr?.on("data", (stueck) => {
-			for (const zeile of String(stueck).split("\n")) sammle(stderrLetzte, zeile);
+		kind.on("close", (code) => {
+			stdoutPuffer.flush();
+			stderrPuffer.flush();
+			erledigt({ code, stdoutLetzte, stderrLetzte });
 		});
-		kind.on("error", (fehler) =>
-			erledigt({ code: null, stdoutLetzte, stderrLetzte: [...stderrLetzte, String(fehler)] }),
-		);
-		kind.on("close", (code) => erledigt({ code, stdoutLetzte, stderrLetzte }));
 	});
 }
