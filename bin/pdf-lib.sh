@@ -277,7 +277,8 @@ split_two_column_pdf() {
     done
     local page_list=()
     for ((page_num = 1; page_num <= total_pages; page_num++)); do
-        local pf="p$(printf '%04d' "$page_num")"
+        local pf
+        pf="p$(printf '%04d' "$page_num")"
         page_list+=("$tmpdir/${pf}_l.pdf" "$tmpdir/${pf}_r.pdf")
     done
     qpdf --empty --pages "${page_list[@]}" -- "$output" 2>/dev/null
@@ -333,14 +334,13 @@ merge_split_pdf() {
 # Sets the variable named by $1 to the array of arguments.
 build_ocr_args() {
     local outvar="$1"; shift
-    local force_ocr=false
     local use_clean=false
     local no_rotate=false
     local no_deskew=false
     local skip_text="--skip-text"
     while [ $# -gt 0 ]; do
         case "$1" in
-            --force-ocr) force_ocr=true; skip_text="--force-ocr"; shift ;;
+            --force-ocr) skip_text="--force-ocr"; shift ;;
             --clean)     use_clean=true; shift ;;
             --no-rotate) no_rotate=true; shift ;;
             --no-deskew) no_deskew=true; shift ;;
@@ -565,6 +565,8 @@ ocr_with_retry() {
         # below, and deskew was already done pre-split) without assuming which other flags the caller built in.
         local split_args=() _orig_arg
         eval "_orig_args=(\"\${${args_name}[@]}\")"
+        # _orig_args wurde per eval-String belegt (Pass-by-Name, bash 3.2).
+        # shellcheck disable=SC2154
         for _orig_arg in "${_orig_args[@]}"; do
             [ "$_orig_arg" = "--rotate-pages" ] && continue
             [ "$_orig_arg" = "--deskew" ] && continue
@@ -608,6 +610,10 @@ ocr_with_retry() {
         # Rebuild args with new engine — always use --force-ocr on retry
         # since the input may have residual text from a prior attempt.
         # Preserve split column flags if needed.
+        # retry_args wird per Namen an build_ocr_args/run_ocr gereicht
+        # (Pass-by-Name, bash 3.2) — die Nutzung sieht shellcheck in
+        # build_ocr_args nicht.
+        # shellcheck disable=SC2034
         retry_args=()
         local retry_flags=(--force-ocr --clean)
         if [ "$SPLIT_COLUMNS" = true ]; then

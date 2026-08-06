@@ -6,6 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=./pdf-lib.sh
 source "$SCRIPT_DIR/pdf-lib.sh"
 
 if [ $# -lt 1 ]; then
@@ -112,7 +113,7 @@ process_group() {
     local output_file="$OUTPUT_DIR/${base}.pdf"
 
     echo ""
-    if [ $count -eq 1 ]; then
+    if [ "$count" -eq 1 ]; then
         echo "📄 Einzeldatei: $base"
     else
         echo "📚 Gruppe: $base ($count Teile)"
@@ -120,7 +121,7 @@ process_group() {
     for f in "${files[@]}"; do echo "   → $f"; done
 
     # Merge
-    if [ $count -eq 1 ]; then
+    if [ "$count" -eq 1 ]; then
         cp "${files[0]}" "$WORK_DIR/merged.pdf" || { echo "   ❌ cp fehlgeschlagen"; return 1; }
     else
         qpdf --empty --pages "${files[@]}" -- "$WORK_DIR/merged.pdf" || { echo "   ❌ qpdf fehlgeschlagen"; return 1; }
@@ -146,6 +147,9 @@ process_group() {
     # Build OCR args (--clean for tesseract when unpaper available;
     # --no-rotate when splitting — per-half orientation detection is
     # unreliable and would break the re-merge)
+    # ocr_args wird per Namen an build_ocr_args/run_ocr gereicht (Pass-by-Name,
+    # bash 3.2) — die Nutzung sieht shellcheck in pdf-lib.sh nicht.
+    # shellcheck disable=SC2034
     local ocr_args
     if [ "$SPLIT_COLUMNS" = true ]; then
         build_ocr_args ocr_args --clean --no-rotate --no-deskew
