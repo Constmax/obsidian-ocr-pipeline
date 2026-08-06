@@ -14,7 +14,7 @@ VAULT_ROOT="${VAULT_ROOT:-$(dirname "$REPO")}"
 # ~/.venvs). Das ist die eine benannte Stelle — bin/pdf2md, bin/pdf-lib.sh
 # und bin/reprocess-raw.sh leiten ihre Kandidaten-Pfade daraus ab.
 # Überschreibbar: VENV_ROOT=<pfad> ./setup.sh
-VENV_ROOT="${VENV_ROOT:-$HOME/.venvs}"
+export VENV_ROOT="${VENV_ROOT:-$HOME/.venvs}"
 export PATH="$HOME/bin:$PATH"
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -107,6 +107,17 @@ if grep -q 'HOME/bin' "$HOME/.zshrc" 2>/dev/null; then
 else
     printf '\n# obsidian-ocr-pipeline\nexport PATH="$HOME/bin:$PATH"\n' >> "$HOME/.zshrc"
     echo "   ergänzt in ~/.zshrc (neues Terminal nötig; dieser Lauf nutzt es bereits)"
+fi
+# Abweichender VENV_ROOT muss ins Terminal-Profil, sonst finden bin/pdf2md,
+# bin/pdf-lib.sh und bin/reprocess-raw.sh das venv im nächsten Terminal nicht
+# mehr (sie fallen sonst still auf den Default $HOME/.venvs zurück).
+if [ "$VENV_ROOT" != "$HOME/.venvs" ]; then
+    if grep -qF "VENV_ROOT=\"$VENV_ROOT\"" "$HOME/.zshrc" 2>/dev/null; then
+        ok "export VENV_ROOT=\"$VENV_ROOT\" schon in ~/.zshrc"
+    else
+        printf '\n# obsidian-ocr-pipeline\nexport VENV_ROOT="%s"\n' "$VENV_ROOT" >> "$HOME/.zshrc"
+        echo "   VENV_ROOT ergänzt in ~/.zshrc (neues Terminal nötig; dieser Lauf nutzt es bereits)"
+    fi
 fi
 
 # ─────────────────────────────── ⑤ Stufe-1-Links + Verifikation
