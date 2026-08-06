@@ -65,8 +65,10 @@ if [ "$BUILD" = 1 ]; then
 else
     echo "== main.js (eingecheckt, kein Build — --build für npm)"
     [ -f "$PLUGIN_DIR/main.js" ] || { echo "   !! main.js fehlt — mit --build bauen"; exit 1; }
-    if [ -d "$PLUGIN_DIR/src" ] && find "$PLUGIN_DIR/src" -newer "$PLUGIN_DIR/main.js" -print -quit | grep -q .; then
-        echo "   ⚠ src/ ist neuer als main.js — ggf. mit --build neu bauen und committen"
+    if git -C "$PLUGIN_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+        if ! git -C "$PLUGIN_DIR" diff --quiet HEAD -- src main.js; then
+            echo "   ⚠ src/ oder main.js weicht vom Commit ab — ggf. mit --build neu bauen und committen"
+        fi
     fi
 fi
 
