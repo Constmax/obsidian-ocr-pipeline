@@ -49,7 +49,7 @@ echo "== Engines"
 if ocrmypdf --plugin ocrmypdf_appleocr --help >/dev/null 2>&1; then
     echo "   ok      Apple Vision Plugin"
 else
-    echo "   fehlt   Apple Vision Plugin (~/.venvs/ocrmypdf/bin/pip install ocrmypdf-appleocr)"
+    echo "   fehlt   Apple Vision Plugin (\${VENV_ROOT:-~/.venvs}/ocrmypdf/bin/pip install ocrmypdf-appleocr)"
 fi
 if tesseract --list-langs 2>/dev/null | grep -qx deu; then
     echo "   ok      Tesseract Sprachpaket 'deu'"
@@ -59,7 +59,7 @@ fi
 
 echo
 echo "== Python (für column_tools.py / --split-columns)"
-for candidate in "$HOME/.venvs/ocrmypdf/bin/python3" python3; do
+for candidate in "${VENV_ROOT:-$HOME/.venvs}/ocrmypdf/bin/python3" python3; do
     if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import pikepdf" 2>/dev/null; then
         echo "   ok      pikepdf in $candidate"
         PIKEPDF_OK=1
