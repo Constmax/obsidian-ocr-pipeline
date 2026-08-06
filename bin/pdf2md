@@ -14,9 +14,9 @@ while [ -L "$SELF" ]; do
 done
 SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 
-VENV_PY="$HOME/.venvs/mlxocr/bin/python"
+VENV_PY="${VENV_ROOT:-$HOME/.venvs}/mlxocr/bin/python"
 if [ ! -x "$VENV_PY" ]; then
-    echo "❌ MLX-venv fehlt (~/.venvs/mlxocr). Einmal ./setup.sh im Repo ausführen." >&2
+    echo "❌ MLX-venv fehlt ($VENV_PY). Einmal ./setup.sh im Repo ausführen." >&2
     exit 1
 fi
 
