@@ -1,4 +1,38 @@
 #!/usr/bin/env python3
+"""Pfad C, Ende-zu-Ende: PDF → Markdown (CLI + Seitenlauf).
+
+  source .venv-mlxocr/bin/activate && python .ocr-bench/pdf2md.py <pdf> [--dpi 300]
+
+Rendert jede Seite, kachelt bei hoher Textdichte, laesst PaddleOCR-VL laufen und
+baut die Zeilen anhand ihrer <|LOC|>-Koordinaten zu Markdown zusammen.
+
+Seit Issue #8 ist diese Datei nur noch CLI und Seitenlauf: die Geometrie
+(Spalten, Kaesten, Diagramme) liegt in layout.py, Kachelung und Modell in
+ocr.py, der Markdown-Zusammenbau in zusammenbau.py. Der Zusammenbau ist die
+testbare Schicht — pdf2md/test laeuft ohne MLX, fitz und Vault-Bestand.
+
+Schreibt nach .ocr-bench/out-C/, fasst raw/ nicht an.
+"""
+import argparse
+import json
+import re
+import sys
+import time
+from datetime import date
+from pathlib import Path
+
+# TEMPORAERER KOMPATIBILITAETS-SHIM (Issue #8): re-exportiert die verschobenen Namen,
+# damit bench/*.py und pdf2md/test zwischen den Commits des Splits weiterlaufen.
+# Wird in Commit 6 ersatzlos entfernt, sobald bench direkt aus zusammenbau/layout/ocr importiert.
+import zusammenbau
+from zusammenbau import *
+from layout import *
+from layout import (_bloecke, _cluster, _entdoppeln, _laengster_lauf,
+                    _steg, _tintensteg, _verschmelzen, _zeilenanfang, _zelle)
+from ocr import *
+from ocr import (_guete, _lauf_kuerzen, _nahtworte, _tintenmenge,
+                _tokenbudget)
+#!/usr/bin/env python3
 """Pfad C, Ende-zu-Ende: PDF → Markdown.
 
   source .venv-mlxocr/bin/activate && python .ocr-bench/pdf2md.py <pdf> [--dpi 300]
@@ -9,18 +43,6 @@ baut die Zeilen anhand ihrer <|LOC|>-Koordinaten zu Markdown zusammen.
 Erste Fassung der Zusammenbau-Schicht. Schreibt nach .ocr-bench/out-C/,
 fasst raw/ nicht an.
 """
-import argparse, json, math, re, statistics, sys, time
-from collections import Counter
-from datetime import date
-from pathlib import Path
-import zusammenbau
-from zusammenbau import *
-from layout import *
-from layout import (_bloecke, _cluster, _entdoppeln, _laengster_lauf,
-                    _steg, _tintensteg, _verschmelzen, _zeilenanfang, _zelle)
-from ocr import *
-from ocr import (_guete, _lauf_kuerzen, _nahtworte, _tintenmenge,
-                _tokenbudget)
 
 BENCH = Path(__file__).resolve().parent
 OUT = BENCH / "out-C"
