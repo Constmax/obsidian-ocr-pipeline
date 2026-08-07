@@ -21,7 +21,7 @@ import { pdfKonvertieren } from "./konvertierung.ts";
 
 const ABGLEICH_ENTPRELLT_MS = 500;
 
-/** Lokale pdf2md-Installation — install.sh legt den Symlink nach ~/bin an. */
+/** Lokale pdf2md-Installation — setup.sh legt den Symlink nach ~/bin an. */
 const PDF2MD_PFAD = join(homedir(), "bin", "pdf2md");
 
 export default class OcrVorschauPlugin extends Plugin {
@@ -211,7 +211,7 @@ export default class OcrVorschauPlugin extends Plugin {
 			const basis = adapter.getBasePath();
 			if (!existsSync(PDF2MD_PFAD)) {
 				new Notice(
-					`OCR-Vorschau: pdf2md nicht gefunden unter ${PDF2MD_PFAD}. Bitte install.sh ausführen.`,
+					`OCR-Vorschau: pdf2md nicht gefunden unter ${PDF2MD_PFAD}. Bitte setup.sh ausführen.`,
 				);
 				return;
 			}

@@ -1,5 +1,7 @@
 # obsidian-ocr-pipeline
 
+![CI](https://github.com/Constmax/obsidian-ocr-pipeline/actions/workflows/ci.yml/badge.svg)
+
 OCR-Pipeline für gescannte juristische Skripte, Fälle und Klausuren — von der
 Ordnerfotografie bis zur durchsuchbaren Markdown-Seite im Obsidian-Vault.
 
@@ -97,6 +99,24 @@ Begutachtungs-Durchgang, der heute aus zwei Fenstern nebeneinander besteht,
 bekommt damit eine Oberfläche. Zweck und Bedienung:
 [docs/review-ansicht.md](docs/review-ansicht.md).
 
+## Neuer Laptop — Einmal-Setup
+
+Vier Schritte, dann ist alles einsatzbereit (Stufe 1 + 2 + 3, Plugin inklusive):
+
+```bash
+gh auth login                          # einmalig, Zugriff aufs private Repo
+gh repo clone Constmax/obsidian-ocr-pipeline <vault>/obsidian-ocr-pipeline
+cd <vault>/obsidian-ocr-pipeline && ./setup.sh
+# Obsidian öffnen (Cmd+R) — Plugin ist automatisch aktiv
+```
+
+`setup.sh` installiert selbst: Xcode-CLT-Hinweis, Homebrew (falls fehlt),
+Systempakete per `brew bundle` (Brewfile), ocrmypdf-venv mit
+Apple-Vision-Plugin, `~/bin`-Verknüpfungen inkl. PATH (`.zshrc`), MLX-venv für
+Stufe 2 und das Plugin (Kopie, ohne Node) — und aktiviert es. Idempotent: nach
+`git pull` einfach erneut ausführen. Auf Intel-Macs ist Stufe 2 (MLX) offen;
+das Setup warnt dann nur.
+
 ## Installation
 
 ```bash
@@ -113,8 +133,9 @@ Für das Plugin (Stufe 3) zusätzlich, mit dem Pfad des Ziel-Vaults:
 VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh
 ```
 
-Baut `plugin/` und kopiert `main.js`, `manifest.json` und `styles.css` nach
-`$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/`. Kopie ist Default (Symlinks
+Kopiert `main.js`, `manifest.json` und `styles.css` nach
+`$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/` (ohne Build, kein Node nötig;
+`--build` baut aus `src/` auf der Dev-Maschine). Kopie ist Default (Symlinks
 verlieren in iCloud Dateien), `--symlink` bleibt als Dev-Opt-in.
 
 Kurzfassung der Systempakete:
@@ -158,7 +179,8 @@ Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
 
 ```
 bin/         Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
-pdf2md/      Stufe 2 — pdf2md.py, setup.sh
+pdf2md/      Stufe 2 — pdf2md.py (CLI) + layout.py + ocr.py + zusammenbau.py,
+             Testsuite in pdf2md/test/ (pytest, ohne MLX lauffaehig)
 bench/       Benchmark-Harness und Messergebnisse
 plugin/      Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
 docs/        Installation, Flag-Referenz, Bugreport, Vault-Integration
@@ -168,6 +190,24 @@ skill/       Claude-Code-Skill (SKILL.md) zum Einbinden in einen Vault
 Die Benchmark-**Seitenbilder** liegen bewusst nicht im Repo: sie sind Scans aus
 urheberrechtlich geschütztem Kursmaterial und mit `bench/build_bench.py` aus dem
 eigenen Bestand reproduzierbar. Siehe [bench/BENCHMARK-SET.md](bench/BENCHMARK-SET.md).
+
+## CI
+
+Jeder Push und PR läuft durch drei unabhängige Jobs (`.github/workflows/ci.yml`):
+
+- **plugin** — `npm ci`, tsc, eslint, Tests, Build und der Kern: ein
+  `git diff` gegen das eingecheckte `main.js`. Ein PR, der `src/` ändert ohne
+  neu zu bauen, wird damit rot.
+- **shell** — shellcheck über alle sieben Shell-Skripte (`setup.sh`,
+  `install.sh`, `bin/*.sh`, `bin/pdf2md`, `plugin/install-plugin.sh`).
+- **python** — `pytest pdf2md/test`: Nahtentdopplung, Randmarken,
+  Schleifenerkennung und der Golden-Snapshot aus Issue #8 — ohne Modell, ohne
+  Vault-Bestand.
+
+Lokal genügt für den Plugin-Teil `npm run lint && npm run check && npm test &&
+npm run build`, für die Skripte `shellcheck -x -P bin setup.sh install.sh
+bin/*.sh bin/pdf2md plugin/install-plugin.sh` und für Python
+`python3 -m pytest pdf2md/test`.
 
 ## Stand
 

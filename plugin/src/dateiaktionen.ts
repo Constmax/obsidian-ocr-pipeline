@@ -47,7 +47,8 @@ export type EntscheidungErgebnis =
  * `vault.rename`. Der Unterschied ist nicht kosmetisch: `renameFile`
  * aktualisiert die Links im Vault, `vault.rename` bewegt nur Bytes. Konkret
  * haengt daran der `![[…png]]`-Einbettungslink der Diagrammseiten
- * (pdf2md.py:1619), dessen Bild in `<vorschau>/assets/` liegen bleibt.
+ * (pdf2md.py, diagramm_bild()), dessen Bild in `<vorschau>/assets/` liegen
+ * bleibt.
  */
 export class Bestand {
 	manifest: StatusManifest = leeresManifest(new Date().toISOString());

@@ -188,7 +188,8 @@ export class MarkdownSpalte {
 	/**
 	 * `MarkdownRenderer.render` loest interne Einbettungen nicht auf — es setzt
 	 * nur einen `.internal-embed`-Platzhalter. In pdf2md-Ausgaben betrifft das
-	 * ausschliesslich die Diagrammbilder (`![[…png]]`, pdf2md.py:1619).
+	 * ausschliesslich die Diagrammbilder (`![[…png]]`, pdf2md.py,
+	 * diagramm_bild()).
 	 *
 	 * Sollte Obsidian Bild-Einbettungen doch selbst aufloesen, findet die
 	 * Schleife nichts und ist folgenlos — dann kann sie ersatzlos entfallen.

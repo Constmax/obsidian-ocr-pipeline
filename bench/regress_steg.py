@@ -16,8 +16,10 @@ import json, re, sys
 from collections import Counter
 from pathlib import Path
 
-from pfade import BENCH, WURZEL as VAULT   # legt pdf2md.py auf sys.path
+from pfade import BENCH, WURZEL as VAULT   # legt pdf2md/ auf sys.path
 import pdf2md as M
+import layout as L
+import zusammenbau as Z
 
 
 def alt_steg(mit_box):
@@ -25,7 +27,7 @@ def alt_steg(mit_box):
     if len(mit_box) < 8:
         return None
     satz = [z for z in mit_box
-            if not M.ist_boilerplate(z[0], z[1][1])] or mit_box
+            if not Z.ist_boilerplate(z[0], z[1][1])] or mit_box
     starts = sorted(z[1][0] for z in satz)
     luecke, pos = 0, None
     for a, b in zip(starts, starts[1:]):
@@ -68,10 +70,10 @@ def buchstaben(absaetze):
 
 
 def seite_bauen(page):
-    kaesten, _ = M.kaesten_erkennen(page, False,
-                                    [t[2] for t in M.tabellen_markdown(page)])
+    kaesten, _ = L.kaesten_erkennen(page, False,
+                                    [t[2] for t in L.tabellen_markdown(page)])
     zeilen = M.textlayer_zeilen(page)
-    return M.zusammenfuegen(M.spalten_trennen(M.kaesten_zuordnen(zeilen,
+    return Z.zusammenfuegen(L.spalten_trennen(L.kaesten_zuordnen(zeilen,
                                                                  kaesten)))
 
 
@@ -92,20 +94,20 @@ def main():
         for p in doc:
             if p.rotation:
                 p.remove_rotation()
-        M.LAUFEND = M.laufende_zeilen(doc)
+        Z.laufend_setzen(M.laufende_zeilen(doc))
         for nr in sorted(nach_datei[datei]):
             if nr > doc.page_count:
                 continue
             page = doc[nr - 1]
             n += 1
-            neu_f = M._steg
+            neu_f = L._steg
             try:
-                M._steg = alt_steg
+                L._steg = alt_steg
                 a = seite_bauen(page)
-                M._steg = neu_f
+                L._steg = neu_f
                 b = seite_bauen(page)
             except Exception as e:                      # Seite ueberspringen
-                M._steg = neu_f
+                L._steg = neu_f
                 print(f"  FEHLER {datei} S.{nr}: {e}")
                 continue
             if a == b:

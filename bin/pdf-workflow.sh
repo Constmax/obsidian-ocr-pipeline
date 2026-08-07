@@ -6,6 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=./pdf-lib.sh
 source "$SCRIPT_DIR/pdf-lib.sh"
 
 if [ $# -lt 2 ]; then
@@ -158,6 +159,9 @@ fi
 echo ""
 echo "🔤 Schritt 4/4: OCR + Optimierung..."
 
+# ocr_args wird per Namen an build_ocr_args/run_ocr gereicht (Pass-by-Name,
+# bash 3.2) — die Nutzung sieht shellcheck in pdf-lib.sh nicht.
+# shellcheck disable=SC2034
 ocr_args=()
 if [ "$SPLIT_COLUMNS" = true ]; then
     build_ocr_args ocr_args --clean --no-rotate --no-deskew

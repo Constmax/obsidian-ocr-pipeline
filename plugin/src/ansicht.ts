@@ -298,7 +298,7 @@ export class OcrAbgleichAnsicht extends ItemView {
 	 * Original-PDF in dieser Reihenfolge suchen:
 	 * 1. `quelle-pdf` aus dem Frontmatter (bzw. der `Quelle: [[…]]`-Zeile),
 	 * 2. erster Wikilink aus dem Metadaten-Cache — ueberlebt ein YAML-kaputtes
-	 *    `quelle-pdf`, das pdf2md.py:1696 unquotiert schreibt,
+	 *    `quelle-pdf`, das pdf2md.py, main() — Frontmatter — unquotiert schreibt,
 	 * 3. Vault-Suche nach `<stem>.pdf`,
 	 * 4. die manuelle Zuordnung aus dem Manifest (`quelle-pdf-manuell`).
 	 * Die manuelle Zuordnung steht NIE im Frontmatter: die .md ist erzeugte

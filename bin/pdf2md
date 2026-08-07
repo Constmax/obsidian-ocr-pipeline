@@ -1,38 +1,38 @@
 #!/usr/bin/env bash
-# Wrapper fuer Stufe 2: fuehrt pdf2md.py mit dem MLX-venv aus.
-# Wird von install.sh nach ~/bin verlinkt; funktioniert von ueberall.
+# Wrapper für Stufe 2: führt pdf2md.py mit dem MLX-venv aus.
+# Wird von setup.sh nach ~/bin verlinkt; funktioniert von überall.
 
 set -euo pipefail
 
 SELF="${BASH_SOURCE[0]}"
 while [ -L "$SELF" ]; do
-	TARGET="$(readlink "$SELF")"
-	case "$TARGET" in
-		/*) SELF="$TARGET" ;;
-		*) SELF="$(dirname "$SELF")/$TARGET" ;;
-	esac
+    TARGET="$(readlink "$SELF")"
+    case "$TARGET" in
+        /*) SELF="$TARGET" ;;
+        *) SELF="$(dirname "$SELF")/$TARGET" ;;
+    esac
 done
 SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 
-# pdf2md/setup.sh legt das venv unter $VAULT_ROOT/.venv-mlxocr an (Vault-Root
-# ist ueblicherweise auch das Arbeitsverzeichnis, aus dem heraus konvertiert
-# wird — so ruft es auch das Plugin auf). ~/.venvs/mlxocr bleibt als
-# Fallback fuer manuell woanders angelegte venvs.
+# ./setup.sh (Repo-Wurzel) legt das venv unter ~/.venvs/mlxocr an — das ist
+# der Normalfall. pdf2md/setup.sh legt es stattdessen unter
+# $VAULT_ROOT/.venv-mlxocr an (bzw. relativ zum cwd, meist der Vault-Root, von
+# wo aus konvertiert wird); beide Wege bleiben unterstützt.
 VENV_PY=""
 for kandidat in \
-	"${VAULT_ROOT:-}/.venv-mlxocr/bin/python" \
-	"$PWD/.venv-mlxocr/bin/python" \
-	"$HOME/.venvs/mlxocr/bin/python"
+    "$HOME/.venvs/mlxocr/bin/python" \
+    "${VAULT_ROOT:-}/.venv-mlxocr/bin/python" \
+    "$PWD/.venv-mlxocr/bin/python"
 do
-	if [ -n "$kandidat" ] && [ -x "$kandidat" ]; then
-		VENV_PY="$kandidat"
-		break
-	fi
+    if [ -n "$kandidat" ] && [ -x "$kandidat" ]; then
+        VENV_PY="$kandidat"
+        break
+    fi
 done
 
 if [ -z "$VENV_PY" ]; then
-	echo "pdf2md: MLX-venv nicht gefunden (weder \$VAULT_ROOT/.venv-mlxocr noch ~/.venvs/mlxocr). Einmal pdf2md/setup.sh ausfuehren." >&2
-	exit 1
+    echo "❌ MLX-venv nicht gefunden (weder ~/.venvs/mlxocr noch \$VAULT_ROOT/.venv-mlxocr). Einmal ./setup.sh im Repo ausführen." >&2
+    exit 1
 fi
 
 exec "$VENV_PY" "$SCRIPT_DIR/../pdf2md/pdf2md.py" "$@"

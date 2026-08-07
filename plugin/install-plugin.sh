@@ -1,24 +1,32 @@
 #!/usr/bin/env bash
-# Baut das Obsidian-Plugin und legt es im Vault ab.
+# Legt das Obsidian-Plugin im Vault ab.
+# Default: kopiert das eingecheckte main.js (kein Node nötig).
+# Mit --build: baut aus src/ (braucht node/npm — nur auf der Dev-Maschine).
 # Idempotent — mehrfaches Ausführen ist unschädlich.
 #
-# Aufruf:  VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh [--symlink]
+# main.js wird in CI gegen src/ verifiziert (.github/workflows/ci.yml) —
+# eine lokale Abweichungskontrolle gibt es nicht.
+#
+# Aufruf:  VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh [--symlink] [--build]
 
 set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ID="ocr-vorschau"
 SYMLINK=0
+BUILD=0
 
 for arg in "$@"; do
     case "$arg" in
         --symlink) SYMLINK=1 ;;
+        --build) BUILD=1 ;;
         -h|--help)
             cat <<'HILFE'
-install-plugin.sh — Obsidian-Plugin bauen und im Vault ablegen
+install-plugin.sh — Obsidian-Plugin im Vault ablegen
 
-  VAULT_ROOT=<pfad> plugin/install-plugin.sh [--symlink]
+  VAULT_ROOT=<pfad> plugin/install-plugin.sh [--symlink] [--build]
 
+  --build     Statt des eingecheckten main.js aus src/ bauen (npm, Dev-only).
   --symlink   Statt zu kopieren den Plugin-Ordner in den Vault verlinken.
               Nur für die Entwicklung. NICHT benutzen, wenn der Vault in
               iCloud Drive liegt: Symlinks werden dort nicht zuverlässig
@@ -30,17 +38,37 @@ HILFE
     esac
 done
 
-echo "== Werkzeuge"
-for cmd in node npm; do
-    if command -v "$cmd" >/dev/null 2>&1; then
-        echo "   ok      $cmd $("$cmd" --version)"
+if [ "$BUILD" = 1 ]; then
+    echo "== Werkzeuge"
+    for cmd in node npm; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            echo "   ok      $cmd $("$cmd" --version)"
+        else
+            echo "   FEHLT   $cmd"
+            echo
+            echo "Node fehlt:  brew install node"
+            exit 1
+        fi
+    done
+
+    echo
+    echo "== Bauen"
+    cd "$PLUGIN_DIR"
+    # npm install nur, wenn node_modules fehlt oder älter als package.json ist.
+    if [ ! -d node_modules ] || [ package.json -nt node_modules ]; then
+        echo "   npm install ..."
+        npm install --silent
     else
-        echo "   FEHLT   $cmd"
-        echo
-        echo "Node fehlt:  brew install node"
-        exit 1
+        echo "   node_modules aktuell — übersprungen"
     fi
-done
+    echo "   npm run build ..."
+    npm run build --silent
+    [ -f main.js ] || { echo "   !! main.js wurde nicht erzeugt"; exit 1; }
+    echo "   ok      main.js ($(( $(wc -c < main.js) / 1024 )) kB)"
+else
+    echo "== main.js (eingecheckt, kein Build — --build für npm)"
+    [ -f "$PLUGIN_DIR/main.js" ] || { echo "   !! main.js fehlt — mit --build bauen"; exit 1; }
+fi
 
 echo
 echo "== Vault"
@@ -61,21 +89,6 @@ echo "   ok      $VAULT_ROOT"
 ZIEL="$VAULT_ROOT/.obsidian/plugins/$PLUGIN_ID"
 
 echo
-echo "== Bauen"
-cd "$PLUGIN_DIR"
-# npm install nur, wenn node_modules fehlt oder älter als package.json ist.
-if [ ! -d node_modules ] || [ package.json -nt node_modules ]; then
-    echo "   npm install ..."
-    npm install --silent
-else
-    echo "   node_modules aktuell — übersprungen"
-fi
-echo "   npm run build ..."
-npm run build --silent
-[ -f main.js ] || { echo "   !! main.js wurde nicht erzeugt"; exit 1; }
-echo "   ok      main.js ($(( $(wc -c < main.js) / 1024 )) kB)"
-
-echo
 if [ "$SYMLINK" = 1 ]; then
     echo "== Verlinken nach $ZIEL"
     mkdir -p "$(dirname "$ZIEL")"
@@ -92,8 +105,8 @@ else
     echo "== Kopieren nach $ZIEL"
     mkdir -p "$ZIEL"
     for datei in main.js manifest.json styles.css; do
-        [ -f "$datei" ] || { echo "   !! fehlt: $datei"; exit 1; }
-        cp "$datei" "$ZIEL/$datei"
+        [ -f "$PLUGIN_DIR/$datei" ] || { echo "   !! fehlt: $datei"; exit 1; }
+        cp "$PLUGIN_DIR/$datei" "$ZIEL/$datei"
         echo "   kopiert: $datei"
     done
 fi
