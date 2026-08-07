@@ -75,15 +75,14 @@ def test_rest_bleibt_trotz_lesefehler_erhalten():
 
 # 6. Leere Eingaben.
 def test_leer_links():
-    oben = [z("Er ist somit Besitzdiener iSd Paragraf 855 BGB. Infolgedessen "
-              "ist L kein Besitzer und nur M ist Besitzer des Mehls. Ob es")]
-    unten = [z("Infolgedessen ist L kein Besitzer und nur M ist Besitzer des "
-               "Mehls. Ob es dem M abhanden gekommen ist, richtet sich nach "
-               "Paragraf 935 BGB."),
-             z("Fussnote 13: BGH NJW 2014, 1524.")]
+    unten = [z("Anknuepfungspunkt waere also, dass H trotz des aus der "
+               "Besitzverschaffung folgenden Anscheins nicht nachgeforscht "
+               "hat. Fuer eine Nachforschungsobliegenheit spricht wenig.")]
     assert ueberlappung_kuerzen([], unten) == unten
 
 
 def test_leer_rechts():
-    oben = [z("Der Anspruch ist nach Paragraf 985 BGB begruendet und faellig.")]
+    oben = [z("Anknuepfungspunkt waere also, dass H trotz des aus der "
+              "Besitzverschaiung folgenden Anscheins nicht nachgeforscht "
+              "hat.")]
     assert ueberlappung_kuerzen(oben, []) == []
