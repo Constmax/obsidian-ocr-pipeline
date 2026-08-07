@@ -97,6 +97,24 @@ Begutachtungs-Durchgang, der heute aus zwei Fenstern nebeneinander besteht,
 bekommt damit eine Oberfläche. Zweck und Bedienung:
 [docs/review-ansicht.md](docs/review-ansicht.md).
 
+## Neuer Laptop — Einmal-Setup
+
+Vier Schritte, dann ist alles einsatzbereit (Stufe 1 + 2 + 3, Plugin inklusive):
+
+```bash
+gh auth login                          # einmalig, Zugriff aufs private Repo
+gh repo clone Constmax/obsidian-ocr-pipeline <vault>/obsidian-ocr-pipeline
+cd <vault>/obsidian-ocr-pipeline && ./setup.sh
+# Obsidian öffnen (Cmd+R) — Plugin ist automatisch aktiv
+```
+
+`setup.sh` installiert selbst: Xcode-CLT-Hinweis, Homebrew (falls fehlt),
+Systempakete per `brew bundle` (Brewfile), ocrmypdf-venv mit
+Apple-Vision-Plugin, `~/bin`-Verknüpfungen inkl. PATH (`.zshrc`), MLX-venv für
+Stufe 2 und das Plugin (Kopie, ohne Node) — und aktiviert es. Idempotent: nach
+`git pull` einfach erneut ausführen. Auf Intel-Macs ist Stufe 2 (MLX) offen;
+das Setup warnt dann nur.
+
 ## Installation
 
 ```bash
@@ -113,8 +131,9 @@ Für das Plugin (Stufe 3) zusätzlich, mit dem Pfad des Ziel-Vaults:
 VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh
 ```
 
-Baut `plugin/` und kopiert `main.js`, `manifest.json` und `styles.css` nach
-`$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/`. Kopie ist Default (Symlinks
+Kopiert `main.js`, `manifest.json` und `styles.css` nach
+`$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/` (ohne Build, kein Node nötig;
+`--build` baut aus `src/` auf der Dev-Maschine). Kopie ist Default (Symlinks
 verlieren in iCloud Dateien), `--symlink` bleibt als Dev-Opt-in.
 
 Kurzfassung der Systempakete:
@@ -158,7 +177,8 @@ Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
 
 ```
 bin/         Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
-pdf2md/      Stufe 2 — pdf2md.py, setup.sh
+pdf2md/      Stufe 2 — pdf2md.py (CLI) + layout.py + ocr.py + zusammenbau.py,
+             Testsuite in pdf2md/test/ (pytest, ohne MLX lauffaehig)
 bench/       Benchmark-Harness und Messergebnisse
 plugin/      Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
 docs/        Installation, Flag-Referenz, Bugreport, Vault-Integration

@@ -5,3 +5,4 @@ pymupdf
 pikepdf
 pillow
 numpy
+pytest   # pdf2md/test (laueft ohne MLX und ohne Vault-Bestand)
