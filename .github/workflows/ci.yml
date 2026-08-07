@@ -1,7 +1,11 @@
 name: CI
 
 on:
+  # push nur auf main: Feature-Branches laufen ueber ihren Pull Request.
+  # Unbeschraenktes 'push' wuerde bei jedem Branch mit offenem PR jeden Job
+  # doppelt starten (einmal fuer push, einmal fuer pull_request).
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -30,11 +34,18 @@ jobs:
         run: npm run build
       - name: Eingecheckten Build verifizieren
         run: |
+          # Erst die Versionierung pruefen: 'git diff' meldet fuer eine
+          # unversionierte Datei keinen Unterschied, ein PR, der main.js
+          # aus dem Index nimmt oder ignoriert, kaeme sonst gruen durch.
+          if ! git ls-files --error-unmatch main.js >/dev/null 2>&1; then
+            echo "!! main.js ist nicht versioniert: der eingecheckte Build ist die Auslieferung (siehe AGENTS.md)."
+            exit 1
+          fi
           if ! git diff --exit-code -- main.js; then
             echo "!! main.js weicht von src/ ab: 'npm run build' ausfuehren und main.js mitcommitten."
             exit 1
           fi
-          echo "ok  main.js entspricht src/"
+          echo "ok  main.js ist versioniert und entspricht src/"
 
   shell:
     name: Shell (shellcheck)
@@ -42,9 +53,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck installieren
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+        # Feste Version statt apt: der Distributionsstand von ubuntu-latest
+        # wandert, und eine neue shellcheck-Generation bringt neue Default-
+        # Checks mit — sonst gehen unveraenderte Skripte ploetzlich rot.
+        env:
+          SHELLCHECK_VERSION: v0.11.0
+        run: |
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+            | tar -xJf - -C /tmp
+          sudo install "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+          shellcheck --version
       - name: Shell-Skripte pruefen
-        run: shellcheck -x -P bin setup.sh install.sh bin/*.sh bin/pdf2md plugin/install-plugin.sh
+        run: shellcheck -x -P bin setup.sh install.sh bin/*.sh bin/pdf2md plugin/install-plugin.sh pdf2md/setup.sh
 
   python:
     name: Python (pytest, Golden-Snapshot)
