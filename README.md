@@ -193,20 +193,24 @@ eigenen Bestand reproduzierbar. Siehe [bench/BENCHMARK-SET.md](bench/BENCHMARK-S
 
 ## CI
 
-Jeder Push und PR läuft durch drei unabhängige Jobs (`.github/workflows/ci.yml`):
+Jeder Pull Request und jeder Push auf `main` läuft durch drei unabhängige Jobs
+(`.github/workflows/ci.yml`). Feature-Branches laufen über ihren PR — ein
+unbeschränktes `push` würde jeden Job doppelt starten.
 
-- **plugin** — `npm ci`, tsc, eslint, Tests, Build und der Kern: ein
-  `git diff` gegen das eingecheckte `main.js`. Ein PR, der `src/` ändert ohne
-  neu zu bauen, wird damit rot.
-- **shell** — shellcheck über alle sieben Shell-Skripte (`setup.sh`,
-  `install.sh`, `bin/*.sh`, `bin/pdf2md`, `plugin/install-plugin.sh`).
+- **plugin** — `npm ci`, tsc, eslint, Tests, Build und der Kern: `main.js` muss
+  versioniert sein *und* dem Build aus `src/` entsprechen. Ein PR, der `src/`
+  ändert ohne neu zu bauen, wird damit rot — ebenso einer, der `main.js` aus
+  der Versionierung nimmt.
+- **shell** — shellcheck (feste Version) über alle zehn Shell-Skripte
+  (`setup.sh`, `install.sh`, `bin/*.sh`, `bin/pdf2md`,
+  `plugin/install-plugin.sh`, `pdf2md/setup.sh`).
 - **python** — `pytest pdf2md/test`: Nahtentdopplung, Randmarken,
   Schleifenerkennung und der Golden-Snapshot aus Issue #8 — ohne Modell, ohne
   Vault-Bestand.
 
 Lokal genügt für den Plugin-Teil `npm run lint && npm run check && npm test &&
 npm run build`, für die Skripte `shellcheck -x -P bin setup.sh install.sh
-bin/*.sh bin/pdf2md plugin/install-plugin.sh` und für Python
+bin/*.sh bin/pdf2md plugin/install-plugin.sh pdf2md/setup.sh` und für Python
 `python3 -m pytest pdf2md/test`.
 
 ## Stand
