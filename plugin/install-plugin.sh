@@ -4,8 +4,9 @@
 # Mit --build: baut aus src/ (braucht node/npm — nur auf der Dev-Maschine).
 # Idempotent — mehrfaches Ausführen ist unschädlich.
 #
-# main.js wird in CI gegen src/ verifiziert (.github/workflows/ci.yml) —
-# eine lokale Abweichungskontrolle gibt es nicht.
+# main.js wird in CI gegen src/ verifiziert (.github/workflows/ci.yml).
+# Lokal warnt der Default-Pfad zusätzlich, wenn src/ uncommittete Änderungen
+# hat — die kann das eingecheckte main.js nicht enthalten.
 #
 # Aufruf:  VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh [--symlink] [--build]
 
@@ -68,6 +69,19 @@ if [ "$BUILD" = 1 ]; then
 else
     echo "== main.js (eingecheckt, kein Build — --build für npm)"
     [ -f "$PLUGIN_DIR/main.js" ] || { echo "   !! main.js fehlt — mit --build bauen"; exit 1; }
+    # Staleness-Signal ohne mtime-Heuristik: die alte mtime-Variante schlug
+    # bei jedem frischen Clone falsch an (git checkt in Index-Reihenfolge
+    # aus). Uncommittete Änderungen unter src/ kann das eingecheckte main.js
+    # dagegen unmöglich enthalten — ein sauberer Clone bleibt hier still.
+    # CI greift erst nach dem Push, diese Warnung schon davor.
+    if command -v git >/dev/null 2>&1 &&
+       git -C "$PLUGIN_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        SRC_GEAENDERT="$(git -C "$PLUGIN_DIR" status --porcelain -- src/ 2>/dev/null || true)"
+        if [ -n "$SRC_GEAENDERT" ]; then
+            echo "   !! src/ hat uncommittete Änderungen — das eingecheckte"
+            echo "      main.js enthält sie nicht. Mit --build neu bauen."
+        fi
+    fi
 fi
 
 echo
