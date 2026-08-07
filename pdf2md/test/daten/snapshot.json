@@ -1,0 +1,2048 @@
+[
+ {
+  "name": "parse_zeilen",
+  "eingaben": [
+   [
+    "<|LOC_100_210_880_225|><|LOC_100_210_880_225|>Er ist somit Besitzdiener iSd Paragraf 855 BGB.\n<|LOC_90_245_900_260|><|LOC_90_245_900_260|>Infolgedessen ist L kein Besitzer und nur M ist Besitzer des Mehls.\n<|LOC_120_290_300_305|><|LOC_120_290_300_305|>1.\nUnd eine Zeile ganz ohne Koordinaten."
+   ]
+  ],
+  "ausgabe": [
+   [
+    [
+     "<|LOC_100_210_880_225|><|LOC_100_210_880_225|>Er ist somit Besitzdiener iSd Paragraf 855 BGB.",
+     null
+    ],
+    [
+     "<|LOC_90_245_900_260|><|LOC_90_245_900_260|>Infolgedessen ist L kein Besitzer und nur M ist Besitzer des Mehls.",
+     null
+    ],
+    [
+     "<|LOC_120_290_300_305|><|LOC_120_290_300_305|>1.",
+     null
+    ],
+    [
+     "Und eine Zeile ganz ohne Koordinaten.",
+     null
+    ]
+   ]
+  ]
+ },
+ {
+  "name": "saeubern",
+  "eingaben": [
+   [
+    "$\\rightarrow$ der Pfeil und \\text{Fett}"
+   ],
+   [
+    "\\underline{unterstrichen} und \\( \\alpha \\)"
+   ],
+   [
+    "$ 5 BGB und $\\^{12} als Fussnotenzeichen"
+   ],
+   [
+    "§ § 929 und § 854 | BGB und | BGB am Satzanfang"
+   ],
+   [
+    "**gesetzliches** **Schuldverhaeltnis**"
+   ],
+   [
+    "\\leftarrow \\Rightarrow \\uparrow \\to"
+   ]
+  ],
+  "ausgabe": [
+   "→ der Pfeil und Fett",
+   "unterstrichen und  \\alpha",
+   "§ 5 BGB und $\\[^12] als Fussnotenzeichen",
+   "§§ 929 und § 854 I BGB und I BGB am Satzanfang",
+   "**gesetzliches Schuldverhaeltnis**",
+   "← ⇒ ↑ →"
+  ]
+ },
+ {
+  "name": "entpua",
+  "eingaben": [
+   [
+    "      "
+   ],
+   [
+    "ganz normaler Text ohne Sonderzeichen"
+   ]
+  ],
+  "ausgabe": [
+   "⇨ ⇨ ➢ ✔ •   ▪",
+   "ganz normaler Text ohne Sonderzeichen"
+  ]
+ },
+ {
+  "name": "ebene",
+  "eingaben": [
+   [
+    "aa) Gemaess den Regeln der Dogmatik"
+   ],
+   [
+    "(1) Der Anspruch ist begruendet"
+   ],
+   [
+    "bb) Zweite Ebene"
+   ],
+   [
+    "a) Erster Unterpunkt"
+   ],
+   [
+    "1. Anspruch aus § 816 I S. 2 BGB"
+   ],
+   [
+    "II. Exkurs zum Streitstand"
+   ],
+   [
+    "A. Grundsaetzliches zum Unterlassen"
+   ],
+   [
+    "h. L."
+   ],
+   [
+    "**a)** Gemaess herrschender Meinung"
+   ],
+   [
+    "Fliesstext ohne jeden Marker"
+   ]
+  ],
+  "ausgabe": [
+   6,
+   6,
+   6,
+   5,
+   4,
+   3,
+   2,
+   null,
+   5,
+   null
+  ]
+ },
+ {
+  "name": "ist_ueberschrift",
+  "eingaben": [
+   [
+    "**Beispiel:**",
+    "Beispiel:"
+   ],
+   [
+    "**A. Grundsaetzliches zum Unterlassen**",
+    "A. Grundsaetzliches zum Unterlassen"
+   ],
+   [
+    "**Merke**",
+    "Merke"
+   ],
+   [
+    "**Bargeldes.**",
+    "Bargeldes."
+   ],
+   [
+    "**IV. Exkurs: Uebersicht – V**",
+    "IV. Exkurs: Uebersicht – V"
+   ]
+  ],
+  "ausgabe": [
+   false,
+   true,
+   false,
+   true,
+   true
+  ]
+ },
+ {
+  "name": "ist_boilerplate_ohne_laufend",
+  "eingaben": [
+   [
+    "Juristisches Repetitorium fuer Gesetz und Recht",
+    null
+   ],
+   [
+    "hemmer",
+    null
+   ],
+   [
+    "– 1 –",
+    null
+   ],
+   [
+    "26-I",
+    null
+   ],
+   [
+    "Mainz - Man",
+    null
+   ],
+   [
+    "543",
+    950
+   ],
+   [
+    "Schuldrecht AT – Fall 12 | Begleitskript",
+    null
+   ],
+   [
+    "Infolgedessen ist L kein Besitzer und nur M ist Besitzer des Mehls.",
+    null
+   ]
+  ],
+  "ausgabe": [
+   true,
+   true,
+   true,
+   true,
+   true,
+   true,
+   false,
+   false
+  ]
+ },
+ {
+  "name": "ist_boilerplate_mit_laufend",
+  "eingaben": [
+   [
+    "Fall 12  |  Begleitskript",
+    null
+   ],
+   [
+    "Strafrecht BT V",
+    null
+   ],
+   [
+    "Fall 12 | Begleitskript",
+    null
+   ],
+   [
+    "Fall 12  |  Begleitskript",
+    300
+   ],
+   [
+    "Schuldrecht AT – Fall 12 | Begleitskript",
+    null
+   ]
+  ],
+  "ausgabe": [
+   true,
+   true,
+   true,
+   true,
+   false
+  ]
+ },
+ {
+  "name": "fett_ausgleichen",
+  "eingaben": [
+   [
+    "Text **fett"
+   ],
+   [
+    "**fett** Text **fett**"
+   ],
+   [
+    "ganz ohne Auszeichnung"
+   ]
+  ],
+  "ausgabe": [
+   "Text fett",
+   "**fett** Text **fett**",
+   "ganz ohne Auszeichnung"
+  ]
+ },
+ {
+  "name": "kurze_zeilen",
+  "eingaben": [
+   [
+    [
+     [
+      "Die erste Zeile eines Absatzes im Blocksatz.",
+      [
+       100,
+       100,
+       900,
+       115
+      ]
+     ],
+     [
+      "Die zweite Zeile laeuft voll bis an den Rand.",
+      [
+       100,
+       120,
+       900,
+       135
+      ]
+     ],
+     [
+      "Kurz, mit kleinem Nachsatz",
+      [
+       100,
+       140,
+       600,
+       155
+      ]
+     ],
+     [
+      "der hier direkt anschliesst.",
+      [
+       100,
+       155,
+       900,
+       170
+      ]
+     ],
+     [
+      "Die vierte Zeile ist wieder voll.",
+      [
+       100,
+       175,
+       900,
+       190
+      ]
+     ],
+     [
+      "Und die letzte Zeile endet frueh.",
+      [
+       100,
+       195,
+       700,
+       210
+      ]
+     ]
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    [
+     false,
+     false,
+     false,
+     false,
+     false,
+     true
+    ],
+    [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ]
+   ]
+  ]
+ },
+ {
+  "name": "randlabel_vorziehen",
+  "eingaben": [
+   [
+    [
+     [
+      "Der Garant ist zur Abwendung des Erfolges verpflichtet, so dass sein",
+      [
+       200,
+       100,
+       900,
+       114
+      ]
+     ],
+     [
+      "**Merke:**",
+      [
+       150,
+       118,
+       210,
+       132
+      ]
+     ],
+     [
+      "Unterlassen der Begehung durch aktives Tun entspricht, § 13 StGB.",
+      [
+       200,
+       118,
+       900,
+       132
+      ]
+     ],
+     [
+      "Daran schliesst sich die Frage der Garantenstellung an.",
+      [
+       200,
+       136,
+       900,
+       150
+      ]
+     ],
+     [
+      "Sie ist der Kern jeder Unterlassungspruefung.",
+      [
+       200,
+       154,
+       900,
+       168
+      ]
+     ]
+    ],
+    18
+   ]
+  ],
+  "ausgabe": [
+   [
+    [
+     "**Merke:**",
+     [
+      150,
+      118,
+      210,
+      132
+     ]
+    ],
+    [
+     "Der Garant ist zur Abwendung des Erfolges verpflichtet, so dass sein",
+     [
+      200,
+      100,
+      900,
+      114
+     ]
+    ],
+    [
+     "Unterlassen der Begehung durch aktives Tun entspricht, § 13 StGB.",
+     [
+      200,
+      118,
+      900,
+      132
+     ]
+    ],
+    [
+     "Daran schliesst sich die Frage der Garantenstellung an.",
+     [
+      200,
+      136,
+      900,
+      150
+     ]
+    ],
+    [
+     "Sie ist der Kern jeder Unterlassungspruefung.",
+     [
+      200,
+      154,
+      900,
+      168
+     ]
+    ]
+   ]
+  ]
+ },
+ {
+  "name": "fussnotennummern_anbinden",
+  "eingaben": [
+   [
+    [
+     [
+      "7",
+      [
+       8,
+       915,
+       20,
+       925
+      ]
+     ],
+     [
+      "Vgl. BGH, NJW 2014, 1524.",
+      [
+       50,
+       915,
+       400,
+       925
+      ]
+     ],
+     [
+      "Der Anspruch ist begruendet.",
+      [
+       90,
+       200,
+       800,
+       215
+      ]
+     ]
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    [
+     "7 Vgl. BGH, NJW 2014, 1524.",
+     [
+      8,
+      915,
+      400,
+      925
+     ]
+    ],
+    [
+     "Der Anspruch ist begruendet.",
+     [
+      90,
+      200,
+      800,
+      215
+     ]
+    ]
+   ]
+  ]
+ },
+ {
+  "name": "fussnoten_obsidian",
+  "eingaben": [
+   [
+    [
+     "Er ist ein Besitzdiener.1",
+     "1 Vgl. BGH, NJW 2014, 1524.",
+     "2 So auch MüKo-BGB, § 855 Rn. 14.",
+     "| a | b |"
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    "Er ist ein Besitzdiener.[^1]",
+    "| a | b |",
+    "",
+    "[^1]: Vgl. BGH, NJW 2014, 1524.",
+    "[^2]: So auch MüKo-BGB, § 855 Rn. 14."
+   ]
+  ]
+ },
+ {
+  "name": "gliederung_auszeichnen",
+  "eingaben": [
+   [
+    [
+     "1. Anspruch aus § 816 I S. 2 BGB",
+     "cc) Diese Ansicht ist mit der h.M. abzulehnen.",
+     "Fliesstext ohne Marker",
+     "**1. Anspruch aus § 985 BGB auf Rueckgabe des Bargeldes.**",
+     "3. Anspruch aus § 433 II BGB"
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    "#### 1. Anspruch aus § 816 I S. 2 BGB",
+    "**cc)** Diese Ansicht ist mit der h.M. abzulehnen.",
+    "Fliesstext ohne Marker",
+    "#### 1. Anspruch aus § 985 BGB auf Rueckgabe des Bargeldes.",
+    "#### 3. Anspruch aus § 433 II BGB"
+   ]
+  ]
+ },
+ {
+  "name": "fragmente_verschmelzen",
+  "eingaben": [
+   [
+    [
+     [
+      "1.",
+      [
+       90,
+       210,
+       100,
+       225
+      ]
+     ],
+     [
+      "Die Abtretung als Verfuegung",
+      [
+       110,
+       210,
+       500,
+       225
+      ]
+     ],
+     [
+      "weiterer Text auf anderer Zeile",
+      [
+       90,
+       240,
+       400,
+       255
+      ]
+     ]
+    ],
+    595
+   ]
+  ],
+  "ausgabe": [
+   [
+    [
+     "1. Die Abtretung als Verfuegung",
+     [
+      90,
+      210,
+      500,
+      225
+     ]
+    ],
+    [
+     "weiterer Text auf anderer Zeile",
+     [
+      90,
+      240,
+      400,
+      255
+     ]
+    ]
+   ]
+  ]
+ },
+ {
+  "name": "zusammenfuegen_randmarke",
+  "eingaben": [
+   [
+    [
+     [
+      "**Beispiel:**",
+      [
+       166,
+       98,
+       237,
+       112
+      ]
+     ],
+     [
+      "Mutter M putzt gerade die Fenster ihrer Terrasse und stoesst dabei aus Unachtsamkeit einen",
+      [
+       166,
+       97,
+       899,
+       111
+      ]
+     ],
+     [
+      "Blumentopf herunter, welcher sodann den Dieb D trifft.",
+      [
+       166,
+       116,
+       899,
+       130
+      ]
+     ]
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    "**Beispiel:** Mutter M putzt gerade die Fenster ihrer Terrasse und stoesst dabei aus Unachtsamkeit einen Blumentopf herunter, welcher sodann den Dieb D trifft."
+   ]
+  ]
+ },
+ {
+  "name": "zusammenfuegen_fussnote",
+  "eingaben": [
+   [
+    [
+     [
+      "Juristisches Repetitorium",
+      [
+       0,
+       50,
+       1000,
+       65
+      ]
+     ],
+     [
+      "Der Anspruch ist begruendet.1",
+      [
+       90,
+       100,
+       800,
+       115
+      ]
+     ],
+     [
+      "1 Vgl. BGH, NJW 2014, 1524.",
+      [
+       8,
+       915,
+       500,
+       930
+      ]
+     ]
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    "Der Anspruch ist begruendet.[^1]",
+    "",
+    "[^1]: Vgl. BGH, NJW 2014, 1524."
+   ]
+  ]
+ },
+ {
+  "name": "als_callout",
+  "eingaben": [
+   [
+    [
+     "Absatz eins.",
+     "Absatz zwei\nmit Umbruch",
+     "Letzter Absatz."
+    ],
+    "Test-Titel"
+   ]
+  ],
+  "ausgabe": [
+   "> [!note]- Test-Titel\n> Absatz eins.\n>\n> Absatz zwei\n> mit Umbruch\n>\n> Letzter Absatz."
+  ]
+ },
+ {
+  "name": "frage_antwort_raster",
+  "eingaben": [
+   [
+    [
+     [
+      "1. Was versteht man unter Geldwertvindikation?",
+      [
+       100,
+       100,
+       500,
+       115
+      ]
+     ],
+     [
+      "2. Welche Rechtsfolgen hat die Anfechtung?",
+      [
+       100,
+       130,
+       500,
+       145
+      ]
+     ],
+     [
+      "3. Was ist ein Anwartschaftsrecht?",
+      [
+       100,
+       160,
+       500,
+       175
+      ]
+     ],
+     [
+      "4. Wie unterscheiden sich Besitz und Eigentum?",
+      [
+       100,
+       190,
+       500,
+       205
+      ]
+     ],
+     [
+      "5. Was regelt § 985 BGB?",
+      [
+       100,
+       220,
+       500,
+       235
+      ]
+     ],
+     [
+      "6. Wer ist Besitzer?",
+      [
+       100,
+       250,
+       500,
+       265
+      ]
+     ]
+    ],
+    [
+     [
+      "Besitzdiener iSd Paragraf 855 BGB.",
+      [
+       520,
+       100,
+       900,
+       115
+      ]
+     ],
+     [
+      "Die Anfechtung macht den Vertrag von",
+      [
+       520,
+       130,
+       900,
+       145
+      ]
+     ],
+     [
+      "Anfang an nichtig.",
+      [
+       520,
+       160,
+       900,
+       175
+      ]
+     ],
+     [
+      "Ein Anwartschaftsrecht ist ein",
+      [
+       520,
+       190,
+       900,
+       205
+      ]
+     ],
+     [
+      "Recht auf den Erwerb einer Sache.",
+      [
+       520,
+       220,
+       900,
+       235
+      ]
+     ],
+     [
+      "Der Besitzer hat die Sachherrschaft.",
+      [
+       520,
+       250,
+       900,
+       265
+      ]
+     ]
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    [
+     "| Frage | Antwort |\n| --- | --- |\n| 1. Was versteht man unter Geldwertvindikation? | Besitzdiener iSd Paragraf 855 BGB. |\n| 2. Welche Rechtsfolgen hat die Anfechtung? | Die Anfechtung macht den Vertrag von |\n| 3. Was ist ein Anwartschaftsrecht? | Anfang an nichtig. |\n| 4. Wie unterscheiden sich Besitz und Eigentum? | Ein Anwartschaftsrecht ist ein |\n| 5. Was regelt § 985 BGB? | Recht auf den Erwerb einer Sache. |\n| 6. Wer ist Besitzer? | Der Besitzer hat die Sachherrschaft. |",
+     [
+      0,
+      250,
+      1000,
+      1000
+     ],
+     "tabelle"
+    ]
+   ]
+  ]
+ },
+ {
+  "name": "schleifenlaenge",
+  "eingaben": [
+   [
+    "a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e"
+   ],
+   [
+    "(1982) (1983) (1984) (1985) (1986) (1987) (1988) (1989) (1990) (1991) (1992) (1993) (1994) (1995) (1996) (1997) (1998) (1999) (2000) (2001) (2002) (2003) (2004) (2005) (2006) (2007) (2008) (2009) (2010) (2011) (2012) (2013) (2014) (2015) (2016) (2017) (2018) (2019) (2020) (2021) (2022) (2023) (2024) (2025) (2026) (2027) (2028) (2029) (2030) (2031) (2032) (2033) (2034) (2035) (2036) (2037) (2038) (2039) (2040) (2041) (2042) (2043) (2044) (2045) (2046) (2047) (2048) (2049) (2050) (2051) (2052) (2053) (2054) (2055) (2056) (2057) (2058) (2059) (2060) (2061) (2062) (2063) (2064) (2065) (2066) (2067) (2068) (2069) (2070) (2071) (2072) (2073) (2074) (2075) (2076) (2077) (2078) (2079) (2080) (2081) (2082) (2083) (2084) (2085) (2086) (2087) (2088) (2089) (2090) (2091) (2092) (2093) (2094) (2095) (2096) (2097) (2098) (2099) (2100) (2101) (2102) (2103) (2104) (2105) (2106) (2107) (2108) (2109) (2110) (2111) (2112) (2113) (2114) (2115) (2116) (2117) (2118) (2119) (2120) (2121) (2122) (2123) (2124) (2125) (2126) (2127) (2128) (2129) (2130) (2131) (2132) (2133) (2134) (2135) (2136) (2137) (2138) (2139) (2140) (2141) (2142) (2143) (2144) (2145) (2146) (2147) (2148) (2149) (2150) (2151) (2152) (2153) (2154) (2155) (2156) (2157) (2158) (2159) (2160) (2161) (2162) (2163) (2164) (2165) (2166) (2167) (2168) (2169) (2170) (2171) (2172) (2173) (2174) (2175) (2176) (2177) (2178) (2179) (2180) (2181) (2182) (2183) (2184) (2185) (2186) (2187) (2188) (2189) (2190) (2191) (2192) (2193) (2194) (2195) (2196) (2197) (2198) (2199) (2200) (2201) (2202) (2203) (2204) (2205) (2206) (2207) (2208) (2209) (2210) (2211) (2212) (2213) (2214) (2215) (2216) (2217) (2218) (2219) (2220) (2221) (2222) (2223) (2224) (2225) (2226) (2227) (2228) (2229) (2230) (2231) (2232) (2233) (2234) (2235) (2236) (2237) (2238) (2239) (2240) (2241) (2242) (2243) (2244) (2245) (2246) (2247) (2248) (2249) (2250) (2251) (2252) (2253) (2254) (2255) (2256) (2257) (2258) (2259)"
+   ],
+   [
+    "Der Anspruch des K gegen B ergibt sich aus dem Kaufvertrag nach Paragraf 433 Absatz 2 BGB."
+   ]
+  ],
+  "ausgabe": [
+   30,
+   274,
+   1
+  ]
+ },
+ {
+  "name": "entgleist",
+  "eingaben": [
+   [
+    "a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e a b c d e",
+    null,
+    false
+   ],
+   [
+    "Der Anspruch ist begruendet und faellig, weil der Kaufvertrag wirksam zustande gekommen ist.",
+    500,
+    false
+   ],
+   [
+    "Kurz abgebrochen.",
+    500,
+    false
+   ],
+   [
+    "Satz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz. Und noch ein Satz mit ausreichend Substanz.",
+    500,
+    false
+   ]
+  ],
+  "ausgabe": [
+   [
+    "Schleife",
+    30.0
+   ],
+   [
+    "Abbruch",
+    0.184
+   ],
+   [
+    "Abbruch",
+    0.034
+   ],
+   [
+    "Schleife",
+    100.0
+   ]
+  ]
+ },
+ {
+  "name": "schleife_kuerzen",
+  "eingaben": [
+   [
+    [
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Ansprueche aus Paragraf 823, Paragraf 826, Paragraf 831, Paragraf 840.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Dieselbe Fussnote steht hier.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V. V.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ]
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    [
+     "Dieselbe Fussnote steht hier.",
+     [
+      0,
+      0,
+      1000,
+      10
+     ]
+    ],
+    [
+     "Ansprueche aus Paragraf 823, Paragraf 826, Paragraf 831, Paragraf 840.",
+     [
+      0,
+      0,
+      1000,
+      10
+     ]
+    ],
+    [
+     "Dieselbe Fussnote steht hier.",
+     [
+      0,
+      0,
+      1000,
+      10
+     ]
+    ],
+    [
+     "Dieselbe Fussnote steht hier.",
+     [
+      0,
+      0,
+      1000,
+      10
+     ]
+    ],
+    [
+     "V. V.",
+     [
+      0,
+      0,
+      1000,
+      10
+     ]
+    ]
+   ]
+  ]
+ },
+ {
+  "name": "ueberlappung_kuerzen_fortsetzung",
+  "eingaben": [
+   [
+    [
+     [
+      "Er ist somit Besitzdiener iSd Paragraf 855 BGB. Infolgedessen ist L kein Besitzer und nur M ist Besitzer des Mehls. Ob es",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ]
+    ],
+    [
+     [
+      "Infolgedessen ist L kein Besitzer und nur M ist Besitzer des Mehls. Ob es dem M abhanden gekommen ist, richtet sich nach Paragraf 935 BGB.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Fussnote 13: BGH NJW 2014, 1524.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ]
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    [
+     "dem M abhanden gekommen ist, richtet sich nach Paragraf 935 BGB.",
+     [
+      0,
+      0,
+      1000,
+      10
+     ]
+    ],
+    [
+     "Fussnote 13: BGH NJW 2014, 1524.",
+     [
+      0,
+      0,
+      1000,
+      10
+     ]
+    ]
+   ]
+  ]
+ },
+ {
+  "name": "ueberlappung_kuerzen_duplette",
+  "eingaben": [
+   [
+    [
+     [
+      "Die Voraussetzungen des Paragraf 823 Absatz 1 BGB liegen vor.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ]
+    ],
+    [
+     [
+      "Die Voraussetzungen des Paragraf 823 Absatz 1 BGB liegen vor.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ],
+     [
+      "Ein Schaden ist entstanden.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ]
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    [
+     "Ein Schaden ist entstanden.",
+     [
+      0,
+      0,
+      1000,
+      10
+     ]
+    ]
+   ]
+  ]
+ },
+ {
+  "name": "ueberlappung_kuerzen_lesefehler",
+  "eingaben": [
+   [
+    [
+     [
+      "Anknuepfungspunkt waere also, dass H trotz des aus der Besitzverschaiung folgenden Anscheins nicht nachgeforscht hat.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ]
+    ],
+    [
+     [
+      "Anknuepfungspunkt waere also, dass H trotz des aus der Besitzverschaffung folgenden Anscheins nicht nachgeforscht hat. Fuer eine Nachforschungsobliegenheit spricht wenig.",
+      [
+       0,
+       0,
+       1000,
+       10
+      ]
+     ]
+    ]
+   ]
+  ],
+  "ausgabe": [
+   [
+    [
+     "Anknuepfungspunkt waere also, dass H trotz des aus der Besitzverschaffung folgenden Anscheins nicht nachgeforscht hat. Fuer eine Nachforschungsobliegenheit spricht wenig.",
+     [
+      0,
+      0,
+      1000,
+      10
+     ]
+    ]
+   ]
+  ]
+ },
+ {
+  "name": "zusammenfuegen_verworfen",
+  "eingaben": [
+   [
+    null
+   ]
+  ],
+  "ausgabe": [
+   [
+    "Juristisches Repetitorium"
+   ]
+  ]
+ }
+]

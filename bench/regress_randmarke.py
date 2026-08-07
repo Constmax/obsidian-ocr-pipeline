@@ -16,8 +16,9 @@ zusammen, sie loescht nichts. Zeichenverlust hiesse, die Regel ist falsch.
 import json, sys
 from pathlib import Path
 
-from pfade import BENCH, WURZEL as VAULT   # legt pdf2md.py auf sys.path
+from pfade import BENCH, WURZEL as VAULT   # legt pdf2md/ auf sys.path
 import pdf2md as M
+import zusammenbau as Z
 from regress_steg import buchstaben, seite_bauen
 
 
@@ -35,7 +36,7 @@ def main():
     for s in seiten:
         nach_datei.setdefault(s["file"], []).append(s["page"])
 
-    echt = M.ist_ueberschrift
+    echt = Z.ist_ueberschrift
     n, gleich, geaendert, verlust = 0, 0, [], []
     for datei in sorted(nach_datei):
         pfad = VAULT / datei
@@ -45,23 +46,23 @@ def main():
         for p in doc:
             if p.rotation:
                 p.remove_rotation()
-        M.LAUFEND = M.laufende_zeilen(doc)
+        Z.laufend_setzen(M.laufende_zeilen(doc))
         for nr in sorted(nach_datei[datei]):
             if nr > doc.page_count:
                 continue
             page = doc[nr - 1]
             n += 1
-            if not any(M.RANDLABEL.match(zeile.strip())
+            if not any(Z.RANDLABEL.match(zeile.strip())
                        for zeile in page.get_text("text").splitlines()):
                 gleich += 1
                 continue
             try:
-                M.ist_ueberschrift = alt_ueberschrift
+                Z.ist_ueberschrift = alt_ueberschrift
                 a = seite_bauen(page)
-                M.ist_ueberschrift = echt
+                Z.ist_ueberschrift = echt
                 b = seite_bauen(page)
             except Exception as e:
-                M.ist_ueberschrift = echt
+                Z.ist_ueberschrift = echt
                 print(f"  FEHLER {datei} S.{nr}: {e}")
                 continue
             if a == b:
