@@ -11,8 +11,10 @@ einen Blick zu sehen, ob die Marke geometrisch ueberhaupt im Rand steht.
 import sys
 from pathlib import Path
 
-from pfade import BENCH                       # legt pdf2md.py auf sys.path
+from pfade import BENCH                       # legt pdf2md/ auf sys.path
 import pdf2md as M
+import ocr as O
+import zusammenbau as Z
 
 
 def main():
@@ -38,21 +40,21 @@ def main():
     formatted = apply_chat_template(processor, load_config(M.MODEL), M.PROMPT,
                                     num_images=1)
     roh = generate(model, processor, formatted, image=[str(png)],
-                   max_tokens=M.TOKEN_MAX, temperature=0.0, verbose=False)
+                   max_tokens=O.TOKEN_MAX, temperature=0.0, verbose=False)
     roh = roh if isinstance(roh, str) else getattr(roh, "text", str(roh))
 
-    zeilen = M.fett_markieren(M.parse_zeilen(roh), png)
+    zeilen = O.fett_markieren(Z.parse_zeilen(roh), png)
     print(f"{len(zeilen)} Zeilen\n")
     print(f"{'#':>3s} {'x0':>5s} {'y0':>5s} {'x1':>5s}  Text")
     for i, z in enumerate(zeilen):
         b = z[1]
-        marke = " ←RANDLABEL" if M.RANDLABEL.match(z[0].strip()) else ""
+        marke = " ←RANDLABEL" if Z.RANDLABEL.match(z[0].strip()) else ""
         print(f"{i:3d} {b[0] if b else -1:5d} {b[1] if b else -1:5d} "
               f"{b[2] if b else -1:5d}  {z[0][:70]!r}{marke}")
 
     import statistics
     for i, z in enumerate(zeilen):
-        if not (z[1] and M.RANDLABEL.match(z[0].strip())):
+        if not (z[1] and Z.RANDLABEL.match(z[0].strip())):
             continue
         nah = [x for x in zeilen[max(0, i - 8):i + 9] if x[1] and x is not z]
         rumpf = statistics.median([x[1][0] for x in nah]) if nah else None
