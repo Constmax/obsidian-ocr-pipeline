@@ -52,14 +52,20 @@ repo. All code identifiers, comments, docs and commit messages are German
   Homebrew-Python's pyexpat is broken on macOS), `~/bin` symlinks, plugin
   copy. `install.sh` and `plugin/install-plugin.sh` are building blocks it
   calls, not parallel installers.
-- venv convention is named exactly there: `VENV_ROOT="${VENV_ROOT:-$HOME/.venvs}"`
-  (overridable); `bin/pdf2md`, `bin/pdf-lib.sh` and `bin/reprocess-raw.sh`
-  derive their candidate paths from it. The old vault-local
-  `pdf2md/setup.sh` (venvs `.venv-mlxocr` / `.venv-paddleocr` in the vault)
-  is deleted — history in git, Gate-1 measurements in `bench/ERGEBNIS.md`.
-- CI (`.github/workflows/ci.yml`, bei jedem Push/PR): Job `plugin` (npm ci →
-  check → lint → test → build → `git diff --exit-code -- main.js`), Job
-  `shell` (shellcheck über alle 7 Skripte) und Job `python` (`pytest
+- The venv paths are hardcoded as `$HOME/.venvs/...` in every consumer
+  (`setup.sh`, `install.sh`, `bin/pdf2md`, `bin/pdf-lib.sh`,
+  `bin/reprocess-raw.sh`) — there is no `VENV_ROOT` override. Moving the
+  venvs means editing all five; `bin/pdf2md` otherwise aborts with
+  "MLX-venv fehlt".
+- `pdf2md/setup.sh` is the superseded vault-local installer (venvs
+  `.venv-mlxocr` / `.venv-paddleocr` inside the vault, `rm -rf` on those
+  paths). It is still tracked but is NOT the installation path — use the
+  root `./setup.sh`. Gate-1 measurements in `bench/ERGEBNIS.md`.
+- CI (`.github/workflows/ci.yml`, bei jedem PR und bei Push auf `main` —
+  Feature-Branches laufen über ihren PR, sonst startet jeder Job doppelt):
+  Job `plugin` (npm ci → check → lint → test → build → `main.js` ist
+  versioniert *und* deckungsgleich mit `src/`), Job `shell` (shellcheck über
+  alle zehn Skripte, shellcheck-Version gepinnt) und Job `python` (`pytest
   pdf2md/test`: Nahtentdopplung, Randmarken, Schleifen, Golden-Snapshot).
   Lokal: plugin mit lint → check → test → build; Stage-1-Skripte mit
   `shellcheck -x -P bin`; Python mit `python3 -m pytest pdf2md/test`.
