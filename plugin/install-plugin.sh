@@ -4,6 +4,9 @@
 # Mit --build: baut aus src/ (braucht node/npm — nur auf der Dev-Maschine).
 # Idempotent — mehrfaches Ausführen ist unschädlich.
 #
+# main.js wird in CI gegen src/ verifiziert (.github/workflows/ci.yml) —
+# eine lokale Abweichungskontrolle gibt es nicht.
+#
 # Aufruf:  VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh [--symlink] [--build]
 
 set -euo pipefail
@@ -65,9 +68,6 @@ if [ "$BUILD" = 1 ]; then
 else
     echo "== main.js (eingecheckt, kein Build — --build für npm)"
     [ -f "$PLUGIN_DIR/main.js" ] || { echo "   !! main.js fehlt — mit --build bauen"; exit 1; }
-    if [ -d "$PLUGIN_DIR/src" ] && find "$PLUGIN_DIR/src" -newer "$PLUGIN_DIR/main.js" -print -quit | grep -q .; then
-        echo "   ⚠ src/ ist neuer als main.js — ggf. mit --build neu bauen und committen"
-    fi
 fi
 
 echo
