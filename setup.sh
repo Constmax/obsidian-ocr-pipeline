@@ -71,7 +71,7 @@ say "Stufe 1 — ocrmypdf-venv"
 # Homebrew-Python-Bottles haben auf macOS ein kaputtes pyexpat
 # (Symbol not found: _XML_SetAllocTrackerActivationThreshold).
 uv python install 3.12 >/dev/null || true          # stderr sichtbar lassen
-PY312="$(ls "$HOME/.local/share/uv/python"/cpython-3.12*/bin/python3.12 2>/dev/null | head -1 || true)"
+PY312="$(compgen -G "$HOME/.local/share/uv/python/cpython-3.12*/bin/python3.12" | head -1 || true)"
 [ -n "$PY312" ] || PY312="$(uv python find 3.12 2>/dev/null | head -1 || true)"
 [ -n "$PY312" ] || { echo "!! kein Python 3.12 gefunden (uv python install 3.12)"; exit 1; }
 if ! "$PY312" -c "import pyexpat" >/dev/null 2>&1; then
@@ -81,9 +81,23 @@ if ! "$PY312" -c "import pyexpat" >/dev/null 2>&1; then
 fi
 
 mkvenv() { # $1 = venv-Pfad, $2 = Python-Interpreter
-    if [ -d "$1" ] && [ ! -x "$1/bin/pip" ]; then
-        warn "$1 ohne pip — wird neu erstellt"
-        rm -rf "$1"
+    # Ein vorhandenes venv wird nur uebernommen, wenn es pip hat UND die
+    # erwartete Python-Version traegt: ein fremdes oder altes venv (z. B.
+    # mit Python 3.11 statt 3.12) wuerde sonst still benutzt und die
+    # pyexpat-Garantie aus Schritt ③ unterlaufen.
+    local version venv_version
+    version="$("$2" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "?")"
+    if [ -d "$1" ]; then
+        if [ ! -x "$1/bin/pip" ]; then
+            warn "$1 ohne pip — wird neu erstellt"
+            rm -rf "$1"
+        else
+            venv_version="$("$1/bin/python" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "?")"
+            if [ "$venv_version" != "$version" ]; then
+                warn "$1 mit Python $venv_version statt $version — wird neu erstellt"
+                rm -rf "$1"
+            fi
+        fi
     fi
     [ -d "$1" ] || uv venv --seed --python "$2" "$1"
 }
@@ -126,8 +140,11 @@ say "Stufe 1 — CLI-Skripte"
 # vor dem Ersetzen protokollieren (Wiederherstellung per ln -sfn).
 BACKUP="$REPO/.setup-bin-backup-$(date +%Y%m%d-%H%M%S).txt"
 FOUND=0
-for name in pdf-auto pdf-combine pdf-workflow reprocess-raw; do
-    if [ -L "$HOME/bin/$name" ] && [ "$(readlink "$HOME/bin/$name")" != "$REPO/bin/$name.sh" ]; then
+for name in pdf-auto pdf-combine pdf-workflow reprocess-raw pdf2md; do
+    # Der pdf2md-Wrapper heisst ohne .sh; die Stufe-1-CLIs mit.
+    src="$REPO/bin/$name"
+    [ "$name" = "pdf2md" ] || src="$src.sh"
+    if [ -L "$HOME/bin/$name" ] && [ "$(readlink "$HOME/bin/$name")" != "$src" ]; then
         printf '%s -> %s\n' "$name" "$(readlink "$HOME/bin/$name")" >> "$BACKUP"
         FOUND=1
     fi
