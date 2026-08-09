@@ -76,6 +76,7 @@ export function manifestLesen(text: string, jetzt: string): StatusManifest {
 				"seiten-ocr": zahlOderNull(e["seiten-ocr"]),
 				"seiten-diagramm": zahlOderNull(e["seiten-diagramm"]),
 				"ocr-datum": textOderNull(e["ocr-datum"]),
+				"ocr-zeitpunkt": textOderNull(e["ocr-zeitpunkt"]),
 				entschieden: textOderNull(e["entschieden"]),
 				"geprueft-bis": zahlOderNull(e["geprueft-bis"]),
 				notiz: textOderNull(e["notiz"]),
@@ -122,6 +123,7 @@ function neuerEintrag(
 		"seiten-ocr": zahlAusFrontmatter(fm, "seiten-ocr"),
 		"seiten-diagramm": zahlAusFrontmatter(fm, "seiten-diagramm"),
 		"ocr-datum": textAusFrontmatter(fm, "ocr-datum"),
+		"ocr-zeitpunkt": textAusFrontmatter(fm, "ocr-zeitpunkt"),
 		// Ein Eintrag, den erst der Abgleich anlegt, hat keine Entscheidung
 		// dieses Werkzeugs hinter sich — auch wenn die Datei bereits in
 		// _akzeptiert/ liegt. Kein Zeitpunkt erfinden.
@@ -206,7 +208,13 @@ export function abgleichen(
 		}
 
 		const fm = massgeblich.frontmatter ?? {};
-		const datumJetzt = textAusFrontmatter(fm, "ocr-datum");
+		// Vergleichs-Merkmal einer Neukonvertierung: bevorzugt der feingranulare
+		// `ocr-zeitpunkt` (unterscheidet gleichtaegige Neulaeufe), Rueckfall auf
+		// das tagesgenaue `ocr-datum` fuer Dateien aus Laeufen vor Einfuehrung.
+		const datumJetzt =
+			textAusFrontmatter(fm, "ocr-zeitpunkt") ??
+			textAusFrontmatter(fm, "ocr-datum");
+		const altDatum = alt["ocr-zeitpunkt"] ?? alt["ocr-datum"];
 		const eintrag: StatusEintrag = {
 			...alt,
 			pfad: massgeblich.pfad,
@@ -215,7 +223,9 @@ export function abgleichen(
 			"seiten-ocr": zahlAusFrontmatter(fm, "seiten-ocr") ?? alt["seiten-ocr"],
 			"seiten-diagramm":
 				zahlAusFrontmatter(fm, "seiten-diagramm") ?? alt["seiten-diagramm"],
-			"ocr-datum": datumJetzt ?? alt["ocr-datum"],
+			"ocr-datum": textAusFrontmatter(fm, "ocr-datum") ?? alt["ocr-datum"],
+			"ocr-zeitpunkt":
+				textAusFrontmatter(fm, "ocr-zeitpunkt") ?? alt["ocr-zeitpunkt"],
 		};
 
 		const warEntschieden =
@@ -224,24 +234,42 @@ export function abgleichen(
 		// Regel 5/6 — Neukonvertierung einer bereits entschiedenen Datei.
 		// Zwei Signale, jedes fuer sich ausreichend:
 		//   (a) derselbe Name liegt gleichzeitig offen UND entschieden vor,
-		//   (b) das ocr-datum der offenen Datei weicht vom protokollierten ab.
+		//   (b) das ocr-datum/ocr-zeitpunkt der offenen Datei weicht vom
+		//       protokollierten ab.
 		// Ohne (b) waere ein Handverschub zurueck in den offenen Ordner nicht
 		// von einer Neukonvertierung zu unterscheiden.
 		const zweiFassungen = offene !== undefined && entschiedene !== undefined;
 		const anderesDatum =
 			offene !== undefined &&
 			datumJetzt !== null &&
-			alt["ocr-datum"] !== null &&
-			datumJetzt !== alt["ocr-datum"];
+			altDatum !== null &&
+			datumJetzt !== altDatum;
 
 		if (warEntschieden && (zweiFassungen || anderesDatum)) {
 			eintrag.status = "neu-erzeugt";
 			eintrag.entschieden = null;
+			// Neue Fassung = neues Dokument: die Review-Position und die Notiz
+			// der ALTEN Fassung gehoeren nicht mehr dazu.
+			eintrag["geprueft-bis"] = null;
+			eintrag.notiz = null;
 			eintrag.vorher = {
 				status: alt.status,
 				entschieden: alt.entschieden,
 				"ocr-datum": alt["ocr-datum"],
 			};
+			neuErzeugt.push(name);
+			eintraege[name] = eintrag;
+			continue;
+		}
+
+		// Neukonvertierung einer noch offenen Datei: dasselbe Signal (b) wie
+		// Regel 5/6, nur ohne vorherige Entscheidung. Status wird zum
+		// „neu-erzeugt"-Hinweis, die alte Review-Position verfaellt mit dem
+		// neuen Inhalt.
+		if (anderesDatum) {
+			eintrag.status = "neu-erzeugt";
+			eintrag["geprueft-bis"] = null;
+			eintrag.notiz = null;
 			neuErzeugt.push(name);
 			eintraege[name] = eintrag;
 			continue;
