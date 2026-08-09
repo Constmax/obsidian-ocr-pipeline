@@ -43,6 +43,7 @@ function mitEintrag(
 		"seiten-ocr": null,
 		"seiten-diagramm": null,
 		"ocr-datum": null,
+		"ocr-zeitpunkt": null,
 		entschieden: null,
 		"geprueft-bis": null,
 		notiz: null,

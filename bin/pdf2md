@@ -24,7 +24,10 @@ for kandidat in \
     "${VAULT_ROOT:-}/.venv-mlxocr/bin/python" \
     "$PWD/.venv-mlxocr/bin/python"
 do
-    if [ -n "$kandidat" ] && [ -x "$kandidat" ]; then
+    # Neben dem Pfad auch pruefen, dass pymupdf im venv liegt: ein venv ohne
+    # `import fitz` laesst den Lauf erst nach dem Modell-Download scheitern.
+    if [ -n "$kandidat" ] && [ -x "$kandidat" ] \
+        && "$kandidat" -c "import fitz" >/dev/null 2>&1; then
         VENV_PY="$kandidat"
         break
     fi

@@ -18,7 +18,7 @@ import json
 import re
 import sys
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import zusammenbau
@@ -28,17 +28,6 @@ from layout import (bildanteil, kaesten_erkennen, kaesten_zuordnen,
 from ocr import (OVERLAP, TOKEN_MAX, ZEICHEN_JE_TINTE, _tintenmenge,
                kachel_zeilen, kacheln_senkrecht, kacheln_waagerecht,
                ueberlappung_kuerzen)
-#!/usr/bin/env python3
-"""Pfad C, Ende-zu-Ende: PDF → Markdown.
-
-  source .venv-mlxocr/bin/activate && python .ocr-bench/pdf2md.py <pdf> [--dpi 300]
-
-Rendert jede Seite, kachelt bei hoher Textdichte, laesst PaddleOCR-VL laufen und
-baut die Zeilen anhand ihrer <|LOC|>-Koordinaten zu Markdown zusammen.
-
-Erste Fassung der Zusammenbau-Schicht. Schreibt nach .ocr-bench/out-C/,
-fasst raw/ nicht an.
-"""
 
 BENCH = Path(__file__).resolve().parent
 OUT = BENCH / "out-C"
@@ -258,168 +247,177 @@ def main():
             erzwungen.add(int(teil))
     global TMP
     TMP = OUT / f"_tmp-{pdf.stem}"
-    TMP.mkdir(parents=True, exist_ok=True)   # Zwischenbilder bleiben im Bench
-    a.out.mkdir(parents=True, exist_ok=True)
+    try:
+        a.out.mkdir(parents=True, exist_ok=True)
 
-    print(f"Analysiere {pdf.name} (Scanseiten @ {a.dpi} dpi) ...")
-    seiten = seiten_analysieren(pdf, a.dpi, a.nur_ocr)
-    n_ocr = sum(1 for s in seiten if s[1] is not None)
-    print(f"   {len(seiten)} Seiten — {len(seiten)-n_ocr} aus dem Textlayer, "
-          f"{n_ocr} durch das Modell\n")
+        print(f"Analysiere {pdf.name} (Scanseiten @ {a.dpi} dpi) ...")
+        seiten = seiten_analysieren(pdf, a.dpi, a.nur_ocr)
+        n_ocr = sum(1 for s in seiten if s[1] is not None)
+        print(f"   {len(seiten)} Seiten — {len(seiten)-n_ocr} aus dem Textlayer, "
+              f"{n_ocr} durch das Modell\n")
 
-    ocr = None
-    if n_ocr:                                  # Modell nur laden, wenn gebraucht
-        from mlx_vlm import load, generate
-        from mlx_vlm.prompt_utils import apply_chat_template
-        from mlx_vlm.utils import load_config
-        model, processor = load(MODEL)
-        config = load_config(MODEL)
-        formatted = apply_chat_template(processor, config, PROMPT, num_images=1)
+        ocr = None
+        if n_ocr:                                  # Modell nur laden, wenn gebraucht
+            from mlx_vlm import load, generate
+            from mlx_vlm.prompt_utils import apply_chat_template
+            from mlx_vlm.utils import load_config
+            model, processor = load(MODEL)
+            config = load_config(MODEL)
+            formatted = apply_chat_template(processor, config, PROMPT, num_images=1)
 
-        def ocr(img, max_tokens=TOKEN_MAX):
-            res = generate(model, processor, formatted, image=[str(img)],
-                           max_tokens=max_tokens, temperature=0.0,
-                           verbose=False)
-            return res if isinstance(res, str) else getattr(res, "text", str(res))
+            def ocr(img, max_tokens=TOKEN_MAX):
+                res = generate(model, processor, formatted, image=[str(img)],
+                               max_tokens=max_tokens, temperature=0.0,
+                               verbose=False)
+                return res if isinstance(res, str) else getattr(res, "text", str(res))
 
-    md, t_ges, n_diag, n_entgleist = [], time.perf_counter(), 0, 0
+        md, t_ges, n_diag, n_entgleist = [], time.perf_counter(), 0, 0
 
-    def ablegen(nr, absaetze, diagramm, dt, chars, quelle, weg, spur=(),
-                marker_zusatz=None):
-        nonlocal n_diag
-        # %% %% ist Obsidians eigene Kommentarsyntax und bleibt auch in der
-        # Live-Vorschau unsichtbar; <!-- --> wird dort angezeigt.
-        # marker_zusatz ist Teil der Marker-Grammatik (docs/ocr-vorschau.md):
-        # die Review-Ansicht haengt Herkunfts-Badges und Layout-Info daran.
-        # Diagramm sticht: eine Seite, die als Bild eingebettet wird, ist
-        # keine Textseite, egal woher ihr Text stammt.
-        if diagramm:
-            marker_zusatz = "diagramm"
-        kopf = f"%% S. {nr} | {marker_zusatz} %%\n\n"
-        zusatz = ""
-        if diagramm:
-            n_diag += 1
-            name, pfad = diagramm_bild(pdf, nr, a.bild_dir, a.bild_max_kante)
-            teile = [f"![[{name}]]"]
-            if not a.diagramm_nur_bild and absaetze:
-                teile.append(als_callout(
-                    absaetze, "Text der Seite (Reihenfolge nicht verlässlich)"))
-            md.append(kopf + "\n\n".join(teile))
-            zusatz = f" | → {pfad.name} ({pfad.stat().st_size // 1024} kB)"
-        else:
-            md.append(kopf + "\n\n".join(absaetze))
-        print(f"→ S.{nr}: {dt:5.1f} s | {chars:5d} Z. Textlayer → "
-              f"{sum(len(p) for p in absaetze):5d} Z. | "
-              f"{len(absaetze):3d} Absaetze | "
-              f"{'DIAGRAMM als Bild' if diagramm else quelle}{zusatz}")
-        if weg:
-            print(f"     verworfen ({len(weg)}): "
-                  + " ¦ ".join(w[:34] for w in weg[:6])
-                  + (" …" if len(weg) > 6 else ""))
-        for zeile in spur:
-            print(f"     ⚠ {zeile}")
+        def ablegen(nr, absaetze, diagramm, dt, chars, quelle, weg, spur=(),
+                    marker_zusatz=None):
+            nonlocal n_diag
+            # %% %% ist Obsidians eigene Kommentarsyntax und bleibt auch in der
+            # Live-Vorschau unsichtbar; <!-- --> wird dort angezeigt.
+            # marker_zusatz ist Teil der Marker-Grammatik (docs/ocr-vorschau.md):
+            # die Review-Ansicht haengt Herkunfts-Badges und Layout-Info daran.
+            # Diagramm sticht: eine Seite, die als Bild eingebettet wird, ist
+            # keine Textseite, egal woher ihr Text stammt.
+            if diagramm:
+                marker_zusatz = "diagramm"
+            kopf = f"%% S. {nr} | {marker_zusatz} %%\n\n"
+            zusatz = ""
+            if diagramm:
+                n_diag += 1
+                name, pfad = diagramm_bild(pdf, nr, a.bild_dir, a.bild_max_kante)
+                teile = [f"![[{name}]]"]
+                if not a.diagramm_nur_bild and absaetze:
+                    teile.append(als_callout(
+                        absaetze, "Text der Seite (Reihenfolge nicht verlässlich)"))
+                md.append(kopf + "\n\n".join(teile))
+                zusatz = f" | → {pfad.name} ({pfad.stat().st_size // 1024} kB)"
+            else:
+                md.append(kopf + "\n\n".join(absaetze))
+            print(f"→ S.{nr}: {dt:5.1f} s | {chars:5d} Z. Textlayer → "
+                  f"{sum(len(p) for p in absaetze):5d} Z. | "
+                  f"{len(absaetze):3d} Absaetze | "
+                  f"{'DIAGRAMM als Bild' if diagramm else quelle}{zusatz}")
+            if weg:
+                print(f"     verworfen ({len(weg)}): "
+                      + " ¦ ".join(w[:34] for w in weg[:6])
+                      + (" …" if len(weg) > 6 else ""))
+            for zeile in spur:
+                print(f"     ⚠ {zeile}")
 
-    dump = []
+        dump = []
 
-    for nr, png, chars, art, steg, textlayer, kaesten, diagramm in seiten:
-        t = time.perf_counter()
-        diagramm = diagramm or nr in erzwungen
-        if textlayer is not None:
-            # Exakter Text, exakte Koordinaten, exaktes Fett — keine Inferenz.
-            zeilen = spalten_trennen(kaesten_zuordnen(textlayer, kaesten))
-            dump.append({"seite": nr, "quelle": "textlayer", "zeilen": zeilen})
+        for nr, png, chars, art, steg, textlayer, kaesten, diagramm in seiten:
+            t = time.perf_counter()
+            diagramm = diagramm or nr in erzwungen
+            if textlayer is not None:
+                # Exakter Text, exakte Koordinaten, exaktes Fett — keine Inferenz.
+                zeilen = spalten_trennen(kaesten_zuordnen(textlayer, kaesten))
+                dump.append({"seite": nr, "quelle": "textlayer", "zeilen": zeilen})
+                absaetze = zusammenfuegen(zeilen)
+                ablegen(nr, absaetze, diagramm, time.perf_counter() - t, chars,
+                        "Textlayer, ohne Modell",
+                        getattr(zusammenfuegen, "verworfen", []),
+                        "textlayer")
+                continue
+            # Kachelung ist eine LAYOUT-Entscheidung. Ein Laengsschnitt darf nur auf
+            # echten Zweispaltern fallen; eine dichte einspaltige Seite wird
+            # oben/unten getrennt, sonst zerschneidet man jede Zeile.
+            if diagramm and a.diagramm_nur_bild:
+                ablegen(nr, [], True, time.perf_counter() - t, chars, "", [],
+                        "ocr")
+                continue                      # kein Text gewuenscht, keine Inferenz
+
+            # Zu jeder Kachel ihr x-Fenster in Blattkoordinaten (0–1000). Nur damit
+            # laesst sich ein Kasten der richtigen Kachel zuordnen: das Modell
+            # rechnet kachelrelativ.
+            if art == "zweispaltig":
+                modus = f"senkrecht @{steg:.0%}"
+                ov = int(OVERLAP * 1000)
+                g = int(steg * 1000)
+                teile = list(zip(kacheln_senkrecht(png, steg),
+                                 [(0, min(g + ov, 1000)), (max(g - ov, 0), 1000)]))
+            elif chars >= a.kachel_ab:
+                modus = "waagerecht"
+                # Waagerechter Schnitt verschiebt y — Kastenzuordnung waere falsch.
+                teile = [(p, None) for p, _, _ in kacheln_waagerecht(png)]
+            else:
+                modus = "ganz"
+                teile = [(png, (0, 1000))]
+
+            # Massstab fuer die Laengenpruefung. Traegt die Seite einen Textlayer
+            # (Vergleichslauf mit --nur-ocr, oder ein Scan mit Rest-Textlayer),
+            # wird der Faktor daraus bestimmt und ist dann exakt fuer diese Seite.
+            # Sonst bleibt das Korpusmittel — grob, aber besser als kein Massstab:
+            # es faengt die groben Faelle, und die sind es, um die es geht.
+            tinte = _tintenmenge(png, a.dpi)
+            geeicht = chars >= 400 and tinte > 0
+            faktor = chars / tinte if geeicht else ZEICHEN_JE_TINTE
+
+            # Wichtig: in einer bereits geschnittenen Kachel darf die
+            # Spaltentrennung NICHT erneut laufen. Die Kachel ist eine einzelne
+            # Spalte; der Algorithmus wuerde dort die Gliederungs-Einrueckung
+            # (Marker links, Fliesstext eingerueckt) als zweite Spalte deuten und
+            # die Absatz-Schlusszeilen nach vorne ziehen.
+            zeilen, spur = [], []
+            for teil, fenster in teile:
+                geparst, s = kachel_zeilen(teil, ocr, not a.kein_fett, faktor,
+                                           a.dpi, geeicht,
+                                           max_tiefe=a.neuversuche)
+                spur += s
+                if fenster:
+                    geparst = kaesten_zuordnen(geparst, kaesten, fenster)
+                geordnet = (spalten_trennen(geparst) if len(teile) == 1
+                            else sorted(geparst,
+                                        key=lambda z: z[1][1] if z[1] else 0))
+                zeilen += ueberlappung_kuerzen(zeilen, geordnet)
+            if spur:
+                n_entgleist += 1
+            dump.append({"seite": nr, "quelle": f"{art}, {modus}", "zeilen": zeilen})
             absaetze = zusammenfuegen(zeilen)
             ablegen(nr, absaetze, diagramm, time.perf_counter() - t, chars,
-                    "Textlayer, ohne Modell",
-                    getattr(zusammenfuegen, "verworfen", []),
-                    "textlayer")
-            continue
-        # Kachelung ist eine LAYOUT-Entscheidung. Ein Laengsschnitt darf nur auf
-        # echten Zweispaltern fallen; eine dichte einspaltige Seite wird
-        # oben/unten getrennt, sonst zerschneidet man jede Zeile.
-        if diagramm and a.diagramm_nur_bild:
-            ablegen(nr, [], True, time.perf_counter() - t, chars, "", [],
-                    "ocr")
-            continue                      # kein Text gewuenscht, keine Inferenz
+                    f"{art}, {modus}", getattr(zusammenfuegen, "verworfen", []),
+                    spur, f"ocr | {art}, {modus}")
 
-        # Zu jeder Kachel ihr x-Fenster in Blattkoordinaten (0–1000). Nur damit
-        # laesst sich ein Kasten der richtigen Kachel zuordnen: das Modell
-        # rechnet kachelrelativ.
-        if art == "zweispaltig":
-            modus = f"senkrecht @{steg:.0%}"
-            ov = int(OVERLAP * 1000)
-            g = int(steg * 1000)
-            teile = list(zip(kacheln_senkrecht(png, steg),
-                             [(0, min(g + ov, 1000)), (max(g - ov, 0), 1000)]))
-        elif chars >= a.kachel_ab:
-            modus = "waagerecht"
-            # Waagerechter Schnitt verschiebt y — Kastenzuordnung waere falsch.
-            teile = [(p, None) for p, _, _ in kacheln_waagerecht(png)]
-        else:
-            modus = "ganz"
-            teile = [(png, (0, 1000))]
-
-        # Massstab fuer die Laengenpruefung. Traegt die Seite einen Textlayer
-        # (Vergleichslauf mit --nur-ocr, oder ein Scan mit Rest-Textlayer),
-        # wird der Faktor daraus bestimmt und ist dann exakt fuer diese Seite.
-        # Sonst bleibt das Korpusmittel — grob, aber besser als kein Massstab:
-        # es faengt die groben Faelle, und die sind es, um die es geht.
-        tinte = _tintenmenge(png, a.dpi)
-        geeicht = chars >= 400 and tinte > 0
-        faktor = chars / tinte if geeicht else ZEICHEN_JE_TINTE
-
-        # Wichtig: in einer bereits geschnittenen Kachel darf die
-        # Spaltentrennung NICHT erneut laufen. Die Kachel ist eine einzelne
-        # Spalte; der Algorithmus wuerde dort die Gliederungs-Einrueckung
-        # (Marker links, Fliesstext eingerueckt) als zweite Spalte deuten und
-        # die Absatz-Schlusszeilen nach vorne ziehen.
-        zeilen, spur = [], []
-        for teil, fenster in teile:
-            geparst, s = kachel_zeilen(teil, ocr, not a.kein_fett, faktor,
-                                       a.dpi, geeicht,
-                                       max_tiefe=a.neuversuche)
-            spur += s
-            if fenster:
-                geparst = kaesten_zuordnen(geparst, kaesten, fenster)
-            geordnet = (spalten_trennen(geparst) if len(teile) == 1
-                        else sorted(geparst,
-                                    key=lambda z: z[1][1] if z[1] else 0))
-            zeilen += ueberlappung_kuerzen(zeilen, geordnet)
-        if spur:
-            n_entgleist += 1
-        dump.append({"seite": nr, "quelle": f"{art}, {modus}", "zeilen": zeilen})
-        absaetze = zusammenfuegen(zeilen)
-        ablegen(nr, absaetze, diagramm, time.perf_counter() - t, chars,
-                f"{art}, {modus}", getattr(zusammenfuegen, "verworfen", []),
-                spur, f"ocr | {art}, {modus}")
-
-    ges = time.perf_counter() - t_ges
-    # Welche Seiten exakt sind und welche erkannt, muss in der Datei stehen:
-    # nur bei den OCR-Seiten ist ein Rueckgriff aufs Original noetig.
-    kopf = (f"---\ntitel: {pdf.stem}\nquelle-pdf: {pdf}\n"
-            f"seiten: {len(seiten)}\n"
-            f"seiten-textlayer: {len(seiten) - n_ocr}\nseiten-ocr: {n_ocr}\n"
-            + (f"seiten-diagramm: {n_diag}\n" if n_diag else "")
-            # Auffaellig gewordene Seiten benennen, nicht verschweigen: auf
-            # ihnen ist die Ausgabe auch nach dem Neuversuch unsicher.
-            + (f"seiten-entgleist: {n_entgleist}\n" if n_entgleist else "")
-            + (f"ocr-modell: {MODEL}\n" if n_ocr else "")
-            + f"ocr-datum: {date.today().isoformat()}\n---\n")
-    # Anklickbarer Rueckgriff aufs Original. Bei OCR-Seiten ist er Pflicht, nicht
-    # Bequemlichkeit: Wortfehler sind nicht mechanisch korrigierbar, ohne die
-    # Quelle also unauffindbar.
-    quelle = f"Quelle: [[{pdf.as_posix()}]]\n"
-    ziel = a.out / f"{pdf.stem}.md"
-    ziel.write_text(kopf + "\n" + quelle + "\n" + "\n\n".join(md) + "\n",
-                    encoding="utf-8")
-    if a.zeilen_dump:
-        a.zeilen_dump.write_text(json.dumps(dump, ensure_ascii=False),
-                                 encoding="utf-8")
-        print(f"→ {a.zeilen_dump} ({len(dump)} Seiten)")
-    for tmp in TMP.glob("_seite*.png"):     # Zwischenbilder nicht liegenlassen
-        tmp.unlink()
-    TMP.rmdir()
-    print(f"\n{ges:.1f} s gesamt ({ges/len(seiten):.1f} s/Seite)\n→ {ziel}")
+        ges = time.perf_counter() - t_ges
+        # Welche Seiten exakt sind und welche erkannt, muss in der Datei stehen:
+        # nur bei den OCR-Seiten ist ein Rueckgriff aufs Original noetig.
+        kopf = (f"---\ntitel: {pdf.stem}\n"
+                # JSON-Zitat statt nacktem Path: Pfade mit Leerzeichen („Fall 8")
+                # waeren sonst kein gueltiges YAML und die Review-Ansicht koennte
+                # `quelle-pdf` nicht aufloesen.
+                f"quelle-pdf: {json.dumps(str(pdf), ensure_ascii=False)}\n"
+                f"seiten: {len(seiten)}\n"
+                f"seiten-textlayer: {len(seiten) - n_ocr}\nseiten-ocr: {n_ocr}\n"
+                + (f"seiten-diagramm: {n_diag}\n" if n_diag else "")
+                # Auffaellig gewordene Seiten benennen, nicht verschweigen: auf
+                # ihnen ist die Ausgabe auch nach dem Neuversuch unsicher.
+                + (f"seiten-entgleist: {n_entgleist}\n" if n_entgleist else "")
+                + (f"ocr-modell: {MODEL}\n" if n_ocr else "")
+                + f"ocr-datum: {date.today().isoformat()}\n"
+                # Feingranularer Erzeugungszeitpunkt: die Review-Ansicht erkennt an
+                # ihm Neukonvertierungen am selben Tag, die `ocr-datum` nicht sieht.
+                + f"ocr-zeitpunkt: {datetime.now().isoformat(timespec='seconds')}\n---\n")
+        # Anklickbarer Rueckgriff aufs Original. Bei OCR-Seiten ist er Pflicht, nicht
+        # Bequemlichkeit: Wortfehler sind nicht mechanisch korrigierbar, ohne die
+        # Quelle also unauffindbar.
+        quelle = f"Quelle: [[{pdf.as_posix()}]]\n"
+        ziel = a.out / f"{pdf.stem}.md"
+        ziel.write_text(kopf + "\n" + quelle + "\n" + "\n\n".join(md) + "\n",
+                        encoding="utf-8")
+        if a.zeilen_dump:
+            a.zeilen_dump.write_text(json.dumps(dump, ensure_ascii=False),
+                                     encoding="utf-8")
+            print(f"→ {a.zeilen_dump} ({len(dump)} Seiten)")
+        print(f"\n{ges:.1f} s gesamt ({ges/len(seiten):.1f} s/Seite)\n→ {ziel}")
+    finally:
+        # Zwischenbilder nicht liegenlassen — auch nicht bei Abbruch.
+        for tmp in TMP.glob("_seite*.png"):
+            tmp.unlink()
+        TMP.rmdir()
 
 
 if __name__ == "__main__":

@@ -7,12 +7,27 @@
 import { spawn, type ChildProcess } from "child_process";
 
 export interface KonvertierenErgebnis {
-	/** Exit-Code des Kindprozesses; `null` heisst: Start fehlgeschlagen. */
+	/** Exit-Code des Kindprozesses; `null` heisst: nicht ueber einen Code
+	 *  beendet (Startfehler, Signal, Zeitueberschreitung). */
 	code: number | null;
+	/** Beendigungssignal, wenn der Prozess durch ein Signal endete. */
+	signal: NodeJS.Signals | null;
+	/** true, wenn der Prozess nach `timeoutMs` nicht beendet war und gekillt
+	 *  wurde. */
+	timeout: boolean;
 	/** Letzte nicht-leere stdout-Zeilen (hoechstens 5). */
 	stdoutLetzte: string[];
 	/** Letzte nicht-leere stderr-Zeilen (hoechstens 5). */
 	stderrLetzte: string[];
+}
+
+/** Steuerung fuer einen Lauf. */
+export interface KonvertierenSteuerung {
+	/** Haengt der Prozess laenger als `timeoutMs`, wird er gekillt und der
+	 *  Lauf mit `timeout: true` aufgeloest. Wird das Kind zur Laufzeit an
+	 *  diese Stelle gemeldet (fuer Abbruch beim Plugin-Unload). */
+	timeoutMs?: number;
+	onKind?: (kind: ChildProcess) => void;
 }
 
 /** Wie viele Zeilen pro Strom mitgenommen werden — genug fuer die Fehlerursache. */
@@ -73,6 +88,7 @@ export function pdfKonvertieren(
 	pdf2md: string,
 	cwd: string,
 	spawnFn: SpawnFunktion = spawn,
+	steuerung: KonvertierenSteuerung = {},
 ): Promise<KonvertierenErgebnis> {
 	return new Promise((erledigt) => {
 		let kind: ChildProcess;
@@ -82,9 +98,16 @@ export function pdfKonvertieren(
 				stdio: ["ignore", "pipe", "pipe"],
 			});
 		} catch (fehler) {
-			erledigt({ code: null, stdoutLetzte: [], stderrLetzte: [String(fehler)] });
+			erledigt({
+				code: null,
+				signal: null,
+				timeout: false,
+				stdoutLetzte: [],
+				stderrLetzte: [String(fehler)],
+			});
 			return;
 		}
+		steuerung.onKind?.(kind);
 		const stdoutLetzte: string[] = [];
 		const stderrLetzte: string[] = [];
 		const stdoutPuffer = zeilenPuffer(stdoutLetzte);
@@ -93,15 +116,40 @@ export function pdfKonvertieren(
 		kind.stderr?.setEncoding("utf8");
 		kind.stdout?.on("data", (stueck) => stdoutPuffer.schreibe(String(stueck)));
 		kind.stderr?.on("data", (stueck) => stderrPuffer.schreibe(String(stueck)));
+		// Haengender Lauf (z. B. blockierter Modell-Download): nicht ewig
+		// blockieren — nach `timeoutMs` killen. `unref`, damit der Timer den
+		// Prozess in Tests nicht am Beenden hindert; das Kind haelt den
+		// Event-Loop selbst am Leben.
+		const timer =
+			steuerung.timeoutMs === undefined
+				? null
+				: setTimeout(() => {
+						kind.kill();
+						erledigt({
+							code: null,
+							signal: null,
+							timeout: true,
+							stdoutLetzte,
+							stderrLetzte,
+						});
+					}, steuerung.timeoutMs);
+		timer?.unref();
+		const fertig = (ergebnis: KonvertierenErgebnis) => {
+			if (timer !== null) clearTimeout(timer);
+			erledigt(ergebnis);
+		};
 		kind.on("error", (fehler) => {
 			stdoutPuffer.flush();
 			stderrPuffer.flush();
-			erledigt({ code: null, stdoutLetzte, stderrLetzte: [...stderrLetzte, String(fehler)] });
+			// Fehlerzeile ueber `sammle`, damit das „hoechstens 5"-Versprechen
+			// auch mit dem Fehlerereignis gilt.
+			sammle(stderrLetzte, String(fehler));
+			fertig({ code: null, signal: null, timeout: false, stdoutLetzte, stderrLetzte });
 		});
-		kind.on("close", (code) => {
+		kind.on("close", (code, signal) => {
 			stdoutPuffer.flush();
 			stderrPuffer.flush();
-			erledigt({ code, stdoutLetzte, stderrLetzte });
+			fertig({ code, signal: signal ?? null, timeout: false, stdoutLetzte, stderrLetzte });
 		});
 	});
 }

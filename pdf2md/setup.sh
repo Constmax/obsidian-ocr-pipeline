@@ -106,7 +106,11 @@ rm -rf "$VAULT_ROOT/.venv-mlxocr"
 # shellcheck disable=SC1091
 source "$VAULT_ROOT/.venv-mlxocr/bin/activate"
 python -m pip install -q --upgrade pip
-python -m pip install -q -U mlx-vlm 2>&1 | tail -5
+# Alle Laufzeit-Abhaengigkeiten aus einer Quelle: requirements.txt fuehrt
+# neben mlx-vlm auch pymupdf (importiert als `fitz`), das pdf2md.py braucht —
+# nur mlx-vlm zu installieren liesse den Lauf am ersten `import fitz`
+# scheitern. Einfach als "was man fuer Stufe 2 braucht" lesbar.
+python -m pip install -q -U -r "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/requirements.txt" 2>&1 | tail -5
 python - <<'PY' 2>&1 | tail -5
 try:
     import mlx_vlm, mlx.core as mx

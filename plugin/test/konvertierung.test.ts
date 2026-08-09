@@ -12,7 +12,11 @@ import {
 class FakeKind extends EventEmitter {
 	stdout = Object.assign(new EventEmitter(), { setEncoding: () => {} });
 	stderr = Object.assign(new EventEmitter(), { setEncoding: () => {} });
-	kill = () => true;
+	gekillt = false;
+	kill = () => {
+		this.gekillt = true;
+		return true;
+	};
 }
 
 function spawnAttrappe(
@@ -50,6 +54,8 @@ test("ruft pdf2md mit --out und cwd auf und liefert Exit-Code 0 mit den Zeilen",
 		},
 	]);
 	assert.equal(ergebnis.code, 0);
+	assert.equal(ergebnis.signal, null);
+	assert.equal(ergebnis.timeout, false);
 	assert.deepEqual(ergebnis.stdoutLetzte, [
 		"Analysiere fall-01.pdf (Scanseiten @ 150 dpi) ...",
 		"→ S.1: 12.3 s | 100 Z. Textlayer → OCR",
@@ -114,6 +120,8 @@ test("Fehler beim Start (Kind wirft 'error') ergibt code null", async () => {
 
 	const ergebnis = await versprechen;
 	assert.equal(ergebnis.code, null);
+	assert.equal(ergebnis.signal, null);
+	assert.equal(ergebnis.timeout, false);
 	assert.ok(
 		ergebnis.stderrLetzte.some((z) => z.includes("ENOENT")),
 		`erwartete ENOENT-Meldung, bekam: ${JSON.stringify(ergebnis.stderrLetzte)}`,
@@ -132,4 +140,85 @@ test("spawnFn wirft synchron: code null, Meldung in stderrLetzte", async () => {
 	);
 	assert.equal(ergebnis.code, null);
 	assert.deepEqual(ergebnis.stderrLetzte, ["Error: spawn nicht verfuegbar"]);
+});
+
+test("onKind meldet den Kindprozess", async () => {
+	const kind = new FakeKind();
+	let gemeldet: unknown = null;
+	const versprechen = pdfKonvertieren(
+		"raw/fall-01.pdf",
+		"_ocr-vorschau",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnAttrappe([], kind),
+		{
+			onKind: (k) => {
+				gemeldet = k;
+			},
+		},
+	);
+
+	kind.emit("close", 0);
+	await versprechen;
+	assert.equal(gemeldet, kind);
+});
+
+test("Zeitueberschreitung: Kind wird gekillt, Ergebnis mit timeout: true", async () => {
+	const kind = new FakeKind();
+	const versprechen = pdfKonvertieren(
+		"raw/haengt.pdf",
+		"_ocr-vorschau",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnAttrappe([], kind),
+		{ timeoutMs: 20 },
+	);
+
+	kind.stdout.emit("data", "→ S.1: 12.3 s\n");
+
+	const ergebnis = await versprechen;
+	assert.equal(kind.gekillt, true);
+	assert.equal(ergebnis.timeout, true);
+	assert.equal(ergebnis.code, null);
+	assert.equal(ergebnis.signal, null);
+	assert.deepEqual(ergebnis.stdoutLetzte, ["→ S.1: 12.3 s"]);
+});
+
+test("Prozess durch Signal beendet: Signal wird gemeldet", async () => {
+	const kind = new FakeKind();
+	const versprechen = pdfKonvertieren(
+		"raw/fall-01.pdf",
+		"_ocr-vorschau",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnAttrappe([], kind),
+	);
+
+	kind.emit("close", null, "SIGTERM");
+
+	const ergebnis = await versprechen;
+	assert.equal(ergebnis.code, null);
+	assert.equal(ergebnis.signal, "SIGTERM");
+});
+
+test("close nach dem Timeout-Kill ueberschreibt das timeout-Ergebnis nicht", async () => {
+	const kind = new FakeKind();
+	const versprechen = pdfKonvertieren(
+		"raw/haengt.pdf",
+		"_ocr-vorschau",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnAttrappe([], kind),
+		{ timeoutMs: 20 },
+	);
+
+	const ergebnis = await versprechen;
+	assert.equal(ergebnis.timeout, true);
+
+	// Der Kill loest im echten Leben selbst ein close aus — das muss harmlos
+	// sein und darf das Ergebnis nicht anfassen (der Promise ist schon
+	// aufgeloest, aber der Test sichert ab, dass kein Fehler auftritt).
+	kind.emit("close", null, "SIGKILL");
+	await new Promise((fertig) => setTimeout(fertig, 10));
+	assert.equal(ergebnis.timeout, true);
 });
