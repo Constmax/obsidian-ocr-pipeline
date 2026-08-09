@@ -117,9 +117,10 @@ export function pdfKonvertieren(
 		kind.stdout?.on("data", (stueck) => stdoutPuffer.schreibe(String(stueck)));
 		kind.stderr?.on("data", (stueck) => stderrPuffer.schreibe(String(stueck)));
 		// Haengender Lauf (z. B. blockierter Modell-Download): nicht ewig
-		// blockieren — nach `timeoutMs` killen. `unref`, damit der Timer den
-		// Prozess in Tests nicht am Beenden hindert; das Kind haelt den
-		// Event-Loop selbst am Leben.
+		// blockieren — nach `timeoutMs` killen. Bewusst OHNE `unref`: der Timer
+		// wird ueber `fertig` geloescht, sobald der Prozess (normal oder per
+		// Kill) endet — bis dahin soll er den Event-Loop offen halten, sonst
+		// koennte der Prozess vor dem eigentlichen Timeout-Kill beendet werden.
 		const timer =
 			steuerung.timeoutMs === undefined
 				? null
@@ -133,7 +134,6 @@ export function pdfKonvertieren(
 							stderrLetzte,
 						});
 					}, steuerung.timeoutMs);
-		timer?.unref();
 		const fertig = (ergebnis: KonvertierenErgebnis) => {
 			if (timer !== null) clearTimeout(timer);
 			erledigt(ergebnis);
