@@ -97,7 +97,7 @@ entscheidet über die wahrgenommene Qualität, nicht die OCR-Engine.
 | 5 | **Verschränkte Fußnotenblöcke** in 2131/2135/2143 | klein, dort auch der Restverlust von 1–2 Zeichen |
 | 6 | **Fußnotentext über den Seitenumbruch** wird abgeschnitten | klein |
 | ~~7~~ | ~~**`**Beispiel:**` mitten im Satz**~~ | **erledigt**, beide Bauformen |
-| 8 | **Wortfehler** — jetzt beziffert: 1,2 % über alle 40 Seiten | gering |
+| 8 | **Wortfehler** — jetzt beziffert: 1,2 % über alle 40 Seiten; seit dem Wörterbuchabgleich wenigstens **auffindbar** | gering |
 | 9 | **Mehrspaltige Lesereihenfolge** — `2131_Lösung` S. 4 liegt bei 49,7 % | neu, jetzt der größte Einzelposten |
 
 Zu Punkt 7: die Randmarke hatte **zwei** Bauformen, und nur eine war bekannt.
@@ -117,8 +117,16 @@ Seiten steht der Ertrag nicht mehr gegen das Risiko, ein korrektes Normzitat zu
 „verbessern". Falls er doch kommt: der Benchmark misst ihn jetzt, und die
 Messlatte heißt **92,4 % Zitattreue** — er darf sie nicht senken.
 
-**Der lokale Wörterbuchabgleich** (hunspell + juristische Begriffsliste) — aus
-demselben Grund entwertet, aber als Prüfhilfe weiter brauchbar.
+**Der lokale Wörterbuchabgleich** (hunspell + juristische Begriffsliste) ist
+**gebaut** — genau als die Prüfhilfe, die hier angekündigt war:
+`pdf2md/woerterbuch.py` meldet, korrigiert aber nur die eindeutigen Fälle und
+nur auf ausdrückliches Verlangen. Der Ertrag ist die Arbeitsliste für den
+Begutachtungsdurchgang (`woerter-verdaechtig` im Frontmatter, `⌕` im
+Protokoll), nicht ein besserer Text. Offen bleibt der **dokumentinterne
+Abgleich**: kommt eine Verwechslungsvariante desselben Wortes auf derselben
+Seite häufig vor und das verdächtige Wort einmal, ist das ein Indiz, das kein
+Wörterbuch liefern kann — es fasst auch morphologisch wohlgeformte
+Scheinwörter wie `Verhaltungsakte`, die Grenze des jetzigen Wegs.
 
 **Die Migration.** 701 `[[raw/…pdf]]`-Wikilinks zeigen noch auf die PDFs. Wartet
 auf die Entscheidung, wohin die Originale wandern — ohne sie sind die `.md` bei

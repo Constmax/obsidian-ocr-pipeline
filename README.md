@@ -85,9 +85,21 @@ derselben Seiten (`bench/bench_ocr.py`):
 Vollständig mit Fehlerklassen und Vorher-Zahlen:
 [bench/ERGEBNIS.md](bench/ERGEBNIS.md).
 
-**Wichtig:** OCR-Wortfehler (`Verhaltungsakte`, `Rechtsbehelsfebehrung`) sind
-nicht mechanisch korrigierbar. Die Original-PDFs bleiben die Quelle; jede
-erzeugte `.md` trägt einen Rücksprung-Link im Frontmatter.
+Zum Schluss läuft ein **Wörterbuchabgleich** über die OCR-Seiten (nicht über
+die exakten Textlayer-Seiten). Was kein Wörterbuch kennt, steht als `⌕`-Zeile
+im Protokoll und als `woerter-verdaechtig` im Frontmatter — der
+Begutachtungsdurchgang weiß damit, wonach er auf der Seite suchen soll.
+Ersetzt wird nur auf ausdrückliches Verlangen (`--woerterbuch-korrigieren`)
+und nur, wenn genau eine Variante aus der Verwechslungstabelle im Wörterbuch
+steht; bei zwei Lesarten bleibt das Wort stehen. Zitate, Zahlen und
+Abkürzungen werden gar nicht erst geprüft. Gemessen an 202 Wörtern echter
+Gutachtenprosa: 0 Fehlalarme, 6 von 7 eingestreuten Lesefehlern gefunden.
+Einrichtung und Grenzen: [docs/scripts-detail.md](docs/scripts-detail.md).
+
+**Wichtig:** Der Abgleich findet Nicht-Wörter (`Besitzverschaiung`,
+`Leistuug`), keine morphologisch wohlgeformten Scheinwörter
+(`Verhaltungsakte`) und keine Wortauslassungen. Die Original-PDFs bleiben die
+Quelle; jede erzeugte `.md` trägt einen Rücksprung-Link im Frontmatter.
 
 ## Stufe 3 — Begutachtung
 
@@ -179,8 +191,8 @@ Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
 
 ```
 bin/         Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
-pdf2md/      Stufe 2 — pdf2md.py (CLI) + layout.py + ocr.py + zusammenbau.py,
-             Testsuite in pdf2md/test/ (pytest, ohne MLX lauffaehig)
+pdf2md/      Stufe 2 — pdf2md.py (CLI) + layout.py + ocr.py + zusammenbau.py
+             + woerterbuch.py, Testsuite in pdf2md/test/ (pytest, ohne MLX)
 bench/       Benchmark-Harness und Messergebnisse
 plugin/      Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
 docs/        Installation, Flag-Referenz, Bugreport, Vault-Integration
@@ -201,8 +213,8 @@ Jeder Push und PR läuft durch drei unabhängige Jobs (`.github/workflows/ci.yml
 - **shell** — shellcheck über alle sieben Shell-Skripte (`setup.sh`,
   `install.sh`, `bin/*.sh`, `bin/pdf2md`, `plugin/install-plugin.sh`).
 - **python** — `pytest pdf2md/test`: Nahtentdopplung, Randmarken,
-  Schleifenerkennung und der Golden-Snapshot aus Issue #8 — ohne Modell, ohne
-  Vault-Bestand.
+  Schleifenerkennung, Wörterbuchabgleich und der Golden-Snapshot aus Issue #8
+  — ohne Modell, ohne Vault-Bestand.
 
 Lokal genügt für den Plugin-Teil `npm run lint && npm run check && npm test &&
 npm run build`, für die Skripte `shellcheck -x -P bin setup.sh install.sh

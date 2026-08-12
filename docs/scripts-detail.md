@@ -252,7 +252,8 @@ Schichten liegen in drei Modulen, die Importrichtung läuft strikt einseitig:
 pdf2md.py (CLI/Orchestrierung)
    ├── layout.py       Geometrie: Spalten, Kästen, Tabellen, Diagramme
    ├── ocr.py          Kachelung, Modellaufruf, Entgleisung/Reparatur
-   └── zusammenbau.py  Markdown-Zusammenbau (reine Funktionen) — testbar
+   ├── zusammenbau.py  Markdown-Zusammenbau (reine Funktionen) — testbar
+   └── woerterbuch.py  Wörterbuchabgleich nach dem Zusammenbau — testbar
 ```
 
 Der Zusammenbau ist die testbare Schicht: `python3 -m pytest pdf2md/test -q`
@@ -263,6 +264,59 @@ liegen in allen Modulen funktionslokal — nur so bleibt der Modulimport
 abhängigkeitsfrei.
 
 **Vault-Kopie**: `.ocr-bench/` im Vault ist flach (siehe `bench/pfade.py`,
-Zwei-Orte-Konvention) und braucht nach dem Split **vier** Dateien:
-`pdf2md.py`, `layout.py`, `ocr.py`, `zusammenbau.py`. Fehlt eine, schlägt der
-nächste Lauf mit `ModuleNotFoundError` fehl.
+Zwei-Orte-Konvention) und braucht **fünf** Dateien: `pdf2md.py`, `layout.py`,
+`ocr.py`, `zusammenbau.py`, `woerterbuch.py`. Fehlt eine, schlägt der nächste
+Lauf mit `ModuleNotFoundError` fehl. Aus demselben Grund steht die
+juristische Begriffsliste im Modul und nicht in einer Datei daneben — ein
+`daten/`-Ordner ginge beim flachen Kopieren stillschweigend verloren.
+
+## Stufe 2: Wörterbuchabgleich (`woerterbuch.py`)
+
+Läuft nach dem Zusammenbau über **jede OCR-Seite** — nicht über Textlayer-
+Seiten, deren Text exakt ist und dort nur Fehlalarme erzeugen würde. Was im
+Wörterbuch fehlt, kommt als `⌕`-Zeile ins Protokoll und als
+`woerter-verdaechtig` ins Frontmatter.
+
+| Flag | Wirkung |
+|---|---|
+| *(Voreinstellung)* | nur melden, Text bleibt unangetastet |
+| `--woerterbuch-korrigieren` | eindeutige Fälle ersetzen (siehe unten) |
+| `--woerterbuch <datei>` | zusätzliche Wortliste oder `.dic`, mehrfach möglich |
+| `--woerterbuch-bericht <datei>` | alle Befunde mit Seitenzahl als JSON |
+| `--kein-woerterbuch` | Abgleich ganz abschalten |
+
+**Eindeutig** heißt: das Wort steht nicht im Wörterbuch, und genau *eine*
+Variante aus der Verwechslungstabelle (`m`/`rn`, `ff`/`i`, `l`/`1`, `u`/`ü`, …)
+steht darin. Gibt es zwei (`Hans`/`Haus`), bleibt das Wort stehen und wird nur
+gemeldet. Zitate, Zahlen, Abkürzungen, Tabellen, Wikilinks und Fußnotenmarken
+werden gar nicht erst geprüft — die Restfehlerklasse „römisch I als 1/l/|" ist
+ausdrücklich **nicht** Gegenstand dieses Moduls.
+
+**Wörterbuchquellen**, in dieser Reihenfolge: `--woerterbuch`, dann
+`$PDF2MD_WOERTERBUCH` (mit `:` getrennt), dann das erste gefundene
+Systemwörterbuch (`/opt/homebrew/share/hunspell`, `/usr/share/hunspell`,
+`~/Library/Spelling`, LibreOffice-Bundle). Steht `hunspell` mit deutschem
+Wörterbuch bereit, entscheidet es zuerst — es wertet die Affixregeln aus und
+ist damit genauer als die Ersatzregeln des Moduls. Findet sich gar nichts,
+sagt der Lauf das und überspringt den Abgleich.
+
+Ohne installiertes Wörterbuch genügt eine Datei:
+
+```bash
+curl -o ~/.local/share/de_DE.dic \
+  https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.dic
+curl -o ~/.local/share/de_DE.aff \
+  https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.aff
+export PDF2MD_WOERTERBUCH=~/.local/share/de_DE.dic
+```
+
+Die `.aff` daneben ist kein Beiwerk: aus ihrer `SET`-Zeile kommt der
+Zeichensatz, und `de_DE_frami.dic` ist ISO-8859-1. Fehlt sie, wird die Datei
+als UTF-8 gelesen und jedes Wort mit Umlaut fällt aus dem Wörterbuch.
+
+**Gemessen** an 202 Wörtern echter Gutachtenprosa gegen `de_DE_frami`:
+0 Fehlalarme, 6 von 7 eingestreuten Lesefehlern gefunden. Der siebte
+(`Verhaltungsakte`) ist die dokumentierte Grenze — ein morphologisch
+wohlgeformtes Scheinwort zerlegt die Kompositumsregel in `verhalten` + `Akte`.
+Enger gestellt wäre jedes zweite `-ung`-Substantiv ein Fehlalarm, weil die
+`.dic`-Dateien diese Ableitung ihren Affixregeln überlassen.
