@@ -117,35 +117,38 @@ Stufe 2 und das Plugin (Kopie, ohne Node) — und aktiviert es. Idempotent: nach
 `git pull` einfach erneut ausführen. Auf Intel-Macs ist Stufe 2 (MLX) offen;
 das Setup warnt dann nur.
 
-## Installation
+### Bausteine
+
+Die Einzel-Skripte, die `setup.sh` intern zusammenruft — nützlich einzeln nach
+einem `git pull`, ausdrücklich **kein paralleler Installationsweg**:
 
 ```bash
-./install.sh
+./install.sh                                # Stufe-1-Symlinks nach ~/bin + Prüfung
+VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh   # Plugin (Stufe 3)
 ```
 
-Legt Symlinks für `pdf-auto`, `pdf-combine`, `pdf-workflow`, `reprocess-raw` in
-`~/bin` an und prüft die Abhängigkeiten. Details und Troubleshooting:
+- `install.sh` verlinkt `pdf-auto`, `pdf-combine`, `pdf-workflow`,
+  `reprocess-raw` nach `~/bin` und prüft die Abhängigkeiten.
+- `plugin/install-plugin.sh` kopiert `main.js`, `manifest.json` und
+  `styles.css` nach `$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/` (ohne Build,
+  kein Node nötig; `--build` baut aus `src/` auf der Dev-Maschine). Kopie ist
+  Default (Symlinks verlieren in iCloud Dateien), `--symlink` bleibt als
+  Dev-Opt-in.
+
+Systempakete installiert `setup.sh` über das `brew bundle` aus dem
+[Brewfile](Brewfile). `ocrmypdf` steht dort bewusst **nicht**: der brew-Build
+hat auf macOS den pyexpat-Bug — ocrmypdf kommt deshalb aus einem eigenen
+Python-3.12-venv (`~/.venvs/ocrmypdf`, via uv). `poppler` (pdfinfo,
+pdftotext) gehört dagegen dazu. Troubleshooting:
 [docs/installation.md](docs/installation.md).
 
-Für das Plugin (Stufe 3) zusätzlich, mit dem Pfad des Ziel-Vaults:
+### venvs
 
-```bash
-VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh
-```
-
-Kopiert `main.js`, `manifest.json` und `styles.css` nach
-`$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/` (ohne Build, kein Node nötig;
-`--build` baut aus `src/` auf der Dev-Maschine). Kopie ist Default (Symlinks
-verlieren in iCloud Dateien), `--symlink` bleibt als Dev-Opt-in.
-
-Kurzfassung der Systempakete:
-
-```bash
-brew install ocrmypdf img2pdf qpdf tesseract-lang ghostscript pngquant jbig2enc unpaper
-```
-
-Für Stufe 2 zusätzlich ein Python-3.12-venv mit `mlx-vlm` — `pdf2md/setup.sh`
-richtet es ein (`VAULT_ROOT=<pfad> ./pdf2md/setup.sh`).
+Stufe 1 und 2 laufen in eigenen venvs unter `~/.venvs/` — `ocrmypdf`
+(Python 3.12, via uv) und `mlxocr` (Stufe 2). Diese Stelle benennt die
+Konvention; überschreibbar via `VENV_ROOT=<pfad> ./setup.sh`. Auch
+`bin/pdf2md`, `bin/pdf-lib.sh` und `bin/reprocess-raw.sh` leiten ihre
+Kandidaten-Pfade daraus ab.
 
 ## Verwendung
 
@@ -160,8 +163,7 @@ pdf-combine ~/scans/skript skript-arbeitsrecht --split-columns
 reprocess-raw "raw/StR/Rep-Faelle/fall-01.pdf" --force-ocr --split-columns
 
 # PDF → Markdown
-source .venv-mlxocr/bin/activate
-python pdf2md/pdf2md.py "raw/ZR/skript.pdf" --out _ocr-vorschau
+pdf2md "raw/ZR/skript.pdf" --out _ocr-vorschau
 ```
 
 Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
@@ -185,6 +187,8 @@ bench/       Benchmark-Harness und Messergebnisse
 plugin/      Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
 docs/        Installation, Flag-Referenz, Bugreport, Vault-Integration
 skill/       Claude-Code-Skill (SKILL.md) zum Einbinden in einen Vault
+setup.sh     Einmal-Setup (Einstiegstür): Brewfile + venvs + Links + Plugin
+Brewfile     Systempakete für das Setup (brew bundle)
 ```
 
 Die Benchmark-**Seitenbilder** liegen bewusst nicht im Repo: sie sind Scans aus

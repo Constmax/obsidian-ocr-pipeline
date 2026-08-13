@@ -31,7 +31,7 @@ from ocr import (OVERLAP, TOKEN_MAX, ZEICHEN_JE_TINTE, _tintenmenge,
 #!/usr/bin/env python3
 """Pfad C, Ende-zu-Ende: PDF → Markdown.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/pdf2md.py <pdf> [--dpi 300]
+  pdf2md <pdf> [--dpi 300]
 
 Rendert jede Seite, kachelt bei hoher Textdichte, laesst PaddleOCR-VL laufen und
 baut die Zeilen anhand ihrer <|LOC|>-Koordinaten zu Markdown zusammen.

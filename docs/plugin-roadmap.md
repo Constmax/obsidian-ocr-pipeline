@@ -32,7 +32,7 @@ Repo.
 - **Dafür:** Sofort machbar. Kein Reimplementieren. Alle Bugfixes an der
   Pipeline kommen dem Plugin automatisch zugute.
 - **Dagegen:** Nur Desktop (`child_process` gibt es auf Mobile nicht). Der
-  Nutzer muss vorher `install.sh` und `pdf2md/setup.sh` laufen lassen. Der
+  Nutzer muss vorher `./setup.sh` laufen lassen. Der
   Obsidian-Community-Store nimmt Plugins, die auf externe Binaries angewiesen
   sind, nur mit klarer Kennzeichnung — für ein privates Plugin egal.
 - **Nötige Arbeit an diesem Repo:** die Scripts müssen maschinenlesbaren

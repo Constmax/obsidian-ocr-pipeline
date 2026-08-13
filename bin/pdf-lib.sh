@@ -679,7 +679,7 @@ lib_init() {
 
     # ── Python binary with pikepdf (for column_tools.py) ──
     PYTHON_BIN=""
-    for candidate in "$HOME/.venvs/ocrmypdf/bin/python3" "python3"; do
+    for candidate in "${VENV_ROOT:-$HOME/.venvs}/ocrmypdf/bin/python3" "python3"; do
         if "$candidate" -c "import pikepdf" 2>/dev/null; then
             PYTHON_BIN="$candidate"
             break

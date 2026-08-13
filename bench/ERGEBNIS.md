@@ -3,6 +3,10 @@
 Stand 2026-07-30. Grundlage: 6 Seiten aus `raw/`, 300 dpi, plus 2 Kachel-Tests.
 Rohdaten in `ergebnisse.csv`, Ausgaben in `out-A/` und `out-B/`.
 
+Das Gate-1-Setupskript der Explorationsphase lag bis zur Installationswege-
+Konsolidierung (Issue #7, PR #29) unter `pdf2md/setup.sh` (danach entfernt —
+Einrichtung nur noch über `./setup.sh` im Repo-Root; Historie in git).
+
 ## Entscheidung
 
 **PaddleOCR-VL via MLX, mit Spaltenkachelung** („Pfad C"). Modell:
