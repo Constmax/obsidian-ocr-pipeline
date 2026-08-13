@@ -72,8 +72,7 @@ Wortfehler des OCR sind nicht mechanisch korrigierbar.
 ## Neu erzeugen
 
 ```
-source .venv-mlxocr/bin/activate
-python pdf2md/pdf2md.py "raw/ZR/…/datei.pdf" --out _ocr-vorschau
+pdf2md "raw/ZR/…/datei.pdf" --out _ocr-vorschau
 ```
 
 Entgleist eine Kachel (Wiederholungsschleife, davonlaufender Zähler, Abbruch),
@@ -82,7 +81,7 @@ wird sie feiner geschnitten neu gerechnet. Jeder solche Fall steht als
 gelungen ist. Wer nur die Erkennung will und keine Neuberechnung:
 
 ```
-python pdf2md/pdf2md.py "raw/…/datei.pdf" --out _ocr-vorschau --neuversuche 0
+pdf2md "raw/…/datei.pdf" --out _ocr-vorschau --neuversuche 0
 ```
 
 Messwerte und Fehlerklassen: [../bench/ERGEBNIS.md](../bench/ERGEBNIS.md).

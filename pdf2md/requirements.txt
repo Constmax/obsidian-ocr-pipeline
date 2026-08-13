@@ -1,5 +1,5 @@
 # Stufe 2 — PDF → Markdown (Apple Silicon)
-# Installation via pdf2md/setup.sh, das ein Python-3.12-venv anlegt.
+# Installation via ./setup.sh im Repo-Root (legt ~/.venvs/mlxocr an).
 mlx-vlm>=0.6.8
 pymupdf
 pikepdf
