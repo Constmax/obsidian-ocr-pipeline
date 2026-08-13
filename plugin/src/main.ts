@@ -1,19 +1,62 @@
 // Plugin-Einstieg: Registrierung der Ansicht, Befehle, Ribbon, Datei-Menue
 // und die Vault-Listener, die den Abgleich anstossen.
 
-import { Menu, Plugin, TAbstractFile, TFile } from "obsidian";
+import { homedir } from "os";
+import { join } from "path";
+import { existsSync } from "fs";
+import type { ChildProcess } from "child_process";
+import {
+	FileSystemAdapter,
+	Menu,
+	Notice,
+	Plugin,
+	TAbstractFile,
+	TFile,
+	normalizePath,
+} from "obsidian";
 
-import { ANSICHT_TYP, OcrAbgleichAnsicht } from "./ansicht.ts";
+import { ANSICHT_TYP, OcrAbgleichAnsicht, PdfAuswahlModal } from "./ansicht.ts";
 import { Bestand } from "./dateiaktionen.ts";
 import { Einstellungen, EinstellungenTab, STANDARD } from "./einstellungen.ts";
+import { pdfKonvertieren } from "./konvertierung.ts";
 
 const ABGLEICH_ENTPRELLT_MS = 500;
+
+/** Nach so langer Laufzeit ohne Prozessende wird die Konvertierung gekillt.
+ *  Grosszuegig bemessen: der ERSTE Lauf laedt das MLX-Modell (~2 GB) und
+ *  schreibt erst danach Fortschritt. */
+const KONVERTIERUNG_TIMEOUT_MS = 30 * 60 * 1000;
+
+/** Wartezeit auf Obsidians Datei-Index nach dem Prozessende: der Watcher
+ *  laeuft dem Dateisystem um Bruchteile einer Sekunde hinterher. */
+const INDEX_WARTE_SCHRITTE = 10;
+const INDEX_WARTE_MS = 200;
+
+/** Lokale pdf2md-Installation. setup.sh (Repo-Wurzel) und install.sh legen
+ *  den Symlink nach ~/bin an; install.sh respektiert dabei BIN_DIR. Gesucht
+ *  wird deshalb in der Reihenfolge ~/bin, /usr/local/bin, dann PATH. */
+function pdf2mdAufloesen(): string {
+	const kandidaten = [join(homedir(), "bin", "pdf2md"), "/usr/local/bin/pdf2md"];
+	for (const teil of (process.env.PATH ?? "").split(":")) {
+		if (teil.length > 0) kandidaten.push(join(teil, "pdf2md"));
+	}
+	for (const kandidat of kandidaten) {
+		if (existsSync(kandidat)) return kandidat;
+	}
+	// Nichts gefunden: der Fallback laeuft in den Spawn-ENOENT-Pfad, der die
+	// freundliche Meldung mit setup.sh-Hinweis zeigt.
+	return kandidaten[0]!;
+}
 
 export default class OcrVorschauPlugin extends Plugin {
 	einstellungen: Einstellungen = { ...STANDARD };
 	bestand!: Bestand;
 
 	private abgleichTimer: number | null = null;
+	private konvertiertGerade = false;
+	/** Laufender pdf2md-Kindprozess — wird beim Plugin-Unload gekillt, damit
+	 *  ein haengender Lauf Obsidian nicht auf ewig blockiert. */
+	private laufendesKind: ChildProcess | null = null;
 
 	async onload(): Promise<void> {
 		await this.einstellungenLaden();
@@ -24,14 +67,31 @@ export default class OcrVorschauPlugin extends Plugin {
 
 		// Datei verschoben/neu/geloescht → Abgleich. Entprellt: ein Schwung an
 		// Aenderungen kostet einen Durchlauf, nicht einen pro Ereignis.
+		// Gefiltert auf .md in den drei Ordnern: pdf2md legt waehrend einer
+		// Konvertierung Kachelbilder (_seiteNNN.png) im Repo-Ordner ab — ohne
+		// Filter stuesse jedes PNG den Abgleich an.
+		const relevant = (datei: TAbstractFile): boolean =>
+			datei instanceof TFile && datei.extension === "md" && this.istVorschauDatei(datei);
 		const anstossen = () => this.abgleichAnstossen();
-		this.registerEvent(this.app.vault.on("create", anstossen));
-		this.registerEvent(this.app.vault.on("delete", anstossen));
+		this.registerEvent(
+			this.app.vault.on("create", (datei) => {
+				if (relevant(datei)) anstossen();
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on("delete", (datei) => {
+				if (relevant(datei)) anstossen();
+			}),
+		);
 		this.registerEvent(
 			this.app.vault.on("rename", (datei, alterPfad) => {
-				// Vor dem Abgleich: eine Datei, die die drei Ordner verlaesst, nimmt
-				// ihren Eintrag mit. Sonst kann Regel 4 „ins Wiki uebernommen" nicht
-				// von „geloescht" unterscheiden.
+				if (!(datei instanceof TFile) || datei.extension !== "md") return;
+				// Vor dem Abgleich: eine Datei, die die drei Ordner verlaesst,
+				// nimmt ihren Eintrag mit. Sonst kann Regel 4 „ins Wiki
+				// uebernommen" nicht von „geloescht" unterscheiden. Deshalb muss
+				// auch das VERLASSEN der drei Ordner den Abgleich anstossen —
+				// der Filter prueft beide Pfade.
+				if (!this.istVorschauPfad(alterPfad) && !this.istVorschauDatei(datei)) return;
 				this.bestand.pfadNachziehen(datei.path, alterPfad);
 				anstossen();
 			}),
@@ -45,30 +105,6 @@ export default class OcrVorschauPlugin extends Plugin {
 		// beliebigen Notiz-Tastendruck im Vault fern und schliesst zugleich den
 		// Schreib-Kreisel strukturell aus: review-status.json ist .json, unser
 		// eigener Schreibvorgang kann diesen Listener also nie ausloesen.
-		this.registerEvent(
-			this.app.vault.on("modify", (datei) => {
-				if (!(datei instanceof TFile)) return;
-				if (datei.extension !== "md") return;
-				if (!this.istVorschauDatei(datei)) return;
-				anstossen();
-			}),
-		);
-
-		this.addRibbonIcon("columns-3", "OCR-Abgleich öffnen", () => {
-			void this.ansichtOeffnen();
-		});
-
-		this.addCommand({
-			id: "abgleich-oeffnen",
-			name: "Abgleich-Ansicht öffnen",
-			callback: () => void this.ansichtOeffnen(),
-		});
-		this.addCommand({
-			id: "abgleich-weiter",
-			name: "Zum nächsten Vorschau-Eintrag springen",
-			callback: () => this.offeneAnsicht()?.weiter(),
-		});
-
 		this.registerEvent(
 			this.app.vault.on("modify", (datei) => {
 				if (!(datei instanceof TFile)) return;
@@ -92,11 +128,33 @@ export default class OcrVorschauPlugin extends Plugin {
 			}),
 		);
 
+		this.addRibbonIcon("columns-3", "OCR-Abgleich öffnen", () => {
+			void this.ansichtOeffnen();
+		});
+
+		this.addCommand({
+			id: "abgleich-oeffnen",
+			name: "Abgleich-Ansicht öffnen",
+			callback: () => void this.ansichtOeffnen(),
+		});
+		this.addCommand({
+			id: "abgleich-weiter",
+			name: "Zum nächsten Vorschau-Eintrag springen",
+			callback: () => this.offeneAnsicht()?.weiter(),
+		});
+		this.addCommand({
+			id: "pdf-konvertieren-und-abgleich",
+			name: "PDF konvertieren und im OCR-Abgleich öffnen",
+			callback: () => void this.pdfAuswaehlenUndKonvertieren(),
+		});
+
 		this.addSettingTab(new EinstellungenTab(this.app, this));
 	}
 
 	onunload(): void {
 		if (this.abgleichTimer !== null) window.clearTimeout(this.abgleichTimer);
+		this.laufendesKind?.kill();
+		this.laufendesKind = null;
 		// Der Manifest-Schreibvorgang ist um 500 ms entprellt. Wird Obsidian
 		// innerhalb dieser Spanne nach einer Entscheidung geschlossen, stirbt der
 		// Timer mit dem Plugin und Notiz, `geprueft-bis` und der Zeitpunkt der
@@ -149,6 +207,148 @@ export default class OcrVorschauPlugin extends Plugin {
 		}
 	}
 
+	/**
+	 * Befehl „PDF konvertieren und im OCR-Abgleich öffnen": eine PDF aus dem
+	 * Vault waehlen, per pdf2md konvertieren, dann den Abgleich mit dem
+	 * Ergebnis oeffnen. Rückmeldung bewusst per Notice — Fortschrittsmodal
+	 * und Abbruch sind Roadmap-Themen.
+	 */
+	async pdfAuswaehlenUndKonvertieren(): Promise<void> {
+		if (!this.konvertierungFrei()) return;
+		const modal = new PdfAuswahlModal(
+			this.app,
+			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
+		);
+		modal.setPlaceholder("PDF für die Konvertierung suchen…");
+		modal.onAuswahl = (datei) => void this.konvertieren(datei);
+		modal.open();
+	}
+
+	/** Gemeinsame Sperre beider Konvertierungs-Einstiege (Modal-Auswahl und
+	 *  Direktaufruf): zwei Befehlsaufrufe koennen je ein Modal oeffnen, bevor
+	 *  der erste eine Auswahl trifft. */
+	private konvertierungFrei(): boolean {
+		if (this.konvertiertGerade) {
+			new Notice("OCR-Vorschau: Es läuft bereits eine Konvertierung.");
+			return false;
+		}
+		return true;
+	}
+
+	private async konvertieren(datei: TFile): Promise<void> {
+		if (!this.konvertierungFrei()) return;
+		this.konvertiertGerade = true;
+		const name = datei.basename;
+		let laufendeNotice: Notice | null = null;
+		try {
+			// Gleiche Stems in verschiedenen Ordnern wuerden dieselbe
+			// <out>/<stem>.md ueberschreiben — lieber mit klarer Meldung
+			// abbrechen als still die Vorschau der anderen Datei zerstoeren.
+			const gleichnamige = this.app.vault
+				.getFiles()
+				.filter(
+					(f) => f.extension === "pdf" && f.basename === name && f.path !== datei.path,
+				);
+			if (gleichnamige.length > 0) {
+				new Notice(
+					`OCR-Vorschau: „${name}“ existiert auch als ${gleichnamige
+						.map((f) => f.path)
+						.join(", ")} — die Ausgabe würde sich überschreiben. Bitte eine der Dateien umbenennen.`,
+				);
+				return;
+			}
+			const adapter = this.app.vault.adapter;
+			if (!(adapter instanceof FileSystemAdapter)) {
+				new Notice("OCR-Vorschau: Konvertierung braucht Dateisystemzugriff (Desktop).");
+				return;
+			}
+			const basis = adapter.getBasePath();
+			// Vault-relative Pfade, Kindprozess mit cwd=Vault-Wurzel: pdf2md.py
+			// schreibt den PDF-Pfad unveraendert in `quelle-pdf` und den
+			// `Quelle: [[…]]`-Link der erzeugten Notiz. Ein absoluter,
+			// maschinenspezifischer Pfad waere dort ein toter Link.
+			const pdfRel = datei.path;
+			const outRel = normalizePath(this.einstellungen.vorschauOrdner);
+			laufendeNotice = new Notice(`OCR-Vorschau: Konvertiere „${name}“ …`, 0);
+			const ergebnis = await pdfKonvertieren(
+				pdfRel,
+				outRel,
+				pdf2mdAufloesen(),
+				basis,
+				undefined,
+				{
+					timeoutMs: KONVERTIERUNG_TIMEOUT_MS,
+					onKind: (kind) => {
+						this.laufendesKind = kind;
+					},
+				},
+			);
+			this.laufendesKind = null;
+			laufendeNotice.hide();
+			laufendeNotice = null;
+			if (ergebnis.code !== 0) {
+				const stderrLetzte = ergebnis.stderrLetzte;
+				// Fortschrittszeilen („→ S.3: …") sind keine Fehlerursache — ohne
+				// stderr-Rest darf keine davon als Detail durchrutschen.
+				const stdoutLetzte = ergebnis.stdoutLetzte.filter((z) => !z.startsWith("→"));
+				const detail =
+					(stderrLetzte.length > 0
+						? stderrLetzte[stderrLetzte.length - 1]
+						: undefined) ??
+					(stdoutLetzte.length > 0 ? stdoutLetzte[stdoutLetzte.length - 1] : undefined) ??
+					"";
+				let codeText: string;
+				if (ergebnis.timeout) {
+					codeText = `nach ${KONVERTIERUNG_TIMEOUT_MS / 60000} min abgebrochen`;
+				} else if (ergebnis.code === null && ergebnis.signal !== null) {
+					codeText = `abgebrochen (Signal ${ergebnis.signal})`;
+				} else if (ergebnis.code === null) {
+					codeText = "Startfehler";
+				} else {
+					codeText = `Code ${ergebnis.code}`;
+				}
+				let zusatz = detail.length > 0 ? ` — ${detail}` : "";
+				if (ergebnis.code === null && /ENOENT/.test(detail)) {
+					// Der ausfuehrbare Kandidat existiert nicht (oder ist nicht
+					// startbar) — der haeufigste Fehler auf frischen Maschinen:
+					// gezielter Hinweis statt roher ENOENT-Zeile.
+					zusatz = " — pdf2md nicht gefunden. Bitte setup.sh im Repo ausführen.";
+				}
+				new Notice(`OCR-Vorschau: Konvertierung fehlgeschlagen (${codeText})${zusatz}.`);
+				return;
+			}
+			// Der Vault-Listener wuerde den neuen Eintrag frueher oder spaeter
+			// sehen; fuer den direkten Uebergang in die Ansicht ist der Bestand
+			// jetzt besser frisch. Obsidians Datei-Index laeuft dem Prozessende
+			// aber um Bruchteile hinterher — deshalb nachlegen, bis der Eintrag
+			// da ist.
+			const eintrag = `${name}.md`;
+			const istDa = () => this.bestand.eintraege.some((b) => b.name === eintrag);
+			await this.bestand.abgleichen();
+			for (let schritt = 0; !istDa() && schritt < INDEX_WARTE_SCHRITTE; schritt++) {
+				await new Promise((fertig) => setTimeout(fertig, INDEX_WARTE_MS));
+				await this.bestand.abgleichen();
+			}
+			if (istDa()) {
+				await this.ansichtOeffnen(eintrag);
+				new Notice(`OCR-Vorschau: „${name}“ fertig — Abgleich geöffnet.`);
+			} else {
+				new Notice(
+					`OCR-Vorschau: „${name}“ fertig, aber nicht im Vorschau-Ordner gelandet (Ziel: ${this.einstellungen.vorschauOrdner}).`,
+				);
+			}
+		} catch (fehler) {
+			// Auch nach erfolgreicher Konvertierung kann die Ansicht scheitern
+			// (Workspace/Leaf) — ohne catch bliebe das eine unbehandelte
+			// Rejection ohne jede Benutzermeldung.
+			new Notice(`OCR-Vorschau: Konvertierung fehlgeschlagen — ${String(fehler)}.`);
+		} finally {
+			laufendeNotice?.hide();
+			this.konvertiertGerade = false;
+			this.laufendesKind = null;
+		}
+	}
+
 	/** Datei-Menue: auf Vorschau-`.md` und auf PDFs mit passendem Stem. */
 	private dateiMenuBefuellen(menu: Menu, datei: TAbstractFile): void {
 		if (!(datei instanceof TFile)) return;
@@ -172,13 +372,17 @@ export default class OcrVorschauPlugin extends Plugin {
 		}
 	}
 
-	private istVorschauDatei(datei: TFile): boolean {
+	private istVorschauPfad(pfad: string): boolean {
 		const e = this.einstellungen;
-		const eltern = datei.parent?.path ?? "";
+		const eltern = pfad.slice(0, pfad.lastIndexOf("/"));
 		return (
 			eltern === e.vorschauOrdner ||
 			eltern === e.akzeptiertOrdner ||
 			eltern === e.abgelehntOrdner
 		);
+	}
+
+	private istVorschauDatei(datei: TFile): boolean {
+		return this.istVorschauPfad(datei.path);
 	}
 }

@@ -47,6 +47,10 @@ export interface StatusEintrag {
 	"seiten-ocr": number | null;
 	"seiten-diagramm": number | null;
 	"ocr-datum": string | null;
+	/** Feingranularer Erzeugungszeitpunkt (ISO, mit Uhrzeit) — unterscheidet
+	 *  Neukonvertierungen am selben Tag, die `ocr-datum` (nur Datum) nicht
+	 *  sieht. Null bei Dateien aus Laeufen vor Einfuehrung des Felds. */
+	"ocr-zeitpunkt": string | null;
 	/** ISO-Zeitpunkt der Entscheidung, null solange offen. */
 	entschieden: string | null;
 	/** Zuletzt betrachtete Seite — damit ein 40-Seiten-Durchgang fortsetzbar ist. */
