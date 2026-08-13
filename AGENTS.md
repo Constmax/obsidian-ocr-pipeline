@@ -10,7 +10,9 @@ repo. All code identifiers, comments, docs and commit messages are German
   four CLIs (`pdf-auto`, `pdf-combine`, `pdf-workflow`, `reprocess-raw`) +
   Python helper `column_tools.py` (column split/merge, needs pikepdf).
 - `pdf2md/` — Stage 2: `pdf2md.py` (MLX/PaddleOCR-VL) PDF → Markdown.
-  Apple-Silicon-only, ~15–60 s/page; needs `pymupdf`.
+  Apple-Silicon-only, ~15–60 s/page; needs `pymupdf`. `woerterbuch.py` runs a
+  dictionary pass over OCR pages afterwards (reports by default, corrects only
+  unambiguous cases with `--woerterbuch-korrigieren`).
 - `plugin/` — Stage 3: Obsidian review view (TypeScript, esbuild, no React).
 - `bench/` — benchmark harness; page images are copyrighted scans, NOT in the
   repo, reproducible via `bench/build_bench.py` from the user's vault.
