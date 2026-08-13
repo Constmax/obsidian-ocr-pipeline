@@ -55,13 +55,16 @@ repo. All code identifiers, comments, docs and commit messages are German
   copy. `install.sh` and `plugin/install-plugin.sh` are building blocks it
   calls, not parallel installers.
 - venv convention is named exactly there: `VENV_ROOT="${VENV_ROOT:-$HOME/.venvs}"`
-  (overridable); `bin/pdf2md`, `bin/pdf-lib.sh` and `bin/reprocess-raw.sh`
-  derive their candidate paths from it. The old vault-local
-  `pdf2md/setup.sh` (venvs `.venv-mlxocr` / `.venv-paddleocr` in the vault)
-  is deleted — history in git, Gate-1 measurements in `bench/ERGEBNIS.md`.
-- CI (`.github/workflows/ci.yml`, bei jedem Push/PR): Job `plugin` (npm ci →
-  check → lint → test → build → `git diff --exit-code -- main.js`), Job
-  `shell` (shellcheck über alle 7 Skripte) und Job `python` (`pytest
+  (overridable); `setup.sh`, `install.sh`, `bin/pdf2md`, `bin/pdf-lib.sh` and
+  `bin/reprocess-raw.sh` derive their candidate paths from it. The old
+  vault-local `pdf2md/setup.sh` (venvs `.venv-mlxocr` / `.venv-paddleocr` in
+  the vault) is deleted — history in git, Gate-1 measurements in
+  `bench/ERGEBNIS.md`.
+- CI (`.github/workflows/ci.yml`, bei jedem PR und bei Push auf `main` —
+  Feature-Branches laufen über ihren PR, sonst startet jeder Job doppelt):
+  Job `plugin` (npm ci → check → lint → test → build → `main.js` ist
+  versioniert *und* deckungsgleich mit `src/`), Job `shell` (shellcheck über
+  alle neun Skripte, shellcheck-Version gepinnt) und Job `python` (`pytest
   pdf2md/test`: Nahtentdopplung, Randmarken, Schleifen, Golden-Snapshot).
   Lokal: plugin mit lint → check → test → build; Stage-1-Skripte mit
   `shellcheck -x -P bin`; Python mit `python3 -m pytest pdf2md/test`.

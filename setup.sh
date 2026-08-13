@@ -71,8 +71,11 @@ say "Stufe 1 — ocrmypdf-venv"
 # Homebrew-Python-Bottles haben auf macOS ein kaputtes pyexpat
 # (Symbol not found: _XML_SetAllocTrackerActivationThreshold).
 uv python install 3.12 >/dev/null 2>&1 || true
-PY312="$(find "$HOME/.local/share/uv/python" -path '*/cpython-3.12*/bin/python3.12' 2>/dev/null | head -1)"
-[ -n "$PY312" ] || PY312="$(uv python find 3.12 | head -1)"
+# sort: feste Reihenfolge bei mehreren 3.12-Builds (find liefert Verzeichnis-
+# reihenfolge). '|| true': fehlt das uv-Verzeichnis, exitet find mit 1 und
+# 'set -e' würde hier abbrechen, statt den uv-Fallback unten zu erreichen.
+PY312="$(find "$HOME/.local/share/uv/python" -path '*/cpython-3.12*/bin/python3.12' 2>/dev/null | sort | head -1 || true)"
+[ -n "$PY312" ] || PY312="$(uv python find 3.12 2>/dev/null | head -1 || true)"
 [ -n "$PY312" ] || { echo "!! kein Python 3.12 gefunden (uv python install 3.12)"; exit 1; }
 if ! "$PY312" -c "import pyexpat" >/dev/null 2>&1; then
     echo "!! Python $PY312 hat ein kaputtes pyexpat (libexpat-Problem auf macOS)."

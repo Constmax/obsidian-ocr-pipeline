@@ -209,13 +209,17 @@ eigenen Bestand reproduzierbar. Siehe [bench/BENCHMARK-SET.md](bench/BENCHMARK-S
 
 ## CI
 
-Jeder Push und PR läuft durch drei unabhängige Jobs (`.github/workflows/ci.yml`):
+Jeder Pull Request und jeder Push auf `main` läuft durch drei unabhängige Jobs
+(`.github/workflows/ci.yml`). Feature-Branches laufen über ihren PR — ein
+unbeschränktes `push` würde jeden Job doppelt starten.
 
-- **plugin** — `npm ci`, tsc, eslint, Tests, Build und der Kern: ein
-  `git diff` gegen das eingecheckte `main.js`. Ein PR, der `src/` ändert ohne
-  neu zu bauen, wird damit rot.
-- **shell** — shellcheck über alle sieben Shell-Skripte (`setup.sh`,
-  `install.sh`, `bin/*.sh`, `bin/pdf2md`, `plugin/install-plugin.sh`).
+- **plugin** — `npm ci`, tsc, eslint, Tests, Build und der Kern: `main.js` muss
+  versioniert sein *und* dem Build aus `src/` entsprechen. Ein PR, der `src/`
+  ändert ohne neu zu bauen, wird damit rot — ebenso einer, der `main.js` aus
+  der Versionierung nimmt.
+- **shell** — shellcheck (feste Version) über alle neun Shell-Skripte
+  (`setup.sh`, `install.sh`, `bin/*.sh`, `bin/pdf2md`,
+  `plugin/install-plugin.sh`).
 - **python** — `pytest pdf2md/test`: Nahtentdopplung, Randmarken,
   Schleifenerkennung, Wörterbuchabgleich und der Golden-Snapshot aus Issue #8
   — ohne Modell, ohne Vault-Bestand.
