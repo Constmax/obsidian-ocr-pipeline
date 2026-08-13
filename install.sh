@@ -12,8 +12,9 @@ BIN_DIR="${BIN_DIR:-$HOME/bin}"
 mkdir -p "$BIN_DIR"
 
 echo "== Symlinks nach $BIN_DIR"
-for name in pdf-auto pdf-combine pdf-workflow reprocess-raw; do
+for name in pdf-auto pdf-combine pdf-workflow reprocess-raw pdf2md; do
     src="$REPO/bin/$name.sh"
+    [ -f "$src" ] || src="$REPO/bin/$name"
     dst="$BIN_DIR/$name"
     [ -f "$src" ] || { echo "   !! fehlt: $src"; exit 1; }
     chmod +x "$src"
