@@ -65,9 +65,16 @@ Diagrammbilder (`![[…png]]`), sie werden **nicht** mitverschoben.
 | `seiten-textlayer` | verlustfrei aus dem PDF-Textlayer, exaktes Fett |
 | `seiten-ocr` | durch PaddleOCR-VL gelesen — **Wortfehler möglich** |
 | `seiten-diagramm` | als Seitenbild eingebettet, Text im eingeklappten Callout |
+| `woerter-verdaechtig` | Fundstellen des Wörterbuchabgleichs, **noch im Text** |
+| `woerter-korrigiert` | Fundstellen, die der Lauf ersetzt hat (nur mit `--woerterbuch-korrigieren`) |
 
 Bei `seiten-ocr > 0` ist der `Quelle:`-Link aufs Original die Absicherung:
-Wortfehler des OCR sind nicht mechanisch korrigierbar.
+Wortfehler des OCR sind nicht durchgängig mechanisch korrigierbar.
+
+`woerter-verdaechtig` ist eine Arbeitsliste, kein Fehlerurteil: die Wörter
+stehen unverändert in der Datei, im Protokoll des Laufs mit Seitenzahl und
+Vorschlag (`⌕`-Zeile), vollständig mit `--woerterbuch-bericht <datei>.json`.
+Fehlt beides, war kein Wörterbuch installiert — der Lauf sagt das.
 
 ## Neu erzeugen
 
@@ -83,5 +90,9 @@ gelungen ist. Wer nur die Erkennung will und keine Neuberechnung:
 ```
 pdf2md "raw/…/datei.pdf" --out _ocr-vorschau --neuversuche 0
 ```
+
+Wörterbuchabgleich: standardmäßig an und rein meldend. Ersetzen der eindeutigen
+Fälle mit `--woerterbuch-korrigieren`, abschalten mit `--kein-woerterbuch`.
+Quellen und Grenzen: [scripts-detail.md](scripts-detail.md).
 
 Messwerte und Fehlerklassen: [../bench/ERGEBNIS.md](../bench/ERGEBNIS.md).

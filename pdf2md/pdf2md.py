@@ -21,6 +21,7 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
+import woerterbuch
 import zusammenbau
 from zusammenbau import als_callout, entpua, fragmente_verschmelzen, zusammenfuegen
 from layout import (bildanteil, kaesten_erkennen, kaesten_zuordnen,
@@ -219,6 +220,20 @@ def main():
                     help="Zeilen mit Boxen je Seite als JSON ablegen. Nur damit "
                          "laesst sich die Absatzlogik auf Scanseiten aendern, "
                          "ohne jedes Mal den OCR-Lauf zu wiederholen.")
+    ap.add_argument("--kein-woerterbuch", action="store_true",
+                    help="Woerterbuchabgleich ganz abschalten")
+    ap.add_argument("--woerterbuch", action="append", default=[], type=Path,
+                    metavar="DATEI",
+                    help="zusaetzliche Wortliste oder .dic (mehrfach moeglich). "
+                         "Ohne Angabe: PDF2MD_WOERTERBUCH, sonst das erste "
+                         "gefundene Systemwoerterbuch")
+    ap.add_argument("--woerterbuch-korrigieren", action="store_true",
+                    help="eindeutige Faelle ersetzen statt nur melden. "
+                         "Eindeutig heisst: genau eine Verwechslungsvariante "
+                         "steht im Woerterbuch")
+    ap.add_argument("--woerterbuch-bericht", type=Path, default=None,
+                    metavar="DATEI",
+                    help="alle Befunde mit Seitenzahl als JSON ablegen")
     ap.add_argument("--out", type=Path, default=OUT,
                     help="Zielordner der .md (Standard: .ocr-bench/out-C)")
     ap.add_argument("--bild-dir", type=Path, default=None,
@@ -256,6 +271,20 @@ def main():
         print(f"   {len(seiten)} Seiten — {len(seiten)-n_ocr} aus dem Textlayer, "
               f"{n_ocr} durch das Modell\n")
 
+        # Woerterbuch nur fuer die OCR-Seiten. Der Textlayer ist exakt — dort
+        # gemeldete Woerter waeren ausnahmslos Fehlalarme (Eigennamen, Fachbegriffe)
+        # und wuerden die echten Befunde zudecken.
+        wb = None
+        if n_ocr and not a.kein_woerterbuch:
+            wb = woerterbuch.lade(a.woerterbuch)
+            print("Woerterbuch: " + (wb.quelle if wb else
+                  "keins gefunden — Abgleich uebersprungen. Wortliste angeben: "
+                  "--woerterbuch <datei> oder PDF2MD_WOERTERBUCH"))
+            if wb and not a.woerterbuch_korrigieren:
+                print("   nur melden — Ersetzen mit --woerterbuch-korrigieren\n")
+            elif wb:
+                print("   eindeutige Faelle werden ersetzt\n")
+
         ocr = None
         if n_ocr:                                  # Modell nur laden, wenn gebraucht
             from mlx_vlm import load, generate
@@ -272,9 +301,10 @@ def main():
                 return res if isinstance(res, str) else getattr(res, "text", str(res))
 
         md, t_ges, n_diag, n_entgleist = [], time.perf_counter(), 0, 0
+        n_verdaechtig, n_korrigiert, bericht = 0, 0, []
 
         def ablegen(nr, absaetze, diagramm, dt, chars, quelle, weg, spur=(),
-                    marker_zusatz=None):
+                    marker_zusatz=None, befunde=()):
             nonlocal n_diag
             # %% %% ist Obsidians eigene Kommentarsyntax und bleibt auch in der
             # Live-Vorschau unsichtbar; <!-- --> wird dort angezeigt.
@@ -305,6 +335,17 @@ def main():
                 print(f"     verworfen ({len(weg)}): "
                       + " ¦ ".join(w[:34] for w in weg[:6])
                       + (" …" if len(weg) > 6 else ""))
+            if befunde:
+                # Der Befund gehoert ins Protokoll, nicht nur in die Zaehlung:
+                # ohne das Wort im Klartext weiss der Begutachtungsdurchgang
+                # nicht, wonach er auf der Seite suchen soll. Ersetztes traegt ein
+                # ✓ — auch eine ausgefuehrte Korrektur bleibt eine Aenderung am
+                # Text und wird nicht stillschweigend vorgenommen.
+                print(f"     ⌕ {len(befunde)} Woerter: " + " ¦ ".join(
+                    (f"{b.wort} → {b.vorschlag}" if b.vorschlag else f"{b.wort} ?")
+                    + (" ✓" if b.korrigiert else "")
+                    + ("" if b.anzahl == 1 else f" ({b.anzahl}x)")
+                    for b in befunde[:6]) + (" …" if len(befunde) > 6 else ""))
             for zeile in spur:
                 print(f"     ⚠ {zeile}")
 
@@ -318,17 +359,21 @@ def main():
                 zeilen = spalten_trennen(kaesten_zuordnen(textlayer, kaesten))
                 dump.append({"seite": nr, "quelle": "textlayer", "zeilen": zeilen})
                 absaetze = zusammenfuegen(zeilen)
+                # marker_zusatz benannt uebergeben: als achtes Argument landete
+                # "textlayer" bisher in `spur`, wurde Zeichen fuer Zeichen als
+                # ⚠-Zeile gedruckt, und der Seitenmarker trug `None` statt der
+                # Herkunft — gegen die Marker-Grammatik in docs/ocr-vorschau.md.
                 ablegen(nr, absaetze, diagramm, time.perf_counter() - t, chars,
                         "Textlayer, ohne Modell",
                         getattr(zusammenfuegen, "verworfen", []),
-                        "textlayer")
+                        marker_zusatz="textlayer")
                 continue
             # Kachelung ist eine LAYOUT-Entscheidung. Ein Laengsschnitt darf nur auf
             # echten Zweispaltern fallen; eine dichte einspaltige Seite wird
             # oben/unten getrennt, sonst zerschneidet man jede Zeile.
             if diagramm and a.diagramm_nur_bild:
                 ablegen(nr, [], True, time.perf_counter() - t, chars, "", [],
-                        "ocr")
+                        marker_zusatz="ocr")
                 continue                      # kein Text gewuenscht, keine Inferenz
 
             # Zu jeder Kachel ihr x-Fenster in Blattkoordinaten (0–1000). Nur damit
@@ -378,9 +423,19 @@ def main():
                 n_entgleist += 1
             dump.append({"seite": nr, "quelle": f"{art}, {modus}", "zeilen": zeilen})
             absaetze = zusammenfuegen(zeilen)
+            verworfen = getattr(zusammenfuegen, "verworfen", [])
+            absaetze, befunde = woerterbuch.pruefen(absaetze, wb,
+                                                    a.woerterbuch_korrigieren)
+            # Gezaehlt werden Fundstellen, nicht Woerter: derselbe Lesefehler
+            # dreimal auf einer Seite ist dreimal zu pruefen.
+            n_korrigiert += sum(b.anzahl for b in befunde if b.korrigiert)
+            n_verdaechtig += sum(b.anzahl for b in befunde if not b.korrigiert)
+            bericht += [{"seite": nr, "wort": b.wort, "anzahl": b.anzahl,
+                         "vorschlag": b.vorschlag, "korrigiert": b.korrigiert}
+                        for b in befunde]
             ablegen(nr, absaetze, diagramm, time.perf_counter() - t, chars,
-                    f"{art}, {modus}", getattr(zusammenfuegen, "verworfen", []),
-                    spur, f"ocr | {art}, {modus}")
+                    f"{art}, {modus}", verworfen, spur, f"ocr | {art}, {modus}",
+                    befunde)
 
         ges = time.perf_counter() - t_ges
         # Welche Seiten exakt sind und welche erkannt, muss in der Datei stehen:
@@ -396,6 +451,10 @@ def main():
                 # Auffaellig gewordene Seiten benennen, nicht verschweigen: auf
                 # ihnen ist die Ausgabe auch nach dem Neuversuch unsicher.
                 + (f"seiten-entgleist: {n_entgleist}\n" if n_entgleist else "")
+                # Fundstellen des Woerterbuchabgleichs, nicht Woerter: die Zahl
+                # sagt der Begutachtung, wieviel auf sie zukommt.
+                + (f"woerter-verdaechtig: {n_verdaechtig}\n" if n_verdaechtig else "")
+                + (f"woerter-korrigiert: {n_korrigiert}\n" if n_korrigiert else "")
                 + (f"ocr-modell: {MODEL}\n" if n_ocr else "")
                 + f"ocr-datum: {date.today().isoformat()}\n"
                 # Feingranularer Erzeugungszeitpunkt: die Review-Ansicht erkennt an
@@ -412,13 +471,16 @@ def main():
             a.zeilen_dump.write_text(json.dumps(dump, ensure_ascii=False),
                                      encoding="utf-8")
             print(f"→ {a.zeilen_dump} ({len(dump)} Seiten)")
+        if a.woerterbuch_bericht:
+            a.woerterbuch_bericht.write_text(
+                json.dumps(bericht, ensure_ascii=False, indent=1), encoding="utf-8")
+            print(f"→ {a.woerterbuch_bericht} ({len(bericht)} Befunde)")
         print(f"\n{ges:.1f} s gesamt ({ges/len(seiten):.1f} s/Seite)\n→ {ziel}")
     finally:
         # Zwischenbilder nicht liegenlassen — auch nicht bei Abbruch.
         for tmp in TMP.glob("_seite*.png"):
             tmp.unlink()
         TMP.rmdir()
-
 
 if __name__ == "__main__":
     main()
