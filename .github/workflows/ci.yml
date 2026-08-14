@@ -76,5 +76,7 @@ jobs:
           python-version: "3.12"
       - name: pytest installieren
         run: pip install pytest
+      - name: pymupdf installieren
+        run: pip install pymupdf
       - name: Tests (Nahtentdopplung, Randmarken, Schleifen, Golden-Snapshot)
         run: python -m pytest pdf2md/test -q
