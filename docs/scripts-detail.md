@@ -320,3 +320,35 @@ als UTF-8 gelesen und jedes Wort mit Umlaut fällt aus dem Wörterbuch.
 wohlgeformtes Scheinwort zerlegt die Kompositumsregel in `verhalten` + `Akte`.
 Enger gestellt wäre jedes zweite `-ung`-Substantiv ein Fehlalarm, weil die
 `.dic`-Dateien diese Ableitung ihren Affixregeln überlassen.
+
+## --fortschritt (Stufe 2)
+
+Maschinenlesbarer Fortschritt als JSON-Zeilen auf stderr. Standardmäßig bleibt
+die Ausgabe auf die Konsole ausgerichtet (deutsche Sätze, Emoji, Pfeile). Mit
+`--fortschritt` werden zusätzlich je Ereignis eine JSON-Zeile nach stderr
+geschrieben, ohne stdout zu beeinflussen.
+
+### Emittierte Ereignisse
+
+Es wird genau pro Lauf eine Zeile pro Ereignistyp geschrieben. Unbekannte
+Felder sind zukünftig zulässig und müssen von Lesern ignoriert werden.
+
+```json
+{"typ":"start","datei":"…","seiten":42,"dpi":150}
+{"typ":"seite","nr":7,"von":42,"sekunden":31.2,"herkunft":"ocr","entgleist":false}
+{"typ":"seite","nr":8,"von":42,"sekunden":44.1,"herkunft":"ocr","entgleist":true,"grund":"zu lang 324%"}
+{"typ":"fertig","ziel":"…","sekunden":1284.0,"entgleist":1}
+```
+
+- **start** — nach Analyse des PDFs, bekannt: Dateiname, Seitenanzahl, DPI
+- **seite** — pro Seite: Seitennummer, Gesamtseiten, vergangene Sekunden,
+  Herkunft (`textlayer`/`ocr`/`diagramm`), Entgleisungs-Flag, optional Grund
+- **fertig** — vor der Zusammenfassungs-Ausgabe: Gesamtsekunden, Ziel-Path,
+  Entgleisungs-Gesamtanzahl
+
+### Versprechen
+
+Es dürfen zukünftig weitere Felder zu den Ereignissen hinzugefügt werden.
+Leser (Plugin, UI, Drittanbieter) müssen solchen ihnen unbekannten Felder
+ignorieren und dürfen das Vorhandensein dieser Felder nicht als Fehler
+werten.
