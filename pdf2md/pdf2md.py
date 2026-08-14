@@ -25,7 +25,7 @@ from pathlib import Path
 import woerterbuch
 import zusammenbau
 from zusammenbau import (als_callout, dokument_bauen, entpua, fragmente_verschmelzen,
-                        zusammenfuegen)
+                        frontmatter_bauen, seitenmarker, zusammenfuegen)
 from layout import (bildanteil, kaesten_erkennen, kaesten_zuordnen,
                    layout_erkennen, spalten_trennen, tabellen_markdown)
 from ocr import (OVERLAP, TOKEN_MAX, ZEICHEN_JE_TINTE, _tintenmenge,
@@ -317,7 +317,7 @@ def main():
             # keine Textseite, egal woher ihr Text stammt.
             if diagramm:
                 marker_zusatz = "diagramm"
-            kopf = f"%% S. {nr} | {marker_zusatz} %%\n\n"
+            kopf = seitenmarker(nr, marker_zusatz)
             zusatz = ""
             if diagramm:
                 n_diag += 1
@@ -443,26 +443,28 @@ def main():
         ges = time.perf_counter() - t_ges
         # Welche Seiten exakt sind und welche erkannt, muss in der Datei stehen:
         # nur bei den OCR-Seiten ist ein Rueckgriff aufs Original noetig.
-        kopf = (f"---\ntitel: {pdf.stem}\n"
-                # JSON-Zitat statt nacktem Path: Pfade mit Leerzeichen („Fall 8")
-                # waeren sonst kein gueltiges YAML und die Review-Ansicht koennte
-                # `quelle-pdf` nicht aufloesen.
-                f"quelle-pdf: {json.dumps(str(pdf), ensure_ascii=False)}\n"
-                f"seiten: {len(seiten)}\n"
-                f"seiten-textlayer: {len(seiten) - n_ocr}\nseiten-ocr: {n_ocr}\n"
-                + (f"seiten-diagramm: {n_diag}\n" if n_diag else "")
-                # Auffaellig gewordene Seiten benennen, nicht verschweigen: auf
-                # ihnen ist die Ausgabe auch nach dem Neuversuch unsicher.
-                + (f"seiten-entgleist: {n_entgleist}\n" if n_entgleist else "")
-                # Fundstellen des Woerterbuchabgleichs, nicht Woerter: die Zahl
-                # sagt der Begutachtung, wieviel auf sie zukommt.
-                + (f"woerter-verdaechtig: {n_verdaechtig}\n" if n_verdaechtig else "")
-                + (f"woerter-korrigiert: {n_korrigiert}\n" if n_korrigiert else "")
-                + (f"ocr-modell: {MODEL}\n" if n_ocr else "")
-                + f"ocr-datum: {date.today().isoformat()}\n"
-                # Feingranularer Erzeugungszeitpunkt: die Review-Ansicht erkennt an
-                # ihm Neukonvertierungen am selben Tag, die `ocr-datum` nicht sieht.
-                + f"ocr-zeitpunkt: {datetime.now().isoformat(timespec='seconds')}\n---\n")
+        # Der Zusammenbau selbst liegt in zusammenbau.frontmatter_bauen() — die
+        # reine Funktion, die auch die Fixture nutzt (docs/vorschau-format.md).
+        kopf = frontmatter_bauen(
+            titel=pdf.stem,
+            quelle_pdf_pfad=pdf,
+            seiten=len(seiten),
+            seiten_textlayer=len(seiten) - n_ocr,
+            seiten_ocr=n_ocr,
+            seiten_diagramm=n_diag,
+            # Auffaellig gewordene Seiten benennen, nicht verschweigen: auf
+            # ihnen ist die Ausgabe auch nach dem Neuversuch unsicher.
+            seiten_entgleist=n_entgleist,
+            # Fundstellen des Woerterbuchabgleichs, nicht Woerter: die Zahl
+            # sagt der Begutachtung, wieviel auf sie zukommt.
+            woerter_verdaechtig=n_verdaechtig,
+            woerter_korrigiert=n_korrigiert,
+            ocr_modell=MODEL if n_ocr else None,
+            ocr_datum=date.today().isoformat(),
+            # Feingranularer Erzeugungszeitpunkt: die Review-Ansicht erkennt an
+            # ihm Neukonvertierungen am selben Tag, die `ocr-datum` nicht sieht.
+            ocr_zeitpunkt=datetime.now().isoformat(timespec="seconds"),
+        )
         # Anklickbarer Rueckgriff aufs Original. Bei OCR-Seiten ist er Pflicht, nicht
         # Bequemlichkeit: Wortfehler sind nicht mechanisch korrigierbar, ohne die
         # Quelle also unauffindbar.

@@ -9,6 +9,7 @@ aus den Geschwistermodulen — die Abhaengigkeit laeuft nur in diese Richtung:
 
 Die schweren Importe (fitz, numpy, PIL) liegen in allen Modulen funktionslokal.
 """
+import json
 import re
 import statistics
 
@@ -751,3 +752,46 @@ def dokument_bauen(frontmatter_text, quelle_text, bloecke_texte):
     Alle drei Argumente sind fertige Strings (nicht gelistete Werte).
     """
     return f"{frontmatter_text}\n{quelle_text}\n" + "\n\n".join(bloecke_texte) + "\n"
+
+
+def frontmatter_bauen(titel, quelle_pdf_pfad, seiten, seiten_textlayer,
+                      seiten_ocr, seiten_diagramm=0, seiten_entgleist=0,
+                      woerter_verdaechtig=0, woerter_korrigiert=0,
+                      ocr_modell=None, ocr_datum=None, ocr_zeitpunkt=None):
+    """Baut das YAML-Frontmatter der Vorschau-Datei.
+
+    Reine Form der Logik aus pdf2md.py main() — genau hier lebt sie, damit
+    Fixture-Generator und main() dieselbe Quelle nutzen (Format-Drift wird im
+    CI rot). Konditionale Felder nur bei > 0 / gesetztem Wert, wie in main().
+
+    `vorschau-format: 1` kennzeichnet Konformitaet mit docs/vorschau-format.md
+    und steht immer; es ist aktuell reserviert (kein Konsument im Plugin).
+    """
+    zeilen = [
+        "---",
+        f"titel: {titel}",
+        # JSON-Zitat statt nacktem Path: Pfade mit Leerzeichen („Fall 8")
+        # waeren sonst kein gueltiges YAML und die Review-Ansicht koennte
+        # `quelle-pdf` nicht aufloesen.
+        f"quelle-pdf: {json.dumps(str(quelle_pdf_pfad), ensure_ascii=False)}",
+        f"seiten: {seiten}",
+        f"seiten-textlayer: {seiten_textlayer}",
+        f"seiten-ocr: {seiten_ocr}",
+    ]
+    if seiten_diagramm:
+        zeilen.append(f"seiten-diagramm: {seiten_diagramm}")
+    if seiten_entgleist:
+        zeilen.append(f"seiten-entgleist: {seiten_entgleist}")
+    if woerter_verdaechtig:
+        zeilen.append(f"woerter-verdaechtig: {woerter_verdaechtig}")
+    if woerter_korrigiert:
+        zeilen.append(f"woerter-korrigiert: {woerter_korrigiert}")
+    if ocr_modell:
+        zeilen.append(f"ocr-modell: {ocr_modell}")
+    zeilen += [
+        f"ocr-datum: {ocr_datum}",
+        f"ocr-zeitpunkt: {ocr_zeitpunkt}",
+        "vorschau-format: 1",
+        "---",
+    ]
+    return "\n".join(zeilen) + "\n"

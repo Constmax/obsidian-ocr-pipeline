@@ -37,12 +37,18 @@ test("drei Seitenbloecke mit richtigen Nummern", () => {
 	);
 });
 
-test("Herkunft: fehlender Zusatz bleibt undefined, wird NICHT auf textlayer geraten", () => {
+test("Herkunft wird aus dem Marker-Zusatz gelesen", () => {
 	const v = vorschauParsen(FIXTURE);
 	assert.equal(v.bloecke[0]?.herkunft, "textlayer");
 
 	assert.equal(v.bloecke[1]?.herkunft, "ocr");
 	assert.equal(v.bloecke[2]?.herkunft, "diagramm");
+});
+
+test("Marker ohne Zusatz bleibt herkunft undefined, wird NICHT geraten", () => {
+	const v = vorschauParsen("%% S. 1 %%\n\nText\n");
+	assert.equal(v.bloecke[0]?.herkunft, undefined);
+	assert.equal(v.bloecke[0]?.layout, undefined);
 });
 
 test("Layout-Zusatz wird durchgereicht", () => {

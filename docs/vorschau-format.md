@@ -13,7 +13,7 @@ zur Erzeugungslauf. Jedes Feld ist ein flaches Schlüssel-Wert-Paar.
 | Feld | Bedeutung | Format / erlaubte Werte |
 |---|---|---|
 | `titel` | Kurzer Titel (oft PDF-Name) | String |
-| `quelle-pdf` | Pfad zur rohen PDF-Datei, JSON-gequotet bei Leerzeichen | String (meist unverquoted, bei Leerzeichen via `json.dumps`) |
+| `quelle-pdf` | Pfad zur rohen PDF-Datei | String, immer JSON-gequotet via `json.dumps` |
 | `seiten` | Gesamtzahl der Seiten | positive ganze Zahl (als String) |
 | `seiten-textlayer` | Anzahl Seiten mit verlustlosem Textlayer | ganze Zahl |
 | `seiten-ocr` | Anzahl Seiten, die durch das Modell gelesen wurden | ganze Zahl |
@@ -28,9 +28,9 @@ zur Erzeugungslauf. Jedes Feld ist ein flaches Schlüssel-Wert-Paar.
 
 ### Regeln
 
-1. `quelle-pdf` wird bei Pfaden mit Leerzeichen via `json.dumps` quotiert, ansonsten unverändert. Der Parser liest es als flachen Skalar — ein YAML-Parser ist bewusst nicht nötig.
+1. `quelle-pdf` wird immer via `json.dumps` quotiert (auch ohne Leerzeichen). Der Parser liest es als flachen Skalar — ein YAML-Parser ist bewusst nicht nötig.
 2. Alle Felder sind optional; Fehlende werden vom Parser als `undefined` / `null` behandelt.
-3. Das Feld `vorschau-format: 1` kennzeichnet Dateien, die nach dieser Spezifikation erzeugt wurden. Der Parser toleriert unbekannte Felder und meldet sie sichtbar (statt still zu scheitern), siehe Abschnitt 5.
+3. Das Feld `vorschau-format: 1` kennzeichnet Dateien, die nach dieser Spezifikation erzeugt wurden. Der Parser toleriert unbekannte Felder (siehe Abschnitt 7).
 
 ## 2. Seitenmarker
 
@@ -120,7 +120,8 @@ noch immer Seite 2
   Spezifikation.
 - Der Parser liest es; bei fehlendem oder unbekanntem Wert wird **nicht**
   fehlerhaft abgebrochen, sondern das Feld fehlt einfach (`undefined`).
-- Die Review-Ansicht kann sichtbar machen, dass die Datei nach einem älteren
-  Format stammt, um Migrationsbedarf erkennbar zu machen.
+- Das Feld ist aktuell **reserviert**: es wird geschrieben, aber noch von
+  keinem Konsumenten ausgewertet. Eine spätere Migrationsprüfung („Datei
+  stammt aus einem älteren Format") kann daran ansetzen.
 - Bestehende Dateien ohne dieses Feld bleiben gültig (es wird einfach als
   nicht vorhanden behandelt).
