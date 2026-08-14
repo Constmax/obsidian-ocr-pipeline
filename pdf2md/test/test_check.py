@@ -164,3 +164,13 @@ def test_check_rejects_pdf_argument():
         Ergebnis = _run_check("--out", str(tmpdir), str(fake_pdf))
         assert Ergebnis.returncode != 0
         assert "--check benoetigt keine PDF-Datei" in Ergebnis.stderr
+
+
+def test_check_ohne_out_fasst_repo_ordner_nicht_an():
+    """--check ohne --out nutzt ein temporaeres Verzeichnis."""
+    Ergebnis = _run_check("--fortschritt")
+    doc = json.loads(Ergebnis.stdout)
+    ausgabe = [c for c in doc["checks"] if c["name"] == "ausgabe"][0]
+    # Default OUT ist pdf2md/out-C — bei Temp-Verzeichnis darf das nicht der Pfad sein
+    assert ausgabe["detail"] != str(PDF2MD.parent / "out-C")
+    assert Ergebnis.returncode in (0, 4)

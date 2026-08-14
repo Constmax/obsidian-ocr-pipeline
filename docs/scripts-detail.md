@@ -357,7 +357,8 @@ werten.
 
 Preflight-Prüfung ohne Modelllauf und ohne Eingabedatei. Antwortet in unter
 einer Sekunde. `--check` weist ein überflüssiges PDF-Argument mit Fehler
-zurück. Prüfungen:
+zurück. Ohne `--out` prüft `--check` gegen ein temporäres Verzeichnis und
+legt den Standardordner `pdf2md/out-C` nicht an. Prüfungen:
 
 | Name | Was | Fehlt wenn |
 |---|---|---|
