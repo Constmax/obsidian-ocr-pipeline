@@ -255,7 +255,8 @@ def preflight(out):
         ok = cache_pfad.exists() and any(cache_pfad.iterdir())
         detail = str(cache_pfad) if ok else f"nicht im Cache ({cache_pfad})"
         if ok:
-            groesse = sum(f.stat().st_size for f in cache_pfad.rglob("*")
+            blobs = cache_pfad / "blobs"
+            groesse = sum(f.stat().st_size for f in blobs.glob("*")
                           if f.is_file())
             detail += f" ({_human_size(groesse)})"
         checks.append(("modell", ok, detail))

@@ -124,6 +124,29 @@ def test_modell_findet_default_cache_ueber_home():
         assert modell["ok"] is True, f"Modellcheck schlug fehl: {modell['detail']}"
 
 
+def test_modell_groesse_zaehlt_blobs_nur_einfach():
+    """Snapshots-Symlinks auf blobs/ werden nicht doppelt gezaehlt."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        hub = Path(tmpdir) / "hub"
+        cache_pfad = hub / "models--mlx-community--PaddleOCR-VL-1.5-4bit"
+        blobs = cache_pfad / "blobs"
+        blobs.mkdir(parents=True)
+        (blobs / "abc").write_bytes(b"x" * 2048)
+        snapshots = cache_pfad / "snapshots" / "main"
+        snapshots.mkdir(parents=True)
+        (snapshots / "modell.safetensors").symlink_to(blobs / "abc")
+        env = {**os.environ, "HF_HUB_CACHE": str(hub)}
+        Ergebnis = subprocess.run(
+            [sys.executable, str(PDF2MD), "--check", "--fortschritt",
+             "--out", str(Path(tmpdir) / "out")],
+            cwd=str(REPO), env=env, capture_output=True, text=True, timeout=30,
+        )
+        doc = json.loads(Ergebnis.stdout)
+        modell = [c for c in doc["checks"] if c["name"] == "modell"][0]
+        assert modell["ok"] is True
+        assert "(2.0 KB)" in modell["detail"], modell["detail"]
+
+
 def test_no_pdf_with_check():
     """--check without a PDF argument succeeds (pdf not required)."""
     with tempfile.TemporaryDirectory() as tmpdir:
