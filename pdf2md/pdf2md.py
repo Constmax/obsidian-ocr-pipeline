@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from datetime import date, datetime
 from pathlib import Path
@@ -347,6 +348,8 @@ def main():
                     help="Preflight-Pruefung ohne Modelllauf (Exit 0 bei Erfolg, 4 bei Fehlern)")
     a = ap.parse_args()
 
+    if a.check and a.out == OUT:
+        a.out = Path(tempfile.mkdtemp(prefix="pdf2md-preflight-"))
     if a.check:
         if a.pdf:
             ap.error("--check benoetigt keine PDF-Datei (nur den Preflight-Check)")
@@ -368,6 +371,11 @@ def main():
                 print(f"[warn] {w}")
             print("—")
             print("alle ok" if alle_ok else "fehlgeschlagen")
+        if a.out != OUT:
+            try:
+                os.rmdir(a.out)
+            except OSError:
+                pass
         sys.exit(0 if alle_ok else EXIT_CHECK)
 
     pdf = Path(a.pdf) if a.pdf else None
