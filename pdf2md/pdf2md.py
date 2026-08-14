@@ -198,6 +198,12 @@ def diagramm_bild(pdf, nr, bild_dir, max_kante=1800):
     return name, bild_dir / name
 
 
+def _fortschritt(ereignis: dict):
+    """JSON-Formatierten Fortschritt nach stderr schreiben."""
+    sys.stderr.write(json.dumps(ereignis, ensure_ascii=False) + "\n")
+    sys.stderr.flush()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf")
@@ -248,6 +254,8 @@ def main():
                          "hellen Scans mit gleich breiten Kaesten versagt.")
     ap.add_argument("--diagramm-nur-bild", action="store_true",
                     help="Diagrammseiten ohne Text-Callout (nicht durchsuchbar)")
+    ap.add_argument("--fortschritt", action="store_true",
+                    help="maschinenlesbaren Fortschritt als JSON-Zeilen auf stderr ausgeben")
     a = ap.parse_args()
 
     pdf = Path(a.pdf)
@@ -273,6 +281,9 @@ def main():
         n_ocr = sum(1 for s in seiten if s[1] is not None)
         print(f"   {len(seiten)} Seiten — {len(seiten)-n_ocr} aus dem Textlayer, "
               f"{n_ocr} durch das Modell\n")
+
+        if a.fortschritt:
+            _fortschritt({"typ": "start", "datei": pdf.name, "seiten": len(seiten), "dpi": a.dpi})
 
         # Woerterbuch nur fuer die OCR-Seiten. Der Textlayer ist exakt — dort
         # gemeldete Woerter waeren ausnahmslos Fehlalarme (Eigennamen, Fachbegriffe)
@@ -351,6 +362,34 @@ def main():
                     for b in befunde[:6]) + (" …" if len(befunde) > 6 else ""))
             for zeile in spur:
                 print(f"     ⚠ {zeile}")
+
+            if a.fortschritt:
+                if diagramm:
+                    herkunft = "diagramm"
+                elif marker_zusatz == "textlayer":
+                    herkunft = "textlayer"
+                else:
+                    herkunft = "ocr"
+                entgleist = bool(spur)
+                if entgleist:
+                    _fortschritt({
+                        "typ": "seite",
+                        "nr": nr,
+                        "von": len(seiten),
+                        "sekunden": round(dt, 1),
+                        "herkunft": herkunft,
+                        "entgleist": True,
+                        "grund": spur[0]
+                    })
+                else:
+                    _fortschritt({
+                        "typ": "seite",
+                        "nr": nr,
+                        "von": len(seiten),
+                        "sekunden": round(dt, 1),
+                        "herkunft": herkunft,
+                        "entgleist": False
+                    })
 
         dump = []
 
@@ -478,6 +517,13 @@ def main():
             a.woerterbuch_bericht.write_text(
                 json.dumps(bericht, ensure_ascii=False, indent=1), encoding="utf-8")
             print(f"→ {a.woerterbuch_bericht} ({len(bericht)} Befunde)")
+        if a.fortschritt:
+            _fortschritt({
+                "typ": "fertig",
+                "ziel": str(a.out / f"{pdf.stem}.md"),
+                "sekunden": round(ges, 1),
+                "entgleist": n_entgleist
+            })
         print(f"\n{ges:.1f} s gesamt ({ges/len(seiten):.1f} s/Seite)\n→ {ziel}")
     finally:
         # Zwischenbilder nicht liegenlassen — auch nicht bei Abbruch.
