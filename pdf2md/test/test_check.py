@@ -38,7 +38,8 @@ def test_human_output():
 
         lines = [l for l in Ergebnis.stdout.splitlines() if l.strip() and l.strip() != "—"]
         # Should have exactly 6 check lines (python, fitz, mlx_vlm, modell, ausgabe, speicher)
-        check_lines = [l for l in lines if l.startswith("[")]
+        check_lines = [l for l in lines
+                       if l.startswith("[ ok ]") or l.startswith("[fehlt]")]
         assert len(check_lines) == 6, (
             f"Expected 6 check lines, got {len(check_lines)}:\n{check_lines}"
         )

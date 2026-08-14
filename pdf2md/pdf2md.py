@@ -17,7 +17,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import sys
 import time
 from datetime import date, datetime
@@ -35,6 +34,9 @@ from ocr import (OVERLAP, TOKEN_MAX, ZEICHEN_JE_TINTE, _tintenmenge,
 
 BENCH = Path(__file__).resolve().parent
 OUT = BENCH / "out-C"
+# Zwischenbilder je Lauf in einen eigenen Ordner. Zwei gleichzeitig laufende
+# pdf2md-Prozesse loeschten sich sonst gegenseitig die Kacheln weg — das
+# Aufraeumen am Ende greift per Glob auf das ganze Verzeichnis zu.
 TMP = OUT
 MODEL = os.environ.get("MLX_OCR_MODEL", "mlx-community/PaddleOCR-VL-1.5-4bit")
 PROMPT = "Parse this document page to Markdown."
@@ -265,10 +267,14 @@ def preflight(out):
         out.mkdir(parents=True, exist_ok=True)
         probes = out / ".check-probe"
         probes.write_text("ok")
-        probes.unlink()
-        checks.append(("ausgabe", True, str(out)))
     except OSError as e:
         checks.append(("ausgabe", False, str(e)))
+    else:
+        try:
+            probes.unlink()
+        except OSError:
+            pass
+        checks.append(("ausgabe", True, str(out)))
     # 6. Verfuegbarer Arbeitsspeicher
     try:
         import subprocess
