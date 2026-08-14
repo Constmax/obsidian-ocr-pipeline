@@ -15,6 +15,7 @@ Schreibt nach .ocr-bench/out-C/, fasst raw/ nicht an.
 """
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -36,7 +37,7 @@ OUT = BENCH / "out-C"
 # pdf2md-Prozesse loeschten sich sonst gegenseitig die Kacheln weg — das
 # Aufraeumen am Ende greift per Glob auf das ganze Verzeichnis zu.
 TMP = OUT
-MODEL = "mlx-community/PaddleOCR-VL-1.5-4bit"
+MODEL = os.environ.get("MLX_OCR_MODEL", "mlx-community/PaddleOCR-VL-1.5-4bit")
 PROMPT = "Parse this document page to Markdown."
 KACHEL_AB = 3000      # Zeichen im vorhandenen Textlayer
 
