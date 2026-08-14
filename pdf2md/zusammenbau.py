@@ -729,3 +729,25 @@ def als_callout(absaetze, titel):
     for p in absaetze:
         aus += ["> " + z for z in p.splitlines()] + [">"]
     return "\n".join(aus).rstrip("\n>").rstrip()
+
+
+def seitenmarker(nr, zusatz=None):
+    """Seitenmarker im Grammatik-Format.
+
+    Wenn `zusatz` None ist, wird nur `%% S. nr %%` erzeugt (kompatibel mit
+    Läufen vor der Marker-Erweiterung).
+    """
+    if zusatz is not None:
+        return f"%% S. {nr} | {zusatz} %%\n\n"
+    return f"%% S. {nr} %%\n\n"
+
+
+def dokument_bauen(frontmatter_text, quelle_text, bloecke_texte):
+    """Erzeugt den vollständigen Vorschau-Markdown-Text.
+
+    Entspricht der Zusammenbau-Logik in pdf2md.py main():
+    `kopf + "\n" + quelle + "\n" + "\n\n".join(md) + "\n"`
+
+    Alle drei Argumente sind fertige Strings (nicht gelistete Werte).
+    """
+    return f"{frontmatter_text}\n{quelle_text}\n" + "\n\n".join(bloecke_texte) + "\n"

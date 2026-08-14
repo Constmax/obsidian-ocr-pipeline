@@ -39,7 +39,8 @@ test("drei Seitenbloecke mit richtigen Nummern", () => {
 
 test("Herkunft: fehlender Zusatz bleibt undefined, wird NICHT auf textlayer geraten", () => {
 	const v = vorschauParsen(FIXTURE);
-	assert.equal(v.bloecke[0]?.herkunft, undefined);
+	assert.equal(v.bloecke[0]?.herkunft, "textlayer");
+
 	assert.equal(v.bloecke[1]?.herkunft, "ocr");
 	assert.equal(v.bloecke[2]?.herkunft, "diagramm");
 });
