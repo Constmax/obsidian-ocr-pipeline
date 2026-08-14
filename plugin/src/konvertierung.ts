@@ -20,6 +20,24 @@ export interface KonvertierenErgebnis {
 	stderrLetzte: string[];
 }
 
+/**
+ * Maschinenlesbares Fortschrittsereignis, wie pdf2md es als JSON-Zeile auf
+ * stderr schreibt (siehe `_fortschritt` in pdf2md.py). Diskriminierte Union
+ * ueber `typ`, damit Aufrufer mit `ereignis.typ === "seite"` schmaler werden.
+ */
+export type FortschrittsEreignis =
+	| { typ: "start"; datei: string; seiten: number; dpi: number }
+	| {
+			typ: "seite";
+			nr: number;
+			von: number;
+			sekunden: number;
+			herkunft: string;
+			entgleist: boolean;
+			grund?: string;
+	  }
+	| { typ: "fertig"; ziel: string; sekunden: number; entgleist: number };
+
 /** Steuerung fuer einen Lauf. */
 export interface KonvertierenSteuerung {
 	/** Haengt der Prozess laenger als `timeoutMs`, wird er gekillt und der
@@ -27,7 +45,7 @@ export interface KonvertierenSteuerung {
 	 *  diese Stelle gemeldet (fuer Abbruch beim Plugin-Unload). */
 	timeoutMs?: number;
 	onKind?: (kind: ChildProcess) => void;
-	onFortschritt?: (ereignis: {typ: string}) => void;
+	onFortschritt?: (ereignis: FortschrittsEreignis) => void;
 }
 
 /** Wie viele Zeilen pro Strom mitgenommen werden — genug fuer die Fehlerursache. */
@@ -48,6 +66,58 @@ function sammle(letzte: string[], zeile: string): void {
 	if (bereinigt.length === 0) return;
 	letzte.push(bereinigt);
 	if (letzte.length > LETZTE_ZEILEN) letzte.shift();
+}
+
+/**
+ * Versucht, eine Zeile als JSON-Fortschrittsereignis zu lesen. Liefert das
+ * getypte Ereignis oder `null` fuer jede Zeile, die kein gueltiges
+ * Fortschrittsereignis ist (kein JSON, unbekannter `typ`, fehlende Felder).
+ * Die Felder werden einzeln geprueft, damit fremde JSON-Zeilen (z. B. von
+ * Drittwerkzeugen) nicht als Ereignis durchrutschen.
+ */
+function fortSchrittsEreignis(zeile: string): FortschrittsEreignis | null {
+	let obj: unknown;
+	try {
+		obj = JSON.parse(zeile) as unknown;
+	} catch {
+		return null;
+	}
+	if (typeof obj !== "object" || obj === null) return null;
+	const e = obj as Record<string, unknown>;
+	if (typeof e.typ !== "string") return null;
+	switch (e.typ) {
+		case "start":
+			if (typeof e.datei !== "string" || typeof e.seiten !== "number" || typeof e.dpi !== "number") {
+				return null;
+			}
+			return { typ: "start", datei: e.datei, seiten: e.seiten, dpi: e.dpi };
+		case "seite":
+			if (
+				typeof e.nr !== "number" ||
+				typeof e.von !== "number" ||
+				typeof e.sekunden !== "number" ||
+				typeof e.herkunft !== "string" ||
+				typeof e.entgleist !== "boolean"
+			) {
+				return null;
+			}
+			return {
+				typ: "seite",
+				nr: e.nr,
+				von: e.von,
+				sekunden: e.sekunden,
+				herkunft: e.herkunft,
+				entgleist: e.entgleist,
+				...(typeof e.grund === "string" ? { grund: e.grund } : {}),
+			};
+		case "fertig":
+			if (typeof e.ziel !== "string" || typeof e.sekunden !== "number" || typeof e.entgleist !== "number") {
+				return null;
+			}
+			return { typ: "fertig", ziel: e.ziel, sekunden: e.sekunden, entgleist: e.entgleist };
+		default:
+			return null;
+	}
 }
 
 /**
@@ -117,20 +187,13 @@ export function pdfKonvertieren(
 			return;
 		}
 		steuerung.onKind?.(kind);
-const stdoutLetzte: string[] = [];
-	const stderrLetzte: string[] = [];
+		const stdoutLetzte: string[] = [];
+		const stderrLetzte: string[] = [];
 		const stdoutPuffer = zeilenPuffer(stdoutLetzte);
 		const stderrPuffer = zeilenPuffer(stderrLetzte, (zeile) => {
-			// Versuche, Zeile als JSON-Fortschrittsevent zu parsen
-			let ereignis: {typ: string} | null = null;
-			try {
-				const obj = JSON.parse(zeile);
-				if (obj && typeof obj.typ === "string" && ["start", "seite", "fertig"].includes(obj.typ)) {
-					ereignis = obj;
-				}
-			} catch (_) {}
+			const ereignis = fortSchrittsEreignis(zeile);
 			if (ereignis && steuerung.onFortschritt) {
-				steuerung.onFortschritt(ereignis as {typ: string});
+				steuerung.onFortschritt(ereignis);
 				return false; // Fortschritt-Zeile nicht in stderrLetzte aufnehmen
 			}
 			return true; // sonst wie bisher sammeln
