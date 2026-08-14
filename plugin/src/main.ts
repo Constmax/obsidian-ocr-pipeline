@@ -281,6 +281,16 @@ export default class OcrVorschauPlugin extends Plugin {
 					onKind: (kind) => {
 						this.laufendesKind = kind;
 					},
+					onFortschritt: (e) => {
+						if (e.typ === "seite" && laufendeNotice) {
+							const txt = e.entgleist
+								? `— Seite ${e.nr} von ${e.von} (entgleist)`
+								: `— Seite ${e.nr} von ${e.von}`;
+							laufendeNotice.setMessage(
+								`OCR-Vorschau: Konvertiere "${name}"${txt} …`
+							);
+						}
+					},
 				},
 			);
 			this.laufendesKind = null;
