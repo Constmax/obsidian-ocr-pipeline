@@ -2,7 +2,7 @@
 """PP-DocLayoutV3 gegen `layout_erkennen()` — Spaltenentscheidung und Laufzeit.
 
   source ~/.venvs/mlxocr/bin/activate
-  pip install "transformers>=5.15" torch opencv-python-headless
+  pip install "transformers>=5.15" torch torchvision opencv-python-headless
   python bench/layoutmodell_test.py                    # Wahrheitssatz
   python bench/layoutmodell_test.py --stichprobe 60    # Bestandsabgleich
   python bench/layoutmodell_test.py --dump <pdf> 5     # rohe Modellausgabe
@@ -46,12 +46,17 @@ MODELL = "PaddlePaddle/PP-DocLayoutV3_safetensors"
 # koennen. Kopf-, Fuss- und Randklassen zaehlen nicht mit — genau wie
 # `_steg()` Boilerplate ausnimmt, weil eine Seitenzahl im Bund das
 # x-Histogramm dort zerlegt, wo der Steg liegt (Nachtrag 9).
-SATZ_KLASSEN = {"text", "paragraph_title", "doc_title", "footnote", "abstract",
-                "content", "reference", "algorithm", "formula", "table",
-                "figure", "chart", "image", "seal", "figure_title",
-                "table_title", "chart_title", "formula_number", "aside_text"}
-RAND_KLASSEN = {"header", "footer", "number", "page_number", "header_image",
-                "footer_image", "aside_text"}
+#
+# Gegen die echte id2label-Ausgabe des Modells geprueft (--dump): die Menge
+# enthaelt 25 Eintraege mit Duplikaten (footer/header/formula/text je zweimal)
+# und dazu reference_content + vision_footnote; die urspruenglich angenommenen
+# figure/table_title/chart_title/page_number/header_image/footer_image gibt es
+# nicht.
+SATZ_KLASSEN = {"text", "paragraph_title", "doc_title", "footnote",
+                "vision_footnote", "abstract", "content", "reference",
+                "reference_content", "algorithm", "formula", "table",
+                "chart", "image", "seal", "figure_title", "formula_number"}
+RAND_KLASSEN = {"header", "footer", "number", "aside_text"}
 
 # Wahrheitssatz. Die 14 handgeprueften Seiten aus Nachtrag 12 sind nirgends als
 # Liste festgehalten worden — das ist selbst ein Befund. Was hier steht, ist aus
@@ -426,9 +431,10 @@ def main():
     except ImportError as e:
         raise SystemExit(
             f"!! {e}\n"
-            "   pip install 'transformers>=5.15' torch opencv-python-headless\n"
-            "   (opencv braucht post_process_object_detection fuer die "
-            "Polygonpunkte)")
+            "   pip install 'transformers>=5.15' torch torchvision "
+            "opencv-python-headless\n"
+            "   (torchvision braucht der ImageProcessor beim Import, opencv "
+            "fuer die Polygonpunkte)")
 
 
 if __name__ == "__main__":

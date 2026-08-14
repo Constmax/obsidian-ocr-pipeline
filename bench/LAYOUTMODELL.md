@@ -1,8 +1,8 @@
-# PP-DocLayoutV3 als Vorverarbeitung — offene Messung
+# PP-DocLayoutV3 als Vorverarbeitung — Messung
 
-**Stand: nicht gemessen.** Dieses Dokument hält die Frage, den Messstand und
-den geprüften Kenntnisstand fest. Die Ergebnisse gehören, sobald sie vorliegen,
-als Nachtrag nach `ERGEBNIS.md` — dort stehen nur Zahlen, die jemand gesehen hat.
+**Stand: gemessen (2026-08-14).** Die Zahlen unten stammen aus dem ersten Lauf
+auf dem M1 im Vault. Ergebnisse gehören als Nachtrag auch nach `ERGEBNIS.md` —
+dort stehen nur Zahlen, die jemand gesehen hat.
 
 ## Die Frage
 
@@ -36,7 +36,7 @@ nachgesehen, nicht aus der Erinnerung:
 | Rückgabe | `scores`, `labels`, `boxes` (xyxy absolut), `polygon_points`, `order_seq` |
 | Leseordnung | wird **mitgeliefert** und die Treffer sind danach sortiert |
 | Eingabegröße | hart auf **800 × 800** (`size` im ImageProcessor), `mean=[0,0,0]`, `std=[1,1,1]` |
-| Zusatzabhängigkeit | `torch` **und** `cv2` (`requires_backends`, für die Polygonpunkte) |
+| Zusatzabhängigkeit | `torch`, `torchvision` (hatter Import im ImageProcessor) **und** `cv2` (für die Polygonpunkte) |
 | Klassen (im Beispiel belegt) | `text`, `paragraph_title`, `footnote`, `number`, `footer` — vollständige Menge steht in `model.config.id2label` |
 
 Die feste Eingabegröße ist dieselbe Sorte Deckel wie die 1.003.520 Pixel des
@@ -70,7 +70,7 @@ geplanten Fix: *„Vollbreiten-Elemente | Fußzeile am Kachelschnitt abgeschnitt
 
 | offener Punkt | Beleg | passende Klasse |
 |---|---|---|
-| gescannte Diagramme nicht erkannt | Nachtrag 6 — vier Signale gemessen, alle vier versagt, bewusst zurückgenommen | `figure` / `chart` |
+| gescannte Diagramme nicht erkannt | Nachtrag 6 — vier Signale gemessen, alle vier versagt, bewusst zurückgenommen | `image` / `chart` (erster `--dump`: Baumdiagramm kam als `image` 0,92 heraus — es gibt kein `figure`) |
 | Tabellen in Rasterscans | Nachtrag 3 — gar nicht erkannt | `table` |
 | Kästen in Rasterscans | Nachtrag 6 — Rahmenprüfung nicht trennbar (Prosa 0,95 gegen Kästen 0,95) | `text`-Regionen |
 | Seitenzahlen auf Scanseiten | Nachtrag 9 — 4 bleiben stehen | `number` / `footer` |
@@ -84,7 +84,7 @@ urheberrechtlich geschützte Scans sind und nicht im Repo liegen (wie
 
 ```bash
 source ~/.venvs/mlxocr/bin/activate
-pip install "transformers>=5.15" torch opencv-python-headless
+pip install "transformers>=5.15" torch torchvision opencv-python-headless
 
 python bench/layoutmodell_test.py --dump "raw/.../Strafrecht AT VI - Fahrlaessigkeit.pdf" 5
 python bench/layoutmodell_test.py
@@ -95,7 +95,11 @@ python bench/layoutmodell_test.py --stichprobe 60
 Damit ist zu sehen, ob die API-Annahmen tragen und wie die Klassen wirklich
 heißen; `SATZ_KLASSEN`/`RAND_KLASSEN` im Skript sind danach zu korrigieren.
 Alles Modellabhängige steht in `modell_laden()` und `regionen()` — zwei
-Funktionen, absichtlich.
+Funktionen, absichtlich. Beides ist beim ersten Lauf passiert: die API trug,
+die Klassensets sind gegen die echte `id2label`-Menge nachgezogen (25 Einträge
+mit Duplikaten: `footer`/`header`/`formula`/`text` je zweimal, dazu
+`reference_content`/`vision_footnote`; angenommen waren u. a. `figure` und
+`table_title`, die es nicht gibt).
 
 Der Standardlauf vergleicht Modell und Heuristik gegen den Wahrheitssatz und
 trennt dabei die beiden Fehlerrichtungen: *falsch geschnitten* (teuer) und
@@ -123,15 +127,33 @@ Modell überhaupt etwas kann, was die Projektion nicht kann.
 
 ## Ergebnisse
 
+Erster Lauf 2026-08-14, M1, Wahrheitssatz aus `WAHRHEIT` (15 Seiten):
+
 | | Heuristik | PP-DocLayoutV3 |
 |---|---|---|
-| Wahrheitssatz richtig | 13/14 (Nachtrag 12, anderer Satz) | — |
-| davon falsch geschnitten | | — |
-| davon versäumt | | — |
-| Laufzeit je Seite | ~0 (Projektion) | — |
-| Widersprüche in der Stichprobe | — | — |
+| Wahrheitssatz richtig | **13/15** | **11/15** |
+| davon falsch geschnitten | 1 | 2 |
+| davon versäumt | 1 | 2 |
+| Laufzeit je Seite | ~0 (Projektion) | Median **1,22 s** (0,90–1,71) |
 
-Erst ausfüllen, dann entscheiden. Und die Entscheidung ist nicht
-„ersetzen oder nicht": der Detektor kann die Spaltenfrage der Heuristik lassen
-und trotzdem die Klassifikationsfragen beantworten, an denen sie nachweislich
-scheitert.
+Die Entscheidung ist damit gefallen: als **Spaltenentscheidung ist das Modell
+kein Gewinn** — es verpasst `Verwaltungsrecht AT Fall 8` S. 10 genauso wie die
+Heuristik (Tal 0,40, linke Flanke 0,72) und schneidet zusätzlich zwei Seiten
+falsch (`BGB-AT_10` S. 3/4), die die Heuristik richtig hat.
+
+Ende-zu-Ende-Kontrolle auf `BGB AT Fall 3.pdf` (5 Rasterseiten, je ein Lauf mit
+und ohne vorgeschaltetes Modell, nur `layout_erkennen` getauscht): die Heuristik
+trifft alle fünf Seiten (S. 2–5 zweispaltig @51–52 %), das Modell verpasst S. 2
+(einspaltig) — die Seite wird verschränkt gelesen (Gliederung zerschnitten,
+Absatzzeilen mitten im Satz gebrochen), Zeichenausbeute bleibt gleich. Auf den
+übrigen Seiten ist die Ausgabe identisch bzw. der Steg verschiebt sich um
+~2 %-Punkte.
+
+Die **Klassifikationsfragen** sind damit unentschieden: der erste `--dump`
+meldet das Baumdiagramm (Strafrecht AT VI S. 5) als `image` 0,92, die
+Gegenprobe S. 8 aber ebenfalls ein `image` — das ist im Bild nachzusehen, bevor
+daraus etwas gebaut wird. `--stichprobe` ist noch nicht gelaufen.
+
+Danach entscheiden. Und die Entscheidung ist nicht „ersetzen oder nicht": der
+Detektor kann die Spaltenfrage der Heuristik lassen und trotzdem die
+Klassifikationsfragen beantworten, an denen sie nachweislich scheitert.
