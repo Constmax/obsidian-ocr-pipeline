@@ -50,7 +50,7 @@ function frontmatterLesen(zeilen: string[]): {
 		if (doppelpunkt <= 0) continue;
 		const schluessel = zeile.slice(0, doppelpunkt).trim();
 		let wert = zeile.slice(doppelpunkt + 1).trim();
-		// pdf2md.py, main() — Frontmatter — schreibt `quelle-pdf` unquotiert.
+		// pdf2md.py, main() — Frontmatter — schreibt `quelle-pdf` JSON-gequotet.
 		// Enthaelt der Pfad Anfuehrungszeichen, sind sie hier zu entfernen; ein
 		// Pfad mit ':' bricht das Frontmatter ohnehin — dafuer gibt es den
 		// Quelle-Link.
