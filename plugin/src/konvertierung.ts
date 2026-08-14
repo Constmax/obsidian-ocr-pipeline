@@ -1,8 +1,7 @@
 // Konvertierung einer PDF per Kindprozess: ruft das lokale pdf2md-Skript
 // (Stufe 2 der Pipeline) mit `--out` auf und sammelt die letzten
-// Ausgabezeilen. Bewusst schlank gehalten — Fortschrittsmodal, Abbruch und
-// maschinenlesbarer Fortschritt sind Roadmap-Themen und brauchen keinen
-// Platz in diesem Modul.
+// Ausgabezeilen. Maschinlesbarer Fortschritt steht als `--fortschritt`-Flag
+// zur Verfügung; das Plugin kann per `onFortschritt`-Callback daraufzugreifen.
 
 import { spawn, type ChildProcess } from "child_process";
 
@@ -28,6 +27,7 @@ export interface KonvertierenSteuerung {
 	 *  diese Stelle gemeldet (fuer Abbruch beim Plugin-Unload). */
 	timeoutMs?: number;
 	onKind?: (kind: ChildProcess) => void;
+	onFortschritt?: (ereignis: {typ: string}) => void;
 }
 
 /** Wie viele Zeilen pro Strom mitgenommen werden — genug fuer die Fehlerursache. */
@@ -55,17 +55,26 @@ function sammle(letzte: string[], zeile: string): void {
  * an Zeilengrenzen, eine Zeile kann also ueber mehrere Aufrufe verteilt sein.
  * Der Rest ohne abschliessendes `\n` wartet auf den naechsten Aufruf; `flush`
  * gibt ihn am Stromende (auch ohne trennendes `\n`) noch mit.
+ *
+ * Wenn `beiZeile` angegeben ist, wird fuer jede vollzuegzeilige Zeile
+ * `beiZeile(zeile)` aufgerufen. Liefert sie `false`, wird die Zeile nicht
+ * in `letzte` gesammelt (z. B. fuer maschinenlesbaren Fortschritt). Liefert
+ * sie `true` oder `beiZeile` ist undefined, wird wie bisher gesammelt.
  */
-function zeilenPuffer(letzte: string[]): { schreibe: (stueck: string) => void; flush: () => void } {
+function zeilenPuffer(letzte: string[], beiZeile?: (zeile: string) => boolean): { schreibe: (stueck: string) => void; flush: () => void } {
 	let rest = "";
 	return {
 		schreibe(stueck: string): void {
 			const teile = (rest + stueck).split("\n");
 			rest = teile.pop() ?? "";
-			for (const zeile of teile) sammle(letzte, zeile);
+			for (const zeile of teile) {
+				if (!beiZeile || beiZeile(zeile)) sammle(letzte, zeile);
+			}
 		},
 		flush(): void {
-			if (rest.length > 0) sammle(letzte, rest);
+			if (rest.length > 0) {
+				if (!beiZeile || beiZeile(rest)) sammle(letzte, rest);
+			}
 			rest = "";
 		},
 	};
@@ -93,7 +102,7 @@ export function pdfKonvertieren(
 	return new Promise((erledigt) => {
 		let kind: ChildProcess;
 		try {
-			kind = spawnFn(pdf2md, [pdf, "--out", out], {
+			kind = spawnFn(pdf2md, [pdf, "--out", out, "--fortschritt"], {
 				cwd,
 				stdio: ["ignore", "pipe", "pipe"],
 			});
@@ -108,10 +117,24 @@ export function pdfKonvertieren(
 			return;
 		}
 		steuerung.onKind?.(kind);
-		const stdoutLetzte: string[] = [];
-		const stderrLetzte: string[] = [];
+const stdoutLetzte: string[] = [];
+	const stderrLetzte: string[] = [];
 		const stdoutPuffer = zeilenPuffer(stdoutLetzte);
-		const stderrPuffer = zeilenPuffer(stderrLetzte);
+		const stderrPuffer = zeilenPuffer(stderrLetzte, (zeile) => {
+			// Versuche, Zeile als JSON-Fortschrittsevent zu parsen
+			let ereignis: {typ: string} | null = null;
+			try {
+				const obj = JSON.parse(zeile);
+				if (obj && typeof obj.typ === "string" && ["start", "seite", "fertig"].includes(obj.typ)) {
+					ereignis = obj;
+				}
+			} catch (_) {}
+			if (ereignis && steuerung.onFortschritt) {
+				steuerung.onFortschritt(ereignis as {typ: string});
+				return false; // Fortschritt-Zeile nicht in stderrLetzte aufnehmen
+			}
+			return true; // sonst wie bisher sammeln
+		});
 		kind.stdout?.setEncoding("utf8");
 		kind.stderr?.setEncoding("utf8");
 		kind.stdout?.on("data", (stueck) => stdoutPuffer.schreibe(String(stueck)));
