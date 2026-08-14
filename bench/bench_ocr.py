@@ -58,9 +58,13 @@ def woerter(s):
 
 
 def seiten_trennen(pfad):
-    """{Seitennummer: Text} aus einer pdf2md-Ausgabe."""
+    """{Seitennummer: Text} aus einer pdf2md-Ausgabe.
+
+    Markersyntax aus docs/ocr-vorschau.md: `%% S. N | herkunft, modus %%` —
+    die Vorgaenger-Variante ohne `| herkunft` wird auch noch verstanden.
+    """
     roh = Path(pfad).read_text(encoding="utf-8")
-    teile = re.split(r"%% S\. (\d+) %%", roh)
+    teile = re.split(r"%% S\. (\d+)(?: \|[^\n]*)?%%\n*", roh)
     return {int(teile[i]): teile[i + 1] for i in range(1, len(teile) - 1, 2)}
 
 
