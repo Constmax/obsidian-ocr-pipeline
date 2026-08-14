@@ -262,6 +262,7 @@ def main():
             erzwungen.add(int(teil))
     global TMP
     TMP = OUT / f"_tmp-{pdf.stem}"
+    TMP.mkdir(parents=True, exist_ok=True)
     try:
         a.out.mkdir(parents=True, exist_ok=True)
 
