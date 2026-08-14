@@ -49,7 +49,7 @@ test("ruft pdf2md mit --out und cwd auf und liefert Exit-Code 0 mit den Zeilen",
 	assert.deepEqual(aufrufe, [
 		{
 			befehl: "/Users/test/bin/pdf2md",
-			args: ["raw/fall-01.pdf", "--out", "_ocr-vorschau"],
+			args: ["raw/fall-01.pdf", "--out", "_ocr-vorschau", "--fortschritt"],
 			optionen: { cwd: "/vault", stdio: ["ignore", "pipe", "pipe"] },
 		},
 	]);
