@@ -24,7 +24,8 @@ from pathlib import Path
 
 import woerterbuch
 import zusammenbau
-from zusammenbau import als_callout, entpua, fragmente_verschmelzen, zusammenfuegen
+from zusammenbau import (als_callout, dokument_bauen, entpua, fragmente_verschmelzen,
+                        zusammenfuegen)
 from layout import (bildanteil, kaesten_erkennen, kaesten_zuordnen,
                    layout_erkennen, spalten_trennen, tabellen_markdown)
 from ocr import (OVERLAP, TOKEN_MAX, ZEICHEN_JE_TINTE, _tintenmenge,
@@ -467,7 +468,7 @@ def main():
         # Quelle also unauffindbar.
         quelle = f"Quelle: [[{pdf.as_posix()}]]\n"
         ziel = a.out / f"{pdf.stem}.md"
-        ziel.write_text(kopf + "\n" + quelle + "\n" + "\n\n".join(md) + "\n",
+        ziel.write_text(dokument_bauen(kopf, quelle, md),
                         encoding="utf-8")
         if a.zeilen_dump:
             a.zeilen_dump.write_text(json.dumps(dump, ensure_ascii=False),
