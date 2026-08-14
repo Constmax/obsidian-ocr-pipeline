@@ -218,6 +218,7 @@ def _hf_cache_pfad(repo_id):
     """
     cache = (os.environ.get("HF_HUB_CACHE")
              or (os.environ.get("HF_HOME", "~/.cache/huggingface") + "/hub"))
+    cache = os.path.expanduser(cache)
     org, name = repo_id.split("/", 1)
     return Path(cache) / f"models--{org}--{name}"
 
