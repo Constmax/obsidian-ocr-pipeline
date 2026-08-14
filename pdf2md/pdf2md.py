@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
 import time
 from datetime import date, datetime
@@ -34,13 +35,11 @@ from ocr import (OVERLAP, TOKEN_MAX, ZEICHEN_JE_TINTE, _tintenmenge,
 
 BENCH = Path(__file__).resolve().parent
 OUT = BENCH / "out-C"
-# Zwischenbilder je Lauf in einen eigenen Ordner. Zwei gleichzeitig laufende
-# pdf2md-Prozesse loeschten sich sonst gegenseitig die Kacheln weg — das
-# Aufraeumen am Ende greift per Glob auf das ganze Verzeichnis zu.
 TMP = OUT
 MODEL = os.environ.get("MLX_OCR_MODEL", "mlx-community/PaddleOCR-VL-1.5-4bit")
 PROMPT = "Parse this document page to Markdown."
-KACHEL_AB = 3000      # Zeichen im vorhandenen Textlayer
+KACHEL_AB = 3000
+EXIT_CHECK = 4
 
 
 def laufende_zeilen(doc, kopf=0.09, fuss=0.93, min_seiten=2):
@@ -204,9 +203,89 @@ def _fortschritt(ereignis: dict):
     sys.stderr.flush()
 
 
+def _human_size(b):
+    """Bytes als lesbare Groesse (KB, MB, GB)."""
+    for einheit in ("B", "KB", "MB", "GB"):
+        if b < 1024 or einheit == "GB":
+            return f"{b:.1f} {einheit}"
+        b /= 1024
+
+
+def _hf_cache_pfad(repo_id):
+    """Pfad zum HuggingFace-Cache-Verzeichnis fuer ein Modell.
+
+    Respektiert $HF_HUB_CACHE, $HF_HOME/hub, Default ~/.cache/huggingface/hub.
+    """
+    cache = (os.environ.get("HF_HUB_CACHE")
+             or (os.environ.get("HF_HOME", "~/.cache/huggingface") + "/hub"))
+    org, name = repo_id.split("/", 1)
+    return Path(cache) / f"models--{org}--{name}"
+
+
+def preflight(out):
+    """Schneller Vorabcheck ohne Modelllauf und ohne Eingabedatei.
+
+    Liefert eine Liste von (name, ok, detail) und eine Liste von Warnungen.
+    """
+    checks = []
+    warnungen = []
+    # 1. Python-Version
+    pv = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    checks.append(("python", sys.version_info >= (3, 9), pv))
+    # 2. fitz (PyMuPDF)
+    try:
+        import fitz
+        checks.append(("fitz", True, getattr(fitz, "__version__", "?")))
+    except ImportError:
+        checks.append(("fitz", False, "nicht installiert"))
+    # 3. mlx_vlm
+    try:
+        import mlx_vlm
+        checks.append(("mlx_vlm", True,
+                        getattr(mlx_vlm, "__version__", "?")))
+    except ImportError:
+        checks.append(("mlx_vlm", False, "nicht installiert"))
+    # 4. Modell im HuggingFace-Cache
+    modell_pfad = Path(MODEL)
+    if modell_pfad.is_dir():
+        checks.append(("modell", True, f"lokal: {modell_pfad}"))
+    else:
+        cache_pfad = _hf_cache_pfad(MODEL)
+        ok = cache_pfad.exists() and any(cache_pfad.iterdir())
+        detail = str(cache_pfad) if ok else f"nicht im Cache ({cache_pfad})"
+        if ok:
+            groesse = sum(f.stat().st_size for f in cache_pfad.rglob("*")
+                          if f.is_file())
+            detail += f" ({_human_size(groesse)})"
+        checks.append(("modell", ok, detail))
+    # 5. Schreibrecht auf Ausgabeordner
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        probes = out / ".check-probe"
+        probes.write_text("ok")
+        probes.unlink()
+        checks.append(("ausgabe", True, str(out)))
+    except OSError as e:
+        checks.append(("ausgabe", False, str(e)))
+    # 6. Verfuegbarer Arbeitsspeicher
+    try:
+        import subprocess
+        mem_bytes = int(subprocess.check_output(
+            ["sysctl", "-n", "hw.memsize"], text=True).strip())
+        mem_gb = mem_bytes / (1024 ** 3)
+        detail = f"{mem_gb:.1f} GiB"
+        if mem_gb < 8:
+            detail += " (weniger als 8 GiB — Parallelbetrieb riskiert OOM)"
+            warnungen.append("speicher: " + detail)
+        checks.append(("speicher", True, detail))
+    except Exception:
+        checks.append(("speicher", True, "nicht bestimmbar"))
+    return checks, warnungen
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("pdf")
+    ap.add_argument("pdf", nargs="?", default=None)
     # 150 dpi statt 300: der Bildvorverarbeiter des Modells deckelt bei
     # max_pixels = 1.003.520 (~1 MP). Eine Spaltenkachel ueberschreitet den
     # Deckel ab ~141 dpi, darueber wird alles wieder heruntergerechnet —
@@ -256,9 +335,34 @@ def main():
                     help="Diagrammseiten ohne Text-Callout (nicht durchsuchbar)")
     ap.add_argument("--fortschritt", action="store_true",
                     help="maschinenlesbaren Fortschritt als JSON-Zeilen auf stderr ausgeben")
+    ap.add_argument("--check", action="store_true",
+                    help="Preflight-Pruefung ohne Modelllauf (Exit 0 bei Erfolg, 4 bei Fehlern)")
     a = ap.parse_args()
 
-    pdf = Path(a.pdf)
+    if a.check:
+        checks, warnungen = preflight(a.out)
+        alle_ok = all(ok for _, ok, _ in checks)
+        if a.fortschritt:
+            print(json.dumps({
+                "typ": "check",
+                "ok": alle_ok,
+                "checks": [{"name": n, "ok": ok, "detail": d}
+                            for n, ok, d in checks],
+                "warnungen": warnungen,
+            }, ensure_ascii=False, indent=1))
+        else:
+            for name, ok, detail in checks:
+                status = "[ ok ]" if ok else "[fehlt]"
+                print(f"{status} {name}: {detail}")
+            for w in warnungen:
+                print(f"[warn] {w}")
+            print("—")
+            print("alle ok" if alle_ok else "fehlgeschlagen")
+        sys.exit(0 if alle_ok else EXIT_CHECK)
+
+    pdf = Path(a.pdf) if a.pdf else None
+    if pdf is None:
+        ap.error("Erfordert eine PDF-Datei (oder --check fuer den Preflight-Check)")
     if not pdf.exists():
         sys.exit(f"nicht gefunden: {pdf}")
     if a.bild_dir is None:
