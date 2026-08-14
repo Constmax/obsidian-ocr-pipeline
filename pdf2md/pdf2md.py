@@ -341,6 +341,8 @@ def main():
     a = ap.parse_args()
 
     if a.check:
+        if a.pdf:
+            ap.error("--check benoetigt keine PDF-Datei (nur den Preflight-Check)")
         checks, warnungen = preflight(a.out)
         alle_ok = all(ok for _, ok, _ in checks)
         if a.fortschritt:

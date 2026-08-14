@@ -356,7 +356,8 @@ werten.
 ## --check (Stufe 2)
 
 Preflight-Prüfung ohne Modelllauf und ohne Eingabedatei. Antwortet in unter
-einer Sekunde. Prüfungen:
+einer Sekunde. `--check` weist ein überflüssiges PDF-Argument mit Fehler
+zurück. Prüfungen:
 
 | Name | Was | Fehlt wenn |
 |---|---|---|
@@ -391,6 +392,7 @@ pdf2md.py --check --out _ocr-vorschau
 ### Exit-Codes
 
 - **0** — alle Prüfungen ok
+- **2** — argparse-Fehler (z. B. PDF-Argument bei `--check`)
 - **4** — mindestens eine Prüfung fehlgeschlagen
 - **1** — (Wrapper) MLX-venv nicht vorhanden
 

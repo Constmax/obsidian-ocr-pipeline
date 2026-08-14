@@ -133,10 +133,10 @@ def test_no_pdf_with_check():
 
 
 def test_check_rejects_pdf_argument():
-    """--check rejects an explicit PDF argument."""
+    """--check weist ein explizites PDF-Argument mit Meldung zurueck."""
     with tempfile.TemporaryDirectory() as tmpdir:
         fake_pdf = Path(tmpdir) / "test.pdf"
         fake_pdf.touch()
         Ergebnis = _run_check("--out", str(tmpdir), str(fake_pdf))
-        # Should error about --check not needing a PDF
-        assert "Preflight" in (Ergebnis.stderr + Ergebnis.stdout) or Ergebnis.returncode != 0
+        assert Ergebnis.returncode != 0
+        assert "--check benoetigt keine PDF-Datei" in Ergebnis.stderr
