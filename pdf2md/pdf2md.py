@@ -43,6 +43,41 @@ PROMPT = "Parse this document page to Markdown."
 KACHEL_AB = 3000      # Zeichen im vorhandenen Textlayer
 
 
+def seiten_parsen(s):
+    """'1,3-5,8' in eine Menge von int (1-basiert) umwandeln.
+
+    Leerstring ergibt None (alle Seiten). Ungueltige Eingaben oder
+    Seitenzahlen ausserhalb des gueltigen Bereichs fuehren zu einem
+    Fehler auf stderr und Exit-Code 1.
+    """
+    s = s.strip() if s else ""
+    if not s:
+        return None
+    auswahl = set()
+    for teil in s.split(","):
+        teil = teil.strip()
+        if not teil:
+            continue
+        if "-" in teil:
+            lo, hi = teil.split("-", 1)
+            try:
+                lo, hi = int(lo), int(hi)
+            except ValueError:
+                sys.exit(f"ungueltige Seitenangabe: {teil!r}")
+            if lo < 1 or hi < 1 or lo > hi:
+                sys.exit(f"ungueltige Seitenzahl: {teil}")
+            auswahl.update(range(lo, hi + 1))
+        else:
+            try:
+                n = int(teil)
+            except ValueError:
+                sys.exit(f"ungueltige Seitenangabe: {teil!r}")
+            if n < 1:
+                sys.exit(f"ungueltige Seitenzahl: {n}")
+            auswahl.add(n)
+    return auswahl
+
+
 def laufende_zeilen(doc, kopf=0.09, fuss=0.93, min_seiten=2):
     """Texte, die auf mehreren Seiten in der Kopf- oder Fusszone gleich lauten.
 
@@ -142,7 +177,7 @@ def textlayer_zeilen(page):
     return zeilen
 
 
-def seiten_analysieren(pdf, dpi, nur_ocr=False):
+def seiten_analysieren(pdf, dpi, nur_ocr=False, auswahl=None):
     """Je Seite entscheiden: Textlayer genuegt, oder muss das Modell ran?
 
     Nur Seiten, die wirklich OCR brauchen, werden gerendert — das Rendern und
@@ -159,9 +194,17 @@ def seiten_analysieren(pdf, dpi, nur_ocr=False):
     for p in doc:
         if p.rotation:
             p.remove_rotation()
+    if auswahl:
+        ungültig = [n for n in auswahl if n < 1 or n > doc.page_count]
+        if ungültig:
+            sys.exit(f"Seitenzahlen {sorted(ungültig)} existieren nicht "
+                     f"(PDF hat {doc.page_count} Seiten)")
+        auswahl = {n for n in auswahl if 1 <= n <= doc.page_count}
     zusammenbau.laufend_setzen(laufende_zeilen(doc))
     seiten = []
     for i in range(doc.page_count):
+        if auswahl is not None and (i + 1) not in auswahl:
+            continue
         p = doc[i]
         chars = len(p.get_text("text").strip())
         scan = bildanteil(p) >= 0.5 or chars < 100
@@ -254,6 +297,9 @@ def main():
                          "hellen Scans mit gleich breiten Kaesten versagt.")
     ap.add_argument("--diagramm-nur-bild", action="store_true",
                     help="Diagrammseiten ohne Text-Callout (nicht durchsuchbar)")
+    ap.add_argument("--seiten", default="",
+                    help="nur diese Seiten konvertieren (z.B. 1,3-5,8). "
+                         "Leer = alle Seiten.")
     ap.add_argument("--fortschritt", action="store_true",
                     help="maschinenlesbaren Fortschritt als JSON-Zeilen auf stderr ausgeben")
     a = ap.parse_args()
@@ -270,14 +316,16 @@ def main():
             erzwungen.update(range(von, bis + 1))
         else:
             erzwungen.add(int(teil))
+    auswahl = seiten_parsen(a.seiten)
     global TMP
     TMP = OUT / f"_tmp-{pdf.stem}"
     TMP.mkdir(parents=True, exist_ok=True)
     try:
         a.out.mkdir(parents=True, exist_ok=True)
 
-        print(f"Analysiere {pdf.name} (Scanseiten @ {a.dpi} dpi) ...")
-        seiten = seiten_analysieren(pdf, a.dpi, a.nur_ocr)
+        auswahl_text = f" (Seiten {sorted(auswahl)})" if auswahl else ""
+        print(f"Analysiere {pdf.name} (Scanseiten @ {a.dpi} dpi){auswahl_text} ...")
+        seiten = seiten_analysieren(pdf, a.dpi, a.nur_ocr, auswahl)
         n_ocr = sum(1 for s in seiten if s[1] is not None)
         print(f"   {len(seiten)} Seiten — {len(seiten)-n_ocr} aus dem Textlayer, "
               f"{n_ocr} durch das Modell\n")

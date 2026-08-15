@@ -16,6 +16,7 @@ import {
 	TFile,
 	ViewStateResult,
 	WorkspaceLeaf,
+	loadPdfJs,
 	setIcon,
 } from "obsidian";
 
@@ -789,6 +790,77 @@ class NotizModal extends Modal {
 		speichern.addEventListener("click", () => {
 			this.onGespeichert?.(feld.value);
 			this.close();
+		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/**
+ * Seiten vor der Konvertierung auswaehlen. Zeigt die Gesamtseitenzahl des
+ * PDFs und ein Texteingabefeld fuer die Seiten (z.B. "1,3-5").
+ * Leer = alle Seiten.
+ */
+export class SeitenAuswahlModal extends Modal {
+	onAuswahl: ((seiten: string) => void) | null = null;
+	private eingabe: HTMLInputElement | null = null;
+
+	constructor(
+		app: App,
+		private datei: TFile,
+	) {
+		super(app);
+	}
+
+	async onOpen(): Promise<void> {
+		this.titleEl.setText("Seiten auswaehlen");
+		this.contentEl.createDiv({
+			cls: "setting-item-description",
+			text: `PDF: ${this.datei.basename}`,
+		});
+		// Gesamtseitenzahl per pdf.js laden
+		try {
+			if (typeof window.pdfjsLib === "undefined") await loadPdfJs();
+			const pdfjs = window.pdfjsLib as { getDocument: (opts: object) => { promise: Promise<{ numPages: number }> } };
+			const doc = await pdfjs.getDocument({
+				url: this.app.vault.getResourcePath(this.datei),
+			}).promise;
+			this.contentEl.createDiv({
+				cls: "setting-item-description",
+				text: `Insgesamt ${doc.numPages} Seiten`,
+			});
+		} catch {
+			this.contentEl.createDiv({
+				cls: "setting-item-description",
+				text: "(Seitenzahl konnte nicht ermittelt werden)",
+			});
+		}
+		new Setting(this.contentEl)
+			.setName("Seiten")
+			.setDesc("z.B. 1,3-5,8 — leer lassen = alle Seiten")
+			.addText((t) => {
+				t.inputEl.placeholder = "alle Seiten";
+				t.inputEl.addClass("ocr-seiten-eingabe");
+				this.eingabe = t.inputEl;
+				window.setTimeout(() => t.inputEl.focus(), 0);
+			});
+		const zeile = this.contentEl.createDiv({ cls: "modal-button-container" });
+		const abbrechen = zeile.createEl("button", { text: "Abbrechen" });
+		abbrechen.addEventListener("click", () => this.close());
+		const konvertieren = zeile.createEl("button", {
+			cls: "mod-cta",
+			text: "Konvertieren",
+		});
+		const ausfuehren = () => {
+			const wert = this.eingabe?.value.trim() ?? "";
+			this.onAuswahl?.(wert);
+			this.close();
+		};
+		konvertieren.addEventListener("click", () => ausfuehren());
+		this.eingabe?.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") ausfuehren();
 		});
 	}
 
