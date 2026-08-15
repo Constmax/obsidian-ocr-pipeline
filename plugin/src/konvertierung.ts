@@ -68,7 +68,8 @@ export const ABBRUCH_FRIST_MS = 5000;
  * Geordneter Abbruch eines Kindprozesses: SIGTERM, nach `fristMs` ohne
  * Prozessende SIGKILL. Welche Stufe gegriffen hat, steht am Ende im
  * KonvertierenErgebnis: Code 6 (pdf2md hat sauber beendet, Teildatei),
- * Signal "SIGTERM" oder Signal "SIGKILL" (Frist ueberschritten).
+ * Code 7 (Abbruch vor der ersten Seite, keine Datei), Signal "SIGTERM"
+ * oder Signal "SIGKILL" (Frist ueberschritten).
  *
  * Fuer ein bereits beendetes Kind wird nichts gesendet; der Eskalations-
  * Timer wird beim Prozessende geloescht.
