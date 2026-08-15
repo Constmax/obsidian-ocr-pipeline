@@ -108,7 +108,9 @@ Markdown-Datei seitenweise neben das Original-PDF stellt — links die
 Vorschau-Liste, mittig die Originalseiten, rechts das Markdown, scrollgekoppelt,
 mit **Annehmen / Ablehnen** per Tastatur und Rückgängig. Der
 Begutachtungs-Durchgang, der heute aus zwei Fenstern nebeneinander besteht,
-bekommt damit eine Oberfläche. Zweck und Bedienung:
+bekommt damit eine Oberfläche. Zwei Bedienmodi: **Prüfstrecke** (Standard, auf
+Durchsatz gebaut) und **Werkbank** (eine Werkzeugleiste, Statuszeile,
+Korrigieren mit `e` direkt in der Vorschau-Datei). Zweck und Bedienung:
 [docs/review-ansicht.md](docs/review-ansicht.md).
 
 ## Neuer Laptop — Einmal-Setup

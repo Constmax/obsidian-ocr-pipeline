@@ -47,6 +47,7 @@ function mitEintrag(
 		entschieden: null,
 		"geprueft-bis": null,
 		notiz: null,
+		handbearbeitet: false,
 		vorher: null,
 		...teil,
 	};

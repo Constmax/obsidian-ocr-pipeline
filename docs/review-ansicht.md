@@ -14,9 +14,43 @@ Durchgehen finden lassen, bevor etwas ins Wiki wandert.
 
 | Spalte | Inhalt |
 |---|---|
-| **Vorschauen** | Dateiliste mit Statusfilter (Offen · Akzeptiert · Abgelehnt · Alle), Textfilter, Aktualisieren. Unter jeder Zeile `14 S. · 9 OCR · 2 Diagramm`, farbige Randmarkierung nach Status, gelber Punkt bei OCR-Seiten. Drei getrennte Leerzustände: Ordner fehlt (→ Einstellungen), Ordner leer (→ kopierbarer pdf2md-Befehl), Filter leer. |
+| **Vorschauen** | Fortschritt („4 von 12 geprüft", ab 5 Einträgen), Statusfilter (Offen · Akzeptiert · Abgelehnt · Alle), Textfilter, Aktualisieren. Unter jeder Zeile `14 S. · 9 OCR · 2 Diagramm`, farbige Randmarkierung nach Status, gelber Punkt bei OCR-Seiten. Zeigt die Liste mehrere Status, wird nach Gruppen sortiert (Neu erzeugt · Offen · Angenommen · Abgelehnt) — auch für `j`/`k`, nicht nur optisch. Drei getrennte Leerzustände: Ordner fehlt (→ Einstellungen), Ordner leer (→ kopierbarer pdf2md-Befehl), Filter leer. |
 | **Original-PDF** | Seiten der Original-PDF, lazy gerastert. Kopf mit Dateiname, `S. n / m`, Zoom −/+, „Im PDF-Viewer öffnen". |
-| **Markdown** | Die erzeugte `.md`, seitenweise, mit Herkunfts-Badge (`Textlayer` / `OCR` / `Diagramm`) und Layout-Info. Umschalter **Gerendert \| Quelltext**. Oben die Entscheidungs-Knöpfe. |
+| **Markdown** | Die erzeugte `.md`, seitenweise, mit Herkunfts-Badge (`Textlayer` / `OCR` / `Diagramm`) und Layout-Info. Umschalter **Gerendert \| Quelltext**. |
+
+Unter allen drei Spalten steht die **Entscheidungsleiste** über die volle
+Breite: Annehmen · Ablehnen · Notiz · In Obsidian öffnen, jeweils mit der
+Tastenkappe, dazu rechts „danach → `<nächster Eintrag>` · noch n offen". Die
+Entscheidung ist der Grund, warum es diese Ansicht gibt — sie steht deshalb
+nicht mehr als schmaler Umrissknopf im Markdown-Kopf.
+
+## Zwei Bedienmodi
+
+Einstellung **Bedienmodus**; beide benutzen dieselben Bedienelemente an einem
+anderen Ort (`ansicht.ts`, `modusAnwenden`), nicht zwei Sätze Knöpfe.
+
+| | **Prüfstrecke** (Standard) | **Werkbank** |
+|---|---|---|
+| Kopf | drei Spaltenköpfe | eine Werkzeugleiste für alles |
+| Unten | große Entscheidungsleiste | schmale Leiste + Statuszeile (Modus, Seite, Herkunft, Sync, Tastenbelegung) |
+| Schreibt in die `.md` | nein | ja — `e` |
+| Gebaut auf | Durchsatz | Nachbessern |
+
+**Bearbeiten (nur Werkbank).** `e` öffnet den Quelltext der aktuellen Seite in
+einem mitwachsenden Feld, `⌘↩` schreibt zurück, `Esc` verwirft. Geschrieben
+wird über `vault.process` (lesen und schreiben in einem Zug) und über
+`blockErsetzen` (`bearbeitung.ts`): ausgetauscht wird ausschließlich der
+Bereich zwischen zwei Seitenmarkern — Frontmatter, `Quelle:`-Zeile und die
+Markerzeile selbst bleiben Byte für Byte stehen. Findet sich der Marker nicht
+mehr, wird **nicht** geschrieben; dann hat ein pdf2md-Lauf die Datei unter der
+Hand ersetzt.
+
+Das bricht bewusst mit „die `.md` ist erzeugte Ausgabe" — und zwar sichtbar:
+vor der ersten Korrektur einer Fassung erscheint eine Notice, dass ein erneuter
+pdf2md-Lauf sie überschreibt, und der Eintrag bekommt `handbearbeitet: true`.
+Bei einer Neukonvertierung fällt das Flag zurück auf `false`, weil die
+Korrekturen dann tatsächlich weg sind. Wer das nicht will, bleibt auf der
+Prüfstrecke: dort gibt es den Knopf nicht.
 
 Klicken auf einen Listeneintrag öffnet beide Seiten. Gescrollt wird gekoppelt:
 blättert man das PDF, folgt das Markdown (und umgekehrt), bruchteilsweise statt
@@ -42,6 +76,8 @@ Gilt nur, wenn die Ansicht den Fokus hat:
 | `j` / `k` | nächster / vorheriger Listeneintrag |
 | `a` | **Annehmen** (in `_akzeptiert/`) |
 | `x` | **Ablehnen** (in `_abgelehnt/`) |
+| `n` | Notiz zum Eintrag |
+| `e` | Seite bearbeiten (nur Werkbank) — `⌘↩` speichern, `Esc` verwerfen |
 | `t` | Gerendert ⇄ Quelltext |
 | `Leertaste` | beide Spalten eine Seite weiter |
 | `g` | Gehe zu Seite |
@@ -53,7 +89,9 @@ Gilt nur, wenn die Ansicht den Fokus hat:
 - **Annehmen** (grün) / **Ablehnen** (rot): verschieben die Datei, schreiben
   das Manifest, zeigen eine **6-Sekunden-Notice mit Rückgängig** und springen
   automatisch zum nächsten passenden Eintrag.
+- **Notiz**: Anmerkung zum Eintrag, bleibt beim Abgleich erhalten.
 - **In Obsidian öffnen**: die `.md` im normalen Editor.
+- **Bearbeiten** (nur Werkbank): siehe oben.
 - **⋯**: Notiz… · Alte Fassung ersetzen (nur bei `neu-erzeugt`) · Status
   zurücksetzen · Pfad kopieren.
 - **PDF zuordnen…**: erscheint im Fehlerbanner, wenn kein Original gefunden
@@ -162,7 +200,8 @@ vom npm-Paket ab. Solange `loadPdfJs` existiert, wird das nicht gebaut.
 
 Sichtbar: Vorschau-Ordner, Ordner für Angenommenes, Ordner für Abgelehntes,
 Status-Datei (alle `normalizePath()`-bereinigt, mit Live-Hinweis wenn der
-Ordner fehlt) und der Default der Markdown-Spalte. Intern persistiert:
+Ordner fehlt), der **Bedienmodus** (Prüfstrecke · Werkbank) und der Default der
+Markdown-Spalte. Intern persistiert:
 Spaltenbreiten (Default 20/40/40, über die Ziehgriffe einstellbar),
 `pdfZoomMax` (2.0), `syncAktiv`, `mdEagerLimit` (200 Seiten). Eine
 Einstellungsänderung stößt den Abgleich an.
@@ -170,8 +209,8 @@ Einstellungsänderung stößt den Abgleich an.
 ## Testen
 
 `cd plugin` — `npm run check` (tsc), `npm run lint` (eslint mit
-`eslint-plugin-obsidianmd`), `npm test` (33 Tests für Parser und Abgleich,
-laufen unter `node --test` ohne Obsidian), `npm run build`.
+`eslint-plugin-obsidianmd`), `npm test` (70 Tests für Parser, Abgleich und
+Blockersetzung, laufen unter `node --test` ohne Obsidian), `npm run build`.
 
 ### Rauchtest im echten Vault
 
@@ -194,3 +233,14 @@ laufen unter `node --test` ohne Obsidian), `npm run build`.
 10. `review-status.json` löschen, neu öffnen → alles listet korrekt.
     ⇒ prüft, dass das Manifest nur Cache ist.
 11. `Cmd+R` bei offener Ansicht → dieselbe Datei ist wieder da.
+12. Filter **Alle** bei gemischtem Bestand → Gruppenüberschriften, und `j`/`k`
+    laufen in genau dieser Reihenfolge. ⇒ prüft, dass sortiert wird, wo die
+    Navigation liest, nicht erst beim Zeichnen.
+13. Einstellungen → **Bedienmodus: Werkbank** bei offener Ansicht → die drei
+    Spaltenköpfe werden zu einer Werkzeugleiste, unten steht die Statuszeile.
+    Zurück auf Prüfstrecke → alles wieder an seinem Platz. ⇒ prüft das
+    Umhängen statt Neubauen.
+14. In der Werkbank auf einer OCR-Seite `e`, ein Wort korrigieren, `⌘↩` →
+    Warn-Notice beim ersten Mal, Text steht in der `.md`, **Marker und
+    Frontmatter unverändert**, `handbearbeitet: true` im Manifest. Danach `e`,
+    tippen, `Esc` → Datei unverändert.

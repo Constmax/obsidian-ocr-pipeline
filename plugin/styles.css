@@ -6,13 +6,22 @@
 
 /* ── Rahmen ─────────────────────────────────────────────────────────────── */
 
-.view-content:has(> .ocr-abgleich) {
+.view-content:has(> .ocr-huelle) {
 	padding: 0;
+}
+
+/* Senkrechte Huelle: Werkzeugleiste (Werkbank) · Spalten · Entscheidungsleiste
+   · Statuszeile (Werkbank). Die Spalten sind das einzige, was waechst. */
+.ocr-huelle {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
 }
 
 .ocr-abgleich {
 	display: flex;
-	height: 100%;
+	flex: 1;
 	min-height: 0;
 }
 
@@ -52,6 +61,13 @@
 	min-height: 24px;
 }
 
+.ocr-kopf-info {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+}
+
 .ocr-kopf-titel {
 	font-weight: var(--font-semibold);
 	font-size: var(--font-ui-small);
@@ -81,12 +97,15 @@
 	text-align: center;
 }
 
+/* Sitzt neben dem Spaltenkopf, nicht darin: im Werkbank-Modus ist der Kopf
+   ausgeblendet, „PDF zuordnen…" muss trotzdem erreichbar bleiben. */
 .ocr-fehlbanner {
+	flex: none;
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	padding: 4px 10px;
-	margin-top: 6px;
+	margin: 6px 10px 0;
 	font-size: var(--font-ui-small);
 	color: var(--text-error);
 	background: var(--background-modifier-error);
@@ -167,6 +186,108 @@
 	height: 100%;
 }
 
+/* ── Werkzeugleiste (Werkbank) ──────────────────────────────────────────── */
+
+/* Ein Kopf statt drei. Die Elemente sind DIESELBEN wie in den Spaltenkoepfen
+   — sie haengen hier nur an einem anderen Ort (ansicht.ts, modusAnwenden). */
+.ocr-werkzeugleiste {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 10px;
+	min-height: 30px;
+	background: var(--background-secondary-alt);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ocr-werkzeugleiste .ocr-kopf-titel {
+	font-family: var(--font-monospace);
+	font-weight: var(--font-normal);
+	color: var(--text-muted);
+}
+
+/* ── Entscheidungsleiste ────────────────────────────────────────────────── */
+
+.ocr-aktionsleiste {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--background-secondary);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.ocr-leistenknopf {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	padding: 6px 14px;
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
+	border-radius: var(--radius-s);
+}
+
+.ocr-aktionsleiste-schmal {
+	padding: 4px 10px;
+}
+
+.ocr-aktionsleiste-schmal .ocr-leistenknopf {
+	padding: 2px 10px;
+	font-weight: var(--font-normal);
+}
+
+/* Tastenkappe. Die Belegung ist die eigentliche Bedienung — sie gehoert auf
+   den Knopf, nicht in die Doku. */
+.ocr-taste {
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.3;
+	padding: 0 4px;
+	border: 1px solid currentcolor;
+	border-radius: 3px;
+	opacity: 0.65;
+}
+
+.ocr-aktion-hinweis {
+	margin-left: auto;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* ── Statuszeile (Werkbank) ─────────────────────────────────────────────── */
+
+.ocr-statuszeile {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 2px 10px;
+	background: var(--background-secondary-alt);
+	border-top: 1px solid var(--background-modifier-border);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.ocr-status-modus {
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+	letter-spacing: 0.06em;
+}
+
+.ocr-status-tasten {
+	margin-left: auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 /* ── Umschalter Gerendert/Quelltext ─────────────────────────────────────── */
 
 .ocr-umschalter {
@@ -213,6 +334,44 @@
 .ocr-liste-titel {
 	font-weight: var(--font-semibold);
 	font-size: var(--font-ui-small);
+}
+
+/* Der Stand, bevor die Filter kommen: „wie weit bin ich" ist die erste Frage,
+   „was zeige ich" die zweite. */
+.ocr-fortschritt {
+	flex: none;
+	padding: 8px 10px 2px;
+}
+
+.ocr-fortschritt-text {
+	display: flex;
+	align-items: baseline;
+	gap: 5px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.ocr-fortschritt-zahl {
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+	line-height: 1.1;
+}
+
+.ocr-fortschritt-balken {
+	height: 4px;
+	margin-top: 5px;
+	border-radius: 999px;
+	background: var(--background-modifier-border);
+	overflow: hidden;
+}
+
+.ocr-fortschritt-fuellung {
+	height: 100%;
+	width: var(--ocr-fortschritt, 0%);
+	border-radius: 999px;
+	background: var(--color-green);
+	transition: width 0.2s ease;
 }
 
 .ocr-filterzeile {
@@ -267,6 +426,20 @@
 
 .ocr-liste-versteckt {
 	display: none;
+}
+
+/* Gruppenueberschrift — erscheint nur, wenn die Liste mehrere Status zeigt. */
+.ocr-gruppe {
+	padding: 8px 8px 2px;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-faint);
+}
+
+.ocr-gruppe:first-child {
+	padding-top: 2px;
 }
 
 .ocr-eintrag {
@@ -506,6 +679,35 @@
 	font-size: var(--font-ui-smaller);
 	white-space: pre-wrap;
 	word-break: break-word;
+}
+
+/* ── Bearbeiten an Ort und Stelle (Werkbank) ────────────────────────────── */
+
+.ocr-md-seite-bearbeitet {
+	background: var(--background-modifier-hover);
+	border-radius: var(--radius-s);
+}
+
+.ocr-md-editfeld {
+	width: 100%;
+	height: var(--ocr-feld-hoehe, auto);
+	min-height: 80px;
+	padding: 8px;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.5;
+	background: var(--background-primary);
+	border: 1px solid var(--interactive-accent);
+	border-radius: var(--radius-s);
+	color: var(--text-normal);
+	resize: vertical;
+	overflow: hidden;
+}
+
+.ocr-md-editzeile {
+	display: flex;
+	gap: 6px;
+	margin-top: 6px;
 }
 
 .ocr-md-platzhalter {

@@ -51,6 +51,18 @@ test("Marker ohne Zusatz bleibt herkunft undefined, wird NICHT geraten", () => {
 	assert.equal(v.bloecke[0]?.layout, undefined);
 });
 
+test("„None“ aus alten pdf2md-Laeufen ist kein Layout", () => {
+	// pdf2md.py schrieb vor dem Fix in seite_verarbeiten() `%% S. 1 | None %%`.
+	// Ungefiltert stuende im Seitenkopf woertlich „None".
+	const v = vorschauParsen("%% S. 1 | None %%\n\nText\n");
+	assert.equal(v.bloecke[0]?.layout, undefined);
+	assert.equal(v.bloecke[0]?.herkunft, undefined);
+
+	const mitHerkunft = vorschauParsen("%% S. 2 | ocr | None %%\n\nText\n");
+	assert.equal(mitHerkunft.bloecke[0]?.herkunft, "ocr");
+	assert.equal(mitHerkunft.bloecke[0]?.layout, undefined);
+});
+
 test("Layout-Zusatz wird durchgereicht", () => {
 	const v = vorschauParsen(FIXTURE);
 	assert.equal(v.bloecke[1]?.layout, "zweispaltig, senkrecht @48%");
