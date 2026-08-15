@@ -222,3 +222,70 @@ test("close nach dem Timeout-Kill ueberschreibt das timeout-Ergebnis nicht", asy
 	await new Promise((fertig) => setTimeout(fertig, 10));
 	assert.equal(ergebnis.timeout, true);
 });
+
+test("ruft pdf2md mit --seiten auf, wenn seiten gesetzt", async () => {
+	const aufrufe: Array<{ befehl: string; args: string[]; optionen: unknown }> = [];
+	const kind = new FakeKind();
+	const versprechen = pdfKonvertieren(
+		"raw/fall-01.pdf",
+		"_ocr-vorschau",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnAttrappe(aufrufe, kind),
+		{ seiten: "1,3-5" },
+	);
+
+	kind.emit("close", 0);
+	await versprechen;
+	assert.deepEqual(aufrufe[0]!.args, [
+		"raw/fall-01.pdf",
+		"--out",
+		"_ocr-vorschau",
+		"--seiten",
+		"1,3-5",
+		"--fortschritt",
+	]);
+});
+
+test("ohne seiten: kein --seiten in den Args", async () => {
+	const aufrufe: Array<{ befehl: string; args: string[]; optionen: unknown }> = [];
+	const kind = new FakeKind();
+	const versprechen = pdfKonvertieren(
+		"raw/fall-01.pdf",
+		"_ocr-vorschau",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnAttrappe(aufrufe, kind),
+	);
+
+	kind.emit("close", 0);
+	await versprechen;
+	assert.deepEqual(aufrufe[0]!.args, [
+		"raw/fall-01.pdf",
+		"--out",
+		"_ocr-vorschau",
+		"--fortschritt",
+	]);
+});
+
+test("leerer seiten-String: kein --seiten in den Args", async () => {
+	const aufrufe: Array<{ befehl: string; args: string[]; optionen: unknown }> = [];
+	const kind = new FakeKind();
+	const versprechen = pdfKonvertieren(
+		"raw/fall-01.pdf",
+		"_ocr-vorschau",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnAttrappe(aufrufe, kind),
+		{ seiten: "" },
+	);
+
+	kind.emit("close", 0);
+	await versprechen;
+	assert.deepEqual(aufrufe[0]!.args, [
+		"raw/fall-01.pdf",
+		"--out",
+		"_ocr-vorschau",
+		"--fortschritt",
+	]);
+});

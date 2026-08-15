@@ -44,6 +44,9 @@ export interface KonvertierenSteuerung {
 	 *  Lauf mit `timeout: true` aufgeloest. Wird das Kind zur Laufzeit an
 	 *  diese Stelle gemeldet (fuer Abbruch beim Plugin-Unload). */
 	timeoutMs?: number;
+	/** Nur diese Seiten konvertieren (z.B. "1,3-5,8"). Leer oder undefined
+	 *  = alle Seiten. */
+	seiten?: string;
 	onKind?: (kind: ChildProcess) => void;
 	onFortschritt?: (ereignis: FortschrittsEreignis) => void;
 }
@@ -172,7 +175,12 @@ export function pdfKonvertieren(
 	return new Promise((erledigt) => {
 		let kind: ChildProcess;
 		try {
-			kind = spawnFn(pdf2md, [pdf, "--out", out, "--fortschritt"], {
+			const args = [pdf, "--out", out];
+			if (steuerung.seiten && steuerung.seiten.length > 0) {
+				args.push("--seiten", steuerung.seiten);
+			}
+			args.push("--fortschritt");
+			kind = spawnFn(pdf2md, args, {
 				cwd,
 				stdio: ["ignore", "pipe", "pipe"],
 			});
