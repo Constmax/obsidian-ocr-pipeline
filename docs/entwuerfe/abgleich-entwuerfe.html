@@ -1,0 +1,960 @@
+<title>Abgleich-Entwürfe</title>
+<style>
+/* ══ Seite ══════════════════════════════════════════════════════════════ */
+:root {
+  --grund:      #efefec;
+  --flaeche:    #fbfbfa;
+  --rahmen:     #d8d9d3;
+  --rahmen-zart:#e6e7e2;
+  --text:       #1a1c20;
+  --text-leise: #5c6069;
+  --text-zart:  #8b8f97;
+  --marker:     #e8c24a;
+  --marker-lasur: rgba(232, 194, 74, 0.42);
+  --gruen:      #2f7d57;
+  --rot:        #b0392f;
+  --schatten:   0 1px 2px rgba(20, 22, 26, .06), 0 8px 24px -12px rgba(20, 22, 26, .18);
+
+  --serif: "Superclarendon", "Bookman Old Style", "Charter", "Georgia", serif;
+  --sans:  "Avenir Next", "Avenir", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --mono:  "JetBrains Mono", "SF Mono", "Menlo", "Consolas", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --grund:      #121418;
+    --flaeche:    #191c21;
+    --rahmen:     #2e323a;
+    --rahmen-zart:#24272d;
+    --text:       #e8e7e2;
+    --text-leise: #a2a7b0;
+    --text-zart:  #767b84;
+    --marker:     #e8c24a;
+    --marker-lasur: rgba(232, 194, 74, 0.28);
+    --gruen:      #57b98a;
+    --rot:        #e0776c;
+    --schatten:   0 1px 2px rgba(0, 0, 0, .5), 0 10px 30px -14px rgba(0, 0, 0, .8);
+  }
+}
+:root[data-theme="dark"] {
+  --grund:      #121418;
+  --flaeche:    #191c21;
+  --rahmen:     #2e323a;
+  --rahmen-zart:#24272d;
+  --text:       #e8e7e2;
+  --text-leise: #a2a7b0;
+  --text-zart:  #767b84;
+  --marker:     #e8c24a;
+  --marker-lasur: rgba(232, 194, 74, 0.28);
+  --gruen:      #57b98a;
+  --rot:        #e0776c;
+  --schatten:   0 1px 2px rgba(0, 0, 0, .5), 0 10px 30px -14px rgba(0, 0, 0, .8);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.blatt {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px 96px;
+}
+.eng { max-width: 62ch; }
+
+/* ── Kopf ── */
+.kopf {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 72px 0 40px;
+  border-bottom: 1px solid var(--rahmen);
+}
+.augenbraue {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-leise);
+}
+h1 {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: clamp(34px, 5.2vw, 58px);
+  line-height: 1.04;
+  letter-spacing: -.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+.vorspann {
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--text-leise);
+  max-width: 58ch;
+  margin: 0;
+}
+.kopfzeile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-zart);
+}
+
+.umgesetzt {
+  margin: 0;
+  padding: 12px 18px;
+  border-left: 3px solid var(--marker);
+  background: var(--flaeche);
+  border-radius: 0 6px 6px 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-leise);
+  max-width: 72ch;
+}
+
+.umgesetzt strong { color: var(--text); }
+.umgesetzt b {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* ── Abschnitte ── */
+section { padding-top: 64px; }
+h2 {
+  font-family: var(--serif);
+  font-size: 27px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  margin: 0 0 14px;
+  text-wrap: balance;
+}
+h3 {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-leise);
+  margin: 0 0 10px;
+}
+p { margin: 0 0 16px; }
+a { color: inherit; text-decoration-color: var(--marker); text-underline-offset: 3px; }
+
+.marke {
+  background-image: linear-gradient(var(--marker-lasur), var(--marker-lasur));
+  background-repeat: no-repeat;
+  background-size: 100% 62%;
+  background-position: 0 82%;
+  padding: 0 .12em;
+}
+
+code, .pfad {
+  font-family: var(--mono);
+  font-size: .86em;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ── Befund-Liste ── */
+.befunde {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+  background: var(--rahmen-zart);
+  border: 1px solid var(--rahmen-zart);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.befunde li {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 20px;
+  padding: 14px 18px;
+  background: var(--flaeche);
+  font-size: 14.5px;
+}
+.befunde b {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-zart);
+  font-weight: 500;
+  padding-top: 3px;
+}
+
+/* ── Entwurfs-Kopf ── */
+.entwurf-kopf {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 6px;
+}
+.entwurf-nr {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-zart);
+  border: 1px solid var(--rahmen);
+  border-radius: 999px;
+  padding: 2px 9px;
+  flex: none;
+}
+.entwurf-kopf h2 { margin: 0; }
+.these {
+  font-family: var(--serif);
+  font-size: 19px;
+  line-height: 1.45;
+  color: var(--text-leise);
+  max-width: 56ch;
+  margin: 0 0 26px;
+}
+
+/* ── Mockup-Rahmen ── */
+.rahmen {
+  border-radius: 10px;
+  background: var(--flaeche);
+  border: 1px solid var(--rahmen);
+  box-shadow: var(--schatten);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.rahmen-fuss {
+  font-size: 12.5px;
+  color: var(--text-zart);
+  font-family: var(--mono);
+  margin: 0 0 34px;
+}
+
+.spalten-zwei {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  margin-top: 8px;
+}
+.spalten-zwei ul { margin: 0; padding-left: 18px; }
+.spalten-zwei li { margin-bottom: 7px; font-size: 14.5px; }
+
+/* ══ Mockups ══════════════════════════════════════════════════════════ */
+/* Bewusst festes Erscheinungsbild: das ist ein Bild der App, kein Bedien-
+   element. Farben stehen darum fix und nicht am Seiten-Theme.            */
+.mk {
+  --bg:      #ffffff;
+  --bg2:     #f5f6f8;
+  --bg3:     #eceef1;
+  --li:      #e2e4e8;
+  --tx:      #22252b;
+  --tx2:     #6b7078;
+  --tx3:     #9aa0a8;
+  --akz:     #6f5fd0;
+  --gr:      #37975f;
+  --rt:      #c4483c;
+  --am:      #d99b17;
+  --cy:      #2683a0;
+  --pu:      #7b56b5;
+  background: var(--bg2);
+  color: var(--tx);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  height: 452px;
+}
+.mk-titel {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--li);
+  font-size: 11px;
+  color: var(--tx2);
+  position: relative;
+}
+.mk-ampeln { position: absolute; left: 10px; display: flex; gap: 5px; }
+.mk-ampeln i { width: 8px; height: 8px; border-radius: 50%; background: #d3d6db; display: block; }
+.mk-koerper { flex: 1; display: flex; min-height: 0; }
+.mk-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
+.mk-pane + .mk-pane { border-left: 1px solid var(--li); }
+.mk-kopf {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--li);
+  min-height: 30px;
+}
+.mk-kopf b { font-size: 11.5px; font-weight: 600; }
+.mk-kopf .mk-leise { color: var(--tx2); font-size: 11px; }
+.mk-rechts { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+.mk-scroll { flex: 1; overflow: hidden; min-height: 0; }
+
+.mk-knopf {
+  border: 1px solid var(--li);
+  background: var(--bg);
+  color: var(--tx);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.mk-knopf-gr { background: var(--gr); border-color: var(--gr); color: #fff; }
+.mk-knopf-rt { background: var(--rt); border-color: var(--rt); color: #fff; }
+.mk-chip {
+  border: 1px solid var(--li);
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 10.5px;
+  color: var(--tx2);
+  white-space: nowrap;
+}
+.mk-chip-an { background: var(--akz); border-color: var(--akz); color: #fff; }
+.mk-badge {
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 10px;
+  line-height: 16px;
+  color: #fff;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.mk-b-ocr  { background: var(--am); }
+.mk-b-txt  { background: var(--cy); }
+.mk-b-dia  { background: var(--pu); }
+.mk-taste {
+  font-family: var(--mono);
+  font-size: 10px;
+  border: 1px solid rgba(255,255,255,.45);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 14px;
+  display: inline-block;
+}
+.mk-taste-dunkel { border-color: var(--li); color: var(--tx2); }
+
+/* Liste links */
+.mk-eintrag {
+  border-left: 3px solid var(--li);
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin: 0 6px 2px;
+}
+.mk-eintrag.mk-aktiv { background: var(--bg3); border-left-color: var(--akz); }
+.mk-eintrag.mk-ok { border-left-color: var(--gr); }
+.mk-eintrag-name { font-size: 11.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-eintrag-sub { font-size: 10.5px; color: var(--tx2); }
+
+/* Papierseite (Scan) */
+.mk-papier {
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.22);
+  border-radius: 2px;
+  padding: 16px 20px;
+  font-family: "Times New Roman", "Times", serif;
+  font-size: 8.4px;
+  line-height: 1.45;
+  color: #16181c;
+  margin: 12px 14px;
+  text-align: justify;
+}
+.mk-papier .kopfzeile { font-style: italic; font-size: 7.6px; margin-bottom: 12px; display: flex; justify-content: space-between; }
+.mk-papier .paragraf-siegel {
+  width: 22px; height: 22px; border: 1.2px solid #16181c; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 700; font-size: 11px; flex: none;
+}
+.mk-papier h4 { font-size: 8.6px; margin: 0 0 8px; font-weight: 700; }
+.mk-papier p { margin: 0 0 7px; }
+.mk-hl { background: rgba(240, 214, 90, .55); }
+.mk-hl-blau { background: rgba(126, 178, 226, .45); }
+.mk-frage { background: rgba(240, 214, 90, .5); box-shadow: 0 0 0 1px rgba(196, 72, 60, .55); display: inline; }
+
+/* Markdown-Spalte */
+.mk-md { padding: 10px 14px; font-size: 11.5px; line-height: 1.5; }
+.mk-md p { margin: 0 0 9px; }
+.mk-md .mk-seitenkopf { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+.mk-md .mk-nr { font-size: 10.5px; font-weight: 600; color: var(--tx2); font-family: var(--mono); }
+.mk-md .mk-lay { font-size: 10.5px; color: var(--tx3); font-style: italic; }
+.mk-verdacht {
+  border-bottom: 1.5px dotted var(--am);
+  background: rgba(217, 155, 23, .12);
+}
+.mk-fehl { color: var(--tx3); font-style: italic; }
+
+/* Entwurf A: Prüfstrecke */
+.mk-fortschritt { padding: 10px; border-bottom: 1px solid var(--li); background: var(--bg2); }
+.mk-balken { height: 5px; border-radius: 999px; background: var(--bg3); overflow: hidden; margin-top: 7px; }
+.mk-balken i { display: block; height: 100%; background: var(--gr); width: 33%; }
+.mk-zaehler { display: flex; align-items: baseline; gap: 6px; }
+.mk-zaehler b { font-size: 20px; font-family: var(--mono); font-weight: 600; letter-spacing: -.02em; }
+.mk-zaehler span { font-size: 10.5px; color: var(--tx2); }
+.mk-leiste {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  background: var(--bg2);
+  border-top: 1px solid var(--li);
+}
+.mk-gross {
+  font-size: 12.5px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: none;
+  color: #fff;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 500;
+}
+.mk-hinweistext { font-size: 10.5px; color: var(--tx2); margin-left: auto; font-family: var(--mono); }
+
+/* Entwurf B: Seitenpaare */
+.mk-streifen {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 7px 10px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--li);
+  align-items: flex-end;
+}
+.mk-daumen {
+  width: 26px;
+  height: 34px;
+  background: #fff;
+  border: 1px solid var(--li);
+  border-radius: 2px;
+  position: relative;
+  font-size: 8px;
+  color: var(--tx3);
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+}
+.mk-daumen::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; }
+.mk-daumen.t-ocr::after { background: var(--am); }
+.mk-daumen.t-txt::after { background: var(--cy); }
+.mk-daumen.t-dia::after { background: var(--pu); }
+.mk-daumen.mk-aktiv { outline: 2px solid var(--akz); outline-offset: 1px; }
+.mk-paarkarte {
+  border: 1px solid var(--li);
+  border-radius: 6px;
+  margin: 10px 12px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.mk-paarkopf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--li);
+  font-size: 10.5px;
+  color: var(--tx2);
+  font-family: var(--mono);
+}
+.mk-spange { width: 3px; align-self: stretch; background: var(--akz); flex: none; }
+
+/* Entwurf C: Werkbank */
+.mk-werkzeugleiste {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--li);
+  font-size: 11px;
+}
+.mk-pfad { font-family: var(--mono); font-size: 10.5px; color: var(--tx2); }
+.mk-baum { font-size: 11px; padding: 6px 4px; }
+.mk-gruppe { padding: 3px 8px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--tx3); font-family: var(--mono); }
+.mk-zeile { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 16px; border-radius: 3px; }
+.mk-zeile.mk-aktiv { background: var(--bg3); }
+.mk-punkt { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.mk-statuszeile {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 3px 10px;
+  background: #22252b;
+  color: #cfd3da;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.mk-statuszeile .mk-sp { margin-left: auto; }
+.mk-editfeld {
+  border: 1px solid var(--akz);
+  border-radius: 4px;
+  padding: 5px 7px;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(111, 95, 208, .12);
+}
+
+/* ── Tabelle ── */
+.tabelle-huelle { overflow-x: auto; border: 1px solid var(--rahmen-zart); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--flaeche); }
+th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--rahmen-zart); vertical-align: top; }
+th { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-zart); font-family: var(--mono); font-weight: 500; }
+tbody tr:last-child td { border-bottom: none; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+
+.schluss {
+  margin-top: 26px;
+  border-left: 3px solid var(--marker);
+  padding: 4px 0 4px 20px;
+}
+
+@media (max-width: 860px) {
+  .mk { height: auto; font-size: 11px; }
+  .mk-koerper { flex-direction: column; }
+  .mk-pane { flex: none; width: 100% !important; }
+  .mk-pane + .mk-pane { border-left: none; border-top: 1px solid var(--li); }
+  .mk-scroll { max-height: 260px; }
+  .spalten-zwei { grid-template-columns: 1fr; gap: 14px; }
+  .befunde li { grid-template-columns: 1fr; gap: 2px; }
+}
+</style>
+
+<div class="blatt">
+
+<header class="kopf">
+  <div class="augenbraue">OCR-Vorschau · Stufe 3 · Abgleich-Ansicht</div>
+  <h1>Drei Entwürfe für den <span class="marke">OCR-Abgleich</span></h1>
+  <p class="vorspann">
+    Die Ansicht funktioniert: drei Spalten, gekoppeltes Scrollen, Annehmen und
+    Ablehnen mit Rückgängig. Was fehlt, ist eine Haltung — jede der drei Spalten
+    behandelt sich als gleich wichtig, und keine zeigt, worauf man beim Prüfen
+    eigentlich schaut. Drei Richtungen, die daraus je eine andere Ansicht machen.
+  </p>
+  <div class="kopfzeile-meta">
+    <span>Grundlage: plugin/ v0.1</span>
+    <span>Betroffen: styles.css · ansicht.ts · md-pane.ts · seitenleiste.ts</span>
+    <span>Stand: 15.08.2026</span>
+  </div>
+  <p class="umgesetzt">
+    <strong>Umgesetzt:</strong> <b>A</b> und <b>C</b> sind gebaut — als zwei
+    Bedienmodi über demselben Unterbau (Einstellung <em>Bedienmodus</em>,
+    Standard Prüfstrecke). Gemeinsam für beide: Entscheidungsleiste unten,
+    Fortschrittszähler, Statusgruppen in der Liste, und der Seitenkopf zeigt
+    kein <code>None</code> mehr. Nur die Werkbank schreibt in die
+    <span class="pfad">.md</span>. <b>B</b> ist nicht gebaut.
+  </p>
+</header>
+
+<section>
+  <div class="eng">
+    <h2>Was der Screenshot verrät</h2>
+    <p>
+      Fünf Beobachtungen aus dem echten Zustand — sie sind der Maßstab, an dem
+      die drei Entwürfe gemessen werden.
+    </p>
+  </div>
+  <ul class="befunde">
+    <li><b>Leere</b><span>Eine einseitige Datei füllt die halbe PDF-Spalte, die andere Hälfte bleibt grau. Der Raum ist starr auf 20/40/40 verteilt, egal was drin liegt.</span></li>
+    <li><b>Entscheidung</b><span><em>Annehmen</em> und <em>Ablehnen</em> sitzen oben rechts als schmale Umrissknöpfe, gleichrangig neben <em>In&nbsp;Obsidian öffnen</em> — obwohl sie der einzige Grund sind, warum die Ansicht existiert.</span></li>
+    <li><b>Fortschritt</b><span>„Offen (1) · Akzeptiert (1)“ steht als Filterzeile da, nicht als Stand. Bei 200 Vorschauen sieht man nirgends, wie weit man ist.</span></li>
+    <li><b>Herkunft</b><span>Der Kopf der Markdown-Seite zeigt <code>S. 1 None</code>. Das Badge <em>Textlayer/OCR/Diagramm</em> — die wichtigste Information, weil nur OCR-Seiten Fehler haben — fehlt hier ganz.</span></li>
+    <li><b>Blindflug</b><span>Links markiert der Scan mit Textmarker, was zählt. Rechts ist alles gleich schwarz: nichts sagt, an welcher Stelle das OCR unsicher war.</span></li>
+  </ul>
+</section>
+
+<!-- ══════════════════ A ══════════════════ -->
+<section>
+  <div class="entwurf-kopf">
+    <span class="entwurf-nr">A</span>
+    <h2>Prüfstrecke</h2>
+  </div>
+  <p class="these">
+    Die Ansicht ist kein Betrachter, sondern eine Strecke: Datei rein, Urteil
+    raus, nächste. Alles ordnet sich dem einen Handgriff unter — und man sieht
+    jederzeit, wie viel Strecke noch liegt.
+  </p>
+
+  <div class="rahmen">
+  <div class="mk">
+    <div class="mk-titel"><span class="mk-ampeln"><i></i><i></i><i></i></span>OCR-Abgleich</div>
+    <div class="mk-koerper">
+
+      <div class="mk-pane" style="flex: 0 0 174px; background: var(--bg2);">
+        <div class="mk-fortschritt">
+          <div class="mk-zaehler"><b>4</b><span>von 12 geprüft</span></div>
+          <div class="mk-balken"><i></i></div>
+        </div>
+        <div class="mk-kopf" style="border-top: none;">
+          <span class="mk-chip mk-chip-an">Offen 8</span>
+          <span class="mk-chip">Alle 12</span>
+        </div>
+        <div class="mk-scroll" style="padding-top: 6px;">
+          <div class="mk-eintrag mk-aktiv">
+            <div class="mk-eintrag-name">fall09-biodiesel</div>
+            <div class="mk-eintrag-sub">1 S. · 1 OCR</div>
+          </div>
+          <div class="mk-eintrag">
+            <div class="mk-eintrag-name">fall10-buergschaft</div>
+            <div class="mk-eintrag-sub">14 S. · 9 OCR · 2 Diagr.</div>
+          </div>
+          <div class="mk-eintrag">
+            <div class="mk-eintrag-name">fall11-eigentumsvorb</div>
+            <div class="mk-eintrag-sub">6 S. · 2 OCR</div>
+          </div>
+          <div class="mk-eintrag mk-ok">
+            <div class="mk-eintrag-name">fall08-werkvertrag</div>
+            <div class="mk-eintrag-sub">3 S. · angenommen</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mk-pane" style="flex: 1 1 0;">
+        <div class="mk-kopf">
+          <b>fall09-biodiesel-sachverhalt</b>
+          <span class="mk-leise">S. 1/1</span>
+          <span class="mk-rechts"><span class="mk-badge mk-b-ocr">OCR</span></span>
+        </div>
+        <div class="mk-scroll" style="background: var(--bg2);">
+          <div class="mk-papier">
+            <div class="kopfzeile"><span>HK-Frankfurt am Main- 2025 / I Sachverhalte S. 1</span><span class="paragraf-siegel">§</span></div>
+            <h4>Sachverhalt Fall 1:</h4>
+            <p>Die <span class="mk-hl">Beklagte vertreibt Heizöl und Kraftstoffe</span>. Der Kläger, der eine Spedition betreibt, kaufte bei der Beklagten <span class="mk-hl">2.000.000 l Biodiesel EN 14214 zu einem Preis von 66 € pro 100 l.</span></p>
+            <p>Mit <span class="mk-hl-blau">Schreiben vom 25. Mai</span> teilte die Beklagte dem Kläger mit, dass ihre <span class="mk-hl">Lieferantin in Insolvenz</span> gefallen sei und die <span class="mk-hl-blau">Lieferungen an sie eingestellt</span> habe und dass es ihr nur noch möglich sei, <span class="mk-hl">Biodiesel im Spot-Geschäft zu Tagespreisen einzukaufen.</span></p>
+            <p>Der Kläger deckte sich <span class="mk-hl-blau">zwischen dem 29. Mai und dem 30. September</span> mit Diesellieferungen unterschiedlicher Lieferanten ein. Wegen zwischenzeitlicher Preiserhöhungen musste er <span class="mk-hl">475.000 € mehr aufwenden</span>.</p>
+            <p><span class="mk-frage">Kann der Kläger Zahlung der Mehrkosten (475.000 €) verlangen, die durch das Deckungsgeschäft angefallen sind?</span></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mk-pane" style="flex: 1 1 0;">
+        <div class="mk-kopf">
+          <b>Markdown</b>
+          <span class="mk-rechts">
+            <span class="mk-chip mk-chip-an">Gerendert</span>
+            <span class="mk-chip">Quelltext</span>
+            <span class="mk-knopf">⋯</span>
+          </span>
+        </div>
+        <div class="mk-scroll">
+          <div class="mk-md">
+            <div class="mk-seitenkopf">
+              <span class="mk-nr">S. 1</span>
+              <span class="mk-badge mk-b-ocr">OCR</span>
+              <span class="mk-lay">einspaltig</span>
+            </div>
+            <p>HK-Frankfurt am Main- 2025 / I Sachverhalte S. 1</p>
+            <p><b>Sachverhalt Fall 1:</b></p>
+            <p>Die Beklagte vertreibt Heizöl und Kraftstoffe. Der Kläger, der eine Spedition betreibt, kaufte bei der Beklagten 2.000.000 l Biodiesel EN 14214 zu einem Preis von 66 € pro 100 l.</p>
+            <p>Mit Schreiben vom 25. Mai teilte die Beklagte dem Kläger mit, dass ihre Lieferantin in Insolvenz gefallen sei und die Lieferungen an sie eingestellt habe und dass es ihr nur noch möglich sei, Biodiesel im Spot-Geschäft zu Tagespreisen einzukaufen.</p>
+            <p>Der Kläger deckte sich zwischen dem 29. Mai und dem 30. September mit Diesellieferungen unterschiedlicher Lieferanten ein.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mk-leiste">
+      <button class="mk-gross" style="background: var(--gr);">Annehmen <span class="mk-taste">a</span></button>
+      <button class="mk-gross" style="background: var(--rt);">Ablehnen <span class="mk-taste">x</span></button>
+      <button class="mk-knopf">Notiz <span class="mk-taste mk-taste-dunkel">n</span></button>
+      <button class="mk-knopf">In Obsidian öffnen</button>
+      <span class="mk-hinweistext">danach → fall10-buergschaft · noch 8</span>
+    </div>
+  </div>
+  </div>
+  <p class="rahmen-fuss">Entwurf A — Entscheidungsleiste unten, Fortschritt oben links, Liste auf Rufweite verschmälert.</p>
+
+  <div class="spalten-zwei">
+    <div>
+      <h3>Was neu ist</h3>
+      <ul>
+        <li>Eine <strong>Entscheidungsleiste</strong> über die volle Breite unten: dort, wo die Hand nach dem Lesen ist, mit Tastenkappen statt versteckter Shortcuts.</li>
+        <li><strong>Fortschrittszähler</strong> „4 von 12 geprüft“ ersetzt die Filterzeile als erste Information; Filter rücken darunter.</li>
+        <li>Die Liste schrumpft auf ~174 px und trägt nur noch Name, Umfang, Statuskante — der gewonnene Platz geht an Scan und Text.</li>
+        <li>Die Leiste nennt das <strong>nächste Ziel</strong> („danach → fall10“), damit der Sprung nach dem Annehmen nicht überrascht.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Aufwand und Risiko</h3>
+      <ul>
+        <li>Der kleinste Eingriff: die Knopfleiste wandert aus dem Markdown-Kopf in einen neuen Fuß-Container (<span class="pfad">ansicht.ts</span>), plus Flex-Regeln in <span class="pfad">styles.css</span>.</li>
+        <li>Der Fortschritt liest sich aus den Zählern, die die Seitenleiste bereits hat — keine neue Datenquelle, kein Manifest-Feld.</li>
+        <li>Risiko: bei drei sichtbaren Dateien wirkt eine Fortschrittsanzeige overengineered. Sie sollte erst ab ~5 Einträgen erscheinen.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ B ══════════════════ -->
+<section>
+  <div class="entwurf-kopf">
+    <span class="entwurf-nr">B</span>
+    <h2>Seitenpaare</h2>
+  </div>
+  <p class="these">
+    Verglichen wird nicht die Datei, sondern die Seite. Also ist die Seite die
+    sichtbare Einheit: ein Streifen über beiden Spalten zeigt jede Seite als
+    Marke mit ihrer Herkunft, und im Text steht, wo das OCR gewackelt hat.
+  </p>
+
+  <div class="rahmen">
+  <div class="mk">
+    <div class="mk-titel"><span class="mk-ampeln"><i></i><i></i><i></i></span>OCR-Abgleich</div>
+
+    <div class="mk-streifen">
+      <span class="mk-pfad" style="font-family: var(--mono); font-size: 10.5px; color: var(--tx2); margin-right: 4px;">fall10-buergschaft · 14 S.</span>
+      <span class="mk-daumen t-txt">1</span>
+      <span class="mk-daumen t-txt">2</span>
+      <span class="mk-daumen t-ocr mk-aktiv">3</span>
+      <span class="mk-daumen t-ocr">4</span>
+      <span class="mk-daumen t-dia">5</span>
+      <span class="mk-daumen t-ocr">6</span>
+      <span class="mk-daumen t-txt">7</span>
+      <span class="mk-daumen t-ocr">8</span>
+      <span class="mk-daumen t-txt">9</span>
+      <span style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
+        <span class="mk-badge mk-b-txt">Textlayer 5</span>
+        <span class="mk-badge mk-b-ocr">OCR 7</span>
+        <span class="mk-badge mk-b-dia">Diagramm 2</span>
+      </span>
+    </div>
+
+    <div class="mk-koerper">
+      <div class="mk-pane" style="flex: 0 0 150px; background: var(--bg2);">
+        <div class="mk-kopf"><b>Vorschauen</b><span class="mk-rechts mk-leise">12</span></div>
+        <div class="mk-scroll" style="padding-top: 6px;">
+          <div class="mk-eintrag"><div class="mk-eintrag-name">fall09-biodiesel</div><div class="mk-eintrag-sub">1 S. · 1 OCR</div></div>
+          <div class="mk-eintrag mk-aktiv"><div class="mk-eintrag-name">fall10-buergschaft</div><div class="mk-eintrag-sub">14 S. · 7 OCR · 2 Diagr.</div></div>
+          <div class="mk-eintrag"><div class="mk-eintrag-name">fall11-eigentumsvorb</div><div class="mk-eintrag-sub">6 S. · 2 OCR</div></div>
+        </div>
+      </div>
+
+      <div class="mk-pane" style="flex: 1 1 0;">
+        <div class="mk-scroll" style="background: var(--bg2);">
+          <div class="mk-paarkarte" style="display: flex;">
+            <span class="mk-spange"></span>
+            <div style="flex: 1; min-width: 0;">
+              <div class="mk-paarkopf">S. 3 <span class="mk-badge mk-b-ocr" style="font-family: var(--sans);">OCR</span> <span style="margin-left:auto;">zweispaltig, senkrecht @48 %</span></div>
+              <div class="mk-papier" style="margin: 8px; font-size: 8px;">
+                <div class="kopfzeile"><span>HK-Frankfurt am Main- 2025 / I Sachverhalte S. 3</span><span class="paragraf-siegel">§</span></div>
+                <h4>II. Anspruch aus § 280 I, III, 281 BGB</h4>
+                <p>Der <span class="mk-hl">Kläger könnte gegen die Beklagte einen Anspruch auf Schadensersatz statt der Leistung</span> haben. Voraussetzung ist ein wirksames Schuldverhältnis sowie eine Pflichtverletzung.</p>
+                <p>Die Beklagte hat die Lieferung <span class="mk-hl-blau">ernsthaft und endgültig verweigert</span>, sodass eine Fristsetzung nach § 281 II BGB entbehrlich war.</p>
+                <p>Der Höhe nach umfasst der Anspruch die Mehrkosten des Deckungsgeschäfts.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mk-pane" style="flex: 1 1 0;">
+        <div class="mk-scroll">
+          <div class="mk-paarkarte" style="display: flex;">
+            <span class="mk-spange"></span>
+            <div style="flex: 1; min-width: 0;">
+              <div class="mk-paarkopf">S. 3 · Markdown <span style="margin-left:auto;">3 Stellen unsicher</span></div>
+              <div class="mk-md">
+                <p><b>II. Anspruch aus § 280 I, III, 281 BGB</b></p>
+                <p>Der Kläger könnte gegen die Beklagte einen Anspruch auf <span class="mk-verdacht">Schadensersalz</span> statt der Leistung haben. Voraussetzung ist ein wirksames Schuldverhältnis sowie eine Pflichtverletzung.</p>
+                <p>Die Beklagte hat die Lieferung ernsthaft und endgültig verweigert, sodass eine Fristsetzung nach <span class="mk-verdacht">§ 28l II BGB</span> entbehrlich war.</p>
+                <p>Der Höhe nach umfasst der Anspruch die <span class="mk-verdacht">Mehrkoslen</span> des Deckungsgeschäfts.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mk-kopf" style="border-top: 1px solid var(--li); border-bottom: none;">
+          <button class="mk-knopf mk-knopf-gr">Annehmen</button>
+          <button class="mk-knopf mk-knopf-rt">Ablehnen</button>
+          <span class="mk-rechts"><span class="mk-chip">Seite markieren</span><span class="mk-chip mk-chip-an">Gerendert</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+  <p class="rahmen-fuss">Entwurf B — Seitenstreifen als Landkarte, Seitenpaare als Karten mit gemeinsamer Spange, Wörterbuch-Verdacht im Text.</p>
+
+  <div class="spalten-zwei">
+    <div>
+      <h3>Was neu ist</h3>
+      <ul>
+        <li>Ein <strong>Seitenstreifen</strong> über beiden Spalten: jede Seite eine Marke, farbcodiert nach Herkunft. Bei 14 Seiten sieht man in einer Sekunde, welche drei OCR-Seiten die Aufmerksamkeit brauchen.</li>
+        <li><strong>Seitenpaar als Karte</strong>: gleicher Kopf links wie rechts, gemeinsame Spange am Rand. Beim Scrollen bleibt sichtbar, dass man dieselbe Seite ansieht.</li>
+        <li><strong>Verdachtsstellen im Text</strong> punktiert markiert — gespeist aus dem Bericht von <span class="pfad">woerterbuch.py</span>, der heute nur auf der Konsole landet.</li>
+        <li>Das fehlende Herkunfts-Badge kommt zurück, und <code>None</code> verschwindet: kein Layout, kein Kursivtext.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Aufwand und Risiko</h3>
+      <ul>
+        <li>Der größte der drei Entwürfe. Der Streifen braucht Seitenmetadaten vorab (hat der Parser bereits) und eine Klick-Kopplung in die bestehende Sync-Logik.</li>
+        <li>Die Verdachtsmarkierung braucht ein neues Feld im Vorschau-Format (Stufe 2 muss die Wörterbuch-Treffer mitschreiben) — die einzige Änderung außerhalb von <span class="pfad">plugin/</span>.</li>
+        <li>Risiko: Karten kosten vertikalen Platz. Bei 40-Seiten-Dateien nur der Kopf sticky, nicht die ganze Karte.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ C ══════════════════ -->
+<section>
+  <div class="entwurf-kopf">
+    <span class="entwurf-nr">C</span>
+    <h2>Werkbank</h2>
+  </div>
+  <p class="these">
+    Für den Fall, dass Prüfen selten bei „annehmen“ endet, sondern bei
+    „ausbessern“: eine dichte, tastaturgeführte Werkbank, in der das Markdown
+    an Ort und Stelle korrigiert wird, statt in Obsidian weiterzureichen.
+  </p>
+
+  <div class="rahmen">
+  <div class="mk">
+    <div class="mk-titel"><span class="mk-ampeln"><i></i><i></i><i></i></span>OCR-Abgleich</div>
+
+    <div class="mk-werkzeugleiste">
+      <span class="mk-pfad">_ocr-vorschau / fall10-buergschaft.md</span>
+      <span class="mk-pfad">S. 3/14</span>
+      <span class="mk-badge mk-b-ocr">OCR</span>
+      <span class="mk-rechts">
+        <button class="mk-knopf">Bearbeiten <span class="mk-taste mk-taste-dunkel">e</span></button>
+        <button class="mk-knopf mk-knopf-gr">Annehmen <span class="mk-taste">a</span></button>
+        <button class="mk-knopf mk-knopf-rt">Ablehnen <span class="mk-taste">x</span></button>
+      </span>
+    </div>
+
+    <div class="mk-koerper">
+      <div class="mk-pane" style="flex: 0 0 186px; background: var(--bg2);">
+        <div class="mk-baum">
+          <div class="mk-gruppe">Offen · 8</div>
+          <div class="mk-zeile"><span class="mk-punkt" style="background: var(--am);"></span>fall09-biodiesel<span style="margin-left:auto; color: var(--tx3); font-family: var(--mono); font-size: 10px;">1</span></div>
+          <div class="mk-zeile mk-aktiv"><span class="mk-punkt" style="background: var(--am);"></span>fall10-buergschaft<span style="margin-left:auto; color: var(--tx3); font-family: var(--mono); font-size: 10px;">14</span></div>
+          <div class="mk-zeile"><span class="mk-punkt" style="background: var(--cy);"></span>fall11-eigentumsvorb<span style="margin-left:auto; color: var(--tx3); font-family: var(--mono); font-size: 10px;">6</span></div>
+          <div class="mk-zeile"><span class="mk-punkt" style="background: var(--cy);"></span>fall12-anfechtung<span style="margin-left:auto; color: var(--tx3); font-family: var(--mono); font-size: 10px;">4</span></div>
+          <div class="mk-gruppe" style="margin-top: 6px;">Neu erzeugt · 1</div>
+          <div class="mk-zeile"><span class="mk-punkt" style="background: var(--rt);"></span>fall07-agb<span style="margin-left:auto; color: var(--tx3); font-family: var(--mono); font-size: 10px;">9</span></div>
+          <div class="mk-gruppe" style="margin-top: 6px;">Erledigt · 3</div>
+          <div class="mk-zeile" style="color: var(--tx2);"><span class="mk-punkt" style="background: var(--gr);"></span>fall08-werkvertrag</div>
+        </div>
+      </div>
+
+      <div class="mk-pane" style="flex: 1 1 0;">
+        <div class="mk-scroll" style="background: var(--bg2);">
+          <div class="mk-papier" style="font-size: 8px;">
+            <div class="kopfzeile"><span>HK-Frankfurt am Main- 2025 / I Sachverhalte S. 3</span><span class="paragraf-siegel">§</span></div>
+            <h4>II. Anspruch aus § 280 I, III, 281 BGB</h4>
+            <p>Der <span class="mk-hl">Kläger könnte gegen die Beklagte einen Anspruch auf Schadensersatz statt der Leistung</span> haben. Voraussetzung ist ein wirksames Schuldverhältnis sowie eine Pflichtverletzung.</p>
+            <p>Die Beklagte hat die Lieferung <span class="mk-hl-blau">ernsthaft und endgültig verweigert</span>, sodass eine Fristsetzung nach § 281 II BGB entbehrlich war.</p>
+            <p>Der Höhe nach umfasst der Anspruch die Mehrkosten des Deckungsgeschäfts, § 281 I 1 BGB.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mk-pane" style="flex: 1 1 0;">
+        <div class="mk-scroll">
+          <div class="mk-md">
+            <p><b>II. Anspruch aus § 280 I, III, 281 BGB</b></p>
+            <p>Der Kläger könnte gegen die Beklagte einen Anspruch auf <span class="mk-editfeld" style="display: inline-block;">Schadensersatz</span> statt der Leistung haben.</p>
+            <p>Die Beklagte hat die Lieferung ernsthaft und endgültig verweigert, sodass eine Fristsetzung nach <span class="mk-verdacht">§ 28l II BGB</span> entbehrlich war.</p>
+            <p>Der Höhe nach umfasst der Anspruch die <span class="mk-verdacht">Mehrkoslen</span> des Deckungsgeschäfts, § 281 I 1 BGB.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mk-statuszeile">
+      <span>BEARBEITEN</span>
+      <span>S. 3/14 · OCR · zweispaltig @48 %</span>
+      <span>Sync an</span>
+      <span class="mk-sp">⌘↩ speichern · esc verwerfen · j/k Datei · space Seite</span>
+    </div>
+  </div>
+  </div>
+  <p class="rahmen-fuss">Entwurf C — eine Werkzeugleiste statt drei Spaltenköpfe, Statuszeile unten, Korrektur direkt im Text.</p>
+
+  <div class="spalten-zwei">
+    <div>
+      <h3>Was neu ist</h3>
+      <ul>
+        <li><strong>Eine Werkzeugleiste</strong> ersetzt drei Spaltenköpfe: Pfad, Seite, Herkunft, Aktionen in einer Zeile. Rund 60 px Höhe kommen dem Inhalt zugute.</li>
+        <li><strong>Korrigieren statt weiterreichen</strong>: <code>e</code> macht den Absatz editierbar, <code>⌘↩</code> schreibt zurück in die <span class="pfad">.md</span>. Der Umweg über den Obsidian-Editor entfällt.</li>
+        <li><strong>Liste nach Status gruppiert</strong> statt nach Filterchips — „Neu erzeugt“ steht damit oben statt versteckt hinter einem Badge.</li>
+        <li><strong>Statuszeile</strong> unten hält Modus, Seitenmetadaten, Sync-Zustand und die Tastenbelegung dauerhaft sichtbar.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Aufwand und Risiko</h3>
+      <ul>
+        <li>Mittlerer Umbau der Kopfstruktur, dazu ein echtes neues Vermögen: Schreiben in die Vorschau-Datei. Das berührt die Regel „die <span class="pfad">.md</span> ist erzeugte Ausgabe“ — Korrekturen überleben eine Neukonvertierung nicht.</li>
+        <li>Braucht darum eine sichtbare Warnung beim ersten Bearbeiten und eine Notiz im Manifest, dass die Datei von Hand angefasst wurde.</li>
+        <li>Risiko: dichte, modale Bedienung ist schnell, wenn man sie kennt, und undurchsichtig, wenn nicht. Die Statuszeile ist die Gegenmaßnahme, kein Ersatz für Erlernbarkeit.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Gegenüberstellung</h2>
+  <div class="tabelle-huelle">
+    <table>
+      <thead>
+        <tr><th>Entwurf</th><th>Optimiert auf</th><th>Neue Daten nötig</th><th>Umfang</th><th>Passt, wenn</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>A · Prüfstrecke</td>
+          <td>Tempo über viele Dateien</td>
+          <td>keine</td>
+          <td>klein — <span class="pfad">ansicht.ts</span>, <span class="pfad">styles.css</span></td>
+          <td>die meisten Vorschauen in Ordnung sind und nur durchgewinkt werden</td>
+        </tr>
+        <tr>
+          <td>B · Seitenpaare</td>
+          <td>Fehler finden</td>
+          <td>Wörterbuch-Treffer im Vorschau-Format</td>
+          <td>groß — auch Stufe 2</td>
+          <td>die 15 % entgleisten Seiten das eigentliche Problem sind</td>
+        </tr>
+        <tr>
+          <td>C · Werkbank</td>
+          <td>Fehler beheben</td>
+          <td>Schreibpfad in die <span class="pfad">.md</span></td>
+          <td>mittel, mit Modellfrage</td>
+          <td>ohnehin fast jede Seite von Hand nachgebessert wird</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="schluss eng">
+    <p style="margin: 0;">
+      <strong>Mein Vorschlag:</strong> A jetzt, B als nächster Schritt. A kostet
+      einen Nachmittag, ändert kein Datenmodell und behebt die drei sichtbarsten
+      Befunde (Entscheidung, Fortschritt, Leere). B ist die eigentliche Antwort
+      auf das Problem aus der README — die entgleisten Seiten —, verlangt aber
+      eine Erweiterung des Vorschau-Formats und sollte erst gebaut werden, wenn
+      A gezeigt hat, wie oft man wirklich durchgeht. C ist eine
+      Produktentscheidung, keine Designfrage: Es hängt daran, ob die
+      Vorschau-<span class="pfad">.md</span> erzeugte Ausgabe bleibt.
+    </p>
+  </div>
+</section>
+
+</div>

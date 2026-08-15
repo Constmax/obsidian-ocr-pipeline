@@ -21,8 +21,9 @@ import {
 } from "obsidian";
 
 import type OcrVorschauPlugin from "./main.ts";
+import { blockErsetzen } from "./bearbeitung.ts";
 import { Bestand, type Bestandseintrag } from "./dateiaktionen.ts";
-import { MarkdownSpalte, type Darstellung } from "./md-pane.ts";
+import { HERKUNFT_LABEL, MarkdownSpalte, type Darstellung } from "./md-pane.ts";
 import { PdfSpalte } from "./pdf-pane.ts";
 import { Seitenleiste } from "./seitenleiste.ts";
 import { Kopplung } from "./sync.ts";
@@ -42,7 +43,21 @@ export class OcrAbgleichAnsicht extends ItemView {
 	private pdfSpalte!: PdfSpalte;
 	private mdSpalte!: MarkdownSpalte;
 	private kopplung!: Kopplung;
+	private huelle!: HTMLElement;
 	private rahmen!: HTMLElement;
+	private pdfKopf!: HTMLElement;
+	private pdfKopfZeile!: HTMLElement;
+	private mdKopf!: HTMLElement;
+	private mdKopfZeile!: HTMLElement;
+	/** Wandert zwischen PDF-Kopf (Prüfstrecke) und Werkzeugleiste (Werkbank). */
+	private kopfInfo!: HTMLElement;
+	private pdfWerkzeuge!: HTMLElement;
+	private mdWerkzeuge!: HTMLElement;
+	private werkzeugleiste!: HTMLElement;
+	private aktionsleiste!: HTMLElement;
+	private aktionsHinweis!: HTMLElement;
+	private statuszeile!: HTMLElement;
+	private bearbeitenKnopf!: HTMLButtonElement;
 	private pdfKopfTitel!: HTMLElement;
 	private pdfSeitenAnzeige!: HTMLElement;
 	private pdfFehler!: HTMLElement;
@@ -50,6 +65,7 @@ export class OcrAbgleichAnsicht extends ItemView {
 	private umschalter!: HTMLElement;
 	private pdfDatei: TFile | null = null;
 	private pdfSeiten = 0;
+	private aktuelleSeite = 1;
 	private oeffnenLauf = 0;
 	private geprueftBisTimer: number | null = null;
 
@@ -76,7 +92,12 @@ export class OcrAbgleichAnsicht extends ItemView {
 	async onOpen(): Promise<void> {
 		this.bestand = this.plugin.bestand;
 
-		this.rahmen = this.contentEl.createDiv({ cls: "ocr-abgleich" });
+		// Aussen eine senkrechte Huelle: die drei Spalten sind nur noch das
+		// Mittelstueck zwischen Werkzeugleiste (Werkbank), Entscheidungsleiste
+		// und Statuszeile (Werkbank).
+		this.huelle = this.contentEl.createDiv({ cls: "ocr-huelle" });
+		this.werkzeugleiste = this.huelle.createDiv({ cls: "ocr-werkzeugleiste" });
+		this.rahmen = this.huelle.createDiv({ cls: "ocr-abgleich" });
 
 		// ── Links: Vorschau-Liste ──────────────────────────────────────────────
 		const listeSpalte = this.rahmen.createDiv({ cls: "ocr-spalte ocr-spalte-liste" });
@@ -97,19 +118,30 @@ export class OcrAbgleichAnsicht extends ItemView {
 			attr: { "aria-label": "Spaltenbreite anpassen", title: "Spaltenbreite anpassen" },
 		});
 		const pdfSpalte = this.rahmen.createDiv({ cls: "ocr-spalte ocr-spalte-pdf" });
-		const pdfKopf = pdfSpalte.createDiv({ cls: "ocr-spaltenkopf" });
-		const pdfZeile = pdfKopf.createDiv({ cls: "ocr-kopf-zeile" });
-		this.pdfKopfTitel = pdfZeile.createSpan({ cls: "ocr-kopf-titel", text: "Original-PDF" });
-		this.pdfSeitenAnzeige = pdfZeile.createSpan({ cls: "ocr-kopf-seiten" });
-		const pdfWerkzeuge = pdfKopf.createDiv({ cls: "ocr-kopf-werkzeuge" });
-		this.kleinknopf(pdfWerkzeuge, "−", "Verkleinern", () => this.zoomen(-0.25));
-		this.zoomAnzeige = pdfWerkzeuge.createSpan({ cls: "ocr-kopf-zoom", text: "100 %" });
-		this.kleinknopf(pdfWerkzeuge, "+", "Vergrößern", () => this.zoomen(0.25));
-		const imViewer = this.kleinknopf(pdfWerkzeuge, "Im PDF-Viewer öffnen", "", () => {
+		this.pdfKopf = pdfSpalte.createDiv({ cls: "ocr-spaltenkopf" });
+		this.pdfKopfZeile = this.pdfKopf.createDiv({ cls: "ocr-kopf-zeile" });
+		// Titel, Seitenzahl und Herkunft stecken in einem eigenen Behaelter:
+		// im Werkbank-Modus wandert genau dieser Block in die Werkzeugleiste.
+		this.kopfInfo = this.pdfKopfZeile.createDiv({ cls: "ocr-kopf-info" });
+		this.pdfKopfTitel = this.kopfInfo.createSpan({
+			cls: "ocr-kopf-titel",
+			text: "Original-PDF",
+		});
+		this.pdfSeitenAnzeige = this.kopfInfo.createSpan({ cls: "ocr-kopf-seiten" });
+		this.pdfWerkzeuge = this.pdfKopfZeile.createDiv({ cls: "ocr-kopf-werkzeuge" });
+		this.kleinknopf(this.pdfWerkzeuge, "−", "Verkleinern", () => this.zoomen(-0.25));
+		this.zoomAnzeige = this.pdfWerkzeuge.createSpan({
+			cls: "ocr-kopf-zoom",
+			text: "100 %",
+		});
+		this.kleinknopf(this.pdfWerkzeuge, "+", "Vergrößern", () => this.zoomen(0.25));
+		const imViewer = this.kleinknopf(this.pdfWerkzeuge, "Im PDF-Viewer öffnen", "", () => {
 			void this.imPdfViewerOeffnen();
 		});
 		imViewer.addClass("ocr-knopf-haupt");
-		this.pdfFehler = pdfKopf.createDiv({ cls: "ocr-fehlbanner" });
+		// Das Fehlerbanner sitzt NEBEN dem Kopf, nicht darin: im Werkbank-Modus
+		// ist der Kopf ausgeblendet, und „PDF zuordnen…" waere unerreichbar.
+		this.pdfFehler = pdfSpalte.createDiv({ cls: "ocr-fehlbanner" });
 		this.pdfFehler.hide();
 
 		this.pdfSpalte = new PdfSpalte(this.app, pdfSpalte, () => this.plugin.einstellungen.pdfZoomMax);
@@ -123,10 +155,11 @@ export class OcrAbgleichAnsicht extends ItemView {
 			attr: { "aria-label": "Spaltenbreite anpassen", title: "Spaltenbreite anpassen" },
 		});
 		const mdSpalte = this.rahmen.createDiv({ cls: "ocr-spalte ocr-spalte-md" });
-		const mdKopf = mdSpalte.createDiv({ cls: "ocr-spaltenkopf" });
-		const mdZeile = mdKopf.createDiv({ cls: "ocr-kopf-zeile" });
-		mdZeile.createSpan({ cls: "ocr-kopf-titel", text: "Markdown" });
-		this.umschalter = mdZeile.createDiv({ cls: "ocr-umschalter" });
+		this.mdKopf = mdSpalte.createDiv({ cls: "ocr-spaltenkopf" });
+		this.mdKopfZeile = this.mdKopf.createDiv({ cls: "ocr-kopf-zeile" });
+		this.mdKopfZeile.createSpan({ cls: "ocr-kopf-titel", text: "Markdown" });
+		this.mdWerkzeuge = this.mdKopfZeile.createDiv({ cls: "ocr-kopf-werkzeuge" });
+		this.umschalter = this.mdWerkzeuge.createDiv({ cls: "ocr-umschalter" });
 		// Der Wert steht im dataset, nicht in der Beschriftung: ein Vergleich auf
 		// den sichtbaren Text ("Gerendert") trifft den Aufzaehlungswert
 		// ("gerendert") nie, und die Markierung bliebe fuer immer stehen.
@@ -142,17 +175,15 @@ export class OcrAbgleichAnsicht extends ItemView {
 		quelltextKnopf.dataset["darstellung"] = "quelltext";
 		gerendertKnopf.addEventListener("click", () => this.darstellungSetzen("gerendert"));
 		quelltextKnopf.addEventListener("click", () => this.darstellungSetzen("quelltext"));
-		const mdWerkzeuge = mdZeile.createDiv({ cls: "ocr-kopf-werkzeuge" });
-		const annehmen = this.kleinknopf(mdWerkzeuge, "Annehmen", "a — als korrekt übernehmen", () => {
-			void this.entscheiden("akzeptiert");
-		});
-		annehmen.addClass("ocr-knopf-annehmen");
-		const ablehnen = this.kleinknopf(mdWerkzeuge, "Ablehnen", "x — zur Überarbeitung", () => {
-			void this.entscheiden("abgelehnt");
-		});
-		ablehnen.addClass("ocr-knopf-ablehnen");
-		this.kleinknopf(mdWerkzeuge, "In Obsidian öffnen", "", () => void this.inObsidianOeffnen());
-		const mehr = mdWerkzeuge.createEl("button", {
+		// Annehmen/Ablehnen sind hier weg — sie stehen jetzt unten in der
+		// Entscheidungsleiste, wo die Hand nach dem Lesen ohnehin ist.
+		this.bearbeitenKnopf = this.kleinknopf(
+			this.mdWerkzeuge,
+			"Bearbeiten",
+			"e — diese Seite in der Vorschau-Datei korrigieren",
+			() => this.bearbeiten(),
+		);
+		const mehr = this.mdWerkzeuge.createEl("button", {
 			cls: "ocr-ikonknopf",
 			attr: { "aria-label": "Mehr", title: "Mehr" },
 		});
@@ -166,10 +197,16 @@ export class OcrAbgleichAnsicht extends ItemView {
 			() => this.plugin.einstellungen.mdEagerLimit,
 		);
 		this.mdSpalte.beiVermessungNoetig = () => this.kopplung.neuVermessen();
+		this.mdSpalte.beiSpeichern = (nr, text) => this.blockSpeichern(nr, text);
+		this.mdSpalte.beiBearbeitungswechsel = () => this.statusAktualisieren();
 		// Startmarkierung aus den Einstellungen, nicht fest auf „Gerendert":
 		// wer „Quelltext" als Standard gewaehlt hat, sah sonst die falsche
 		// Schaltflaeche hervorgehoben.
 		this.umschalterMarkieren(this.plugin.einstellungen.markdownAnsicht);
+
+		// ── Unten: Entscheidungsleiste und Statuszeile ──────────────────────────
+		this.aktionsleisteBauen();
+		this.statuszeile = this.huelle.createDiv({ cls: "ocr-statuszeile" });
 
 		// ── Kopplung und Breiten ────────────────────────────────────────────────
 		this.kopplung = new Kopplung({
@@ -185,6 +222,47 @@ export class OcrAbgleichAnsicht extends ItemView {
 		this.tastenRegistrieren();
 
 		this.aktualisieren();
+	}
+
+	/** Die Entscheidungsleiste unten — der einzige Grund, warum es diese Ansicht
+	 *  gibt, also ueber die volle Breite und mit den Tasten daran. */
+	private aktionsleisteBauen(): void {
+		this.aktionsleiste = this.huelle.createDiv({ cls: "ocr-aktionsleiste" });
+		const annehmen = this.leistenknopf("Annehmen", "a", "als korrekt übernehmen", () =>
+			void this.entscheiden("akzeptiert"),
+		);
+		annehmen.addClass("ocr-knopf-annehmen");
+		const ablehnen = this.leistenknopf("Ablehnen", "x", "zur Überarbeitung", () =>
+			void this.entscheiden("abgelehnt"),
+		);
+		ablehnen.addClass("ocr-knopf-ablehnen");
+		this.leistenknopf("Notiz", "n", "Anmerkung zum Eintrag", () => this.notizOeffnen());
+		this.leistenknopf("In Obsidian öffnen", null, "", () =>
+			void this.inObsidianOeffnen(),
+		);
+		this.aktionsHinweis = this.aktionsleiste.createSpan({ cls: "ocr-aktion-hinweis" });
+	}
+
+	private leistenknopf(
+		text: string,
+		taste: string | null,
+		beschreibung: string,
+		aktion: () => void,
+	): HTMLButtonElement {
+		const titel =
+			taste === null
+				? beschreibung
+				: beschreibung.length > 0
+					? `${taste} — ${beschreibung}`
+					: taste;
+		const knopf = this.aktionsleiste.createEl("button", {
+			cls: "ocr-knopf ocr-leistenknopf",
+			...(titel.length > 0 ? { attr: { "aria-label": titel, title: titel } } : {}),
+		});
+		knopf.createSpan({ text });
+		if (taste !== null) knopf.createSpan({ cls: "ocr-taste", text: taste });
+		knopf.addEventListener("click", () => aktion());
+		return knopf;
 	}
 
 	async onClose(): Promise<void> {
@@ -238,7 +316,9 @@ export class OcrAbgleichAnsicht extends ItemView {
 			!this.bestand.eintraege.some((b) => b.name === this.aktiveName)
 		) {
 			this.keineAuswahl();
+			return;
 		}
+		this.statusAktualisieren();
 	}
 
 	// ── Öffnen und PDF-Auflösung ──────────────────────────────────────────────
@@ -293,6 +373,7 @@ export class OcrAbgleichAnsicht extends ItemView {
 		// fortsetzbar sein.
 		const bis = bestand.eintrag["geprueft-bis"];
 		if (bis !== null && bis > 1) this.kopplung.zuSeite(bis);
+		this.statusAktualisieren();
 	}
 
 	/**
@@ -411,8 +492,10 @@ export class OcrAbgleichAnsicht extends ItemView {
 
 	private pdfGeladen(name: string | null, seiten: number): void {
 		this.pdfSeiten = seiten;
+		this.aktuelleSeite = 1;
 		this.pdfKopfTitel.setText(name === null ? "Original-PDF" : name.replace(/\.pdf$/, ""));
 		this.pdfSeitenAnzeige.setText(seiten > 0 ? `S. 1 / ${seiten}` : "");
+		this.statusAktualisieren();
 	}
 
 	private pdfFehlerAnzeigen(fehler: string | null): void {
@@ -435,6 +518,12 @@ export class OcrAbgleichAnsicht extends ItemView {
 		const nr = Math.min(Math.max(Math.floor(p), 1), this.pdfSeiten);
 		this.pdfSeitenAnzeige.setText(`S. ${nr} / ${this.pdfSeiten}`);
 		this.geprueftBisAktualisieren(nr);
+		// Die Statuszeile nur beim echten Seitenwechsel neu bauen: `beiSeite`
+		// feuert waehrend des Scrollens laufend.
+		if (nr !== this.aktuelleSeite) {
+			this.aktuelleSeite = nr;
+			this.statusAktualisieren();
+		}
 	}
 
 	private geprueftBisAktualisieren(nr: number): void {
@@ -582,6 +671,8 @@ export class OcrAbgleichAnsicht extends ItemView {
 		});
 		taste("a", () => void this.entscheiden("akzeptiert"));
 		taste("x", () => void this.entscheiden("abgelehnt"));
+		taste("n", () => this.notizOeffnen());
+		taste("e", () => this.bearbeiten());
 		taste("t", () =>
 			this.darstellungSetzen(
 				this.mdSpalte.aktuelleDarstellung() === "gerendert" ? "quelltext" : "gerendert",
@@ -602,6 +693,7 @@ export class OcrAbgleichAnsicht extends ItemView {
 		this.kopplung.aktiv = !this.kopplung.aktiv;
 		this.plugin.einstellungen.syncAktiv = this.kopplung.aktiv;
 		void this.plugin.einstellungenSpeichern();
+		this.statusAktualisieren();
 		new Notice(`Scroll-Synchronisation ${this.kopplung.aktiv ? "an" : "aus"}.`);
 	}
 
@@ -645,6 +737,171 @@ export class OcrAbgleichAnsicht extends ItemView {
 	einstellungenAnwenden(): void {
 		this.kopplung.aktiv = this.plugin.einstellungen.syncAktiv;
 		this.spaltenbreitenAnwenden(this.plugin.einstellungen.spaltenbreiten);
+		this.modusAnwenden();
+	}
+
+	// ── Bedienmodus ───────────────────────────────────────────────────────────
+
+	/**
+	 * Prüfstrecke oder Werkbank. Beide Modi benutzen DIESELBEN Bedienelemente —
+	 * sie haengen nur an einem anderen Ort. Deshalb wird hier umgehaengt und
+	 * nicht neu gebaut: ein zweiter Satz Knoepfe waere ein zweiter Satz
+	 * Zustaende, und einer davon liefe frueher oder spaeter falsch.
+	 */
+	private modusAnwenden(): void {
+		const werkbank = this.plugin.einstellungen.bedienmodus === "werkbank";
+		this.huelle.toggleClass("ocr-modus-werkbank", werkbank);
+		if (werkbank) {
+			// Ein Kopf statt drei: Pfad und Seite links, alle Werkzeuge rechts.
+			this.werkzeugleiste.appendChild(this.kopfInfo);
+			this.werkzeugleiste.appendChild(this.pdfWerkzeuge);
+			this.werkzeugleiste.appendChild(this.mdWerkzeuge);
+			this.werkzeugleiste.show();
+			this.pdfKopf.hide();
+			this.mdKopf.hide();
+			this.bearbeitenKnopf.show();
+		} else {
+			this.pdfKopfZeile.appendChild(this.kopfInfo);
+			this.pdfKopfZeile.appendChild(this.pdfWerkzeuge);
+			this.mdKopfZeile.appendChild(this.mdWerkzeuge);
+			this.werkzeugleiste.hide();
+			this.pdfKopf.show();
+			this.mdKopf.show();
+			// Bearbeiten schreibt in die erzeugte .md — das gibt es nur dort, wo
+			// es angekuendigt ist.
+			this.bearbeitenKnopf.hide();
+			if (this.mdSpalte.bearbeiteteSeite() !== null) this.mdSpalte.bearbeitenAbbrechen();
+		}
+		this.aktionsleiste.toggleClass("ocr-aktionsleiste-schmal", werkbank);
+		this.statusAktualisieren();
+	}
+
+	/** Entscheidungsleiste und (im Werkbank-Modus) Statuszeile nachziehen. */
+	private statusAktualisieren(): void {
+		this.aktionsHinweis.setText(this.hinweisText());
+		if (this.plugin.einstellungen.bedienmodus !== "werkbank") {
+			this.statuszeile.hide();
+			return;
+		}
+		const bearbeitet = this.mdSpalte.bearbeiteteSeite() !== null;
+		this.statuszeile.show();
+		this.statuszeile.empty();
+		this.statuszeile.createSpan({
+			cls: "ocr-status-modus",
+			text: bearbeitet ? "BEARBEITEN" : "PRÜFEN",
+		});
+		const seite = this.seitenText();
+		if (seite.length > 0) this.statuszeile.createSpan({ text: seite });
+		this.statuszeile.createSpan({ text: `Sync ${this.kopplung.aktiv ? "an" : "aus"}` });
+		this.statuszeile.createSpan({
+			cls: "ocr-status-tasten",
+			text: bearbeitet
+				? "⌘↩ speichern · esc verwerfen"
+				: "a annehmen · x ablehnen · e bearbeiten · j/k Datei · space Seite",
+		});
+	}
+
+	/** „S. 3/14 · OCR · zweispaltig @48 %" — die Herkunft steht dabei, weil nur
+	 *  OCR-Seiten ueberhaupt Wortfehler haben koennen. */
+	private seitenText(): string {
+		const teile: string[] = [];
+		if (this.pdfSeiten > 0) teile.push(`S. ${this.aktuelleSeite}/${this.pdfSeiten}`);
+		const block = this.mdSpalte.blockZu(this.aktuelleSeite);
+		if (block?.herkunft !== undefined) teile.push(HERKUNFT_LABEL[block.herkunft]);
+		if (block?.layout !== undefined) teile.push(block.layout);
+		return teile.join(" · ");
+	}
+
+	/** Was nach dieser Entscheidung kommt — der Sprung soll nicht ueberraschen. */
+	private hinweisText(): string {
+		const name = this.aktiveName;
+		if (name === null) return "";
+		const offen = this.bestand.eintraege.filter(
+			(b) => b.eintrag.status === "offen" || b.eintrag.status === "neu-erzeugt",
+		).length;
+		const naechster = this.seitenleiste.naechsterNach(name);
+		const teile: string[] = [];
+		if (naechster !== null) teile.push(`danach → ${naechster.replace(/\.md$/, "")}`);
+		teile.push(offen === 1 ? "noch 1 offen" : `noch ${offen} offen`);
+		return teile.join(" · ");
+	}
+
+	// ── Bearbeiten (nur Werkbank) ─────────────────────────────────────────────
+
+	private bearbeiten(): void {
+		if (this.plugin.einstellungen.bedienmodus !== "werkbank") {
+			new Notice("Bearbeiten gibt es im Werkbank-Modus — Einstellungen → Bedienmodus.");
+			return;
+		}
+		if (this.mdSpalte.bearbeiteteSeite() !== null) {
+			void this.mdSpalte.bearbeitenSpeichern();
+			return;
+		}
+		const name = this.aktiveName;
+		if (name === null) return;
+		const bestand = this.bestand.eintraege.find((b) => b.name === name);
+		if (bestand === undefined) return;
+		// Einmal pro Fassung, nicht bei jedem Feld: die Vorschau ist erzeugte
+		// Ausgabe, und das muss man EINMAL gelesen haben, bevor man hineinschreibt.
+		if (!bestand.eintrag.handbearbeitet) {
+			new Notice(
+				"Die Vorschau ist erzeugte Ausgabe: ein erneuter pdf2md-Lauf überschreibt " +
+					"Korrekturen. Der Eintrag wird als handbearbeitet vermerkt.",
+				8000,
+			);
+		}
+		if (!this.mdSpalte.bearbeitenStarten(this.aktuelleSeite)) {
+			new Notice(`Seite ${this.aktuelleSeite} lässt sich hier nicht bearbeiten.`);
+		}
+	}
+
+	/**
+	 * Schreibt einen Seitenblock zurueck in die Vorschau-Datei.
+	 *
+	 * Ueber `vault.process`: das liest und schreibt in einem Zug, statt auf einem
+	 * Stand zu schreiben, der beim Oeffnen der Ansicht gelesen wurde. Findet
+	 * `blockErsetzen` den Marker nicht mehr, wird NICHT geschrieben — dann hat
+	 * sich die Datei unter der Hand geaendert (pdf2md-Neulauf), und ein Schreiben
+	 * traefe den falschen Block.
+	 */
+	private async blockSpeichern(nr: number, text: string): Promise<boolean> {
+		const name = this.aktiveName;
+		if (name === null) return false;
+		const bestand = this.bestand.eintraege.find((b) => b.name === name);
+		if (bestand === undefined) return false;
+		let gefunden = true;
+		try {
+			await this.app.vault.process(bestand.datei, (inhalt) => {
+				const neu = blockErsetzen(inhalt, nr, text);
+				if (neu === null) {
+					gefunden = false;
+					return inhalt;
+				}
+				return neu;
+			});
+		} catch (fehler) {
+			console.error("OCR-Vorschau: Schreiben fehlgeschlagen", fehler);
+			new Notice(`OCR-Vorschau: „${name}“ konnte nicht geschrieben werden.`);
+			return false;
+		}
+		if (!gefunden) {
+			new Notice(
+				`Seite ${nr} steht nicht mehr in „${name}“ — nichts geschrieben. ` +
+					"Die Datei neu öffnen.",
+			);
+			return false;
+		}
+		if (!bestand.eintrag.handbearbeitet) {
+			await this.bestand.eintragAendern(name, { handbearbeitet: true });
+		}
+		return true;
+	}
+
+	private notizOeffnen(): void {
+		const name = this.aktiveName;
+		if (name === null) return;
+		const bestand = this.bestand.eintraege.find((b) => b.name === name);
+		if (bestand !== undefined) this.notizDialog(bestand);
 	}
 
 	private kleinknopf(
