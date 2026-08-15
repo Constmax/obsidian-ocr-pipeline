@@ -321,6 +321,26 @@ wohlgeformtes Scheinwort zerlegt die Kompositumsregel in `verhalten` + `Akte`.
 Enger gestellt wäre jedes zweite `-ung`-Substantiv ein Fehlalarm, weil die
 `.dic`-Dateien diese Ableitung ihren Affixregeln überlassen.
 
+## --seiten (Stufe 2)
+
+Nur bestimmte Seiten konvertieren. Angabe als kommagetrennte Liste mit
+Bereichen (z.B. `1,3-5,8`). Leer oder weglassen = alle Seiten.
+
+```bash
+python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
+```
+
+- Seitenzahlen sind 1-basiert und beziehen sich auf die Original-PDF.
+- Ungültige oder ausserhalb liegende Seitenzahlen führen zu einem Fehler.
+- `laufende_zeilen()` (Kopf-/Fusszeilen-Erkennung) läuft weiterhin ueber
+  das gesamte Dokument, damit die Boilerplate-Erkennung nicht durch die
+  Auswahl gestört wird.
+- Die erzeugte `.md` behält die Original-Seitenzahlen in den Markern
+  (`%% S. N %%`). Das Frontmatter `seiten` gibt die Anzahl der gewählten
+  Seiten wieder.
+- Im Plugin wird die Auswahl ueber das `SeitenAuswahlModal` abgefragt
+  (Gesamtseitenzahl wird per pdf.js angezeigt).
+
 ## --fortschritt (Stufe 2)
 
 Maschinenlesbarer Fortschritt als JSON-Zeilen auf stderr. Standardmäßig bleibt

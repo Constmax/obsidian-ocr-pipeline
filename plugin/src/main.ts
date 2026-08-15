@@ -15,7 +15,7 @@ import {
 	normalizePath,
 } from "obsidian";
 
-import { ANSICHT_TYP, OcrAbgleichAnsicht, PdfAuswahlModal } from "./ansicht.ts";
+import { ANSICHT_TYP, OcrAbgleichAnsicht, PdfAuswahlModal, SeitenAuswahlModal } from "./ansicht.ts";
 import { Bestand } from "./dateiaktionen.ts";
 import { Einstellungen, EinstellungenTab, STANDARD } from "./einstellungen.ts";
 import { pdfKonvertieren } from "./konvertierung.ts";
@@ -220,7 +220,12 @@ export default class OcrVorschauPlugin extends Plugin {
 			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
 		);
 		modal.setPlaceholder("PDF für die Konvertierung suchen…");
-		modal.onAuswahl = (datei) => void this.konvertieren(datei);
+		modal.onAuswahl = (datei) => {
+			const seitenModal = new SeitenAuswahlModal(this.app, datei);
+			seitenModal.onAuswahl = (seiten) =>
+				void this.konvertieren(datei, seiten);
+			seitenModal.open();
+		};
 		modal.open();
 	}
 
@@ -235,7 +240,7 @@ export default class OcrVorschauPlugin extends Plugin {
 		return true;
 	}
 
-	private async konvertieren(datei: TFile): Promise<void> {
+	private async konvertieren(datei: TFile, seiten?: string): Promise<void> {
 		if (!this.konvertierungFrei()) return;
 		this.konvertiertGerade = true;
 		const name = datei.basename;
@@ -278,6 +283,7 @@ export default class OcrVorschauPlugin extends Plugin {
 				undefined,
 				{
 					timeoutMs: KONVERTIERUNG_TIMEOUT_MS,
+					...(seiten && seiten.length > 0 ? { seiten } : {}),
 					onKind: (kind) => {
 						this.laufendesKind = kind;
 					},
