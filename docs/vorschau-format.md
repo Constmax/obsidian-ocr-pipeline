@@ -22,6 +22,7 @@ zur Erzeugungslauf. Jedes Feld ist ein flaches Schlüssel-Wert-Paar.
 | `woerter-verdaechtig` | Anzahl Wörter im Wörterbuch-Abgleich (optional) | ganze Zahl |
 | `woerter-korrigiert` | Anzahl Wörter, die ersetzt wurden (optional) | ganze Zahl |
 | `ocr-modell` | Modellbezeichner, das für OCR-Seiten genutzt wurde | String (z.B. `mlx-community/PaddleOCR-VL-1.5-4bit`) |
+| `abgebrochen` | Abbruchvermerk einer Teildatei (optional, nur bei geordnetem Abbruch, Issue #25) | `seite n von m` — `n` = letzte fertige Seite, `m` = geplante Gesamtzahl |
 | `ocr-datum` | Kalenderdatum des Laufs (ISO) | `YYYY-MM-DD` |
 | `ocr-zeitpunkt` | Feingranularer Zeitpunkt ISO (mit Uhrzeit) | `YYYY-MM-DDTHH:MM:SS` |
 | `vorschau-format` | Versionsfeld der Format-Spezifikation (neu) | `1` |
@@ -31,6 +32,11 @@ zur Erzeugungslauf. Jedes Feld ist ein flaches Schlüssel-Wert-Paar.
 1. `quelle-pdf` wird immer via `json.dumps` quotiert (auch ohne Leerzeichen). Der Parser liest es als flachen Skalar — ein YAML-Parser ist bewusst nicht nötig.
 2. Alle Felder sind optional; Fehlende werden vom Parser als `undefined` / `null` behandelt.
 3. Das Feld `vorschau-format: 1` kennzeichnet Dateien, die nach dieser Spezifikation erzeugt wurden. Der Parser toleriert unbekannte Felder (siehe Abschnitt 7).
+4. `abgebrochen` kennzeichnet eine **Teildatei** aus einem geordneten Abbruch
+   (SIGINT/SIGTERM, Exit-Code 6): die Datei ist unvollständig, aber bewusst
+   geschrieben statt verworfen. Die Zählfelder (`seiten`, `seiten-ocr`, …)
+   beziehen sich dann nur auf die tatsächlich geschriebenen Seiten; `m` im
+   Vermerk ist die geplante Gesamtzahl des Laufs.
 
 ## 2. Seitenmarker
 

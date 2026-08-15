@@ -40,10 +40,14 @@ export type FortschrittsEreignis =
 
 /** Steuerung fuer einen Lauf. */
 export interface KonvertierenSteuerung {
-	/** Haengt der Prozess laenger als `timeoutMs`, wird er gekillt und der
-	 *  Lauf mit `timeout: true` aufgeloest. Wird das Kind zur Laufzeit an
-	 *  diese Stelle gemeldet (fuer Abbruch beim Plugin-Unload). */
+	/** Haengt der Prozess laenger als `timeoutMs`, wird er geordnet
+	 *  abgebrochen (SIGTERM, nach `abbruchFristMs` SIGKILL) und der Lauf mit
+	 *  `timeout: true` aufgeloest — aufgeloest wird erst beim tatsaechlichen
+	 *  Prozessende, nicht schon beim Fristablauf. */
 	timeoutMs?: number;
+	/** Frist zwischen SIGTERM und SIGKILL beim Abbruch (Standard:
+	 *  ABBRUCH_FRIST_MS). */
+	abbruchFristMs?: number;
 	/** Nur diese Seiten konvertieren (z.B. "1,3-5,8"). Leer oder undefined
 	 *  = alle Seiten. */
 	seiten?: string;
@@ -53,6 +57,33 @@ export interface KonvertierenSteuerung {
 
 /** Wie viele Zeilen pro Strom mitgenommen werden — genug fuer die Fehlerursache. */
 const LETZTE_ZEILEN = 5;
+
+/** Frist zwischen SIGTERM und SIGKILL beim Abbruch: so lange darf ein Kind
+ *  sich nach dem geordneten Abbruch noch selbst beenden (pdf2md rechnet die
+ *  laufende Seite fertig und schreibt die Teildatei). Danach wird hart
+ *  gekillt. */
+export const ABBRUCH_FRIST_MS = 5000;
+
+/**
+ * Geordneter Abbruch eines Kindprozesses: SIGTERM, nach `fristMs` ohne
+ * Prozessende SIGKILL. Welche Stufe gegriffen hat, steht am Ende im
+ * KonvertierenErgebnis: Code 6 (pdf2md hat sauber beendet, Teildatei),
+ * Signal "SIGTERM" oder Signal "SIGKILL" (Frist ueberschritten).
+ *
+ * Fuer ein bereits beendetes Kind wird nichts gesendet; der Eskalations-
+ * Timer wird beim Prozessende geloescht.
+ */
+export function kindAbbrechen(
+	kind: ChildProcess,
+	fristMs: number = ABBRUCH_FRIST_MS,
+): void {
+	if (kind.exitCode !== null || kind.signalCode !== null) return;
+	if (!kind.kill("SIGTERM")) return;
+	const timer = setTimeout(() => {
+		kind.kill("SIGKILL");
+	}, fristMs);
+	kind.once("exit", () => clearTimeout(timer));
+}
 
 /**
  * `spawn` in schlanker Signatur, damit ein Test eine Attrappe einschieben
@@ -211,22 +242,18 @@ export function pdfKonvertieren(
 		kind.stdout?.on("data", (stueck) => stdoutPuffer.schreibe(String(stueck)));
 		kind.stderr?.on("data", (stueck) => stderrPuffer.schreibe(String(stueck)));
 		// Haengender Lauf (z. B. blockierter Modell-Download): nicht ewig
-		// blockieren — nach `timeoutMs` killen. Bewusst OHNE `unref`: der Timer
-		// wird ueber `fertig` geloescht, sobald der Prozess (normal oder per
-		// Kill) endet — bis dahin soll er den Event-Loop offen halten, sonst
-		// koennte der Prozess vor dem eigentlichen Timeout-Kill beendet werden.
+		// blockieren — nach `timeoutMs` geordnet abbrechen (SIGTERM, nach
+		// `abbruchFristMs` SIGKILL). Bewusst OHNE `unref`: der Timer wird
+		// ueber `fertig` geloescht, sobald der Prozess endet — bis dahin soll
+		// er den Event-Loop offen halten, sonst koennte der Prozess vor dem
+		// eigentlichen Timeout-Abbruch beendet werden.
+		let zeitUeberschritten = false;
 		const timer =
 			steuerung.timeoutMs === undefined
 				? null
 				: setTimeout(() => {
-						kind.kill();
-						erledigt({
-							code: null,
-							signal: null,
-							timeout: true,
-							stdoutLetzte,
-							stderrLetzte,
-						});
+						zeitUeberschritten = true;
+						kindAbbrechen(kind, steuerung.abbruchFristMs);
 					}, steuerung.timeoutMs);
 		const fertig = (ergebnis: KonvertierenErgebnis) => {
 			if (timer !== null) clearTimeout(timer);
@@ -238,12 +265,24 @@ export function pdfKonvertieren(
 			// Fehlerzeile ueber `sammle`, damit das „hoechstens 5"-Versprechen
 			// auch mit dem Fehlerereignis gilt.
 			sammle(stderrLetzte, String(fehler));
-			fertig({ code: null, signal: null, timeout: false, stdoutLetzte, stderrLetzte });
+			fertig({
+				code: null,
+				signal: null,
+				timeout: zeitUeberschritten,
+				stdoutLetzte,
+				stderrLetzte,
+			});
 		});
 		kind.on("close", (code, signal) => {
 			stdoutPuffer.flush();
 			stderrPuffer.flush();
-			fertig({ code, signal: signal ?? null, timeout: false, stdoutLetzte, stderrLetzte });
+			fertig({
+				code,
+				signal: signal ?? null,
+				timeout: zeitUeberschritten,
+				stdoutLetzte,
+				stderrLetzte,
+			});
 		});
 	});
 }

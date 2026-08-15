@@ -757,12 +757,17 @@ def dokument_bauen(frontmatter_text, quelle_text, bloecke_texte):
 def frontmatter_bauen(titel, quelle_pdf_pfad, seiten, seiten_textlayer,
                       seiten_ocr, seiten_diagramm=0, seiten_entgleist=0,
                       woerter_verdaechtig=0, woerter_korrigiert=0,
-                      ocr_modell=None, ocr_datum=None, ocr_zeitpunkt=None):
+                      ocr_modell=None, ocr_datum=None, ocr_zeitpunkt=None,
+                      abgebrochen=None):
     """Baut das YAML-Frontmatter der Vorschau-Datei.
 
     Reine Form der Logik aus pdf2md.py main() — genau hier lebt sie, damit
     Fixture-Generator und main() dieselbe Quelle nutzen (Format-Drift wird im
     CI rot). Konditionale Felder nur bei > 0 / gesetztem Wert, wie in main().
+
+    `abgebrochen` (z. B. "seite 5 von 10") kennzeichnet eine Teildatei aus
+    einem geordneten Abbruch (Issue #25): die Datei ist unvollstaendig, aber
+    bewusst geschrieben statt verworfen.
 
     `vorschau-format: 1` kennzeichnet Konformitaet mit docs/vorschau-format.md
     und steht immer; es ist aktuell reserviert (kein Konsument im Plugin).
@@ -786,6 +791,8 @@ def frontmatter_bauen(titel, quelle_pdf_pfad, seiten, seiten_textlayer,
         zeilen.append(f"woerter-verdaechtig: {woerter_verdaechtig}")
     if woerter_korrigiert:
         zeilen.append(f"woerter-korrigiert: {woerter_korrigiert}")
+    if abgebrochen:
+        zeilen.append(f"abgebrochen: {abgebrochen}")
     if ocr_modell:
         zeilen.append(f"ocr-modell: {ocr_modell}")
     zeilen += [

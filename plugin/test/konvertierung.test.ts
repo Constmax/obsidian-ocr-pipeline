@@ -1,20 +1,40 @@
 import { EventEmitter } from "node:events";
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { ChildProcess } from "node:child_process";
 
 import {
 	pdfKonvertieren,
+	kindAbbrechen,
 	type KonvertierenErgebnis,
 	type SpawnFunktion,
 } from "../src/konvertierung.ts";
 
-/** Kindprozess-Attrappe: EventEmitter mit stdout/stderr, wie `spawn` sie liefert. */
+/**
+ * Kindprozess-Attrappe: EventEmitter mit stdout/stderr, wie `spawn` sie
+ * liefert. `kill` zeichnet die Signale auf; bei SIGKILL (oder bei
+ * `endeBeiSigterm`, dann schon auf SIGTERM) beendet sich der Fake selbst
+ * und emittiert exit/close wie ein echtes Kind.
+ */
 class FakeKind extends EventEmitter {
 	stdout = Object.assign(new EventEmitter(), { setEncoding: () => {} });
 	stderr = Object.assign(new EventEmitter(), { setEncoding: () => {} });
-	gekillt = false;
-	kill = () => {
-		this.gekillt = true;
+	exitCode: number | null = null;
+	signalCode: NodeJS.Signals | null = null;
+	signale: NodeJS.Signals[] = [];
+	/** Beendet den Fake bei SIGTERM geordnet mit diesem Exit-Code. */
+	endeBeiSigterm?: number;
+	kill = (signal?: NodeJS.Signals) => {
+		this.signale.push(signal ?? "SIGTERM");
+		if (signal === "SIGKILL") {
+			this.signalCode = "SIGKILL";
+			this.emit("exit", null, "SIGKILL");
+			this.emit("close", null, "SIGKILL");
+		} else if (this.endeBeiSigterm !== undefined) {
+			this.exitCode = this.endeBeiSigterm;
+			this.emit("exit", this.endeBeiSigterm, null);
+			this.emit("close", this.endeBeiSigterm, null);
+		}
 		return true;
 	};
 }
@@ -163,7 +183,7 @@ test("onKind meldet den Kindprozess", async () => {
 	assert.equal(gemeldet, kind);
 });
 
-test("Zeitueberschreitung: Kind wird gekillt, Ergebnis mit timeout: true", async () => {
+test("Timeout: haengendes Kind erst SIGTERM, nach Frist SIGKILL, timeout: true", async () => {
 	const kind = new FakeKind();
 	const versprechen = pdfKonvertieren(
 		"raw/haengt.pdf",
@@ -171,17 +191,54 @@ test("Zeitueberschreitung: Kind wird gekillt, Ergebnis mit timeout: true", async
 		"/Users/test/bin/pdf2md",
 		"/vault",
 		spawnAttrappe([], kind),
-		{ timeoutMs: 20 },
+		{ timeoutMs: 20, abbruchFristMs: 30 },
 	);
 
 	kind.stdout.emit("data", "→ S.1: 12.3 s\n");
 
 	const ergebnis = await versprechen;
-	assert.equal(kind.gekillt, true);
+	assert.deepEqual(kind.signale, ["SIGTERM", "SIGKILL"]);
 	assert.equal(ergebnis.timeout, true);
 	assert.equal(ergebnis.code, null);
-	assert.equal(ergebnis.signal, null);
+	assert.equal(ergebnis.signal, "SIGKILL");
 	assert.deepEqual(ergebnis.stdoutLetzte, ["→ S.1: 12.3 s"]);
+});
+
+test("Timeout: Kind beendet auf SIGTERM geordnet (Code 6), kein SIGKILL", async () => {
+	const kind = new FakeKind();
+	kind.endeBeiSigterm = 6;
+	const versprechen = pdfKonvertieren(
+		"raw/haengt.pdf",
+		"_ocr-vorschau",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnAttrappe([], kind),
+		{ timeoutMs: 20, abbruchFristMs: 200 },
+	);
+
+	const ergebnis = await versprechen;
+	assert.deepEqual(kind.signale, ["SIGTERM"]);
+	assert.equal(ergebnis.timeout, true);
+	assert.equal(ergebnis.code, 6);
+	assert.equal(ergebnis.signal, null);
+});
+
+test("kindAbbrechen: haengendes Kind erst SIGTERM, nach Frist SIGKILL", async () => {
+	const kind = new FakeKind();
+
+	kindAbbrechen(kind as unknown as ChildProcess, 20);
+	assert.deepEqual(kind.signale, ["SIGTERM"]);
+
+	await new Promise((fertig) => setTimeout(fertig, 50));
+	assert.deepEqual(kind.signale, ["SIGTERM", "SIGKILL"]);
+});
+
+test("kindAbbrechen: beendetes Kind bekommt kein Signal", () => {
+	const kind = new FakeKind();
+	kind.exitCode = 6;
+
+	kindAbbrechen(kind as unknown as ChildProcess, 20);
+	assert.deepEqual(kind.signale, []);
 });
 
 test("Prozess durch Signal beendet: Signal wird gemeldet", async () => {
@@ -199,28 +256,6 @@ test("Prozess durch Signal beendet: Signal wird gemeldet", async () => {
 	const ergebnis = await versprechen;
 	assert.equal(ergebnis.code, null);
 	assert.equal(ergebnis.signal, "SIGTERM");
-});
-
-test("close nach dem Timeout-Kill ueberschreibt das timeout-Ergebnis nicht", async () => {
-	const kind = new FakeKind();
-	const versprechen = pdfKonvertieren(
-		"raw/haengt.pdf",
-		"_ocr-vorschau",
-		"/Users/test/bin/pdf2md",
-		"/vault",
-		spawnAttrappe([], kind),
-		{ timeoutMs: 20 },
-	);
-
-	const ergebnis = await versprechen;
-	assert.equal(ergebnis.timeout, true);
-
-	// Der Kill loest im echten Leben selbst ein close aus — das muss harmlos
-	// sein und darf das Ergebnis nicht anfassen (der Promise ist schon
-	// aufgeloest, aber der Test sichert ab, dass kein Fehler auftritt).
-	kind.emit("close", null, "SIGKILL");
-	await new Promise((fertig) => setTimeout(fertig, 10));
-	assert.equal(ergebnis.timeout, true);
 });
 
 test("ruft pdf2md mit --seiten auf, wenn seiten gesetzt", async () => {
