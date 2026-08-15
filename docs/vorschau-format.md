@@ -36,7 +36,11 @@ zur Erzeugungslauf. Jedes Feld ist ein flaches Schlüssel-Wert-Paar.
    (SIGINT/SIGTERM, Exit-Code 6): die Datei ist unvollständig, aber bewusst
    geschrieben statt verworfen. Die Zählfelder (`seiten`, `seiten-ocr`, …)
    beziehen sich dann nur auf die tatsächlich geschriebenen Seiten; `m` im
-   Vermerk ist die geplante Gesamtzahl des Laufs.
+   Vermerk ist die geplante Gesamtzahl des Laufs. Bricht der Lauf **vor der
+   ersten Seite** ab, entsteht keine Datei und pdf2md beendet sich mit
+   Exit-Code 7 — die Anzeige darf dann keine Teildatei behaupten. Ein Abbruch
+   während der *letzten* Seite erzeugt keine Teildatei: die Datei ist
+   vollständig und trägt keinen Vermerk.
 
 ## 2. Seitenmarker
 

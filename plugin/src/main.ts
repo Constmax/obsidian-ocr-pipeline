@@ -280,7 +280,8 @@ export default class OcrVorschauPlugin extends Plugin {
 			laufendeNotice = new Notice(`OCR-Vorschau: Konvertiere „${name}“ …`, 0);
 			// Abbruch-Button in der Notice: geordneter Abbruch (SIGTERM, nach
 			// Frist SIGKILL). Die Stufe, die gegriffen hat, steht im
-			// Ergebnis — Code 6 (pdf2md hat die Teildatei geschrieben) oder
+			// Ergebnis — Code 6 (pdf2md hat die Teildatei geschrieben),
+			// Code 7 (Abbruch vor der ersten Seite, keine Datei) oder
 			// Signal SIGTERM/SIGKILL.
 			let abgebrochen = false;
 			const abbruchKnopf = laufendeNotice.containerEl.createEl("button", {
@@ -338,6 +339,10 @@ export default class OcrVorschauPlugin extends Plugin {
 				// pdf2md hat auf SIGTERM geordnet beendet: Teildatei liegt im
 				// Vorschau-Ordner, im Frontmatter als unvollstaendig markiert.
 				codeText = "abgebrochen — Teildatei erstellt (unvollständig)";
+			} else if (ergebnis.code === 7) {
+				// Abbruch vor der ersten Seite (z. B. haengender Modell-Download
+				// beim Timeout): pdf2md hat nichts geschrieben — keine Teildatei.
+				codeText = "abgebrochen — vor der ersten Seite (keine Teildatei)";
 			} else if (ergebnis.signal === "SIGKILL") {
 				// Stufe 2: der Prozess hat die Frist nach SIGTERM nicht
 				// geschafft und wurde hart beendet — keine Teildatei.

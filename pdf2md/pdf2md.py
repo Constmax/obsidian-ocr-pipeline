@@ -320,7 +320,8 @@ def main():
             erzwungen.add(int(teil))
     auswahl = seiten_parsen(a.seiten)
     # Erster SIGINT/SIGTERM: Flag setzen, die laufende Seite zu Ende rechnen,
-    # dann Teildatei schreiben und mit Code 6 beenden. Zweites Signal: sofort
+    # dann Teildatei schreiben und mit Code 6 beenden (vor der ersten Seite
+    # gibt es nichts zu schreiben — dann Code 7). Zweites Signal: sofort
     # beenden (raeumt trotzdem auf, siehe finally).
     abbruch.installieren()
     # Zwischenbilder je Lauf in ein eigenes TemporaryDirectory: es raeumt bei
@@ -545,36 +546,44 @@ def main():
                     f"{art}, {modus}", verworfen, spur, f"ocr | {art}, {modus}",
                     befunde)
 
-        if abbruch.angefordert():
+        if abbruch.angefordert() and seiten and letzte_seite < seiten[-1][0]:
             # Teildatei: das bis dahin Erzeugte schreiben statt verwerfen.
             # Der Vermerk „abgebrochen: seite n von m" kennzeichnet sie als
             # unvollstaendig; die Zaehlfelder beziehen sich nur auf die
-            # tatsaechlich geschriebenen Seiten. Vor der ersten Seite gibt es
-            # nichts zu retten — dann nur mit Code 6 beenden.
+            # tatsaechlich geschriebenen Seiten. Sind alle Seiten fertig, ist
+            # der Abbruch erst nach der letzten Seite eingetroffen: die Datei
+            # ist vollstaendig und laeuft durch den normalen Abschluss statt
+            # als Teildatei gebrandmarkt zu werden.
             geschrieben = [s for s in seiten if s[0] <= letzte_seite]
-            if geschrieben:
-                kopf = frontmatter_bauen(
-                    titel=pdf.stem,
-                    quelle_pdf_pfad=pdf,
-                    seiten=len(geschrieben),
-                    seiten_textlayer=sum(1 for s in geschrieben
-                                         if s[5] is not None),
-                    seiten_ocr=sum(1 for s in geschrieben if s[5] is None),
-                    seiten_diagramm=n_diag,
-                    seiten_entgleist=n_entgleist,
-                    woerter_verdaechtig=n_verdaechtig,
-                    woerter_korrigiert=n_korrigiert,
-                    ocr_modell=MODEL if n_ocr else None,
-                    ocr_datum=date.today().isoformat(),
-                    ocr_zeitpunkt=datetime.now().isoformat(timespec="seconds"),
-                    abgebrochen=f"seite {letzte_seite} von {len(seiten)}",
-                )
-                quelle = f"Quelle: [[{pdf.as_posix()}]]\n"
-                ziel = a.out / f"{pdf.stem}.md"
-                ziel.write_text(dokument_bauen(kopf, quelle, md),
-                                encoding="utf-8")
-                print(f"\nAbbruch: Teildatei geschrieben "
-                      f"({letzte_seite} von {len(seiten)} Seiten) → {ziel}")
+            if not geschrieben:
+                # Vor der ersten Seite gibt es nichts zu retten. Code 7
+                # unterscheidet den Fall ohne Datei vom Teildatei-Fall
+                # (Code 6) — der Aufrufer (Plugin-Anzeige) behauptet sonst
+                # eine Teildatei, die es nicht gibt.
+                print("Abbruch vor der ersten Seite — keine Teildatei geschrieben.")
+                sys.exit(7)
+            kopf = frontmatter_bauen(
+                titel=pdf.stem,
+                quelle_pdf_pfad=pdf,
+                seiten=len(geschrieben),
+                seiten_textlayer=sum(1 for s in geschrieben
+                                     if s[5] is not None),
+                seiten_ocr=sum(1 for s in geschrieben if s[5] is None),
+                seiten_diagramm=n_diag,
+                seiten_entgleist=n_entgleist,
+                woerter_verdaechtig=n_verdaechtig,
+                woerter_korrigiert=n_korrigiert,
+                ocr_modell=MODEL if n_ocr else None,
+                ocr_datum=date.today().isoformat(),
+                ocr_zeitpunkt=datetime.now().isoformat(timespec="seconds"),
+                abgebrochen=f"seite {letzte_seite} von {len(seiten)}",
+            )
+            quelle = f"Quelle: [[{pdf.as_posix()}]]\n"
+            ziel = a.out / f"{pdf.stem}.md"
+            ziel.write_text(dokument_bauen(kopf, quelle, md),
+                            encoding="utf-8")
+            print(f"\nAbbruch: Teildatei geschrieben "
+                  f"({letzte_seite} von {len(seiten)} Seiten) → {ziel}")
             sys.exit(6)
 
         ges = time.perf_counter() - t_ges
