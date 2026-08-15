@@ -538,6 +538,21 @@
 
 /* ── Dialoge und Einstellungen ──────────────────────────────────────────── */
 
+.ocr-notice-abbrechen {
+	margin-left: 8px;
+	padding: 2px 10px;
+	font-size: var(--font-ui-smaller);
+	border-radius: var(--radius-s);
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	cursor: pointer;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.ocr-notice-abbrechen:hover {
+	background: var(--interactive-hover);
+}
+
 .ocr-notiz-feld {
 	width: 100%;
 	min-height: 120px;

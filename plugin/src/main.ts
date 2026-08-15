@@ -18,7 +18,7 @@ import {
 import { ANSICHT_TYP, OcrAbgleichAnsicht, PdfAuswahlModal, SeitenAuswahlModal } from "./ansicht.ts";
 import { Bestand } from "./dateiaktionen.ts";
 import { Einstellungen, EinstellungenTab, STANDARD } from "./einstellungen.ts";
-import { pdfKonvertieren } from "./konvertierung.ts";
+import { kindAbbrechen, pdfKonvertieren } from "./konvertierung.ts";
 
 const ABGLEICH_ENTPRELLT_MS = 500;
 
@@ -153,7 +153,10 @@ export default class OcrVorschauPlugin extends Plugin {
 
 	onunload(): void {
 		if (this.abgleichTimer !== null) window.clearTimeout(this.abgleichTimer);
-		this.laufendesKind?.kill();
+		// Geordneter Abbruch (SIGTERM, nach Frist SIGKILL): ein haengender
+		// Lauf darf Obsidian nicht auf ewig blockieren, und pdf2md bekommt die
+		// Chance, seine Teildatei zu schreiben.
+		if (this.laufendesKind !== null) kindAbbrechen(this.laufendesKind);
 		this.laufendesKind = null;
 		// Der Manifest-Schreibvorgang ist um 500 ms entprellt. Wird Obsidian
 		// innerhalb dieser Spanne nach einer Entscheidung geschlossen, stirbt der
@@ -210,8 +213,8 @@ export default class OcrVorschauPlugin extends Plugin {
 	/**
 	 * Befehl „PDF konvertieren und im OCR-Abgleich öffnen": eine PDF aus dem
 	 * Vault waehlen, per pdf2md konvertieren, dann den Abgleich mit dem
-	 * Ergebnis oeffnen. Rückmeldung bewusst per Notice — Fortschrittsmodal
-	 * und Abbruch sind Roadmap-Themen.
+	 * Ergebnis oeffnen. Rückmeldung per Notice mit Abbruch-Button — der
+	 * Fortschrittsmodal mit Fortschrittsbalken bleibt Roadmap.
 	 */
 	async pdfAuswaehlenUndKonvertieren(): Promise<void> {
 		if (!this.konvertierungFrei()) return;
@@ -275,6 +278,22 @@ export default class OcrVorschauPlugin extends Plugin {
 			const pdfRel = datei.path;
 			const outRel = normalizePath(this.einstellungen.vorschauOrdner);
 			laufendeNotice = new Notice(`OCR-Vorschau: Konvertiere „${name}“ …`, 0);
+			// Abbruch-Button in der Notice: geordneter Abbruch (SIGTERM, nach
+			// Frist SIGKILL). Die Stufe, die gegriffen hat, steht im
+			// Ergebnis — Code 6 (pdf2md hat die Teildatei geschrieben) oder
+			// Signal SIGTERM/SIGKILL.
+			let abgebrochen = false;
+			const abbruchKnopf = laufendeNotice.containerEl.createEl("button", {
+				text: "Abbrechen",
+				cls: "ocr-notice-abbrechen",
+			});
+			abbruchKnopf.addEventListener("click", () => {
+				if (abgebrochen) return;
+				abgebrochen = true;
+				abbruchKnopf.detach();
+				laufendeNotice?.setMessage(`OCR-Vorschau: „${name}“ wird abgebrochen …`);
+				if (this.laufendesKind !== null) kindAbbrechen(this.laufendesKind);
+			});
 			const ergebnis = await pdfKonvertieren(
 				pdfRel,
 				outRel,
@@ -288,7 +307,8 @@ export default class OcrVorschauPlugin extends Plugin {
 						this.laufendesKind = kind;
 					},
 					onFortschritt: (e) => {
-						if (e.typ === "seite" && laufendeNotice) {
+						if (e.typ !== "seite" || abgebrochen) return;
+						if (laufendeNotice) {
 							const txt = e.entgleist
 								? `— Seite ${e.nr} von ${e.von} (entgleist)`
 								: `— Seite ${e.nr} von ${e.von}`;
@@ -313,16 +333,24 @@ export default class OcrVorschauPlugin extends Plugin {
 						: undefined) ??
 					(stdoutLetzte.length > 0 ? stdoutLetzte[stdoutLetzte.length - 1] : undefined) ??
 					"";
-				let codeText: string;
-				if (ergebnis.timeout) {
-					codeText = `nach ${KONVERTIERUNG_TIMEOUT_MS / 60000} min abgebrochen`;
-				} else if (ergebnis.code === null && ergebnis.signal !== null) {
-					codeText = `abgebrochen (Signal ${ergebnis.signal})`;
-				} else if (ergebnis.code === null) {
-					codeText = "Startfehler";
-				} else {
-					codeText = `Code ${ergebnis.code}`;
-				}
+			let codeText: string;
+			if (ergebnis.code === 6) {
+				// pdf2md hat auf SIGTERM geordnet beendet: Teildatei liegt im
+				// Vorschau-Ordner, im Frontmatter als unvollstaendig markiert.
+				codeText = "abgebrochen — Teildatei erstellt (unvollständig)";
+			} else if (ergebnis.signal === "SIGKILL") {
+				// Stufe 2: der Prozess hat die Frist nach SIGTERM nicht
+				// geschafft und wurde hart beendet — keine Teildatei.
+				codeText = "abgebrochen — nach Frist hart beendet (SIGKILL)";
+			} else if (ergebnis.timeout) {
+				codeText = `nach ${KONVERTIERUNG_TIMEOUT_MS / 60000} min abgebrochen`;
+			} else if (ergebnis.code === null && ergebnis.signal !== null) {
+				codeText = `abgebrochen (Signal ${ergebnis.signal})`;
+			} else if (ergebnis.code === null) {
+				codeText = "Startfehler";
+			} else {
+				codeText = `Code ${ergebnis.code}`;
+			}
 				let zusatz = detail.length > 0 ? ` — ${detail}` : "";
 				if (ergebnis.code === null && /ENOENT/.test(detail)) {
 					// Der ausfuehrbare Kandidat existiert nicht (oder ist nicht

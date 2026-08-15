@@ -18,10 +18,12 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from datetime import date, datetime
 from pathlib import Path
 
+import abbruch
 import woerterbuch
 import zusammenbau
 from zusammenbau import (als_callout, dokument_bauen, entpua, fragmente_verschmelzen,
@@ -317,9 +319,18 @@ def main():
         else:
             erzwungen.add(int(teil))
     auswahl = seiten_parsen(a.seiten)
+    # Erster SIGINT/SIGTERM: Flag setzen, die laufende Seite zu Ende rechnen,
+    # dann Teildatei schreiben und mit Code 6 beenden. Zweites Signal: sofort
+    # beenden (raeumt trotzdem auf, siehe finally).
+    abbruch.installieren()
+    # Zwischenbilder je Lauf in ein eigenes TemporaryDirectory: es raeumt bei
+    # normalem Ende, SystemExit und KeyboardInterrupt gleichermassen auf und
+    # loest zugleich das Aufraeum-Problem paralleler Lauefe (zwei Prozesse
+    # fassten sich vorher per Glob gegenseitig an).
     global TMP
-    TMP = OUT / f"_tmp-{pdf.stem}"
-    TMP.mkdir(parents=True, exist_ok=True)
+    OUT.mkdir(parents=True, exist_ok=True)
+    tmp_dir = tempfile.TemporaryDirectory(prefix=f"_tmp-{pdf.stem}-", dir=OUT)
+    TMP = Path(tmp_dir.name)
     try:
         a.out.mkdir(parents=True, exist_ok=True)
 
@@ -364,10 +375,13 @@ def main():
 
         md, t_ges, n_diag, n_entgleist = [], time.perf_counter(), 0, 0
         n_verdaechtig, n_korrigiert, bericht = 0, 0, []
+        # Letzte fertig geschriebene Seite — fuer den abgebrochen-Vermerk.
+        letzte_seite = 0
 
         def ablegen(nr, absaetze, diagramm, dt, chars, quelle, weg, spur=(),
                     marker_zusatz=None, befunde=()):
-            nonlocal n_diag
+            nonlocal n_diag, letzte_seite
+            letzte_seite = nr
             # %% %% ist Obsidians eigene Kommentarsyntax und bleibt auch in der
             # Live-Vorschau unsichtbar; <!-- --> wird dort angezeigt.
             # marker_zusatz ist Teil der Marker-Grammatik (docs/ocr-vorschau.md):
@@ -442,6 +456,10 @@ def main():
         dump = []
 
         for nr, png, chars, art, steg, textlayer, kaesten, diagramm in seiten:
+            # Geordneter Abbruch: die laufende Seite ist fertig, vor der
+            # naechsten wird angehalten (Flag abbruch.py).
+            if abbruch.angefordert():
+                break
             t = time.perf_counter()
             diagramm = diagramm or nr in erzwungen
             if textlayer is not None:
@@ -527,6 +545,38 @@ def main():
                     f"{art}, {modus}", verworfen, spur, f"ocr | {art}, {modus}",
                     befunde)
 
+        if abbruch.angefordert():
+            # Teildatei: das bis dahin Erzeugte schreiben statt verwerfen.
+            # Der Vermerk „abgebrochen: seite n von m" kennzeichnet sie als
+            # unvollstaendig; die Zaehlfelder beziehen sich nur auf die
+            # tatsaechlich geschriebenen Seiten. Vor der ersten Seite gibt es
+            # nichts zu retten — dann nur mit Code 6 beenden.
+            geschrieben = [s for s in seiten if s[0] <= letzte_seite]
+            if geschrieben:
+                kopf = frontmatter_bauen(
+                    titel=pdf.stem,
+                    quelle_pdf_pfad=pdf,
+                    seiten=len(geschrieben),
+                    seiten_textlayer=sum(1 for s in geschrieben
+                                         if s[5] is not None),
+                    seiten_ocr=sum(1 for s in geschrieben if s[5] is None),
+                    seiten_diagramm=n_diag,
+                    seiten_entgleist=n_entgleist,
+                    woerter_verdaechtig=n_verdaechtig,
+                    woerter_korrigiert=n_korrigiert,
+                    ocr_modell=MODEL if n_ocr else None,
+                    ocr_datum=date.today().isoformat(),
+                    ocr_zeitpunkt=datetime.now().isoformat(timespec="seconds"),
+                    abgebrochen=f"seite {letzte_seite} von {len(seiten)}",
+                )
+                quelle = f"Quelle: [[{pdf.as_posix()}]]\n"
+                ziel = a.out / f"{pdf.stem}.md"
+                ziel.write_text(dokument_bauen(kopf, quelle, md),
+                                encoding="utf-8")
+                print(f"\nAbbruch: Teildatei geschrieben "
+                      f"({letzte_seite} von {len(seiten)} Seiten) → {ziel}")
+            sys.exit(6)
+
         ges = time.perf_counter() - t_ges
         # Welche Seiten exakt sind und welche erkannt, muss in der Datei stehen:
         # nur bei den OCR-Seiten ist ein Rueckgriff aufs Original noetig.
@@ -577,9 +627,7 @@ def main():
         print(f"\n{ges:.1f} s gesamt ({ges/len(seiten):.1f} s/Seite)\n→ {ziel}")
     finally:
         # Zwischenbilder nicht liegenlassen — auch nicht bei Abbruch.
-        for tmp in TMP.glob("_seite*.png"):
-            tmp.unlink()
-        TMP.rmdir()
+        tmp_dir.cleanup()
 
 if __name__ == "__main__":
     main()
