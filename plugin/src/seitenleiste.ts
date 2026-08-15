@@ -34,6 +34,35 @@ function passtZumFilter(status: Status, filter: StatusFilter): boolean {
 	return status === filter;
 }
 
+/** Ab so vielen Eintraegen erscheint der Fortschritt. Darunter zaehlt man die
+ *  Liste schneller, als eine Leiste sie zusammenfassen koennte. */
+const FORTSCHRITT_AB = 5;
+
+/** Reihenfolge und Beschriftung der Statusgruppen. `neu-erzeugt` steht oben:
+ *  eine Datei, die unter der Hand neu geschrieben wurde, ist das Dringendste
+ *  in der Liste. `uebernommen` kommt nie vor — solche Eintraege werden gar
+ *  nicht gelistet. */
+const GRUPPEN: ReadonlyArray<{ status: Status; label: string }> = [
+	{ status: "neu-erzeugt", label: "Neu erzeugt" },
+	{ status: "offen", label: "Offen" },
+	{ status: "akzeptiert", label: "Angenommen" },
+	{ status: "abgelehnt", label: "Abgelehnt" },
+	{ status: "uebernommen", label: "Übernommen" },
+];
+
+function gruppenRang(status: Status): number {
+	const index = GRUPPEN.findIndex((g) => g.status === status);
+	return index < 0 ? GRUPPEN.length : index;
+}
+
+/** Mehr als ein Status in der Liste? Nur dann tragen Gruppenueberschriften
+ *  etwas bei — unter „Offen" waere „Offen (8)" ueber acht offenen Zeilen. */
+function istGemischt(liste: readonly Bestandseintrag[]): boolean {
+	const erster = liste[0];
+	if (erster === undefined) return false;
+	return liste.some((b) => b.eintrag.status !== erster.eintrag.status);
+}
+
 export class Seitenleiste {
 	beiAuswahl: ((name: string) => void) | null = null;
 	beiAktualisieren: (() => void) | null = null;
@@ -45,6 +74,9 @@ export class Seitenleiste {
 	private ordnerFehlt = false;
 	private ausgewaehlt: string | null = null;
 	private kopf: HTMLElement;
+	private fortschrittEl: HTMLElement;
+	private fortschrittText: HTMLElement;
+	private fortschrittBalken: HTMLElement;
 	private filterZeile: HTMLElement;
 	private suchfeld: HTMLInputElement;
 	private listeEl: HTMLElement;
@@ -62,6 +94,15 @@ export class Seitenleiste {
 		});
 		setIcon(aktualisieren.createSpan({ cls: "ocr-ikon" }), "refresh-cw");
 		aktualisieren.addEventListener("click", () => this.beiAktualisieren?.());
+
+		// Der Stand steht ueber den Filtern, nicht in ihnen: „Offen (8)" ist eine
+		// Auswahl, „4 von 12 geprüft" ist die Antwort auf „wie weit bin ich".
+		this.fortschrittEl = wurzel.createDiv({ cls: "ocr-fortschritt" });
+		this.fortschrittText = this.fortschrittEl.createDiv({ cls: "ocr-fortschritt-text" });
+		this.fortschrittBalken = this.fortschrittEl
+			.createDiv({ cls: "ocr-fortschritt-balken" })
+			.createDiv({ cls: "ocr-fortschritt-fuellung" });
+		this.fortschrittEl.hide();
 
 		this.filterZeile = wurzel.createDiv({ cls: "ocr-filterzeile" });
 		for (const option of FILTER) {
@@ -111,14 +152,25 @@ export class Seitenleiste {
 		}
 	}
 
-	/** Gefilterte Liste, in Anzeigereihenfolge. */
+	/** Gefilterte Liste, in Anzeigereihenfolge.
+	 *
+	 *  Sind mehrere Status sichtbar, ist die Reihenfolge nach Gruppen sortiert —
+	 *  und zwar HIER, nicht erst beim Zeichnen: `j`/`k` und das Weiterspringen
+	 *  nach einer Entscheidung laufen ueber diese Liste. Sortierte man nur die
+	 *  Anzeige, sprungen die Tasten quer durch die sichtbare Ordnung. */
 	private gefiltert(): Bestandseintrag[] {
 		const filter = this.filter;
 		const text = this.textFilter;
-		return this.bestand.filter(
+		const liste = this.bestand.filter(
 			(b) =>
 				passtZumFilter(b.eintrag.status, filter) &&
 				(text.length === 0 || b.name.toLowerCase().includes(text)),
+		);
+		if (!istGemischt(liste)) return liste;
+		// Stabile Sortierung: innerhalb der Gruppe bleibt die alphabetische
+		// Reihenfolge aus `Bestand.abgleichen` stehen.
+		return [...liste].sort(
+			(a, b) => gruppenRang(a.eintrag.status) - gruppenRang(b.eintrag.status),
 		);
 	}
 
@@ -149,6 +201,7 @@ export class Seitenleiste {
 
 	private zeichnen(): void {
 		this.chipsAktualisieren();
+		this.fortschrittAktualisieren();
 		const gefiltert = this.gefiltert();
 		const leer =
 			this.ordnerFehlt || this.bestand.length === 0 || gefiltert.length === 0;
@@ -194,7 +247,47 @@ export class Seitenleiste {
 
 		// `zeileBauen` haengt die Zeile schon an `listeEl` — ein zusaetzliches
 		// appendChild waere ein Wiederanhaengen desselben Knotens.
-		for (const b of gefiltert) this.zeileBauen(b);
+		const gruppieren = istGemischt(gefiltert);
+		let letzterRang = -1;
+		for (const b of gefiltert) {
+			if (gruppieren) {
+				const rang = gruppenRang(b.eintrag.status);
+				if (rang !== letzterRang) {
+					letzterRang = rang;
+					const anzahl = gefiltert.filter(
+						(x) => x.eintrag.status === b.eintrag.status,
+					).length;
+					this.listeEl.createDiv({
+						cls: "ocr-gruppe",
+						text: `${GRUPPEN[rang]?.label ?? b.eintrag.status} · ${anzahl}`,
+					});
+				}
+			}
+			this.zeileBauen(b);
+		}
+	}
+
+	/** „4 von 12 geprüft" — geprueft heisst: entschieden, also nicht mehr offen
+	 *  und nicht neu erzeugt. */
+	private fortschrittAktualisieren(): void {
+		const gesamt = this.bestand.length;
+		if (gesamt < FORTSCHRITT_AB) {
+			this.fortschrittEl.hide();
+			return;
+		}
+		const geprueft = this.bestand.filter(
+			(b) => b.eintrag.status === "akzeptiert" || b.eintrag.status === "abgelehnt",
+		).length;
+		this.fortschrittEl.show();
+		this.fortschrittText.empty();
+		this.fortschrittText.createSpan({
+			cls: "ocr-fortschritt-zahl",
+			text: String(geprueft),
+		});
+		this.fortschrittText.createSpan({ text: `von ${gesamt} geprüft` });
+		this.fortschrittBalken.setCssProps({
+			"--ocr-fortschritt": `${Math.round((geprueft / gesamt) * 100)}%`,
+		});
 	}
 
 	private zeileBauen(b: Bestandseintrag): void {

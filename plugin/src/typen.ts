@@ -56,6 +56,12 @@ export interface StatusEintrag {
 	/** Zuletzt betrachtete Seite — damit ein 40-Seiten-Durchgang fortsetzbar ist. */
 	"geprueft-bis": number | null;
 	notiz: string | null;
+	/** Wurde in dieser Fassung von Hand im Abgleich korrigiert (Werkbank-Modus)?
+	 *  Reine Anmerkung: sie traegt die einmalige Warnung, dass ein erneuter
+	 *  pdf2md-Lauf die Korrektur ueberschreibt. Faellt beim Loeschen des
+	 *  Manifests weg wie `notiz` — und wird bei einer Neukonvertierung
+	 *  zurueckgesetzt, weil die Korrekturen dann tatsaechlich weg sind. */
+	handbearbeitet: boolean;
 	/** Bei `neu-erzeugt`: die vorherige Entscheidung, damit sie nicht verschwindet. */
 	vorher: {
 		status: Status;

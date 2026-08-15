@@ -1,6 +1,16 @@
 import { App, PluginSettingTab, Setting, TextComponent, normalizePath } from "obsidian";
 import type OcrVorschauPlugin from "./main.ts";
 
+/** Zwei Bedienoberflaechen ueber demselben Unterbau (docs/review-ansicht.md):
+ *
+ *  - `pruefstrecke`: Spaltenkoepfe wie gehabt, grosse Entscheidungsleiste unten.
+ *    Auf Durchsatz gebaut — annehmen, ablehnen, weiter.
+ *  - `werkbank`: eine Werkzeugleiste statt drei Koepfen, Statuszeile unten,
+ *    Korrigieren direkt in der Vorschau-Datei. Auf Nachbessern gebaut.
+ *
+ *  Nicht bloss Kosmetik: nur die Werkbank schreibt in die `.md`. */
+export type Bedienmodus = "pruefstrecke" | "werkbank";
+
 export interface Einstellungen {
 	/** Ordner, in den pdf2md.py schreibt (`--out`). */
 	vorschauOrdner: string;
@@ -8,6 +18,7 @@ export interface Einstellungen {
 	abgelehntOrdner: string;
 	statusDatei: string;
 	markdownAnsicht: "gerendert" | "quelltext";
+	bedienmodus: Bedienmodus;
 	/** Spaltenbreiten in Prozent: Seitenleiste, PDF, Markdown. */
 	spaltenbreiten: [number, number, number];
 	/** Obergrenze fuer den Renderfaktor. Speicherbremse, keine Qualitaetswahl:
@@ -25,6 +36,7 @@ export const STANDARD: Einstellungen = {
 	abgelehntOrdner: "_ocr-vorschau/_abgelehnt",
 	statusDatei: "_ocr-vorschau/review-status.json",
 	markdownAnsicht: "gerendert",
+	bedienmodus: "pruefstrecke",
 	spaltenbreiten: [20, 40, 40],
 	pdfZoomMax: 2,
 	syncAktiv: true,
@@ -75,6 +87,28 @@ export class EinstellungenTab extends PluginSettingTab {
 			"statusDatei",
 			true,
 		);
+
+		new Setting(containerEl)
+			.setName("Bedienmodus")
+			.setDesc(
+				"Prüfstrecke: Spaltenköpfe und große Entscheidungsleiste — auf Durchsatz " +
+					"gebaut. Werkbank: eine Werkzeugleiste, Statuszeile und Korrigieren mit " +
+					"„e“ direkt in der Vorschau-Datei — auf Nachbessern gebaut. Nur die " +
+					"Werkbank schreibt in die .md; ein erneuter pdf2md-Lauf überschreibt " +
+					"solche Korrekturen.",
+			)
+			.addDropdown((d) =>
+				d
+					.addOption("pruefstrecke", "Prüfstrecke")
+					.addOption("werkbank", "Werkbank")
+					.setValue(this.plugin.einstellungen.bedienmodus)
+					.onChange(async (wert) => {
+						this.plugin.einstellungen.bedienmodus =
+							wert === "werkbank" ? "werkbank" : "pruefstrecke";
+						await this.plugin.einstellungenSpeichern();
+						this.plugin.offeneAnsicht()?.einstellungenAnwenden();
+					}),
+			);
 
 		new Setting(containerEl)
 			.setName("Markdown-Spalte")

@@ -19,15 +19,22 @@ import type { Herkunft, Seitenblock, Vorschau } from "./typen.ts";
 /** `%% S. 7 %%` und `%% S. 7 | ocr | zweispaltig, senkrecht @48% %%`.
  *  Der Zusatz ist optional, damit Dateien aus Laeufen vor der
  *  Marker-Erweiterung unveraendert weiter funktionieren. */
-const MARKER = /^%%\s*S\.\s*(\d+)\s*(?:\|(.*?))?\s*%%\s*$/;
+export const MARKER = /^%%\s*S\.\s*(\d+)\s*(?:\|(.*?))?\s*%%\s*$/;
 
 /** Zeile, die einen Codeblock oeffnet oder schliesst (``` oder ~~~). */
-const ZAUN = /^\s{0,3}(`{3,}|~{3,})/;
+export const ZAUN = /^\s{0,3}(`{3,}|~{3,})/;
 
 /** `Quelle: [[raw/ZR/skript.pdf]]` — pdf2md.py, main() — Quelle-Zeile. */
 const QUELLE_LINK = /^Quelle:\s*\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*$/;
 
 const HERKUENFTE: readonly string[] = ["textlayer", "ocr", "diagramm"];
+
+/** Platzhalter, die „kein Zusatz" bedeuten und nicht als Layout durchgereicht
+ *  werden duerfen. `None` stammt aus pdf2md-Laeufen vor dem Fix in
+ *  `pdf2md.py, seite_verarbeiten()` (marker_zusatz als achtes Positionsargument
+ *  landete auf dem falschen Parameter): deren Marker lauten `%% S. 1 | None %%`.
+ *  Ohne diese Liste steht im Seitenkopf woertlich „None" statt nichts. */
+const LEERE_ZUSAETZE: ReadonlySet<string> = new Set(["none", "null", "-", "—"]);
 
 /** Flaches `key: value` aus dem YAML-Frontmatter.
  *
@@ -74,7 +81,7 @@ function zusatzZerlegen(zusatz: string | undefined): {
 	const teile = zusatz
 		.split("|")
 		.map((t) => t.trim())
-		.filter((t) => t.length > 0);
+		.filter((t) => t.length > 0 && !LEERE_ZUSAETZE.has(t.toLowerCase()));
 	const erstes = teile[0];
 	if (erstes === undefined) return {};
 	if (!HERKUENFTE.includes(erstes)) {

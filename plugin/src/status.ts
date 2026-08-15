@@ -80,6 +80,7 @@ export function manifestLesen(text: string, jetzt: string): StatusManifest {
 				entschieden: textOderNull(e["entschieden"]),
 				"geprueft-bis": zahlOderNull(e["geprueft-bis"]),
 				notiz: textOderNull(e["notiz"]),
+				handbearbeitet: e["handbearbeitet"] === true,
 				vorher:
 					vorher !== null && istStatus(vorher["status"])
 						? {
@@ -130,6 +131,7 @@ function neuerEintrag(
 		entschieden: null,
 		"geprueft-bis": null,
 		notiz: null,
+		handbearbeitet: false,
 		vorher: null,
 	};
 }
@@ -252,6 +254,8 @@ export function abgleichen(
 			// der ALTEN Fassung gehoeren nicht mehr dazu.
 			eintrag["geprueft-bis"] = null;
 			eintrag.notiz = null;
+			// Der Inhalt ist neu geschrieben — von Hand Korrigiertes ist damit weg.
+			eintrag.handbearbeitet = false;
 			eintrag.vorher = {
 				status: alt.status,
 				entschieden: alt.entschieden,
@@ -270,6 +274,7 @@ export function abgleichen(
 			eintrag.status = "neu-erzeugt";
 			eintrag["geprueft-bis"] = null;
 			eintrag.notiz = null;
+			eintrag.handbearbeitet = false;
 			neuErzeugt.push(name);
 			eintraege[name] = eintrag;
 			continue;

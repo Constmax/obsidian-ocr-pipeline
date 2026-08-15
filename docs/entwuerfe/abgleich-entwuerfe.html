@@ -109,6 +109,26 @@ h1 {
   color: var(--text-zart);
 }
 
+.umgesetzt {
+  margin: 0;
+  padding: 12px 18px;
+  border-left: 3px solid var(--marker);
+  background: var(--flaeche);
+  border-radius: 0 6px 6px 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-leise);
+  max-width: 72ch;
+}
+
+.umgesetzt strong { color: var(--text); }
+.umgesetzt b {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text);
+}
+
 /* ── Abschnitte ── */
 section { padding-top: 64px; }
 h2 {
@@ -535,6 +555,14 @@ td:first-child { font-weight: 600; white-space: nowrap; }
     <span>Betroffen: styles.css · ansicht.ts · md-pane.ts · seitenleiste.ts</span>
     <span>Stand: 15.08.2026</span>
   </div>
+  <p class="umgesetzt">
+    <strong>Umgesetzt:</strong> <b>A</b> und <b>C</b> sind gebaut — als zwei
+    Bedienmodi über demselben Unterbau (Einstellung <em>Bedienmodus</em>,
+    Standard Prüfstrecke). Gemeinsam für beide: Entscheidungsleiste unten,
+    Fortschrittszähler, Statusgruppen in der Liste, und der Seitenkopf zeigt
+    kein <code>None</code> mehr. Nur die Werkbank schreibt in die
+    <span class="pfad">.md</span>. <b>B</b> ist nicht gebaut.
+  </p>
 </header>
 
 <section>

@@ -1,8 +1,21 @@
 import { App, Component, MarkdownRenderer, TFile } from "obsidian";
 
-import type { Seitenblock, Vorschau } from "./typen.ts";
+import type { Herkunft, Seitenblock, Vorschau } from "./typen.ts";
 
 const BILDENDUNGEN = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif", "svg"]);
+
+/** Beschriftung der Herkunft — eine Stelle fuer Badge und Statuszeile. */
+export const HERKUNFT_LABEL: Record<Herkunft, string> = {
+	textlayer: "Textlayer",
+	ocr: "OCR",
+	diagramm: "Diagramm",
+};
+
+const HERKUNFT_ERKLAERUNG: Record<Herkunft, string> = {
+	textlayer: "Verlustfrei aus dem Textlayer übernommen",
+	ocr: "Durch das Modell gelesen — Wortfehler möglich",
+	diagramm: "Als Seitenbild eingebettet, Text im Callout",
+};
 
 export type Darstellung = "gerendert" | "quelltext";
 
@@ -30,9 +43,20 @@ export class MarkdownSpalte {
 	private vorschau: Vorschau | null = null;
 	private datei: TFile | null = null;
 	private lauf = 0;
+	private bearbeitet: number | null = null;
 
 	/** Wird gerufen, wenn sich Hoehen geaendert haben koennen. */
 	beiVermessungNoetig: (() => void) | null = null;
+
+	/** Werkbank-Modus: den geaenderten Block in die Datei schreiben. Liefert
+	 *  `false`, wenn nicht geschrieben wurde — dann bleibt das Feld offen und
+	 *  der getippte Text ist nicht verloren. */
+	beiSpeichern: ((nr: number, text: string) => Promise<boolean>) | null = null;
+
+	/** Feld geoeffnet oder geschlossen — die Ansicht zieht ihre Statuszeile
+	 *  nach. Noetig, weil Speichern und Verwerfen auch ueber Tasten IM Feld
+	 *  laufen, an denen die Ansicht nicht beteiligt ist. */
+	beiBearbeitungswechsel: (() => void) | null = null;
 
 	constructor(
 		private app: App,
@@ -83,6 +107,7 @@ export class MarkdownSpalte {
 		this.container.empty();
 		this.vorschau = null;
 		this.datei = null;
+		this.bearbeitet = null;
 		if (leertext !== undefined) {
 			this.container.createDiv({ cls: "ocr-leer", text: leertext });
 		}
@@ -94,6 +119,9 @@ export class MarkdownSpalte {
 		if (vorschau === null || datei === null) return;
 
 		const lauf = ++this.lauf;
+		// Ein offenes Feld ueberlebt kein Neuzeichnen (Dateiwechsel, Umschalter):
+		// sein DOM-Knoten wird gleich weggeraeumt.
+		this.bearbeitet = null;
 		// Pro geoeffneter Datei eine eigene Kind-Komponente: ohne das leckt jeder
 		// Dateiwechsel die Render-Kinder von MarkdownRenderer.
 		this.renderKind?.unload();
@@ -134,28 +162,165 @@ export class MarkdownSpalte {
 			const koerper = el.createDiv({ cls: "ocr-md-koerper" });
 			this.bloecke.set(block.nr, el);
 
-			if (this.darstellung === "quelltext") {
-				koerper.createEl("pre", { cls: "ocr-md-quelltext" }).createEl("code", {
-					text: block.markdown,
-				});
-				continue;
-			}
-			if (!eager) {
-				koerper.createDiv({ cls: "ocr-md-platzhalter", text: "…" });
-				continue;
-			}
-			await MarkdownRenderer.render(
-				this.app,
-				block.markdown,
-				koerper,
-				datei.path,
-				kind,
-			);
+			await this.koerperFuellen(koerper, block, eager, kind, datei);
 			if (lauf !== this.lauf) return; // Datei wurde inzwischen gewechselt
-			this.einbettungenNachbessern(koerper, datei);
 		}
 
 		this.beiVermessungNoetig?.();
+	}
+
+	/** Der Inhalt eines Seitenblocks — beim Zeichnen und nach dem Bearbeiten
+	 *  derselbe Weg, damit ein gespeicherter Block genau so aussieht wie ein
+	 *  frisch geoeffneter. */
+	private async koerperFuellen(
+		koerper: HTMLElement,
+		block: Seitenblock,
+		eager: boolean,
+		kind: Component,
+		datei: TFile,
+	): Promise<void> {
+		koerper.empty();
+		if (this.darstellung === "quelltext") {
+			koerper.createEl("pre", { cls: "ocr-md-quelltext" }).createEl("code", {
+				text: block.markdown,
+			});
+			return;
+		}
+		if (!eager) {
+			koerper.createDiv({ cls: "ocr-md-platzhalter", text: "…" });
+			return;
+		}
+		await MarkdownRenderer.render(this.app, block.markdown, koerper, datei.path, kind);
+		this.einbettungenNachbessern(koerper, datei);
+	}
+
+	// ── Werkbank-Modus: eine Seite an Ort und Stelle korrigieren ──────────────
+	//
+	// Bearbeitet wird IMMER der Quelltext des Blocks, auch in der gerenderten
+	// Darstellung: die Vorschau ist Markdown, und ein WYSIWYG-Feld muesste
+	// zurueckuebersetzen — dabei geht genau das verloren (Fussnoten,
+	// `![[…]]`-Einbettungen), was hier haeufig vorkommt.
+
+	/** Der Block zu einer Seitennummer — fuer Kopf- und Statuszeile. */
+	blockZu(nr: number): Seitenblock | null {
+		return this.vorschau?.bloecke.find((b) => b.nr === nr) ?? null;
+	}
+
+	/** Seitennummer des offenen Bearbeitungsfeldes, sonst null. */
+	bearbeiteteSeite(): number | null {
+		return this.bearbeitet;
+	}
+
+	/** Oeffnet das Bearbeitungsfeld auf Seite `nr`. `false`, wenn es die Seite
+	 *  nicht gibt oder bereits ein Feld offen ist. */
+	bearbeitenStarten(nr: number): boolean {
+		if (this.bearbeitet !== null) return false;
+		const el = this.bloecke.get(nr);
+		const block = this.blockZu(nr);
+		if (el === undefined || block === null) return false;
+		const koerper = el.querySelector<HTMLElement>(".ocr-md-koerper");
+		if (koerper === null) return false;
+
+		koerper.empty();
+		el.addClass("ocr-md-seite-bearbeitet");
+		const feld = koerper.createEl("textarea", { cls: "ocr-md-editfeld" });
+		feld.value = block.markdown;
+		feld.spellcheck = false;
+		feld.addEventListener("input", () => this.feldHoeheAnpassen(feld));
+		feld.addEventListener("keydown", (e) => {
+			// Esc darf hier NICHT bis zur Ansicht durchlaufen: dort raeumt es die
+			// Auswahl ab und die halb getippte Korrektur waere weg.
+			if (e.key === "Escape") {
+				e.preventDefault();
+				e.stopPropagation();
+				this.bearbeitenAbbrechen();
+				return;
+			}
+			if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+				e.preventDefault();
+				e.stopPropagation();
+				void this.bearbeitenSpeichern();
+			}
+		});
+
+		const zeile = koerper.createDiv({ cls: "ocr-md-editzeile" });
+		const speichern = zeile.createEl("button", {
+			cls: "ocr-knopf ocr-knopf-klein ocr-knopf-haupt",
+			text: "Speichern (⌘↩)",
+		});
+		speichern.addEventListener("click", () => void this.bearbeitenSpeichern());
+		const abbrechen = zeile.createEl("button", {
+			cls: "ocr-knopf ocr-knopf-klein",
+			text: "Abbrechen (Esc)",
+		});
+		abbrechen.addEventListener("click", () => this.bearbeitenAbbrechen());
+
+		this.bearbeitet = nr;
+		this.feldHoeheAnpassen(feld);
+		feld.focus();
+		this.beiVermessungNoetig?.();
+		this.beiBearbeitungswechsel?.();
+		return true;
+	}
+
+	/** Verwirft die Aenderung und stellt die Darstellung wieder her. */
+	bearbeitenAbbrechen(): void {
+		const nr = this.bearbeitet;
+		if (nr === null) return;
+		this.bearbeitet = null;
+		void this.blockNeuZeichnen(nr);
+	}
+
+	/** Schreibt ueber `beiSpeichern` zurueck. `false` heisst: nichts geschrieben,
+	 *  das Feld bleibt offen. */
+	async bearbeitenSpeichern(): Promise<boolean> {
+		const nr = this.bearbeitet;
+		if (nr === null) return false;
+		const block = this.blockZu(nr);
+		const el = this.bloecke.get(nr);
+		const feld = el?.querySelector<HTMLTextAreaElement>(".ocr-md-editfeld");
+		if (block === null || feld === null || feld === undefined) return false;
+
+		const text = feld.value.trim();
+		if (text === block.markdown) {
+			// Nichts geaendert — kein Schreibvorgang, kein „handbearbeitet".
+			this.bearbeitet = null;
+			await this.blockNeuZeichnen(nr);
+			return true;
+		}
+		const ok = (await this.beiSpeichern?.(nr, text)) ?? false;
+		if (!ok) return false;
+		block.markdown = text;
+		this.bearbeitet = null;
+		await this.blockNeuZeichnen(nr);
+		return true;
+	}
+
+	private async blockNeuZeichnen(nr: number): Promise<void> {
+		const el = this.bloecke.get(nr);
+		const block = this.blockZu(nr);
+		const datei = this.datei;
+		const kind = this.renderKind;
+		this.beiBearbeitungswechsel?.();
+		if (el === undefined || block === null || datei === null || kind === null) return;
+		const koerper = el.querySelector<HTMLElement>(".ocr-md-koerper");
+		if (koerper === null) return;
+		el.removeClass("ocr-md-seite-bearbeitet");
+		const eager = (this.vorschau?.bloecke.length ?? 0) <= this.eagerLimit();
+		await this.koerperFuellen(koerper, block, eager, kind, datei);
+		this.beiVermessungNoetig?.();
+	}
+
+	/** Das Feld waechst mit dem Text: eine feste Hoehe hiesse, in einem
+	 *  Guckloch zu korrigieren, waehrend daneben die ganze Seite steht.
+	 *
+	 *  Ueber eine Custom Property statt `style.height`: dieselbe Bauart wie die
+	 *  Spaltenbreiten (`--ocr-spalte-basis`), und die Hoehenformel bleibt im
+	 *  Stylesheet. Erst `auto`, dann messen — das Lesen von `scrollHeight`
+	 *  erzwingt den Umbruch dazwischen. */
+	private feldHoeheAnpassen(feld: HTMLTextAreaElement): void {
+		feld.setCssProps({ "--ocr-feld-hoehe": "auto" });
+		feld.setCssProps({ "--ocr-feld-hoehe": `${feld.scrollHeight + 2}px` });
 	}
 
 	private kopfBauen(el: HTMLElement, block: Seitenblock): void {
@@ -164,21 +329,9 @@ export class MarkdownSpalte {
 		if (block.herkunft !== undefined) {
 			const badge = kopf.createSpan({
 				cls: `ocr-badge ocr-badge-${block.herkunft}`,
-				text:
-					block.herkunft === "textlayer"
-						? "Textlayer"
-						: block.herkunft === "ocr"
-							? "OCR"
-							: "Diagramm",
+				text: HERKUNFT_LABEL[block.herkunft],
 			});
-			badge.setAttribute(
-				"aria-label",
-				block.herkunft === "textlayer"
-					? "Verlustfrei aus dem Textlayer übernommen"
-					: block.herkunft === "ocr"
-						? "Durch das Modell gelesen — Wortfehler möglich"
-						: "Als Seitenbild eingebettet, Text im Callout",
-			);
+			badge.setAttribute("aria-label", HERKUNFT_ERKLAERUNG[block.herkunft]);
 		}
 		if (block.layout !== undefined) {
 			kopf.createSpan({ cls: "ocr-md-layout", text: block.layout });

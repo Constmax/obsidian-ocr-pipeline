@@ -323,7 +323,12 @@ export class Bestand {
 	/** Anmerkungsfelder ändern, ohne die Datei anzufassen. */
 	async eintragAendern(
 		name: string,
-		aenderung: Partial<Pick<StatusEintrag, "notiz" | "geprueft-bis" | "quelle-pdf-manuell">>,
+		aenderung: Partial<
+			Pick<
+				StatusEintrag,
+				"notiz" | "geprueft-bis" | "quelle-pdf-manuell" | "handbearbeitet"
+			>
+		>,
 	): Promise<void> {
 		const alt = this.manifest.eintraege[name];
 		if (alt === undefined) return;
