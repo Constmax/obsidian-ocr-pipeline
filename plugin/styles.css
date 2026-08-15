@@ -765,3 +765,7 @@
 	font-size: var(--font-ui-smaller);
 	color: var(--text-warning);
 }
+
+.ocr-seiten-eingabe {
+	width: 200px;
+}

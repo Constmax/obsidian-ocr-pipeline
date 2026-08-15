@@ -178,6 +178,9 @@ reprocess-raw "raw/StR/Rep-Faelle/fall-01.pdf" --force-ocr --split-columns
 
 # PDF → Markdown
 pdf2md "raw/ZR/skript.pdf" --out _ocr-vorschau
+
+# PDF → Markdown, nur bestimmte Seiten
+pdf2md "raw/ZR/skript.pdf" --seiten "1,3-5,8" --out _ocr-vorschau
 ```
 
 Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
