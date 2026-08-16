@@ -5,7 +5,7 @@
 from pathlib import Path
 
 from generate_preview_fixture import fixture_text
-from zusammenbau import build_frontmatter
+from assembly import build_frontmatter
 
 
 def test_frontmatter_aborted_only_when_set():

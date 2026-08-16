@@ -5,7 +5,7 @@ Separated from pdf2md.py so that the layer changing most frequently can be teste
 without MLX, fitz, and Vault assets (pdf2md/test). Imports nothing from sibling
 modules — dependency flows only in this direction:
 
-    pdf2md.py (CLI)  →  layout.py, ocr.py  →  zusammenbau.py
+    pdf2md.py (CLI)  →  layout.py, ocr.py  →  assembly.py
 
 Heavy imports (fitz, numpy, PIL) are function-local in all modules.
 """

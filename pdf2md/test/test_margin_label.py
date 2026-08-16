@@ -3,7 +3,7 @@
 
   python3 -m pytest pdf2md/test/test_randmarke.py
 """
-from zusammenbau import promote_margin_labels, assemble_paragraphs
+from assembly import promote_margin_labels, assemble_paragraphs
 
 
 def z(text, x0, y0, x1):

@@ -17,8 +17,8 @@ def modules():
     """Load target modules."""
     import layout
     import ocr
-    import zusammenbau
-    return zusammenbau, layout, ocr
+    import assembly
+    return assembly, layout, ocr
 
 
 def get_func(name, module_map):
@@ -236,7 +236,7 @@ SEAM_DUPLICATE = [
 
 
 def cases(module_map):
-    zusammenbau, layout, ocr = module_map
+    assembly, layout, ocr = module_map
 
     def set_running_wrapper(values):
         get_func("set_running", module_map)(values)

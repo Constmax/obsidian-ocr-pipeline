@@ -3,14 +3,14 @@
 
 Separated from pdf2md.py. Text functions (loop_length, is_derailed,
 trim_overlap, …) are testable without model because fitz/numpy/PIL/
-mlx_vlm are imported function-locally. Imports only from zusammenbau.
+mlx_vlm are imported function-locally. Imports only from assembly.
 """
 import math
 import re
 import statistics
 from collections import Counter
 
-from zusammenbau import parse_lines
+from assembly import parse_lines
 
 OVERLAP = 0.02
 # --- Rendering & Inference -------------------------------------------------
