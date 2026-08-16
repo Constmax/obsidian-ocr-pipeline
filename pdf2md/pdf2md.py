@@ -40,6 +40,8 @@ TMP = OUT
 MODEL = os.environ.get("MLX_OCR_MODEL", "mlx-community/PaddleOCR-VL-1.5-4bit")
 PROMPT = "Parse this document page to Markdown."
 TILE_THRESHOLD = 3000      # Characters in existing textlayer
+KACHEL_AB = TILE_THRESHOLD
+EXIT_CHECK = 4
 
 
 def parse_pages(s):
@@ -202,9 +204,100 @@ def _progress(event: dict):
     sys.stderr.flush()
 
 
+def _human_size(b):
+    """Bytes als lesbare Groesse (KB, MB, GB)."""
+    for einheit in ("B", "KB", "MB", "GB"):
+        if b < 1024 or einheit == "GB":
+            return f"{b:.1f} {einheit}"
+        b /= 1024
+
+
+def _hf_cache_pfad(repo_id):
+    """Pfad zum HuggingFace-Cache-Verzeichnis fuer ein Modell.
+
+    Respektiert $HF_HUB_CACHE, $HF_HOME/hub, Default ~/.cache/huggingface/hub.
+    """
+    cache = (os.environ.get("HF_HUB_CACHE")
+             or (os.environ.get("HF_HOME", "~/.cache/huggingface") + "/hub"))
+    cache = os.path.expanduser(cache)
+    parts = repo_id.split("/", 1)
+    folder = f"models--{'--'.join(parts)}"
+    return Path(cache) / folder
+
+
+def preflight(out):
+    """Schneller Vorabcheck ohne Modelllauf und ohne Eingabedatei.
+
+    Liefert eine Liste von (name, ok, detail) und eine Liste von Warnungen.
+    """
+    checks = []
+    warnungen = []
+    # 1. Python-Version
+    pv = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    checks.append(("python", sys.version_info >= (3, 9), pv))
+    # 2. fitz (PyMuPDF)
+    try:
+        import fitz
+        checks.append(("fitz", True, getattr(fitz, "__version__", "?")))
+    except ImportError:
+        checks.append(("fitz", False, "nicht installiert"))
+    # 3. mlx_vlm
+    try:
+        import mlx_vlm
+        checks.append(("mlx_vlm", True,
+                        getattr(mlx_vlm, "__version__", "?")))
+    except ImportError:
+        checks.append(("mlx_vlm", False, "nicht installiert"))
+    # 4. Modell im HuggingFace-Cache
+    modell_pfad = Path(MODEL)
+    if modell_pfad.is_dir():
+        checks.append(("modell", True, f"lokal: {modell_pfad}"))
+    else:
+        cache_pfad = _hf_cache_pfad(MODEL)
+        ok = cache_pfad.exists() and any(cache_pfad.iterdir())
+        detail = str(cache_pfad) if ok else f"nicht im Cache ({cache_pfad})"
+        if ok:
+            blobs = cache_pfad / "blobs"
+            if blobs.is_dir():
+                groesse = sum(f.stat().st_size for f in blobs.glob("*")
+                              if f.is_file())
+            else:
+                groesse = sum(f.stat().st_size for f in cache_pfad.rglob("*")
+                              if f.is_file() and not f.is_symlink())
+            detail += f" ({_human_size(groesse)})"
+        checks.append(("modell", ok, detail))
+    # 5. Schreibrecht auf Ausgabeordner
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        probes = out / ".check-probe"
+        probes.write_text("ok")
+    except OSError as e:
+        checks.append(("ausgabe", False, str(e)))
+    else:
+        try:
+            probes.unlink()
+        except OSError:
+            pass
+        checks.append(("ausgabe", True, str(out)))
+    # 6. Verfuegbarer Arbeitsspeicher
+    try:
+        import subprocess
+        mem_bytes = int(subprocess.check_output(
+            ["sysctl", "-n", "hw.memsize"], text=True).strip())
+        mem_gb = mem_bytes / (1024 ** 3)
+        detail = f"{mem_gb:.1f} GiB"
+        if mem_gb < 8:
+            detail += " (weniger als 8 GiB — Parallelbetrieb riskiert OOM)"
+            warnungen.append("speicher: " + detail)
+        checks.append(("speicher", True, detail))
+    except Exception:
+        checks.append(("speicher", True, "nicht bestimmbar"))
+    return checks, warnungen
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("pdf")
+    ap.add_argument("pdf", nargs="?", default=None, help="Input PDF file")
     ap.add_argument("--dpi", type=int, default=150)
     ap.add_argument("--tile-from", "--kachel-ab", dest="tile_from", type=int, default=TILE_THRESHOLD)
     ap.add_argument("--no-bold", "--kein-fett", dest="no_bold", action="store_true",
@@ -239,9 +332,47 @@ def main():
                     help="Convert only these pages")
     ap.add_argument("--progress", "--fortschritt", dest="progress", action="store_true",
                     help="Output machine-readable progress as JSON lines on stderr")
+    ap.add_argument("--check", action="store_true",
+                    help="Preflight check without model run (exit 0 on success, 4 on error)")
     a = ap.parse_args()
 
-    pdf = Path(a.pdf)
+    if a.check:
+        if a.pdf:
+            ap.error("--check does not require a PDF file (only runs preflight check)")
+        temp_dir = None
+        if a.out == OUT:
+            temp_dir = Path(tempfile.mkdtemp(prefix="pdf2md-preflight-"))
+            out_target = temp_dir
+        else:
+            out_target = a.out
+        checks, warnings = preflight(out_target)
+        all_ok = all(ok for _, ok, _ in checks)
+        if a.progress:
+            print(json.dumps({
+                "typ": "check",
+                "ok": all_ok,
+                "checks": [{"name": n, "ok": ok, "detail": d}
+                            for n, ok, d in checks],
+                "warnungen": warnings,
+            }, ensure_ascii=False, indent=1))
+        else:
+            for name, ok, detail in checks:
+                status = "[ ok ]" if ok else "[fehlt]"
+                print(f"{status} {name}: {detail}")
+            for w in warnings:
+                print(f"[warn] {w}")
+            print("—")
+            print("alle ok" if all_ok else "fehlgeschlagen")
+        if temp_dir is not None:
+            try:
+                os.rmdir(temp_dir)
+            except OSError:
+                pass
+        sys.exit(0 if all_ok else EXIT_CHECK)
+
+    pdf = Path(a.pdf) if a.pdf else None
+    if pdf is None:
+        ap.error("Requires a PDF file (or --check for preflight check)")
     if not pdf.exists():
         sys.exit(f"not found: {pdf}")
     if a.image_dir is None:

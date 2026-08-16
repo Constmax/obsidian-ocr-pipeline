@@ -19,11 +19,15 @@ if [ ! -x "$VENV_PY" ]; then
     echo "❌ MLX venv missing ($VENV_PY). Run ./setup.sh in repo once." >&2
     exit 1
 fi
-# A venv without pymupdf would only let pdf2md.py fail at `import fitz`
-# (after downloading model) — catch here with a clear error message.
-if ! "$VENV_PY" -c "import fitz" >/dev/null 2>&1; then
-    echo "❌ pymupdf missing in $VENV_PY — re-run ./setup.sh in repo." >&2
-    exit 1
+# With --check we skip the fitz check: pdf2md.py checks fitz itself
+# and reports it as missing dependency (exit code 4).
+if [[ " $* " != *" --check "* ]]; then
+    # A venv without pymupdf would only let pdf2md.py fail at `import fitz`
+    # (after downloading model) — catch here with a clear error message.
+    if ! "$VENV_PY" -c "import fitz" >/dev/null 2>&1; then
+        echo "❌ pymupdf missing in $VENV_PY — re-run ./setup.sh in repo." >&2
+        exit 1
+    fi
 fi
 
 exec "$VENV_PY" "$SCRIPT_DIR/../pdf2md/pdf2md.py" "$@"
