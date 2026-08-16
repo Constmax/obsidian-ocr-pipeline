@@ -184,15 +184,27 @@ export default class OcrPreviewPlugin extends Plugin {
 		if (this.reconcileTimer !== null) window.clearTimeout(this.reconcileTimer);
 		this.reconcileTimer = window.setTimeout(() => {
 			this.reconcileTimer = null;
-			void this.inventory.reconcile();
-			this.openView()?.update();
+			void this.inventory.reconcile().then(() => {
+				for (const view of this.openViews()) view.update();
+			});
 		}, RECONCILE_DEBOUNCE_MS);
 	}
 
+	/**
+	 * All comparison views that are actually instantiated. Leaves in the
+	 * background are deferred (Obsidian 1.7.2+) and carry a DeferredView instead
+	 * of ours — those are skipped, they rebuild themselves in onOpen().
+	 */
+	openViews(): OcrComparisonView[] {
+		const views: OcrComparisonView[] = [];
+		for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+			if (leaf.view instanceof OcrComparisonView) views.push(leaf.view);
+		}
+		return views;
+	}
+
 	openView(): OcrComparisonView | null {
-		const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
-		if (leaf === undefined) return null;
-		return leaf.view instanceof OcrComparisonView ? leaf.view : null;
+		return this.openViews()[0] ?? null;
 	}
 
 	/** Opens the view tab, optionally with an entry. */
@@ -204,6 +216,9 @@ export default class OcrPreviewPlugin extends Plugin {
 			await leaf.setViewState({ type: VIEW_TYPE, active: true });
 		}
 		await workspace.revealLeaf(leaf);
+		// A restored tab is deferred until it is loaded; without this its view is
+		// a DeferredView and the entry below would silently never be opened.
+		await leaf.loadIfDeferred();
 		const view = leaf.view instanceof OcrComparisonView ? leaf.view : null;
 		if (view === null) return;
 		if (name !== undefined) await view.openPreview(name);
