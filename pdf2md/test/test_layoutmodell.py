@@ -1,14 +1,9 @@
-"""Umrechnung Layoutregionen -> Spaltenentscheidung (bench/layoutmodell_test.py).
+"""Conversion of layout regions -> column decision (bench/layoutmodell_test.py).
 
-Das Modell selbst braucht Gewichte, torch und opencv und laeuft darum nur im
-Vault. Die Umrechnung seiner Regionen in ('einspaltig'|'zweispaltig', steg) ist
-dagegen reine Geometrie — und genau die Stelle, an der die Vergleichbarkeit mit
-`layout_erkennen()` haengt. Sie gehoert deshalb unter CI, auch wenn der Rest des
-Messstands es nicht kann.
-
-Geprueft werden die beiden Fallen, an denen die Heuristik historisch
-gescheitert ist (Nachtrag 5 und 9 in bench/ERGEBNIS.md): eine zentrierte Zeile
-ist keine zweite Spalte, und eine vollbreite Kopfzeile verdeckt keinen Steg.
+The model itself requires weights, torch, and opencv, so it only runs in the Vault.
+The conversion of its regions into ('einspaltig'|'zweispaltig', gutter) is pure
+geometry — and precisely where comparability with `detect_layout()` lies.
+It therefore belongs under CI even if the rest of the benchmark suite cannot run there.
 """
 import sys
 from pathlib import Path
@@ -19,63 +14,63 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "bench"))
 
 from layoutmodell_test import spalten_aus_regionen      # noqa: E402
 
-BREITE = 1000.0
+WIDTH = 1000.0
 
 
-def reg(klasse, x0, x1, y0=100, y1=400, score=0.9):
-    return (klasse, x0, y0, x1, y1, score)
+def reg(cls, x0, x1, y0=100, y1=400, score=0.9):
+    return (cls, x0, y0, x1, y1, score)
 
 
-@pytest.mark.parametrize("name,regionen,erwartet", [
-    ("echter Zweispalter", [
+@pytest.mark.parametrize("name,regions,expected", [
+    ("real two-column", [
         reg("text", 60, 470), reg("text", 530, 940),
         reg("text", 60, 470, 420, 700), reg("text", 530, 940, 420, 700),
     ], "zweispaltig"),
-    ("Zweispalter unter vollbreiter Kopfzeile", [
+    ("two-column under full-width header", [
         reg("header", 60, 940, 20, 50),
         reg("paragraph_title", 60, 940, 60, 90),
         reg("text", 60, 470), reg("text", 530, 940),
     ], "zweispaltig"),
-    ("einspaltig", [
+    ("single-column", [
         reg("text", 80, 920), reg("text", 80, 920, 420, 700),
     ], "einspaltig"),
-    ("einspaltig mit schmalem Satzspiegel", [
+    ("single-column with narrow type area", [
         reg("text", 80, 640), reg("text", 80, 640, 420, 700),
     ], "einspaltig"),
-    ("zentrierte Zeile ist keine Spalte", [
+    ("centered line is not a column", [
         reg("text", 80, 920), reg("paragraph_title", 380, 655, 300, 330),
         reg("text", 80, 920, 420, 700),
     ], "einspaltig"),
-    ("nur Rand-, keine Satzregionen", [
+    ("only margin, no body regions", [
         reg("header", 60, 940, 20, 50), reg("footer", 60, 940, 950, 980),
     ], "einspaltig"),
-    ("vollbreite Tabelle spannt ueber den Steg", [
+    ("full-width table spans over gutter", [
         reg("table", 60, 940), reg("text", 60, 940, 420, 700),
     ], "einspaltig"),
-    ("leere Seite", [], "einspaltig"),
-    ("eine einzelne Region", [reg("text", 60, 470)], "einspaltig"),
+    ("empty page", [], "einspaltig"),
+    ("single region", [reg("text", 60, 470)], "einspaltig"),
 ])
-def test_spaltenentscheidung(name, regionen, erwartet):
-    art, _ = spalten_aus_regionen(regionen, BREITE)
-    assert art == erwartet, name
+def test_column_decision(name, regions, expected):
+    layout_type, _ = spalten_aus_regionen(regions, WIDTH)
+    assert layout_type == expected, name
 
 
-def test_steg_liegt_in_der_luecke():
-    """Die Stegposition muss zwischen den Spalten liegen, nicht irgendwo."""
-    art, steg = spalten_aus_regionen([
+def test_gutter_lies_in_gap():
+    """Gutter position must lie between columns."""
+    layout_type, gutter = spalten_aus_regionen([
         reg("text", 60, 470), reg("text", 530, 940),
-    ], BREITE)
-    assert art == "zweispaltig"
-    assert 0.47 <= steg <= 0.53
+    ], WIDTH)
+    assert layout_type == "zweispaltig"
+    assert 0.47 <= gutter <= 0.53
 
 
-def test_randklassen_belegen_keine_spalte():
-    """Eine Seitenzahl im Bund darf den Steg nicht zerlegen (Nachtrag 9)."""
-    ohne = spalten_aus_regionen([
+def test_margin_classes_do_not_occupy_column():
+    """A page number in the margin must not split the gutter."""
+    without_num = spalten_aus_regionen([
         reg("text", 60, 470), reg("text", 530, 940),
-    ], BREITE)
-    mit = spalten_aus_regionen([
+    ], WIDTH)
+    with_num = spalten_aus_regionen([
         reg("text", 60, 470), reg("text", 530, 940),
         reg("number", 490, 510, 960, 980),
-    ], BREITE)
-    assert ohne == mit
+    ], WIDTH)
+    assert without_num == with_num

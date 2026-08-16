@@ -1,179 +1,179 @@
-# Scripts — komplette Flag-Referenz
+# Scripts — Complete Flag Reference
 
-## Gemeinsame Flags
+## Common Flags
 
-Alle drei Scripts teilen diese Flags:
+All three scripts share these flags:
 
-| Flag | Default | Bedeutung |
+| Flag | Default | Meaning |
 |---|---|---|
-| `--engine auto\|apple\|tesseract` | `auto` | OCR-Engine |
-| `--dpi N` | `300` | Pre-OCR Downscaling (0 = aus) |
-| `--jobs N` | `2` | Parallele OCR-Worker |
-| `--split-columns` | aus | Zweispaltige Seiten automatisch erkennen, trennen, danach zurück ins Originalformat mergen |
-| `--split-columns-all` | aus | Wie `--split-columns`, aber ohne Erkennung — jede Seite wird getrennt |
-| `--keep-split` | aus | Re-Merge unterdrücken (Output bleibt in Halbseiten) |
-| `--no-quality-gate` | aus | Qualitäts-Check + Auto-Retry deaktivieren |
+| `--engine auto\|apple\|tesseract` | `auto` | OCR engine selection |
+| `--dpi N` | `300` | Pre-OCR downscaling (0 = disabled) |
+| `--jobs N` | `2` | Parallel OCR workers |
+| `--split-columns` | off | Automatically detect two-column pages, split, then re-merge back into original page layout |
+| `--split-columns-all` | off | Same as `--split-columns`, but without detection — splits every page |
+| `--keep-split` | off | Suppress re-merge (output remains split into half-pages) |
+| `--no-quality-gate` | off | Disable automated quality check + auto-retry |
 
-### Engine-Auswahl
+### Engine Selection
 
-- `auto`: Apple Vision wenn `ocrmypdf-appleocr` installiert, sonst Tesseract
-- `apple`: Erzwingt Apple Vision (fehlt das Plugin → Fehler)
-- `tesseract`: Erzwingt Tesseract (nutzt automatisch `--tesseract-pagesegmode 1` für Spaltenerkennung und `--clean` wenn `unpaper` installiert)
+- `auto`: Uses Apple Vision if `ocrmypdf-appleocr` is installed, otherwise Tesseract
+- `apple`: Forces Apple Vision (fails with error if plugin is missing)
+- `tesseract`: Forces Tesseract (automatically applies `--tesseract-pagesegmode 1` for column detection and `--clean` when `unpaper` is available)
 
-### DPI-Tuning
+### DPI Tuning
 
-- `300`: Sweet Spot für OCR — Tesseracts optimale Auflösung, nötig für Hemmer-Kleindruck (Default)
-- `200`: RAM-sparsamer, leichte Qualitätseinbußen bei Kleindruck (--fast Default)
-- `150`: Absolutes Minimum — nur bei OOM-Killings mit `--jobs 1`
-- `0`: Downscaling komplett aus
+- `300`: Sweet spot for OCR — Tesseract's optimal resolution, required for fine legal print in Hemmer scripts (Default)
+- `200`: Reduced memory usage, slight quality loss on fine print (--fast Default)
+- `150`: Absolute minimum — fallback for OOM crashes with `--jobs 1`
+- `0`: Downscaling completely disabled
 
-Das Downscaling nutzt standardmäßig **Bicubic**-Resampling (`/Bicubic`) statt Ghostscripts Default `/Subsample`, um Textkanten-Schärfe zu erhalten.
+Downscaling defaults to **Bicubic** resampling (`/Bicubic`) instead of Ghostscript's default `/Subsample` to preserve text edge sharpness.
 
-### Jobs-Tuning
+### Jobs Tuning
 
-- `auto`: Automatisch erkannt via `detect_safe_jobs()`: ≤ 8 GB RAM → 1 Job, ≤ 16 GB → 2, > 16 GB → 4. Überschreibbar mit `--jobs N`.
-- `2`: Default, sicher auf Apple Silicon mit ≥ 16 GB
-- `1`: Single-Threaded, erzwungen auf 8-GB-Macs (M1 Air etc.)
-- `4-8`: Nur bei großen Maschinen / viel RAM
+- `auto`: Automatically determined via `detect_safe_jobs()`: ≤ 8 GB RAM → 1 job, ≤ 16 GB → 2 jobs, > 16 GB → 4 jobs. Overridable with `--jobs N`.
+- `2`: Default, safe on Apple Silicon with ≥ 16 GB RAM
+- `1`: Single-threaded, enforced on 8 GB Macs (M1 Air, etc.)
+- `4-8`: High-end machines with abundant RAM only
 
 ## pdf-auto
 
 ```bash
-pdf-auto <ordner> [--output-dir <dir>] [--engine ...] [--dpi N] [--jobs N] \
+pdf-auto <folder> [--output-dir <dir>] [--engine ...] [--dpi N] [--jobs N] \
                   [--cleanup] [--fast] \
                   [--split-columns] [--split-columns-all] [--keep-split] \
                   [--no-quality-gate]
 ```
 
-### Spezifische Flags
+### Specific Flags
 
-- `--output-dir <dir>`: Custom Output-Pfad (Default: `<ordner>/_processed/`)
-- `--cleanup`: Originale nach Erfolg in `<ordner>/_archive/` verschieben (Input-Ordner wird leer, was die Wiederholbarkeit erleichtert)
-- `--fast`: Presets für große Batches:
-  - `--dpi 200` (statt 300)
-  - `--jobs 1` (stabiler)
-- `--split-columns`: Zweispaltige Seiten pro Seite erkennen, trennen, nach OCR zurück ins Originalformat mergen — strukturelle Lösung gegen Spaltenvermischung bei Hemmer/Kaiser, auch in gemischten Dokumenten (siehe "Column-Splitting" unten)
-- `--split-columns-all`: erzwingt den Split auf jeder Seite (kein Auto-Detect) — Fallback falls die Erkennung bei ungewöhnlichem Layout danebenliegt
-- `--keep-split`: unterdrückt das Re-Merge, Output bleibt in (doppelt so vielen) Halbseiten
-- `--no-quality-gate`: Überspringt den automatischen Qualitäts-Check und Engine-Retry nach OCR
+- `--output-dir <dir>`: Custom output path (Default: `<folder>/_processed/`)
+- `--cleanup`: Move originals to `<folder>/_archive/` after success (empties input folder, improving repeatability)
+- `--fast`: Presets for large batch jobs:
+  - `--dpi 200` (instead of 300)
+  - `--jobs 1` (more stable)
+- `--split-columns`: Per-page detection of two-column layouts, splits pages, and re-merges back into original page layout post-OCR — structural solution against column interleaving in Hemmer/Kaiser materials, including mixed documents (see "Column Splitting" below)
+- `--split-columns-all`: Forces splitting on every page (bypasses auto-detection) — fallback when layout detection fails
+- `--keep-split`: Suppresses re-merge; output remains in (twice as many) half-pages
+- `--no-quality-gate`: Skips post-OCR quality verification and automatic engine retry
 
-### Qualitäts-Gate
+### Quality Gate
 
-Nach jedem OCR-Durchlauf prüft die Pipeline automatisch:
-1. **Zeichen/Seite** ≥ 200 (fängt Totalausfälle)
-2. **Garbage-Score** < 0.40 (fängt Spaltenvermischung, §→88-Korruption, Binnengroßbuchstaben)
-3. **iso-Ratio** < 0.40 (Sonder-Check: >40 % 1-2-Zeichen-Wörter = garantierte Spaltenvermischung)
+After every OCR run, the pipeline automatically validates:
+1. **Characters/page** ≥ 200 (catches total failures)
+2. **Garbage score** < 0.40 (catches column mixing, §→88 corruption, unexpected mid-word capitals)
+3. **iso ratio** < 0.40 (special check: >40% 1-2 character words = guaranteed column mixing)
 
-Schwellwert 0.40 statt 0.30: Toleriert die unvermeidbaren OCR-Fehler bei älteren Hemmer-Scans (z. B. „eaglen" für „hemmer") und greift nur bei echten Strukturproblemen.
+Threshold 0.40 instead of 0.30: Tolerates unavoidable OCR artifacts in older Hemmer scans (e.g., "eaglen" for "hemmer") while reliably catching structural failures.
 
-Bei Fehlschlag: Auto-Retry mit Spalten-Split (bei Tesseract, inkl. Re-Merge zurück ins Originalformat), dann Retry mit alternativer Engine (apple ↔ tesseract).
+On failure: Auto-retry with column split (when using Tesseract, including re-merge to original format), followed by retry with alternative engine (apple ↔ tesseract).
 
-### Teil-Detection
+### Multi-Part File Detection
 
 Regex: `^(.+)[[:space:]]+[Tt]eil[[:space:]]+([0-9]+)\.[Pp][Dd][Ff]$`
 
 - ✅ `Verwaltungsrecht AT Skript Teil 1.pdf`
 - ✅ `Strafrecht BT TEIL 12.pdf`
-- ❌ `Verwaltungsrecht-Teil-1.pdf` (keine Leerzeichen)
-- ❌ `Part 1 ....pdf` (Englisch)
+- ❌ `Verwaltungsrecht-Teil-1.pdf` (no spaces)
+- ❌ `Part 1 ....pdf` (English)
 
-Teile werden alphabetisch + numerisch sortiert gemerged.
+Parts are merged sorted alphanumerically and numerically.
 
-### Output-Namen
+### Output Naming
 
-- `Foo Teil 1.pdf` + `Foo Teil 2.pdf` → `Foo.pdf` (Teil-Suffix entfernt)
-- `Urteil BGH 2024.pdf` (kein Teil-Muster) → `Urteil BGH 2024.pdf`
+- `Foo Teil 1.pdf` + `Foo Teil 2.pdf` → `Foo.pdf` (part suffix stripped)
+- `Urteil BGH 2024.pdf` (no part pattern) → `Urteil BGH 2024.pdf`
 
 ## pdf-workflow
 
 ```bash
-pdf-workflow <ordner> <output-name> [--engine ...] [--dpi N] [--jobs N] \
+pdf-workflow <folder> <output-name> [--engine ...] [--dpi N] [--jobs N] \
              [--split-columns] [--split-columns-all] [--keep-split] [--no-quality-gate]
 ```
 
-### Akzeptierte Inputs
+### Supported Inputs
 
-- Bilder: `.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif` (case-insensitive)
-- PDFs: vorhandene PDFs werden angehängt
+- Images: `.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif` (case-insensitive)
+- PDFs: existing PDFs are appended
 
-### Sortierung
+### Sorting
 
 Natural Sort (`sort -V`):
-- `(1).jpeg`, `(2).jpeg`, ..., `(10).jpeg` → korrekt sortiert
-- `seite_01.jpg`, `seite_02.jpg` → auch korrekt
-- `img1.jpg`, `img10.jpg`, `img2.jpg` → dank `-V` als 1,2,10
+- `(1).jpeg`, `(2).jpeg`, ..., `(10).jpeg` → correctly sorted
+- `seite_01.jpg`, `seite_02.jpg` → correctly sorted
+- `img1.jpg`, `img10.jpg`, `img2.jpg` → sorted as 1, 2, 10 via `-V`
 
-### Output-Name-Handling
+### Output Name Handling
 
-- `.pdf`-Endung wird automatisch gestripped
-- Leerer Name → Fehler
-- Kollision mit Input: Output wird aus PDF-Liste ausgeschlossen (verhindert Infinite Loop bei Re-Runs)
+- `.pdf` extension is automatically stripped if provided
+- Empty output name → error
+- Collision with input file: Output is excluded from PDF list (prevents infinite loop during re-runs)
 
 ## pdf-combine
 
 ```bash
-pdf-combine <ordner> <output-name> [--force-ocr] [--engine ...] [--dpi N] [--jobs N] \
+pdf-combine <folder> <output-name> [--force-ocr] [--engine ...] [--dpi N] [--jobs N] \
             [--split-columns] [--split-columns-all] [--keep-split] [--no-quality-gate]
 ```
 
-### Spezifische Flags
+### Specific Flags
 
-- `--force-ocr`: OCR auch auf Seiten mit existierender Textebene (Default: `--skip-text`)
-  - Nutzen bei schlechter bestehender OCR
-  - Verwirft alten Text, macht neuen
+- `--force-ocr`: Perform OCR even on pages with existing text layer (Default: `--skip-text`)
+  - Useful for replacing low-quality existing OCR
+  - Discards legacy text layer and generates fresh text layer
 
-### Sortierung
+### Sorting
 
-Alphabetisch mit Natural Sort. Für gewünschte Reihenfolge Präfixe nutzen: `01_`, `02_`, ...
+Alphanumeric with Natural Sort. Use numerical prefixes for explicit ordering: `01_`, `02_`, ...
 
 ## reprocess-raw
 
 ```bash
-reprocess-raw <raw-pdf-datei> [pdf-combine-Optionen] [--min-chars N] [--allow-pages LISTE]
+reprocess-raw <raw-pdf-file> [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
 ```
 
-Wrapper um `pdf-combine` für den Spezialfall „bestehende `raw/`-Datei mit der aktuellen Pipeline neu verarbeiten" (typisch: nach einem Bugfix am Skill selbst). Ablauf:
+Wrapper around `pdf-combine` for the scenario "re-process an existing `raw/` file with the updated pipeline" (e.g. after bug fixes). Workflow:
 
-1. Kopiert die Quelldatei in ein Temp-Verzeichnis, ruft dort `pdf-combine` mit den durchgereichten Optionen auf.
-2. **Check 1 — Seitenzahl:** Output muss exakt so viele Seiten haben wie das Original. Abweichung → Original bleibt unverändert, Ergebnis wird als `<name>_FAILED_pagecount.pdf` neben die Quelle gelegt.
-3. **Check 2 — B5-Gate (`column_tools.py verify-pages`):** Jede Seite muss ≥ `--min-chars` Zeichen haben (Default 50, via `pdftotext -raw`). Ein dokumentweiter Zeichen-Durchschnitt (wie ihn das normale Quality-Gate prüft) kann eine einzelne komplett textlose Seite in einem sonst großen, guten Dokument verstecken — genau das ist der Fehler, der am 2026-07-06 vierzehn `raw/`-Dateien korrumpiert hat (siehe `BUGREPORT-2026-07-06-split-merge.md` in diesem Verzeichnis). Abweichung → Original bleibt unverändert, Ergebnis wird als `<name>_FAILED_pages.pdf` abgelegt, betroffene Seiten werden einzeln gemeldet.
-4. Nur wenn beide Checks bestehen: Original wird überschrieben.
+1. Copies source file to temporary directory and executes `pdf-combine` with passed options.
+2. **Check 1 — Page Count:** Output page count must match original exactly. Mismatch → original remains unchanged, result saved as `<name>_FAILED_pagecount.pdf` alongside source.
+3. **Check 2 — B5 Gate (`column_tools.py verify-pages`):** Every page must contain ≥ `--min-chars` characters (Default 50, via `pdftotext -raw`). A document-wide character average (as checked by standard quality gate) can mask a single textless page inside an otherwise healthy large document — which corrupted fourteen `raw/` files on 2026-07-06 (see `BUGREPORT-2026-07-06-split-merge.md`). Mismatch → original remains unchanged, result saved as `<name>_FAILED_pages.pdf`, affected pages reported individually.
+4. Only if both checks pass: Original source file is overwritten.
 
-`--allow-pages "1,5-7"` nimmt bekannte Deckblatt-/Grafik-Seiten ohne nennenswerten Fließtext von Check 2 aus (z. B. reine Diagramm- oder Kursplan-Seiten). Ohne verfügbares `pikepdf` (Python-Dependency von `column_tools.py`) bricht das Script sicherheitshalber ab, statt das B5-Gate stillschweigend zu überspringen.
+`--allow-pages "1,5-7"` exempts known cover or diagram pages lacking body text from Check 2. Without `pikepdf` available (Python dependency of `column_tools.py`), the script aborts for safety rather than silently skipping B5 validation.
 
 ### `column_tools.py verify-pages`
 
 ```bash
-column_tools.py verify-pages <pdf> [--min-chars N] [--allow-pages LISTE]
+column_tools.py verify-pages <pdf> [--min-chars N] [--allow-pages LIST]
 ```
 
-Die zugrunde liegende Prüfung, auch einzeln nutzbar: extrahiert jede Seite via `pdftotext -raw`, meldet alle Seiten unter der Zeichen-Schwelle (außer den in `--allow-pages` genannten) auf stderr und liefert Exit-Code 1 bei mindestens einem Verstoß.
+Underlying verification tool, executable independently: extracts every page via `pdftotext -raw`, reports pages falling below threshold (excluding `--allow-pages`) to stderr, and exits code 1 on violations.
 
-## Pre-OCR Pipeline (Automatisch)
+## Pre-OCR Pipeline (Automated)
 
-Vor dem OCR durchläuft jedes PDF drei Stufen — automatisch, keine Flags nötig:
+Prior to OCR, every PDF passes through three automated stages without requiring flags:
 
 ```
-Stage 1: MediaBox-Fix       Stage 2: Downscale         Stage 3: Column-Split
+Stage 1: MediaBox Fix        Stage 2: Downscale         Stage 3: Column Split
 ┌──────────────────┐       ┌─────────────────┐        ┌──────────────────┐
-│ Seite > 650×900   │  →    │ 300 DPI          │   →    │ (wenn --split-   │
-│ pts?              │       │ Bicubic          │        │  columns aktiv)  │
-│ → skaliere auf A4  │       │                  │        │ linke + rechte   │
-│   (595×842 pts)   │       │                  │        │ Halbseite        │
+│ Page > 650×900   │  →    │ 300 DPI         │   →    │ (if --split-     │
+│ pts?             │       │ Bicubic         │        │  columns active) │
+│ → scale to A4    │       │                 │        │ Left + right     │
+│   (595×842 pts)  │       │                 │        │ half-page        │
 └──────────────────┘       └─────────────────┘        └──────────────────┘
 ```
 
-### Stage 1: MediaBox-Fix
+### Stage 1: MediaBox Fix
 
-**Problem**: Manche PDFs (typisch: Hemmer-Scans) haben ihre MediaBox auf die Pixel-Dimensionen des Bildes gesetzt (z. B. 2439×3413 pts @ 72 PPI). Die logische Seitengröße beträgt damit 33,9 × 47,4 Zoll. Bei 300 DPI OCR-Rasterung entstehen 144 Megapixel pro Seite — das sprengt jeden RAM (auch 16 GB).
+**Problem**: Certain PDFs (typically Hemmer scans) define MediaBox using image pixel dimensions (e.g., 2439×3413 pts @ 72 PPI), setting logical page dimensions to 33.9 × 47.4 inches. Rasterizing at 300 DPI during OCR yields 144 megapixels per page, exceeding available RAM (even on 16 GB systems).
 
-**Lösung**: `fix_mediabox()` erkennt Seiten > 650×900 pts und skaliert sie via Ghostscript `-dPDFFitPage` auf A4 (595×842 pts). Danach sind es bei 300 DPI nur noch 8,7 Megapixel/Seite — problemlos für 8 GB RAM.
+**Solution**: `fix_mediabox()` identifies pages exceeding 650×900 pts and scales them via Ghostscript `-dPDFFitPage` to standard A4 (595×842 pts). At 300 DPI, this consumes only 8.7 megapixels per page, running comfortably on 8 GB RAM systems.
 
-Kein Flag nötig — läuft automatisch vor dem Downscaling.
+No flag required — executes automatically prior to downscaling.
 
 ### Stage 2: Pre-OCR Downscaling
 
-Implementiert via Ghostscript-Zwischenschritt zwischen MediaBox-Fix und OCRmyPDF:
+Implemented via Ghostscript intermediary stage between MediaBox Fix and OCRmyPDF:
 
 ```bash
 gs -sDEVICE=pdfwrite \
@@ -186,121 +186,96 @@ gs -sDEVICE=pdfwrite \
    -sOutputFile=downscaled.pdf input.pdf
 ```
 
-**Warum**: iLovePDF & Handy-Scans produzieren oft 400-600 DPI → 300+ Megapixel/Seite → PIL-Speichergrenzen sprengt → OOM-Kill. 300 DPI ist Tesseracts optimale Arbeitsauflösung; Bicubic-Resampling erhält Textkanten besser als Ghostscripts Standard `/Subsample`.
+**Rationale**: Phone scans and online tools produce 400-600 DPI files → 300+ megapixels per page → exceeds PIL allocation limits → OOM crash. 300 DPI represents Tesseract's optimal target resolution; Bicubic resampling preserves font edge sharpness superior to Ghostscript default `/Subsample`.
 
-**Achtung**: Ghostscript kann die Dateigröße vorübergehend **erhöhen** wenn Input bereits JPEG-komprimiert war. Die finale Größe nach OCR+Optimize ist trotzdem kleiner.
+**Note**: Ghostscript may temporarily increase file size if input was previously JPEG-compressed. Final file size post OCR + optimization will be reduced.
 
-## Column-Splitting (`--split-columns`)
+## Column Splitting (`--split-columns`)
 
-Aktiviert via `--split-columns`-Flag in allen drei Scripts. Für zweispaltige Layouts (Hemmer-Skripte, Kaiser-Klausuren, Fachzeitschriften) wird jede **als zweispaltig erkannte** Seite vor dem OCR vertikal getrennt, separat OCR-t und danach wieder zu einer Seite in Originalgröße zusammengesetzt:
+Enabled via `--split-columns` flag in all three CLI scripts. For two-column layouts (Hemmer course materials, Kaiser exams, law journals), every page **detected as two-column** is split vertically prior to OCR, processed separately, and merged back into a single page matching original dimensions:
 
 ```
-Original (N Seiten, gemischt)         Pro Seite: Erkennung → ggf. Split → OCR → Merge
-┌──────────┬──────────┐    zwei-      ┌──────────┐  ┌──────────┐    ┌──────────┬──────────┐
-│  Linke   │  Rechte  │  spaltig →    │  Linke   │  │  Rechte  │ →  │  Linke   │  Rechte  │
-│  Spalte  │  Spalte  │   erkannt     │  Spalte  │  │  Spalte  │    │  Spalte  │  Spalte  │
-└──────────┴──────────┘               └──────────┘  └──────────┘    └──────────┴──────────┘
+Original (N pages, mixed)            Per page: Detection → Split (if 2-col) → OCR → Merge
+┌──────────┬──────────┐    two-col   ┌──────────┐  ┌──────────┐    ┌──────────┬──────────┐
+│   Left   │  Right   │  detected → │   Left   │  │  Right   │ →  │   Left   │  Right   │
+│  Column  │  Column  │             │  Column  │  │  Column  │    │  Column  │  Column  │
+└──────────┴──────────┘              └──────────┘  └──────────┘    └──────────┴──────────┘
 
-┌────────────────────┐    einspaltig  ┌────────────────────┐
-│   Fließtext-Seite   │  → erkannt →  │   Fließtext-Seite   │  (unverändert durchgereicht)
-└────────────────────┘                └────────────────────┘
+┌────────────────────┐   single-col  ┌────────────────────┐
+│ Single-column page │ → detected →  │ Single-column page │ (passed through unchanged)
+└────────────────────┘               └────────────────────┘
 
-Output: N Seiten, Originalgröße — pro Seite garantiert korrekte Lesereihenfolge
+Output: N pages, original size — guaranteed correct reading order per page
 ```
 
-Die Spaltenvermischung (Sätze der linken und rechten Spalte im Wechsel) wird für erkannte Zweispalter-Seiten strukturell unmöglich; einspaltige Seiten (Deckblätter, Schemata, eingestreute Urteile) laufen unangetastet durch OCR. Das Output-PDF hat exakt so viele Seiten wie das Original.
+Column mixing (alternating lines between left and right columns) becomes structurally impossible for detected two-column pages. Single-column pages (cover sheets, diagrams, single-column court decisions) pass through untouched. Output PDF retains exact page count of original document.
 
-### Erkennung
+### Detection
 
-Läuft zeilenbasiert auf `pdftotext -bbox` (falls schon ein Textlayer existiert, z. B. beim internen Auto-Retry nach fehlgeschlagenem Quality-Gate): Wortpositionen werden zu visuellen Zeilen geclustert; jede Zeile gilt als „links", „rechts" oder „voll" (über die Seitenmitte hinausgehend, z. B. Kopfzeilen).
+Line-based analysis built on `pdftotext -bbox` (when text layer exists, e.g., during internal auto-retry on failed quality gate): word bounding boxes are clustered into visual lines; lines are classified as "left", "right", or "full" (spanning across page midpoint, e.g. headers).
 
-Die eigentliche Zweispalter-Entscheidung matcht danach jede linke Zeile mit ihrer **nächstgelegenen rechten Zeile gleicher Zeilenhöhe** (nicht: globale Min/Max-Kanten über die ganze Seite) und prüft den Gutter **pro Zeilenpaar** gegen ein plausibles Fenster (3–15 % der Seitenbreite). Eine Seite gilt als zweispaltig, wenn ein Mindestanteil dieser Paare (≥ 30 %) einen plausiblen Gutter zeigt. Dieser paarweise Ansatz ist notwendig, weil eine globale Kante bei schräg fotografierten Ordnerseiten kollabiert (der Spaltensteg verläuft dann diagonal über die Seite und eine globale Min/Max-Berechnung liefert einen negativen „Gutter", obwohl die Seite echt zweispaltig ist) — verifiziert an echtem Hemmer-Material. Derselbe paarweise Test verwirft nebenbei auch Sliver-Fehlerkennungen (z. B. wenn ein Ordnerfoto den Rand der nächsten Blattseite mit einfängt): Ein Bild-Artefakt ohne echte zweite Spalte erzeugt keine konsistenten, plausiblen Zeilenpaare.
+Decision logic matches each left line to its **nearest right line of similar vertical center** (rather than global page min/max edges) and validates line-pair gutter against a plausible width range (3–15% of page width). A page is classified as two-column if a minimum fraction of matched pairs (≥ 30%) exhibits a plausible gutter. This pairwise approach is essential because global edge detection fails on skewed photographed binder pages (skew shifts column gutter diagonally, causing global min/max calculation to yield negative gutter despite genuine two-column layout) — validated on real Hemmer scan material. The pairwise test also filters out sliver false positives (e.g., binder photos catching a sliver of an adjacent page): image artifacts lacking real second columns fail to form consistent plausible line pairs.
 
-**Vor dem ersten OCR gibt es noch keinen Textlayer** — das ist der Normalfall beim Haupt-Pipeline-Durchlauf. Dann rastert die Erkennung die Seite stattdessen als Bild (`pdftoppm`) und sucht nach einem durchgehenden hellen Spaltensteg.
+**Before initial OCR, no text layer exists** — standard path in primary pipeline execution. In this case, detection rasterizes page image (`pdftoppm`) and scans for a continuous vertical gutter band.
 
-`--split-columns-all` überspringt die Erkennung und splittet jede Seite (Fallback für Layouts, bei denen die Heuristik danebenliegt).
+`--split-columns-all` skips layout detection and splits every page (fallback for non-standard layouts).
 
-Implementiert via Ghostscript-CropBox (Split) und pikepdf `add_overlay` (Merge); keine zusätzlichen Dependencies über das ocrmypdf-venv hinaus (`pikepdf`, `PIL`).
+Implemented via Ghostscript CropBox (split) and pikepdf `add_overlay` (merge); requires no dependencies beyond ocrmypdf venv (`pikepdf`, `PIL`).
 
-### Lesereihenfolge nach dem Merge (`pdftotext -raw`)
+### Reading Order Post-Merge (`pdftotext -raw`)
 
-Der Textlayer nach Split+Merge ist geometrisch exakt (jedes Wort sitzt visuell an der richtigen Stelle), aber Poppler's Standard-Lesereihenfolgen-Heuristik (verwendet von `pdftotext` ohne Flags) erkennt die rekonstruierte Zweispalten-Struktur nicht zuverlässig und liefert zeilenweise vermischten Text — trotz korrekter Geometrie. Ursache: `merge_pdf()` bettet linke und rechte Hälfte über zwei unabhängige `add_overlay`-Aufrufe ein; Poppler wirft die daraus resultierende Content-Stream-Reihenfolge im Standard-Modus zugunsten einer eigenen geometrischen Blockerkennung weg, die hier fehlschlägt.
+Post-split-and-merge text layer geometry is precise (words are positioned accurately), but Poppler default reading order heuristics (`pdftotext` without flags) fail to recognize reconstructed two-column layout, returning line-interleaved text despite correct geometry. Cause: `merge_pdf()` embeds left and right halves via separate `add_overlay` calls; Poppler discards resulting content stream order in default mode in favor of custom spatial block clustering.
 
-**Fix: `pdftotext -raw` statt Default-Modus.** `-raw` folgt der Content-Stream-Emissionsreihenfolge statt Poppler's rekonstruierter Lesereihenfolge — und die ist bei uns garantiert korrekt, weil `merge_pdf()` immer erst die linke, dann die rechte Hälfte schreibt. Verifiziert: komplette linke Spalte gefolgt von kompletter rechter Spalte, sowohl auf Zweispalter- als auch auf normalen einspaltigen Seiten. Dieser Skill nutzt `-raw` bereits intern überall (`quality_check` in `pdf-lib.sh`, `verify_ocr_split` in `column_tools.py`); bei jeder externen Weiterverarbeitung dieser PDFs (Copy-Paste-Vorbereitung, eigene Scripts, Ingest-Workflows anderer Skills) selbst daran denken.
+**Fix: `pdftotext -raw` instead of default mode.** `-raw` follows content stream emission order instead of Poppler's reconstructed reading order — guaranteed correct because `merge_pdf()` writes left half first, then right half. Verified: yields complete left column followed by complete right column on two-column pages, working identically on single-column pages. Skill uses `-raw` internally across all quality gates (`quality_check` in `pdf-lib.sh`, `verify_ocr_split` in `column_tools.py`); apply `-raw` flag when processing these PDFs in downstream tools or scripts.
 
-## Memory-Profil
+## Memory Profile
 
-Mit MediaBox-Fix (automatisch) sind selbst große Scans RAM-sicher:
+With automated MediaBox Fix, large scans remain RAM-safe:
 
-| Szenario | Pixel/Seite | RAM-Bedarf |
+| Scenario | Pixels/Page | RAM Requirement |
 |---|---|---|
-| A4-Seite @ 300 DPI (nach MediaBox-Fix) | 8,7 MP | ~150 MB/Seite |
-| Hemmer-Zweispalter, Halbseite @ 300 DPI | 4,3 MP | ~80 MB/Hälfte |
-| Original (72 PPI MediaBox) @ 300 DPI | 144 MP | **OOM** (>8 GB) |
-| 50 Seiten A4, jobs 1 (8 GB Mac) | je 8,7 MP | ~500 MB peak |
+| A4 Page @ 300 DPI (post MediaBox Fix) | 8.7 MP | ~150 MB/page |
+| Hemmer Two-Column Half-Page @ 300 DPI | 4.3 MP | ~80 MB/half |
+| Unfixed Original (72 PPI MediaBox) @ 300 DPI | 144 MP | **OOM** (>8 GB) |
+| 50 A4 Pages, jobs 1 (8 GB Mac) | 8.7 MP each | ~500 MB peak |
 
-**`detect_safe_jobs()`** erkennt die RAM-Größe automatisch und setzt `--jobs` auf 1 für 8-GB-Macs. Kann mit `--jobs N` überschrieben werden.
+`detect_safe_jobs()` detects system memory and sets `--jobs` to 1 on 8 GB Macs. Overridable via `--jobs N`.
 
-`ocrmypdf --max-image-mpixels` wird in `build_ocr_args` auf 400 MP gesetzt (genug für Edge-Cases ohne MediaBox-Fix) — als Aufruf-Flag, nicht als Umgebungsvariable, da ocrmypdf `PILLOW_MAX_IMAGE_PIXELS` nicht auswertet.
+`ocrmypdf --max-image-mpixels` is configured to 400 MP in `build_ocr_args` (accommodates edge cases lacking MediaBox Fix) passed as CLI argument rather than environment variable (as ocrmypdf ignores `PILLOW_MAX_IMAGE_PIXELS`).
 
-## Stufe 2: Modulaufteilung (`pdf2md/`, Issue #8)
+## Stage 2: Module Structure (`pdf2md/`)
 
-`pdf2md.py` ist seit dem Split nur noch CLI und Seitenlauf; die übrigen
-Schichten liegen in drei Modulen, die Importrichtung läuft strikt einseitig:
+`pdf2md.py` serves strictly as CLI driver and page execution controller; logic is divided across three modules with unidirectional import hierarchy:
 
 ```
-pdf2md.py (CLI/Orchestrierung)
-   ├── layout.py       Geometrie: Spalten, Kästen, Tabellen, Diagramme
-   ├── ocr.py          Kachelung, Modellaufruf, Entgleisung/Reparatur
-   ├── zusammenbau.py  Markdown-Zusammenbau (reine Funktionen) — testbar
-   └── woerterbuch.py  Wörterbuchabgleich nach dem Zusammenbau — testbar
+pdf2md.py (CLI / Orchestration)
+   ├── layout.py       Geometry: columns, boxes, tables, diagrams
+   ├── ocr.py          Tiling, model invocation, derailment / repair
+   ├── zusammenbau.py  Markdown reassembly (pure functions) — testable
+   └── woerterbuch.py  Dictionary verification post-reassembly — testable
 ```
 
-Der Zusammenbau ist die testbare Schicht: `python3 -m pytest pdf2md/test -q`
-läuft ohne MLX, ohne fitz und ohne Vault-Bestand (Golden-Snapshot in
-`pdf2md/test/daten/snapshot.json`; `pytest` steht in
-`pdf2md/requirements.txt`). Die schweren Importe (fitz, numpy, PIL, mlx_vlm)
-liegen in allen Modulen funktionslokal — nur so bleibt der Modulimport
-abhängigkeitsfrei.
+Reassembly represents the isolated unit-testable layer: `python3 -m pytest pdf2md/test -q` executes without MLX, fitz, or vault dependencies (golden snapshot in `pdf2md/test/daten/snapshot.json`; `pytest` included in `pdf2md/requirements.txt`). Heavy imports (`fitz`, `numpy`, `PIL`, `mlx_vlm`) are loaded scoped within functions across modules to maintain clean import chains.
 
-**Vault-Kopie**: `.ocr-bench/` im Vault ist flach (siehe `bench/pfade.py`,
-Zwei-Orte-Konvention) und braucht **fünf** Dateien: `pdf2md.py`, `layout.py`,
-`ocr.py`, `zusammenbau.py`, `woerterbuch.py`. Fehlt eine, schlägt der nächste
-Lauf mit `ModuleNotFoundError` fehl. Aus demselben Grund steht die
-juristische Begriffsliste im Modul und nicht in einer Datei daneben — ein
-`daten/`-Ordner ginge beim flachen Kopieren stillschweigend verloren.
+**Vault Copying**: `.ocr-bench/` in vault uses a flat structure (see `bench/pfade.py`, two-location convention) requiring **five** files: `pdf2md.py`, `layout.py`, `ocr.py`, `zusammenbau.py`, `woerterbuch.py`. Missing files trigger `ModuleNotFoundError`. For the same reason, legal term lists are embedded directly within modules rather than separate data files — a `daten/` directory would be lost during flat file copies.
 
-## Stufe 2: Wörterbuchabgleich (`woerterbuch.py`)
+## Stage 2: Dictionary Verification (`woerterbuch.py`)
 
-Läuft nach dem Zusammenbau über **jede OCR-Seite** — nicht über Textlayer-
-Seiten, deren Text exakt ist und dort nur Fehlalarme erzeugen würde. Was im
-Wörterbuch fehlt, kommt als `⌕`-Zeile ins Protokoll und als
-`woerter-verdaechtig` ins Frontmatter.
+Executes post-reassembly across **every OCR page** — skipping native textlayer pages whose text is exact and would produce false positives. Unrecognized terms are logged as `⌕` lines in execution output and added to `woerter-verdaechtig` in frontmatter.
 
-| Flag | Wirkung |
+| Flag | Effect |
 |---|---|
-| *(Voreinstellung)* | nur melden, Text bleibt unangetastet |
-| `--woerterbuch-korrigieren` | eindeutige Fälle ersetzen (siehe unten) |
-| `--woerterbuch <datei>` | zusätzliche Wortliste oder `.dic`, mehrfach möglich |
-| `--woerterbuch-bericht <datei>` | alle Befunde mit Seitenzahl als JSON |
-| `--kein-woerterbuch` | Abgleich ganz abschalten |
+| *(Default)* | Reporting mode only; document text remains unaltered |
+| `--woerterbuch-korrigieren` | Replaces unambiguous OCR errors (see below) |
+| `--woerterbuch <file>` | Custom wordlist or `.dic` file (repeatable) |
+| `--woerterbuch-bericht <file>` | Export complete findings with page numbers as JSON |
+| `--kein-woerterbuch` | Disable dictionary checking completely |
 
-**Eindeutig** heißt: das Wort steht nicht im Wörterbuch, und genau *eine*
-Variante aus der Verwechslungstabelle (`m`/`rn`, `ff`/`i`, `l`/`1`, `u`/`ü`, …)
-steht darin. Gibt es zwei (`Hans`/`Haus`), bleibt das Wort stehen und wird nur
-gemeldet. Zitate, Zahlen, Abkürzungen, Tabellen, Wikilinks und Fußnotenmarken
-werden gar nicht erst geprüft — die Restfehlerklasse „römisch I als 1/l/|" ist
-ausdrücklich **nicht** Gegenstand dieses Moduls.
+**Unambiguous** definition: term does not exist in dictionary, and exactly *one* substitution variant from OCR confusion table (`m`/`rn`, `ff`/`i`, `l`/`1`, `u`/`ü`, etc.) exists in dictionary. If multiple matches exist (`Hans`/`Haus`), term is preserved and flagged only. Citations, numbers, abbreviations, tables, wikilinks, and footnote markers are skipped — resolving Roman numeral `I` vs `1`/`l`/`|` is explicitly outside module scope.
 
-**Wörterbuchquellen**, in dieser Reihenfolge: `--woerterbuch`, dann
-`$PDF2MD_WOERTERBUCH` (mit `:` getrennt), dann das erste gefundene
-Systemwörterbuch (`/opt/homebrew/share/hunspell`, `/usr/share/hunspell`,
-`~/Library/Spelling`, LibreOffice-Bundle). Steht `hunspell` mit deutschem
-Wörterbuch bereit, entscheidet es zuerst — es wertet die Affixregeln aus und
-ist damit genauer als die Ersatzregeln des Moduls. Findet sich gar nichts,
-sagt der Lauf das und überspringt den Abgleich.
+**Dictionary Resolution Order**: `--woerterbuch`, then `$PDF2MD_WOERTERBUCH` (colon-separated), then first available system dictionary (`/opt/homebrew/share/hunspell`, `/usr/share/hunspell`, `~/Library/Spelling`, LibreOffice bundle). If `hunspell` with German dictionary is present, it takes precedence — evaluating affix rules for higher accuracy than simple fallback substitution rules. If no dictionary is found, execution reports status and skips verification.
 
-Ohne installiertes Wörterbuch genügt eine Datei:
+Without system dictionary pre-installed, download files manually:
 
 ```bash
 curl -o ~/.local/share/de_DE.dic \
@@ -310,48 +285,31 @@ curl -o ~/.local/share/de_DE.aff \
 export PDF2MD_WOERTERBUCH=~/.local/share/de_DE.dic
 ```
 
-Die `.aff` daneben ist kein Beiwerk: aus ihrer `SET`-Zeile kommt der
-Zeichensatz, und `de_DE_frami.dic` ist ISO-8859-1. Fehlt sie, wird die Datei
-als UTF-8 gelesen und jedes Wort mit Umlaut fällt aus dem Wörterbuch.
+The accompanying `.aff` file is required: `SET` header defines encoding (`de_DE_frami.dic` uses ISO-8859-1). If missing, file is parsed as UTF-8, breaking dictionary lookup for all terms with German umlauts.
 
-**Gemessen** an 202 Wörtern echter Gutachtenprosa gegen `de_DE_frami`:
-0 Fehlalarme, 6 von 7 eingestreuten Lesefehlern gefunden. Der siebte
-(`Verhaltungsakte`) ist die dokumentierte Grenze — ein morphologisch
-wohlgeformtes Scheinwort zerlegt die Kompositumsregel in `verhalten` + `Akte`.
-Enger gestellt wäre jedes zweite `-ung`-Substantiv ein Fehlalarm, weil die
-`.dic`-Dateien diese Ableitung ihren Affixregeln überlassen.
+**Benchmark**: Tested on 202 words of legal German against `de_DE_frami`: 0 false positives, 6 of 7 introduced OCR errors identified. The 7th (`Verhaltungsakte`) demonstrates documented limitation — morphologically well-formed pseudo-word decomposed by compound rule into `verhalten` + `Akte`. Strict rules would cause false positives on compound nouns, as `.dic` dictionaries delegate compound analysis to affix rules.
 
-## --seiten (Stufe 2)
+## --seiten (Stage 2)
 
-Nur bestimmte Seiten konvertieren. Angabe als kommagetrennte Liste mit
-Bereichen (z.B. `1,3-5,8`). Leer oder weglassen = alle Seiten.
+Convert selected pages only. Format as comma-separated list with page ranges (e.g. `1,3-5,8`). Omit or leave empty for all pages.
 
 ```bash
 python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
 ```
 
-- Seitenzahlen sind 1-basiert und beziehen sich auf die Original-PDF.
-- Ungültige oder ausserhalb liegende Seitenzahlen führen zu einem Fehler.
-- `laufende_zeilen()` (Kopf-/Fusszeilen-Erkennung) läuft weiterhin ueber
-  das gesamte Dokument, damit die Boilerplate-Erkennung nicht durch die
-  Auswahl gestört wird.
-- Die erzeugte `.md` behält die Original-Seitenzahlen in den Markern
-  (`%% S. N %%`). Das Frontmatter `seiten` gibt die Anzahl der gewählten
-  Seiten wieder.
-- Im Plugin wird die Auswahl ueber das `SeitenAuswahlModal` abgefragt
-  (Gesamtseitenzahl wird per pdf.js angezeigt).
+- Page numbers are 1-based matching original PDF.
+- Out-of-bounds page numbers throw errors.
+- `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
+- Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`). Frontmatter `seiten` records count of selected pages.
+- Plugin queries selection via `SeitenAuswahlModal` (total page count rendered via pdf.js).
 
-## --fortschritt (Stufe 2)
+## --fortschritt (Stage 2)
 
-Maschinenlesbarer Fortschritt als JSON-Zeilen auf stderr. Standardmäßig bleibt
-die Ausgabe auf die Konsole ausgerichtet (deutsche Sätze, Emoji, Pfeile). Mit
-`--fortschritt` werden zusätzlich je Ereignis eine JSON-Zeile nach stderr
-geschrieben, ohne stdout zu beeinflussen.
+Machine-readable progress emitted as JSON lines to stderr. Default console output (German sentences, emojis, arrows) remains unaffected. Passing `--fortschritt` streams one JSON event per status change to stderr without altering stdout.
 
-### Emittierte Ereignisse
+### Emitted Events
 
-Es wird genau pro Lauf eine Zeile pro Ereignistyp geschrieben. Unbekannte
-Felder sind zukünftig zulässig und müssen von Lesern ignoriert werden.
+One event object emitted per state transition. Downstream parsers must accept and ignore unknown fields.
 
 ```json
 {"typ":"start","datei":"…","seiten":42,"dpi":150}
@@ -360,15 +318,11 @@ Felder sind zukünftig zulässig und müssen von Lesern ignoriert werden.
 {"typ":"fertig","ziel":"…","sekunden":1284.0,"entgleist":1}
 ```
 
-- **start** — nach Analyse des PDFs, bekannt: Dateiname, Seitenanzahl, DPI
-- **seite** — pro Seite: Seitennummer, Gesamtseiten, vergangene Sekunden,
-  Herkunft (`textlayer`/`ocr`/`diagramm`), Entgleisungs-Flag, optional Grund
-- **fertig** — vor der Zusammenfassungs-Ausgabe: Gesamtsekunden, Ziel-Path,
-  Entgleisungs-Gesamtanzahl
+- **start** — post PDF analysis: filename, page count, DPI
+- **seite** — per page: page number, total pages, elapsed seconds, provenance (`textlayer`/`ocr`/`diagramm`), derailment flag, optional cause
+- **fertig** — post completion: total execution time, output path, total derailments
 
-### Versprechen
+### Schema Contract
 
-Es dürfen zukünftig weitere Felder zu den Ereignissen hinzugefügt werden.
-Leser (Plugin, UI, Drittanbieter) müssen solchen ihnen unbekannten Felder
-ignorieren und dürfen das Vorhandensein dieser Felder nicht als Fehler
-werten.
+Additional fields may be introduced to events in future revisions. Parsers (plugins, UIs, external tools) must ignore unrecognized fields without throwing errors.
+

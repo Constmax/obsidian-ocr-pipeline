@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# PDF Auto-Batch: Ordner mit PDFs automatisch verarbeiten
+# PDF Auto-Batch: Automatically process folders containing PDFs
 # ============================================================
 
 set -euo pipefail
@@ -11,25 +11,25 @@ source "$SCRIPT_DIR/pdf-lib.sh"
 
 if [ $# -lt 1 ]; then
     cat <<EOF
-Usage: $(basename "$0") <ordner> [Optionen]
+Usage: $(basename "$0") <folder> [options]
 
-Optionen:
-   --output-dir DIR                Ausgabe-Ordner (Default: <input>/_processed)
-   --engine auto|apple|tesseract   OCR-Engine (Default: auto)
-   --dpi N                         Downscale-Ziel (Default: $DEFAULT_DPI, 0 = aus)
-   --jobs N                        Parallele OCR-Worker (Default: $DEFAULT_JOBS)
-   --cleanup                       Originale nach Erfolg in _archive/ verschieben
-   --fast                          Presets für große Batches (dpi $FAST_DPI, jobs $FAST_JOBS)
-   --split-columns                 Zweispaltige Seiten erkennen, trennen + wieder mergen
-   --split-columns-all             Wie --split-columns, aber ALLE Seiten splitten (kein Auto-Detect)
-   --keep-split                    Re-Merge unterdrücken (Halbseiten behalten)
-   --no-quality-gate               Qualitäts-Check + Auto-Retry deaktivieren
+Options:
+   --output-dir DIR                Output folder (Default: <input>/_processed)
+   --engine auto|apple|tesseract   OCR engine (Default: auto)
+   --dpi N                         Downscale target (Default: $DEFAULT_DPI, 0 = off)
+   --jobs N                        Parallel OCR workers (Default: $DEFAULT_JOBS)
+   --cleanup                       Move originals to _archive/ after success
+   --fast                          Presets for large batches (dpi $FAST_DPI, jobs $FAST_JOBS)
+   --split-columns                 Detect two-column pages, split + re-merge
+   --split-columns-all             Like --split-columns, but split ALL pages (no auto-detect)
+   --keep-split                    Suppress re-merge (keep half-pages)
+   --no-quality-gate               Disable quality check + auto-retry
 EOF
     exit 1
 fi
 
 INPUT_DIR=$(cd "$1" 2>/dev/null && pwd) || {
-    echo "❌ Ordner nicht gefunden: $1"; exit 1
+    echo "❌ Folder not found: $1"; exit 1
 }
 shift
 
@@ -52,13 +52,13 @@ while [ $# -gt 0 ]; do
         --split-columns-all) SPLIT_COLUMNS=true; SPLIT_ALL_PAGES=true; shift ;;
         --keep-split)        KEEP_SPLIT=true; shift ;;
         --no-quality-gate)   NO_QUALITY_GATE=true; shift ;;
-        *) echo "⚠️  Unbekannte Option: $1"; shift ;;
+        *) echo "⚠️  Unknown option: $1"; shift ;;
     esac
 done
 
 case "$ENGINE" in
     auto|apple|tesseract) ;;
-    *) echo "❌ --engine muss 'auto', 'apple' oder 'tesseract' sein"; exit 1 ;;
+    *) echo "❌ --engine must be 'auto', 'apple', or 'tesseract'"; exit 1 ;;
 esac
 
 # ── Init shared state ──
@@ -73,7 +73,7 @@ if [ "$CLEANUP" = true ]; then
     mkdir -p "$ARCHIVE_DIR"
 fi
 
-[ "$CLEANUP" = true ] && echo "   🧹 --cleanup aktiv (Archive: $ARCHIVE_DIR)"
+[ "$CLEANUP" = true ] && echo "   🧹 --cleanup active (Archive: $ARCHIVE_DIR)"
 
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -85,13 +85,13 @@ ALL_PDFS=(*.pdf)
 shopt -u nullglob nocaseglob
 
 if [ ${#ALL_PDFS[@]} -eq 0 ]; then
-    echo "❌ Keine PDFs im Ordner"; exit 1
+    echo "❌ No PDFs in folder"; exit 1
 fi
 
 echo ""
-echo "📂 Eingabe:  $INPUT_DIR"
-echo "📁 Ausgabe:  $OUTPUT_DIR"
-echo "📄 PDFs:     ${#ALL_PDFS[@]}"
+echo "📂 Input:   $INPUT_DIR"
+echo "📁 Output:  $OUTPUT_DIR"
+echo "📄 PDFs:    ${#ALL_PDFS[@]}"
 
 # ── Group detection ──
 for pdf in "${ALL_PDFS[@]}"; do
@@ -114,17 +114,17 @@ process_group() {
 
     echo ""
     if [ "$count" -eq 1 ]; then
-        echo "📄 Einzeldatei: $base"
+        echo "📄 Single file: $base"
     else
-        echo "📚 Gruppe: $base ($count Teile)"
+        echo "📚 Group: $base ($count parts)"
     fi
     for f in "${files[@]}"; do echo "   → $f"; done
 
     # Merge
     if [ "$count" -eq 1 ]; then
-        cp "${files[0]}" "$WORK_DIR/merged.pdf" || { echo "   ❌ cp fehlgeschlagen"; return 1; }
+        cp "${files[0]}" "$WORK_DIR/merged.pdf" || { echo "   ❌ cp failed"; return 1; }
     else
-        qpdf --empty --pages "${files[@]}" -- "$WORK_DIR/merged.pdf" || { echo "   ❌ qpdf fehlgeschlagen"; return 1; }
+        qpdf --empty --pages "${files[@]}" -- "$WORK_DIR/merged.pdf" || { echo "   ❌ qpdf failed"; return 1; }
     fi
 
     # Fix oversized MediaBox before downscale (Hemmer PDFs: 72 PPI → A4)
@@ -147,8 +147,8 @@ process_group() {
     # Build OCR args (--clean for tesseract when unpaper available;
     # --no-rotate when splitting — per-half orientation detection is
     # unreliable and would break the re-merge)
-    # ocr_args wird per Namen an build_ocr_args/run_ocr gereicht (Pass-by-Name,
-    # bash 3.2) — die Nutzung sieht shellcheck in pdf-lib.sh nicht.
+    # ocr_args is passed by name to build_ocr_args/run_ocr
+    # (pass-by-name, bash 3.2) — usage is not seen by shellcheck in pdf-lib.sh.
     # shellcheck disable=SC2034
     local ocr_args
     if [ "$SPLIT_COLUMNS" = true ]; then
@@ -182,20 +182,20 @@ process_group() {
         fi
 
         local size; size=$(du -h "$output_file" | cut -f1)
-        echo "   ✅ Fertig: $output_file ($size)"
+        echo "   ✅ Done: $output_file ($size)"
         rm -f "$WORK_DIR/merged.pdf" "$WORK_DIR/downscaled.pdf" "$WORK_DIR/split.pdf"
 
         if [ "$CLEANUP" = true ]; then
             for f in "${files[@]}"; do
                 if [ -f "$f" ]; then
                     mv "$f" "$ARCHIVE_DIR/" 2>/dev/null && \
-                        echo "   🧹 Archiviert: $f"
+                        echo "   🧹 Archived: $f"
                 fi
             done
         fi
         return 0
     else
-        echo "   ❌ OCR fehlgeschlagen für '$base'"
+        echo "   ❌ OCR failed for '$base'"
         rm -f "$output_file"
         rm -f "$WORK_DIR/merged.pdf" "$WORK_DIR/downscaled.pdf" "$WORK_DIR/split.pdf"
         return 1
@@ -234,5 +234,6 @@ fi
 
 print_summary "$SUCCESS_COUNT" "$FAIL_COUNT" "$OUTPUT_DIR"
 if [ "$CLEANUP" = true ]; then
-    echo "🧹 Archiv:      $ARCHIVE_DIR"
+    echo "🧹 Archive:     $ARCHIVE_DIR"
 fi
+

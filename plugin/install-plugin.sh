@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Legt das Obsidian-Plugin im Vault ab.
-# Default: kopiert das eingecheckte main.js (kein Node nötig).
-# Mit --build: baut aus src/ (braucht node/npm — nur auf der Dev-Maschine).
-# Idempotent — mehrfaches Ausführen ist unschädlich.
+# Installs the Obsidian plugin in the vault.
+# Default: copies checked-in main.js (no Node required).
+# With --build: builds from src/ (requires node/npm — dev machine only).
+# Idempotent — multiple executions are harmless.
 #
-# main.js wird in CI gegen src/ verifiziert (.github/workflows/ci.yml);
-# lokal warnt das Skript, wenn src/ oder main.js vom Commit abweichen.
+# main.js is verified against src/ in CI (.github/workflows/ci.yml);
+# locally the script warns if src/ or main.js differs from the commit.
 #
-# Aufruf:  VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh [--symlink] [--build]
+# Usage:  VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh [--symlink] [--build]
 
 set -euo pipefail
 
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ID="ocr-vorschau"
+PLUGIN_ID="ocr-preview"
 SYMLINK=0
 BUILD=0
 
@@ -21,56 +21,54 @@ for arg in "$@"; do
         --symlink) SYMLINK=1 ;;
         --build) BUILD=1 ;;
         -h|--help)
-            cat <<'HILFE'
-install-plugin.sh — Obsidian-Plugin im Vault ablegen
+            cat <<'HELP'
+install-plugin.sh — Install Obsidian plugin in vault
 
-  VAULT_ROOT=<pfad> plugin/install-plugin.sh [--symlink] [--build]
+  VAULT_ROOT=<path> plugin/install-plugin.sh [--symlink] [--build]
 
-  --build     Statt des eingecheckten main.js aus src/ bauen (npm, Dev-only).
-  --symlink   Statt zu kopieren den Plugin-Ordner in den Vault verlinken.
-              Nur für die Entwicklung. NICHT benutzen, wenn der Vault in
-              iCloud Drive liegt: Symlinks werden dort nicht zuverlässig
-              synchronisiert und können Dateien verlieren.
-              Standard ist deshalb Kopieren.
-HILFE
+  --build     Build from src/ instead of using checked-in main.js (npm, dev only).
+  --symlink   Link plugin folder into vault instead of copying.
+              For development only. DO NOT use if vault is on
+              iCloud Drive: symlinks are not reliably synced there
+              and can lose files. Copying is default.
+HELP
             exit 0 ;;
-        *) echo "!! unbekannte Option: $arg"; exit 1 ;;
+        *) echo "!! unknown option: $arg"; exit 1 ;;
     esac
 done
 
 if [ "$BUILD" = 1 ]; then
-    echo "== Werkzeuge"
+    echo "== Tools"
     for cmd in node npm; do
         if command -v "$cmd" >/dev/null 2>&1; then
             echo "   ok      $cmd $("$cmd" --version)"
         else
-            echo "   FEHLT   $cmd"
+            echo "   MISSING $cmd"
             echo
-            echo "Node fehlt:  brew install node"
+            echo "Node missing: brew install node"
             exit 1
         fi
     done
 
     echo
-    echo "== Bauen"
+    echo "== Build"
     cd "$PLUGIN_DIR"
-    # npm install nur, wenn node_modules fehlt oder älter als package.json ist.
     if [ ! -d node_modules ] || [ package.json -nt node_modules ]; then
         echo "   npm install ..."
         npm install --silent
     else
-        echo "   node_modules aktuell — übersprungen"
+        echo "   node_modules up to date — skipped"
     fi
     echo "   npm run build ..."
     npm run build --silent
-    [ -f main.js ] || { echo "   !! main.js wurde nicht erzeugt"; exit 1; }
+    [ -f main.js ] || { echo "   !! main.js was not generated"; exit 1; }
     echo "   ok      main.js ($(( $(wc -c < main.js) / 1024 )) kB)"
 else
-    echo "== main.js (eingecheckt, kein Build — --build für npm)"
-    [ -f "$PLUGIN_DIR/main.js" ] || { echo "   !! main.js fehlt — mit --build bauen"; exit 1; }
+    echo "== main.js (checked in, no build — --build for npm)"
+    [ -f "$PLUGIN_DIR/main.js" ] || { echo "   !! main.js missing — build with --build"; exit 1; }
     if git -C "$PLUGIN_DIR" rev-parse --git-dir >/dev/null 2>&1; then
         if ! git -C "$PLUGIN_DIR" diff --quiet HEAD -- src main.js; then
-            echo "   ⚠ src/ oder main.js weicht vom Commit ab — ggf. mit --build neu bauen und committen"
+            echo "   ⚠ src/ or main.js differs from commit — rebuild with --build if necessary"
         fi
     fi
 fi
@@ -78,44 +76,42 @@ fi
 echo
 echo "== Vault"
 if [ -z "${VAULT_ROOT:-}" ]; then
-    echo "   !! VAULT_ROOT ist nicht gesetzt."
+    echo "   !! VAULT_ROOT is not set."
     echo "      VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh"
     exit 1
 fi
-# Tilde-Expansion greift bei 'VAULT_ROOT=~/x' vor dem Skript, bei einem
-# gequoteten Wert aber nicht. Beide Formen sollen funktionieren.
 VAULT_ROOT="${VAULT_ROOT/#\~/$HOME}"
 if [ ! -d "$VAULT_ROOT/.obsidian" ]; then
-    echo "   !! '$VAULT_ROOT' sieht nicht nach einem Obsidian-Vault aus (.obsidian/ fehlt)"
+    echo "   !! '$VAULT_ROOT' does not look like an Obsidian vault (.obsidian/ missing)"
     exit 1
 fi
 echo "   ok      $VAULT_ROOT"
 
-ZIEL="$VAULT_ROOT/.obsidian/plugins/$PLUGIN_ID"
+DEST="$VAULT_ROOT/.obsidian/plugins/$PLUGIN_ID"
 
 echo
 if [ "$SYMLINK" = 1 ]; then
-    echo "== Verlinken nach $ZIEL"
-    mkdir -p "$(dirname "$ZIEL")"
-    if [ -L "$ZIEL" ] && [ "$(readlink "$ZIEL")" = "$PLUGIN_DIR" ]; then
-        echo "   schon verlinkt"
+    echo "== Symlinking to $DEST"
+    mkdir -p "$(dirname "$DEST")"
+    if [ -L "$DEST" ] && [ "$(readlink "$DEST")" = "$PLUGIN_DIR" ]; then
+        echo "   already linked"
     else
-        [ -e "$ZIEL" ] && [ ! -L "$ZIEL" ] && {
-            echo "   !! $ZIEL existiert und ist kein Symlink — von Hand entfernen"; exit 1; }
-        ln -sfn "$PLUGIN_DIR" "$ZIEL"
-        echo "   verlinkt"
+        [ -e "$DEST" ] && [ ! -L "$DEST" ] && {
+            echo "   !! $DEST exists and is not a symlink — remove manually"; exit 1; }
+        ln -sfn "$PLUGIN_DIR" "$DEST"
+        echo "   linked"
     fi
-    echo "   Hinweis: bei einem Vault in iCloud Drive stattdessen ohne --symlink laufen lassen."
+    echo "   Note: for a vault in iCloud Drive, run without --symlink instead."
 else
-    echo "== Kopieren nach $ZIEL"
-    mkdir -p "$ZIEL"
-    for datei in main.js manifest.json styles.css; do
-        [ -f "$PLUGIN_DIR/$datei" ] || { echo "   !! fehlt: $datei"; exit 1; }
-        cp "$PLUGIN_DIR/$datei" "$ZIEL/$datei"
-        echo "   kopiert: $datei"
+    echo "== Copying to $DEST"
+    mkdir -p "$DEST"
+    for file in main.js manifest.json styles.css; do
+        [ -f "$PLUGIN_DIR/$file" ] || { echo "   !! missing: $file"; exit 1; }
+        cp "$PLUGIN_DIR/$file" "$DEST/$file"
+        echo "   copied: $file"
     done
 fi
 
 echo
-echo "Fertig. In Obsidian: Einstellungen → Community-Plugins → 'OCR-Vorschau' aktivieren."
-echo "Bei laufendem Obsidian einmal neu laden (Cmd+R)."
+echo "Done. In Obsidian: Settings → Community plugins → Enable 'OCR Preview'."
+echo "Reload Obsidian once (Cmd+R)."

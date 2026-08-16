@@ -1,36 +1,30 @@
 #!/usr/bin/env python3
-"""Pytest: recomputiert die Fixture über die reinen Funktionen und vergleicht
-mit dem eingecheckten Stand.
-
-Sollte eine Format-Änderung in pdf2md.py vorgenommen werden, ohne die Fixture
-aktualisiert zu haben, schlägt dieser Test (CI rot). Gleiche Mechanik wie
-test_snapshot.py: erzeuge_vorschau_fixture.fixture_text() liefert den Stand,
-der gegen die eingecheckte Datei läuft.
+"""Pytest: recomputes fixture via pure functions and compares with committed state.
 """
 
 from pathlib import Path
 
-from erzeuge_vorschau_fixture import fixture_text
-from zusammenbau import frontmatter_bauen
+from generate_preview_fixture import fixture_text
+from zusammenbau import build_frontmatter
 
 
-def test_frontmatter_abgebrochen_nur_wenn_gesetzt():
-    """Issue #25: abgebrochen-Feld erscheint nur bei einem Abbruch."""
-    ohne = frontmatter_bauen(
-        titel="t", quelle_pdf_pfad=Path("a.pdf"), seiten=10,
-        seiten_textlayer=5, seiten_ocr=5,
-        ocr_datum="2026-08-15", ocr_zeitpunkt="2026-08-15T10:00:00")
-    assert "abgebrochen:" not in ohne
+def test_frontmatter_aborted_only_when_set():
+    """Issue #25: aborted field appears only when cancellation occurs."""
+    without = build_frontmatter(
+        title="t", source_pdf_path=Path("a.pdf"), pages=10,
+        pages_textlayer=5, pages_ocr=5,
+        ocr_date="2026-08-15", ocr_timestamp="2026-08-15T10:00:00")
+    assert "abgebrochen:" not in without
 
-    mit = frontmatter_bauen(
-        titel="t", quelle_pdf_pfad=Path("a.pdf"), seiten=10,
-        seiten_textlayer=5, seiten_ocr=5,
-        ocr_datum="2026-08-15", ocr_zeitpunkt="2026-08-15T10:00:00",
-        abgebrochen="seite 5 von 10")
-    assert "abgebrochen: seite 5 von 10" in mit
+    with_aborted = build_frontmatter(
+        title="t", source_pdf_path=Path("a.pdf"), pages=10,
+        pages_textlayer=5, pages_ocr=5,
+        ocr_date="2026-08-15", ocr_timestamp="2026-08-15T10:00:00",
+        aborted="seite 5 von 10")
+    assert "abgebrochen: seite 5 von 10" in with_aborted
 
 
-def test_vorschau_fixture_kommt_ohne_aenderung_aus():
+def test_preview_fixture_unchanged():
     recomputed = fixture_text()
 
     fixture_path = (
@@ -40,7 +34,6 @@ def test_vorschau_fixture_kommt_ohne_aenderung_aus():
     committed = fixture_path.read_text(encoding="utf-8")
 
     assert recomputed == committed, (
-        "Fixture weicht vom eingecheckten Stand ab — "
-        "wurde pdf2md.py geändert ohne die Fixture zu aktualisieren?\n"
-        f"Erzeugte {len(recomputed)} Zeichen, eingecheckt {len(committed)} Zeichen."
+        "Fixture differs from committed state — "
+        f"Generated {len(recomputed)} chars, committed {len(committed)} chars."
     )

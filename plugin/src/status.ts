@@ -1,91 +1,99 @@
-// review-status.json: lesen, schreiben, mit dem Dateisystem abgleichen.
+// review-status.json: read, write, reconcile with file system.
 //
-// GRUNDREGEL: Das Dateisystem gewinnt. Immer.
+// CARDINAL RULE: The file system wins. Always.
 //
-// Die drei Ordner sind das, was der Nutzer im Finder sieht und anfassen kann.
-// Das Manifest ist ein Cache mit Anmerkungen obendrauf (`notiz`,
-// `geprueft-bis`). Niemals eine Datei bewegen, damit sie zum JSON passt — das
-// wuerde einen bewussten Handverschub still rueckgaengig machen, und genau das
-// zerstoert das Vertrauen in ein Werkzeug, das Dateien verschiebt.
+// The three folders are what the user sees and touches in Finder.
+// The manifest is a cache with notes on top (`note`, `checked-until`).
+// Never move a file to match the JSON — doing so would silently undo a conscious
+// manual move, destroying trust in a tool that moves files.
 //
-// Folge daraus: das Manifest ist jederzeit loeschbar. Alles ausser `notiz` und
-// `geprueft-bis` baut sich aus der Ordnerlage und dem Frontmatter neu auf.
+// Consequence: the manifest can be deleted at any time. Everything except `note`
+// and `checked-until` rebuilds from folder location and frontmatter.
 //
-// Reines Modul: kein Import aus `obsidian`.
+// Pure module: no imports from `obsidian`.
 
 import type {
-	GefundeneDatei,
-	Ordnerlage,
+	FolderLocation,
+	FoundFile,
 	Status,
-	StatusEintrag,
+	StatusEntry,
 	StatusManifest,
-} from "./typen.ts";
-import { textAusFrontmatter, zahlAusFrontmatter } from "./vorschau-parser.ts";
+} from "./types.ts";
+import { textFromFrontmatter, numberFromFrontmatter } from "./preview-parser.ts";
 
-export function leeresManifest(jetzt: string): StatusManifest {
-	return { version: 1, aktualisiert: jetzt, eintraege: {} };
+export function emptyManifest(now: string): StatusManifest {
+	return { version: 1, updated: now, entries: {} };
 }
 
-const STATUS_WERTE: readonly Status[] = [
-	"offen",
-	"akzeptiert",
-	"abgelehnt",
-	"neu-erzeugt",
-	"uebernommen",
+const STATUS_VALUES: readonly Status[] = [
+	"open",
+	"accepted",
+	"rejected",
+	"re-created",
+	"adopted",
 ];
 
-function istStatus(wert: unknown): wert is Status {
-	return typeof wert === "string" && (STATUS_WERTE as string[]).includes(wert);
+function isStatus(val: unknown): val is Status {
+	return typeof val === "string" && (STATUS_VALUES as string[]).includes(val);
 }
 
-function textOderNull(wert: unknown): string | null {
-	return typeof wert === "string" && wert.length > 0 ? wert : null;
+function mapLegacyStatus(val: unknown): Status {
+	if (isStatus(val)) return val;
+	if (val === "offen") return "open";
+	if (val === "akzeptiert") return "accepted";
+	if (val === "abgelehnt") return "rejected";
+	if (val === "neu-erzeugt") return "re-created";
+	if (val === "uebernommen") return "adopted";
+	return "open";
 }
 
-function zahlOderNull(wert: unknown): number | null {
-	return typeof wert === "number" && Number.isFinite(wert) ? wert : null;
+function textOrNull(val: unknown): string | null {
+	return typeof val === "string" && val.length > 0 ? val : null;
 }
 
-/** Liest das Manifest defensiv: unbekannte oder kaputte Felder werden auf
- *  sichere Werte gesetzt statt den ganzen Lauf scheitern zu lassen. Bei einem
- *  echten Parse-Fehler wirft die Funktion — der Aufrufer benennt die Datei dann
- *  nach `.kaputt` um und baut aus dem Dateisystem neu auf. */
-export function manifestLesen(text: string, jetzt: string): StatusManifest {
-	const roh: unknown = JSON.parse(text);
-	if (typeof roh !== "object" || roh === null) return leeresManifest(jetzt);
-	const obj = roh as Record<string, unknown>;
-	const eintraegeRoh = obj["eintraege"];
-	const eintraege: Record<string, StatusEintrag> = {};
-	if (typeof eintraegeRoh === "object" && eintraegeRoh !== null) {
-		for (const [name, wertRoh] of Object.entries(
-			eintraegeRoh as Record<string, unknown>,
+function numberOrNull(val: unknown): number | null {
+	return typeof val === "number" && Number.isFinite(val) ? val : null;
+}
+
+/** Reads the manifest defensively: unknown or broken fields are set to safe
+ *  values instead of failing the entire run. On a real parse error the function
+ *  throws — caller then renames the file to `.corrupted` and rebuilds from disk. */
+export function readManifest(text: string, now: string): StatusManifest {
+	const raw: unknown = JSON.parse(text);
+	if (typeof raw !== "object" || raw === null) return emptyManifest(now);
+	const obj = raw as Record<string, unknown>;
+	const rawEntries = obj["entries"] ?? obj["eintraege"];
+	const entries: Record<string, StatusEntry> = {};
+	if (typeof rawEntries === "object" && rawEntries !== null) {
+		for (const [name, rawValue] of Object.entries(
+			rawEntries as Record<string, unknown>,
 		)) {
-			if (typeof wertRoh !== "object" || wertRoh === null) continue;
-			const e = wertRoh as Record<string, unknown>;
-			const vorherRoh = e["vorher"];
-			const vorher =
-				typeof vorherRoh === "object" && vorherRoh !== null
-					? (vorherRoh as Record<string, unknown>)
+			if (typeof rawValue !== "object" || rawValue === null) continue;
+			const e = rawValue as Record<string, unknown>;
+			const rawPrev = e["previous"] ?? e["vorher"];
+			const prevObj =
+				typeof rawPrev === "object" && rawPrev !== null
+					? (rawPrev as Record<string, unknown>)
 					: null;
-			eintraege[name] = {
-				status: istStatus(e["status"]) ? e["status"] : "offen",
-				pfad: textOderNull(e["pfad"]) ?? "",
-				"quelle-pdf": textOderNull(e["quelle-pdf"]),
-				"quelle-pdf-manuell": textOderNull(e["quelle-pdf-manuell"]),
-				seiten: zahlOderNull(e["seiten"]),
-				"seiten-ocr": zahlOderNull(e["seiten-ocr"]),
-				"seiten-diagramm": zahlOderNull(e["seiten-diagramm"]),
-				"ocr-datum": textOderNull(e["ocr-datum"]),
-				"ocr-zeitpunkt": textOderNull(e["ocr-zeitpunkt"]),
-				entschieden: textOderNull(e["entschieden"]),
-				"geprueft-bis": zahlOderNull(e["geprueft-bis"]),
-				notiz: textOderNull(e["notiz"]),
-				vorher:
-					vorher !== null && istStatus(vorher["status"])
+			entries[name] = {
+				status: mapLegacyStatus(e["status"]),
+				path: textOrNull(e["path"] ?? e["pfad"]) ?? "",
+				"source-pdf": textOrNull(e["source-pdf"] ?? e["quelle-pdf"]),
+				"manual-source-pdf": textOrNull(e["manual-source-pdf"] ?? e["quelle-pdf-manuell"]),
+				pages: numberOrNull(e["pages"] ?? e["seiten"]),
+				"pages-ocr": numberOrNull(e["pages-ocr"] ?? e["seiten-ocr"]),
+				"pages-diagram": numberOrNull(e["pages-diagram"] ?? e["seiten-diagramm"]),
+				"ocr-date": textOrNull(e["ocr-date"] ?? e["ocr-datum"]),
+				"ocr-timestamp": textOrNull(e["ocr-timestamp"] ?? e["ocr-zeitpunkt"]),
+				decided: textOrNull(e["decided"] ?? e["entschieden"]),
+				"checked-until": numberOrNull(e["checked-until"] ?? e["geprueft-bis"]),
+				note: textOrNull(e["note"] ?? e["notiz"]),
+				previous:
+					prevObj !== null
 						? {
-								status: vorher["status"],
-								entschieden: textOderNull(vorher["entschieden"]),
-								"ocr-datum": textOderNull(vorher["ocr-datum"]),
+								status: mapLegacyStatus(prevObj["status"]),
+								decided: textOrNull(prevObj["decided"] ?? prevObj["entschieden"]),
+								"ocr-date": textOrNull(prevObj["ocr-date"] ?? prevObj["ocr-datum"]),
 							}
 						: null,
 			};
@@ -93,272 +101,245 @@ export function manifestLesen(text: string, jetzt: string): StatusManifest {
 	}
 	return {
 		version: 1,
-		aktualisiert: textOderNull(obj["aktualisiert"]) ?? jetzt,
-		eintraege,
+		updated: textOrNull(obj["updated"] ?? obj["aktualisiert"]) ?? now,
+		entries,
 	};
 }
 
-export function manifestSchreiben(manifest: StatusManifest): string {
-	// Stabile Schluesselreihenfolge, damit ein Diff des JSON lesbar bleibt.
-	const sortiert: Record<string, StatusEintrag> = {};
-	for (const name of Object.keys(manifest.eintraege).sort()) {
-		const eintrag = manifest.eintraege[name];
-		if (eintrag !== undefined) sortiert[name] = eintrag;
+export function writeManifest(manifest: StatusManifest): string {
+	// Stable key order so JSON diffs remain readable.
+	const sorted: Record<string, StatusEntry> = {};
+	for (const name of Object.keys(manifest.entries).sort()) {
+		const entry = manifest.entries[name];
+		if (entry !== undefined) sorted[name] = entry;
 	}
-	return `${JSON.stringify({ ...manifest, eintraege: sortiert }, null, 2)}\n`;
+	return `${JSON.stringify({ ...manifest, entries: sorted }, null, 2)}\n`;
 }
 
-function neuerEintrag(
-	datei: GefundeneDatei,
-	lage: Ordnerlage,
-	jetzt: string,
-): StatusEintrag {
-	const fm = datei.frontmatter ?? {};
+function newEntry(
+	file: FoundFile,
+	location: FolderLocation,
+	now: string,
+): StatusEntry {
+	const fm = file.frontmatter ?? {};
 	return {
-		status: lage,
-		pfad: datei.pfad,
-		"quelle-pdf": textAusFrontmatter(fm, "quelle-pdf"),
-		"quelle-pdf-manuell": null,
-		seiten: zahlAusFrontmatter(fm, "seiten"),
-		"seiten-ocr": zahlAusFrontmatter(fm, "seiten-ocr"),
-		"seiten-diagramm": zahlAusFrontmatter(fm, "seiten-diagramm"),
-		"ocr-datum": textAusFrontmatter(fm, "ocr-datum"),
-		"ocr-zeitpunkt": textAusFrontmatter(fm, "ocr-zeitpunkt"),
-		// Ein Eintrag, den erst der Abgleich anlegt, hat keine Entscheidung
-		// dieses Werkzeugs hinter sich — auch wenn die Datei bereits in
-		// _akzeptiert/ liegt. Kein Zeitpunkt erfinden.
-		entschieden: null,
-		"geprueft-bis": null,
-		notiz: null,
-		vorher: null,
+		status: location,
+		path: file.path,
+		"source-pdf": textFromFrontmatter(fm, "source-pdf") ?? textFromFrontmatter(fm, "quelle-pdf"),
+		"manual-source-pdf": null,
+		pages: numberFromFrontmatter(fm, "pages") ?? numberFromFrontmatter(fm, "seiten"),
+		"pages-ocr": numberFromFrontmatter(fm, "pages-ocr") ?? numberFromFrontmatter(fm, "seiten-ocr"),
+		"pages-diagram": numberFromFrontmatter(fm, "pages-diagram") ?? numberFromFrontmatter(fm, "seiten-diagramm"),
+		"ocr-date": textFromFrontmatter(fm, "ocr-date") ?? textFromFrontmatter(fm, "ocr-datum"),
+		"ocr-timestamp": textFromFrontmatter(fm, "ocr-timestamp") ?? textFromFrontmatter(fm, "ocr-zeitpunkt"),
+		// An entry created by reconciliation has no tool decision behind it —
+		// even if the file already resides in _accepted/. Do not invent timestamp.
+		decided: null,
+		"checked-until": null,
+		note: null,
+		previous: null,
 	};
 }
 
-/** `ocr-datum` der ALTEN Fassung bei einer Ersetzung (Regel 6): erst das
- *  Frontmatter der Datei selbst — deren Wahrheit —, dann die Erinnerung an
- *  den Zustand vor der Neukonvertierung. Der Eintrag einer Neukonvertierung
- *  traegt inzwischen das NEUE Datum; das waere der falsche Dateiname. */
-export function altesDatumAus(
-	eintrag: StatusEintrag | undefined,
+/** `ocr-date` of OLD version upon replacement (Rule 6): first frontmatter of the
+ *  file itself — its truth —, then memory of state prior to re-conversion.
+ *  Re-conversion entry carries NEW date; that would be wrong filename. */
+export function oldDateFrom(
+	entry: StatusEntry | undefined,
 	frontmatter: Record<string, unknown>,
 ): string {
 	return (
-		textAusFrontmatter(frontmatter, "ocr-datum") ??
-		eintrag?.vorher?.["ocr-datum"] ??
-		"alt"
+		textFromFrontmatter(frontmatter, "ocr-date") ??
+		textFromFrontmatter(frontmatter, "ocr-datum") ??
+		entry?.previous?.["ocr-date"] ??
+		"old"
 	);
 }
 
-export interface AbgleichErgebnis {
+export interface ReconciliationResult {
 	manifest: StatusManifest;
-	/** Namen, deren Status aus der Ordnerlage korrigiert wurde (Regel 2). */
-	korrigiert: string[];
-	/** Namen, die als Neukonvertierung erkannt wurden (Regel 6). */
-	neuErzeugt: string[];
-	/** Namen, deren Cache-Zeile verworfen wurde (Regel 4). */
-	entfernt: string[];
+	/** Names whose status was corrected from folder location (Rule 2). */
+	corrected: string[];
+	/** Names detected as re-conversions (Rule 6). */
+	reCreated: string[];
+	/** Names whose cache entry was discarded (Rule 4). */
+	removed: string[];
 }
 
 /**
- * Gleicht Manifest und Dateisystem ab.
+ * Reconciles manifest and file system.
  *
- * @param dateien   Alle .md aus den drei Ordnern. Der Aufrufer muss mit
- *                  EXAKTEM Elternpfad filtern, nicht mit `startsWith` —
- *                  `_akzeptiert` liegt innerhalb von `_ocr-vorschau`, ein
- *                  Praefixtest listete angenommene Dateien als offen.
- * @param existiertImVault  Prueft, ob ein Pfad ausserhalb der drei Ordner noch
- *                  im Vault liegt. Damit unterscheidet Regel 4 „ins Wiki
- *                  uebernommen" von „geloescht".
+ * @param files             All .md from the three folders. Caller must filter
+ *                          by EXACT parent path, not `startsWith` — `_accepted`
+ *                          is inside `_ocr-preview`; prefix test lists accepted files as open.
+ * @param existsInVault     Checks whether a path outside three folders is in vault.
+ *                          Rule 4 distinguishes "adopted into wiki" from "deleted".
  */
-export function abgleichen(
-	dateien: readonly GefundeneDatei[],
-	vorher: StatusManifest,
-	jetzt: string,
-	existiertImVault: (pfad: string) => boolean = () => false,
-): AbgleichErgebnis {
-	const korrigiert: string[] = [];
-	const neuErzeugt: string[] = [];
-	const entfernt: string[] = [];
+export function reconcile(
+	files: readonly FoundFile[],
+	previous: StatusManifest,
+	now: string,
+	existsInVault: (path: string) => boolean = () => false,
+): ReconciliationResult {
+	const corrected: string[] = [];
+	const reCreated: string[] = [];
+	const removed: string[] = [];
 
-	// Nach Basename gruppieren: derselbe Name kann in zwei Ordnern liegen, und
-	// genau das ist der Neukonvertierungsfall (Regel 5/6).
-	const nachName = new Map<string, GefundeneDatei[]>();
-	for (const datei of dateien) {
-		const liste = nachName.get(datei.name);
-		if (liste === undefined) nachName.set(datei.name, [datei]);
-		else liste.push(datei);
+	// Group by basename: same name can exist in two folders (re-conversion case, Rule 5/6).
+	const byName = new Map<string, FoundFile[]>();
+	for (const file of files) {
+		const list = byName.get(file.name);
+		if (list === undefined) byName.set(file.name, [file]);
+		else list.push(file);
 	}
 
-	const eintraege: Record<string, StatusEintrag> = {};
+	const entries: Record<string, StatusEntry> = {};
 
-	for (const [name, gefunden] of nachName) {
-		// Die Datei im offenen Ordner ist immer die frischeste: pdf2md.py,
-		// main() — Ausgabedatei — schreibt ausschliesslich nach
-		// <out>/<stem>.md und kennt die Unterordner nicht.
-		const offene = gefunden.find((d) => d.lage === "offen");
-		const entschiedene = gefunden.find((d) => d.lage !== "offen");
-		const massgeblich = offene ?? entschiedene;
-		if (massgeblich === undefined) continue;
+	for (const [name, found] of byName) {
+		// File in open folder is always freshest: pdf2md.py main() output writes
+		// exclusively to <out>/<stem>.md and does not know subfolders.
+		const openFile = found.find((d) => d.location === "open");
+		const decidedFile = found.find((d) => d.location !== "open");
+		const primary = openFile ?? decidedFile;
+		if (primary === undefined) continue;
 
-		const alt = vorher.eintraege[name];
-		if (alt === undefined) {
-			// Regel 3 — Datei ohne Eintrag.
-			eintraege[name] = neuerEintrag(massgeblich, massgeblich.lage, jetzt);
+		const oldEntry = previous.entries[name];
+		if (oldEntry === undefined) {
+			// Rule 3 — File without entry.
+			entries[name] = newEntry(primary, primary.location, now);
 			continue;
 		}
 
-		const fm = massgeblich.frontmatter ?? {};
-		// Vergleichs-Merkmal einer Neukonvertierung: bevorzugt der feingranulare
-		// `ocr-zeitpunkt` (unterscheidet gleichtaegige Neulaeufe), Rueckfall auf
-		// das tagesgenaue `ocr-datum` fuer Dateien aus Laeufen vor Einfuehrung.
-		const datumJetzt =
-			textAusFrontmatter(fm, "ocr-zeitpunkt") ??
-			textAusFrontmatter(fm, "ocr-datum");
-		const altDatum = alt["ocr-zeitpunkt"] ?? alt["ocr-datum"];
-		const eintrag: StatusEintrag = {
-			...alt,
-			pfad: massgeblich.pfad,
-			"quelle-pdf": textAusFrontmatter(fm, "quelle-pdf") ?? alt["quelle-pdf"],
-			seiten: zahlAusFrontmatter(fm, "seiten") ?? alt.seiten,
-			"seiten-ocr": zahlAusFrontmatter(fm, "seiten-ocr") ?? alt["seiten-ocr"],
-			"seiten-diagramm":
-				zahlAusFrontmatter(fm, "seiten-diagramm") ?? alt["seiten-diagramm"],
-			"ocr-datum": textAusFrontmatter(fm, "ocr-datum") ?? alt["ocr-datum"],
-			"ocr-zeitpunkt":
-				textAusFrontmatter(fm, "ocr-zeitpunkt") ?? alt["ocr-zeitpunkt"],
+		const fm = primary.frontmatter ?? {};
+		// Comparison attribute for re-conversion: prefers fine-grained `ocr-timestamp`,
+		// fallback to `ocr-date`.
+		const dateNow =
+			textFromFrontmatter(fm, "ocr-timestamp") ??
+			textFromFrontmatter(fm, "ocr-zeitpunkt") ??
+			textFromFrontmatter(fm, "ocr-date") ??
+			textFromFrontmatter(fm, "ocr-datum");
+		const oldDate = oldEntry["ocr-timestamp"] ?? oldEntry["ocr-date"];
+		const entry: StatusEntry = {
+			...oldEntry,
+			path: primary.path,
+			"source-pdf": textFromFrontmatter(fm, "source-pdf") ?? textFromFrontmatter(fm, "quelle-pdf") ?? oldEntry["source-pdf"],
+			pages: numberFromFrontmatter(fm, "pages") ?? numberFromFrontmatter(fm, "seiten") ?? oldEntry.pages,
+			"pages-ocr": numberFromFrontmatter(fm, "pages-ocr") ?? numberFromFrontmatter(fm, "seiten-ocr") ?? oldEntry["pages-ocr"],
+			"pages-diagram":
+				numberFromFrontmatter(fm, "pages-diagram") ?? numberFromFrontmatter(fm, "seiten-diagramm") ?? oldEntry["pages-diagram"],
+			"ocr-date": textFromFrontmatter(fm, "ocr-date") ?? textFromFrontmatter(fm, "ocr-datum") ?? oldEntry["ocr-date"],
+			"ocr-timestamp":
+				textFromFrontmatter(fm, "ocr-timestamp") ?? textFromFrontmatter(fm, "ocr-zeitpunkt") ?? oldEntry["ocr-timestamp"],
 		};
 
-		const warEntschieden =
-			alt.status === "akzeptiert" || alt.status === "abgelehnt";
+		const wasDecided =
+			oldEntry.status === "accepted" || oldEntry.status === "rejected";
 
-		// Regel 5/6 — Neukonvertierung einer bereits entschiedenen Datei.
-		// Zwei Signale, jedes fuer sich ausreichend:
-		//   (a) derselbe Name liegt gleichzeitig offen UND entschieden vor,
-		//   (b) das ocr-datum/ocr-zeitpunkt der offenen Datei weicht vom
-		//       protokollierten ab.
-		// Ohne (b) waere ein Handverschub zurueck in den offenen Ordner nicht
-		// von einer Neukonvertierung zu unterscheiden.
-		const zweiFassungen = offene !== undefined && entschiedene !== undefined;
-		const anderesDatum =
-			offene !== undefined &&
-			datumJetzt !== null &&
-			altDatum !== null &&
-			datumJetzt !== altDatum;
+		// Rule 5/6 — Re-conversion of previously decided file.
+		// Two signals:
+		//   (a) same name present open AND decided simultaneously,
+		//   (b) ocr-date/ocr-timestamp of open file differs from recorded.
+		const twoVersions = openFile !== undefined && decidedFile !== undefined;
+		const differentDate =
+			openFile !== undefined &&
+			dateNow !== null &&
+			oldDate !== null &&
+			dateNow !== oldDate;
 
-		if (warEntschieden && (zweiFassungen || anderesDatum)) {
-			eintrag.status = "neu-erzeugt";
-			eintrag.entschieden = null;
-			// Neue Fassung = neues Dokument: die Review-Position und die Notiz
-			// der ALTEN Fassung gehoeren nicht mehr dazu.
-			eintrag["geprueft-bis"] = null;
-			eintrag.notiz = null;
-			eintrag.vorher = {
-				status: alt.status,
-				entschieden: alt.entschieden,
-				"ocr-datum": alt["ocr-datum"],
+		if (wasDecided && (twoVersions || differentDate)) {
+			entry.status = "re-created";
+			entry.decided = null;
+			// New version = new document: review position and note of OLD version belong to past.
+			entry["checked-until"] = null;
+			entry.note = null;
+			entry.previous = {
+				status: oldEntry.status,
+				decided: oldEntry.decided,
+				"ocr-date": oldEntry["ocr-date"],
 			};
-			neuErzeugt.push(name);
-			eintraege[name] = eintrag;
+			reCreated.push(name);
+			entries[name] = entry;
 			continue;
 		}
 
-		// Neukonvertierung einer noch offenen Datei: dasselbe Signal (b) wie
-		// Regel 5/6, nur ohne vorherige Entscheidung. Status wird zum
-		// „neu-erzeugt"-Hinweis, die alte Review-Position verfaellt mit dem
-		// neuen Inhalt.
-		if (anderesDatum) {
-			eintrag.status = "neu-erzeugt";
-			eintrag["geprueft-bis"] = null;
-			eintrag.notiz = null;
-			neuErzeugt.push(name);
-			eintraege[name] = eintrag;
+		// Re-conversion of an open file: same signal (b) as Rule 5/6, without prior decision.
+		if (differentDate) {
+			entry.status = "re-created";
+			entry["checked-until"] = null;
+			entry.note = null;
+			reCreated.push(name);
+			entries[name] = entry;
 			continue;
 		}
 
-		// Regel 2 — Ordnerlage weicht vom Status ab: die Ordnerlage gewinnt.
-		// `neu-erzeugt` im offenen Ordner ist kein Widerspruch, sondern ein noch
-		// nicht quittierter Zustand und bleibt erhalten.
-		const passt =
-			alt.status === massgeblich.lage ||
-			(alt.status === "neu-erzeugt" && massgeblich.lage === "offen");
-		if (!passt) {
-			eintrag.status = massgeblich.lage;
-			// Zurueck auf offen heisst: die Entscheidung ist zurueckgenommen.
-			if (massgeblich.lage === "offen") eintrag.entschieden = null;
-			korrigiert.push(name);
+		// Rule 2 — Folder location differs from status: folder location wins.
+		// `re-created` in open folder is not a contradiction, but unacknowledged state.
+		const matches =
+			oldEntry.status === primary.location ||
+			(oldEntry.status === "re-created" && primary.location === "open");
+		if (!matches) {
+			entry.status = primary.location;
+			if (primary.location === "open") entry.decided = null;
+			corrected.push(name);
 		}
-		eintraege[name] = eintrag;
+		entries[name] = entry;
 	}
 
-	// Regel 4 — Eintrag ohne Datei in den drei Ordnern.
-	//
-	// Damit diese Regel „ins Wiki uebernommen" ueberhaupt sehen kann, muss `pfad`
-	// einem Verschieben AUS den drei Ordnern heraus folgen. Das leistet
-	// `Bestand.pfadNachziehen` am `rename`-Ereignis. Ohne das zeigte `pfad` immer
-	// noch in den Vorschau-Ordner, `existiertImVault` waere dort stets falsch, und
-	// jede Uebernahme landete faelschlich in `entfernt` — mitsamt `notiz` und
-	// `geprueft-bis`, die das Manifest als einziges nicht wiederherstellen kann.
-	for (const [name, alt] of Object.entries(vorher.eintraege)) {
-		if (nachName.has(name)) continue;
-		if (alt.pfad.length > 0 && existiertImVault(alt.pfad)) {
-			// Liegt woanders im Vault — vermutlich bewusst ins Wiki uebernommen.
-			// Eintrag behalten (als Gedaechtnis), aber nicht mehr listen.
-			eintraege[name] = { ...alt, status: "uebernommen" };
+	// Rule 4 — Entry without file in the three folders.
+	for (const [name, oldEntry] of Object.entries(previous.entries)) {
+		if (byName.has(name)) continue;
+		if (oldEntry.path.length > 0 && existsInVault(oldEntry.path)) {
+			// Located elsewhere in vault — adopted into wiki. Keep entry as memory.
+			entries[name] = { ...oldEntry, status: "adopted" };
 		} else {
-			entfernt.push(name);
+			removed.push(name);
 		}
 	}
 
 	return {
-		manifest: { version: 1, aktualisiert: jetzt, eintraege },
-		korrigiert,
-		neuErzeugt,
-		entfernt,
+		manifest: { version: 1, updated: now, entries },
+		corrected,
+		reCreated,
+		removed,
 	};
 }
 
-/** Trägt eine Entscheidung ein. Das Verschieben selbst macht der Aufrufer —
- *  diese Funktion kennt kein Dateisystem. */
-export function entscheidungEintragen(
+/** Records a decision. Moving file is handled by caller — function is agnostic to disk. */
+export function recordDecision(
 	manifest: StatusManifest,
 	name: string,
-	status: Ordnerlage,
-	neuerPfad: string,
-	jetzt: string,
+	status: FolderLocation,
+	newPath: string,
+	now: string,
 ): StatusManifest {
-	const alt = manifest.eintraege[name];
-	if (alt === undefined) return manifest;
+	const oldEntry = manifest.entries[name];
+	if (oldEntry === undefined) return manifest;
 	return {
 		...manifest,
-		aktualisiert: jetzt,
-		eintraege: {
-			...manifest.eintraege,
+		updated: now,
+		entries: {
+			...manifest.entries,
 			[name]: {
-				...alt,
+				...oldEntry,
 				status,
-				pfad: neuerPfad,
-				entschieden: status === "offen" ? null : jetzt,
-				// `vorher` ist die Erinnerung an die Entscheidung VOR einer
-				// Neukonvertierung. Ist neu entschieden, ist sie beantwortet und
-				// gehoert weg — sonst zeigt die Seitenleiste spaeter ein
-				// „Vorher …" zu einem Zustand, den es nicht mehr gibt.
-				vorher: null,
+				path: newPath,
+				decided: status === "open" ? null : now,
+				previous: null,
 			},
 		},
 	};
 }
 
-/** Ordnerlage → Zielordner. Eine Stelle, damit Ansicht und Aktionen sich nicht
- *  auseinanderentwickeln. */
-export function zielordner(
-	lage: Ordnerlage,
-	einstellungen: {
-		vorschauOrdner: string;
-		akzeptiertOrdner: string;
-		abgelehntOrdner: string;
+/** FolderLocation → target folder. Single source of truth. */
+export function targetFolder(
+	location: FolderLocation,
+	settings: {
+		previewFolder: string;
+		acceptedFolder: string;
+		rejectedFolder: string;
 	},
 ): string {
-	if (lage === "akzeptiert") return einstellungen.akzeptiertOrdner;
-	if (lage === "abgelehnt") return einstellungen.abgelehntOrdner;
-	return einstellungen.vorschauOrdner;
+	if (location === "accepted") return settings.acceptedFolder;
+	if (location === "rejected") return settings.rejectedFolder;
+	return settings.previewFolder;
 }

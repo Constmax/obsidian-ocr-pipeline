@@ -1,5 +1,5 @@
-// Plugin-Einstieg: Registrierung der Ansicht, Befehle, Ribbon, Datei-Menue
-// und die Vault-Listener, die den Abgleich anstossen.
+// Plugin entry point: registration of view, commands, ribbon, file menu,
+// and vault listeners that trigger reconciliation.
 
 import { homedir } from "os";
 import { join } from "path";
@@ -15,423 +15,373 @@ import {
 	normalizePath,
 } from "obsidian";
 
-import { ANSICHT_TYP, OcrAbgleichAnsicht, PdfAuswahlModal, SeitenAuswahlModal } from "./ansicht.ts";
-import { Bestand } from "./dateiaktionen.ts";
-import { Einstellungen, EinstellungenTab, STANDARD } from "./einstellungen.ts";
-import { kindAbbrechen, pdfKonvertieren } from "./konvertierung.ts";
+import { VIEW_TYPE, OcrComparisonView, PdfSelectModal, PageSelectModal } from "./view.ts";
+import { Inventory } from "./file-actions.ts";
+import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
+import { abortChild, convertPdf } from "./conversion.ts";
 
-const ABGLEICH_ENTPRELLT_MS = 500;
+const RECONCILE_DEBOUNCE_MS = 500;
+const CONVERSION_TIMEOUT_MS = 30 * 60 * 1000;
+const INDEX_WAIT_STEPS = 10;
+const INDEX_WAIT_MS = 200;
 
-/** Nach so langer Laufzeit ohne Prozessende wird die Konvertierung gekillt.
- *  Grosszuegig bemessen: der ERSTE Lauf laedt das MLX-Modell (~2 GB) und
- *  schreibt erst danach Fortschritt. */
-const KONVERTIERUNG_TIMEOUT_MS = 30 * 60 * 1000;
-
-/** Wartezeit auf Obsidians Datei-Index nach dem Prozessende: der Watcher
- *  laeuft dem Dateisystem um Bruchteile einer Sekunde hinterher. */
-const INDEX_WARTE_SCHRITTE = 10;
-const INDEX_WARTE_MS = 200;
-
-/** Lokale pdf2md-Installation. setup.sh (Repo-Wurzel) und install.sh legen
- *  den Symlink nach ~/bin an; install.sh respektiert dabei BIN_DIR. Gesucht
- *  wird deshalb in der Reihenfolge ~/bin, /usr/local/bin, dann PATH. */
-function pdf2mdAufloesen(): string {
-	const kandidaten = [join(homedir(), "bin", "pdf2md"), "/usr/local/bin/pdf2md"];
-	for (const teil of (process.env.PATH ?? "").split(":")) {
-		if (teil.length > 0) kandidaten.push(join(teil, "pdf2md"));
+function resolvePdf2md(): string {
+	const candidates = [join(homedir(), "bin", "pdf2md"), "/usr/local/bin/pdf2md"];
+	for (const part of (process.env.PATH ?? "").split(":")) {
+		if (part.length > 0) candidates.push(join(part, "pdf2md"));
 	}
-	for (const kandidat of kandidaten) {
-		if (existsSync(kandidat)) return kandidat;
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) return candidate;
 	}
-	// Nichts gefunden: der Fallback laeuft in den Spawn-ENOENT-Pfad, der die
-	// freundliche Meldung mit setup.sh-Hinweis zeigt.
-	return kandidaten[0]!;
+	return candidates[0]!;
 }
 
-export default class OcrVorschauPlugin extends Plugin {
-	einstellungen: Einstellungen = { ...STANDARD };
-	bestand!: Bestand;
+export default class OcrPreviewPlugin extends Plugin {
+	settings: Settings = { ...DEFAULT_SETTINGS };
+	inventory!: Inventory;
 
-	private abgleichTimer: number | null = null;
-	private konvertiertGerade = false;
-	/** Laufender pdf2md-Kindprozess — wird beim Plugin-Unload gekillt, damit
-	 *  ein haengender Lauf Obsidian nicht auf ewig blockiert. */
-	private laufendesKind: ChildProcess | null = null;
+	private reconcileTimer: number | null = null;
+	private isConverting = false;
+	private runningChild: ChildProcess | null = null;
 
 	async onload(): Promise<void> {
-		await this.einstellungenLaden();
-		this.bestand = new Bestand(this.app, () => this.einstellungen);
-		await this.bestand.laden();
+		await this.loadSettings();
+		this.inventory = new Inventory(this.app, () => this.settings);
+		await this.inventory.load();
 
-		this.registerView(ANSICHT_TYP, (leaf) => new OcrAbgleichAnsicht(leaf, this));
+		this.registerView(VIEW_TYPE, (leaf) => new OcrComparisonView(leaf, this));
 
-		// Datei verschoben/neu/geloescht → Abgleich. Entprellt: ein Schwung an
-		// Aenderungen kostet einen Durchlauf, nicht einen pro Ereignis.
-		// Gefiltert auf .md in den drei Ordnern: pdf2md legt waehrend einer
-		// Konvertierung Kachelbilder (_seiteNNN.png) im Repo-Ordner ab — ohne
-		// Filter stuesse jedes PNG den Abgleich an.
-		const relevant = (datei: TAbstractFile): boolean =>
-			datei instanceof TFile && datei.extension === "md" && this.istVorschauDatei(datei);
-		const anstossen = () => this.abgleichAnstossen();
+		const relevant = (file: TAbstractFile): boolean =>
+			file instanceof TFile && file.extension === "md" && this.isPreviewFile(file);
+		const trigger = () => this.triggerReconcile();
+
 		this.registerEvent(
-			this.app.vault.on("create", (datei) => {
-				if (relevant(datei)) anstossen();
+			this.app.vault.on("create", (file) => {
+				if (relevant(file)) trigger();
 			}),
 		);
 		this.registerEvent(
-			this.app.vault.on("delete", (datei) => {
-				if (relevant(datei)) anstossen();
+			this.app.vault.on("delete", (file) => {
+				if (relevant(file)) trigger();
 			}),
 		);
 		this.registerEvent(
-			this.app.vault.on("rename", (datei, alterPfad) => {
-				if (!(datei instanceof TFile) || datei.extension !== "md") return;
-				// Vor dem Abgleich: eine Datei, die die drei Ordner verlaesst,
-				// nimmt ihren Eintrag mit. Sonst kann Regel 4 „ins Wiki
-				// uebernommen" nicht von „geloescht" unterscheiden. Deshalb muss
-				// auch das VERLASSEN der drei Ordner den Abgleich anstossen —
-				// der Filter prueft beide Pfade.
-				if (!this.istVorschauPfad(alterPfad) && !this.istVorschauDatei(datei)) return;
-				this.bestand.pfadNachziehen(datei.path, alterPfad);
-				anstossen();
+			this.app.vault.on("rename", (file, oldPath) => {
+				if (!(file instanceof TFile) || file.extension !== "md") return;
+				if (!this.isPreviewPath(oldPath) && !this.isPreviewFile(file)) return;
+				this.inventory.trackPathChange(file.path, oldPath);
+				trigger();
 			}),
 		);
-		// `modify` ist nicht verzichtbar: ein erneuter pdf2md-Lauf schreibt nach
-		// <out>/<stem>.md und ueberschreibt eine dort liegende Datei IN PLACE.
-		// Das ist weder create noch rename — ohne diesen Listener bliebe das neue
-		// `ocr-datum` ungesehen und Regel 6 erkennt die Neukonvertierung nicht.
-		//
-		// Gefiltert auf .md in den drei Ordnern. Das haelt den Abgleich von jedem
-		// beliebigen Notiz-Tastendruck im Vault fern und schliesst zugleich den
-		// Schreib-Kreisel strukturell aus: review-status.json ist .json, unser
-		// eigener Schreibvorgang kann diesen Listener also nie ausloesen.
 		this.registerEvent(
-			this.app.vault.on("modify", (datei) => {
-				if (!(datei instanceof TFile)) return;
-				if (datei.extension !== "md") return;
-				if (!this.istVorschauDatei(datei)) return;
-				anstossen();
+			this.app.vault.on("modify", (file) => {
+				if (!(file instanceof TFile)) return;
+				if (file.extension !== "md") return;
+				if (!this.isPreviewFile(file)) return;
+				trigger();
 			}),
 		);
-		// `modify` meldet den Schreibvorgang, aber das neue `ocr-datum` steht
-		// erst nach Obsidians Nachparsen im metadataCache — und genau DAS liest
-		// `dateienSammeln`. Fuer Regel 6 dem Cache-Meldepunkt nachhoeren, mit
-		// demselben Filter: ein verzoegertes Parsen darf die Neukonvertierung
-		// nicht verpassen. Der eigene Manifest-Schreibvorgang ist .json und
-		// kommt hier nie an.
 		this.registerEvent(
-			this.app.metadataCache.on("changed", (datei) => {
-				if (!(datei instanceof TFile)) return;
-				if (datei.extension !== "md") return;
-				if (!this.istVorschauDatei(datei)) return;
-				anstossen();
+			this.app.metadataCache.on("changed", (file) => {
+				if (!(file instanceof TFile)) return;
+				if (file.extension !== "md") return;
+				if (!this.isPreviewFile(file)) return;
+				trigger();
 			}),
 		);
 
-		this.addRibbonIcon("columns-3", "OCR-Abgleich öffnen", () => {
-			void this.ansichtOeffnen();
+		this.addRibbonIcon("columns-3", "Open OCR comparison", () => {
+			void this.revealView();
 		});
 
 		this.addCommand({
 			id: "abgleich-oeffnen",
-			name: "Abgleich-Ansicht öffnen",
-			callback: () => void this.ansichtOeffnen(),
+			name: "Open OCR comparison",
+			callback: () => void this.revealView(),
 		});
 		this.addCommand({
 			id: "abgleich-weiter",
-			name: "Zum nächsten Vorschau-Eintrag springen",
-			callback: () => this.offeneAnsicht()?.weiter(),
+			name: "Jump to next preview entry",
+			callback: () => this.openView()?.next(),
 		});
 		this.addCommand({
 			id: "pdf-konvertieren-und-abgleich",
-			name: "PDF konvertieren und im OCR-Abgleich öffnen",
-			callback: () => void this.pdfAuswaehlenUndKonvertieren(),
+			name: "Convert PDF and open in OCR comparison",
+			callback: () => void this.selectPdfAndConvert(),
 		});
 
-		this.addSettingTab(new EinstellungenTab(this.app, this));
+		this.registerEvent(
+			this.app.workspace.on("file-menu", (menu, file) => {
+				this.populateFileMenu(menu, file);
+			}),
+		);
+
+		this.addSettingTab(new SettingsTab(this.app, this));
 	}
 
 	onunload(): void {
-		if (this.abgleichTimer !== null) window.clearTimeout(this.abgleichTimer);
-		// Geordneter Abbruch (SIGTERM, nach Frist SIGKILL): ein haengender
-		// Lauf darf Obsidian nicht auf ewig blockieren, und pdf2md bekommt die
-		// Chance, seine Teildatei zu schreiben.
-		if (this.laufendesKind !== null) kindAbbrechen(this.laufendesKind);
-		this.laufendesKind = null;
-		// Der Manifest-Schreibvorgang ist um 500 ms entprellt. Wird Obsidian
-		// innerhalb dieser Spanne nach einer Entscheidung geschlossen, stirbt der
-		// Timer mit dem Plugin und Notiz, `geprueft-bis` und der Zeitpunkt der
-		// Entscheidung waeren weg. `onunload` ist synchron, also nur anstossen —
-		// das genuegt, weil der Schreibvorgang damit sofort statt spaeter laeuft.
-		void this.bestand?.sofortSpeichern();
+		if (this.reconcileTimer !== null) window.clearTimeout(this.reconcileTimer);
+		if (this.runningChild !== null) abortChild(this.runningChild);
+		this.runningChild = null;
+		void this.inventory?.saveImmediately();
 	}
 
-	async einstellungenLaden(): Promise<void> {
-		const gespeichert = (await this.loadData()) as Partial<Einstellungen> | null;
-		this.einstellungen = { ...STANDARD, ...(gespeichert ?? {}) };
+	async loadSettings(): Promise<void> {
+		const saved = (await this.loadData()) as Record<string, unknown> | null;
+		if (saved) {
+			const migrated: Partial<Settings> = {};
+			const str = (k: string): string | undefined => {
+				const val = saved[k];
+				return typeof val === "string" ? val : undefined;
+			};
+			const previewFolder = str("previewFolder") ?? str("vorschauOrdner");
+			if (previewFolder) migrated.previewFolder = previewFolder;
+
+			const acceptedFolder = str("acceptedFolder") ?? str("akzeptiertOrdner");
+			if (acceptedFolder) migrated.acceptedFolder = acceptedFolder;
+
+			const rejectedFolder = str("rejectedFolder") ?? str("abgelehntOrdner");
+			if (rejectedFolder) migrated.rejectedFolder = rejectedFolder;
+
+			const statusFile = str("statusFile") ?? str("statusDatei");
+			if (statusFile) migrated.statusFile = statusFile;
+
+			if (saved["markdownView"]) migrated.markdownView = saved["markdownView"] as "rendered" | "source";
+			else if (saved["markdownAnsicht"]) migrated.markdownView = saved["markdownAnsicht"] === "quelltext" ? "source" : "rendered";
+
+			if (saved["columnWidths"]) migrated.columnWidths = saved["columnWidths"] as [number, number, number];
+			else if (saved["spaltenbreiten"]) migrated.columnWidths = saved["spaltenbreiten"] as [number, number, number];
+
+			if (typeof saved["pdfZoomMax"] === "number") migrated.pdfZoomMax = saved["pdfZoomMax"];
+			if (typeof saved["syncActive"] === "boolean") migrated.syncActive = saved["syncActive"];
+			else if (typeof saved["syncAktiv"] === "boolean") migrated.syncActive = saved["syncAktiv"];
+
+			if (typeof saved["mdEagerLimit"] === "number") migrated.mdEagerLimit = saved["mdEagerLimit"];
+
+			this.settings = { ...DEFAULT_SETTINGS, ...migrated };
+		} else {
+			this.settings = { ...DEFAULT_SETTINGS };
+		}
 	}
 
-	async einstellungenSpeichern(): Promise<void> {
-		await this.saveData(this.einstellungen);
+	async saveSettings(): Promise<void> {
+		await this.saveData(this.settings);
 	}
 
-	/** Abgleich nach Fremdaenderung oder Einstellungsaenderung. */
-	abgleichAnstossen(): void {
-		if (this.abgleichTimer !== null) window.clearTimeout(this.abgleichTimer);
-		this.abgleichTimer = window.setTimeout(() => {
-			this.abgleichTimer = null;
-			void this.bestand.abgleichen();
-			this.offeneAnsicht()?.aktualisieren();
-		}, ABGLEICH_ENTPRELLT_MS);
+	triggerReconcile(): void {
+		if (this.reconcileTimer !== null) window.clearTimeout(this.reconcileTimer);
+		this.reconcileTimer = window.setTimeout(() => {
+			this.reconcileTimer = null;
+			void this.inventory.reconcile();
+			this.openView()?.update();
+		}, RECONCILE_DEBOUNCE_MS);
 	}
 
-	offeneAnsicht(): OcrAbgleichAnsicht | null {
-		const leaf = this.app.workspace.getLeavesOfType(ANSICHT_TYP)[0];
+	openView(): OcrComparisonView | null {
+		const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
 		if (leaf === undefined) return null;
-		return leaf.view instanceof OcrAbgleichAnsicht ? leaf.view : null;
+		return leaf.view instanceof OcrComparisonView ? leaf.view : null;
 	}
 
-	/** Oeffnet die Ansicht, optional mit einem Eintrag. */
-	async ansichtOeffnen(name?: string): Promise<void> {
+	/** Opens the view tab, optionally with an entry. */
+	async revealView(name?: string): Promise<void> {
 		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(ANSICHT_TYP)[0];
+		let leaf = workspace.getLeavesOfType(VIEW_TYPE)[0];
 		if (leaf === undefined) {
 			leaf = workspace.getLeaf("tab");
-			await leaf.setViewState({ type: ANSICHT_TYP, active: true });
+			await leaf.setViewState({ type: VIEW_TYPE, active: true });
 		}
 		await workspace.revealLeaf(leaf);
-		const ansicht =
-			leaf.view instanceof OcrAbgleichAnsicht ? leaf.view : null;
-		if (ansicht === null) return;
-		if (name !== undefined) await ansicht.oeffnen(name);
-		else if (ansicht.aktiveName === null) {
-			const erster = ansicht.ersterSichtbar();
-			if (erster !== null) await ansicht.oeffnen(erster);
+		const view = leaf.view instanceof OcrComparisonView ? leaf.view : null;
+		if (view === null) return;
+		if (name !== undefined) await view.open(name);
+		else if (view.activeName === null) {
+			const first = view.firstVisible();
+			if (first !== null) await view.open(first);
 		}
 	}
 
-	/**
-	 * Befehl „PDF konvertieren und im OCR-Abgleich öffnen": eine PDF aus dem
-	 * Vault waehlen, per pdf2md konvertieren, dann den Abgleich mit dem
-	 * Ergebnis oeffnen. Rückmeldung per Notice mit Abbruch-Button — der
-	 * Fortschrittsmodal mit Fortschrittsbalken bleibt Roadmap.
-	 */
-	async pdfAuswaehlenUndKonvertieren(): Promise<void> {
-		if (!this.konvertierungFrei()) return;
-		const modal = new PdfAuswahlModal(
+	async selectPdfAndConvert(): Promise<void> {
+		if (!this.checkConversionFree()) return;
+		const modal = new PdfSelectModal(
 			this.app,
 			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
 		);
-		modal.setPlaceholder("PDF für die Konvertierung suchen…");
-		modal.onAuswahl = (datei) => {
-			const seitenModal = new SeitenAuswahlModal(this.app, datei);
-			seitenModal.onAuswahl = (seiten) =>
-				void this.konvertieren(datei, seiten);
-			seitenModal.open();
+		modal.setPlaceholder("Search PDF for conversion…");
+		modal.onSelection = (file) => {
+			const pageModal = new PageSelectModal(this.app, file);
+			pageModal.onSelection = (pages) =>
+				void this.convert(file, pages);
+			pageModal.open();
 		};
 		modal.open();
 	}
 
-	/** Gemeinsame Sperre beider Konvertierungs-Einstiege (Modal-Auswahl und
-	 *  Direktaufruf): zwei Befehlsaufrufe koennen je ein Modal oeffnen, bevor
-	 *  der erste eine Auswahl trifft. */
-	private konvertierungFrei(): boolean {
-		if (this.konvertiertGerade) {
-			new Notice("OCR-Vorschau: Es läuft bereits eine Konvertierung.");
+	private checkConversionFree(): boolean {
+		if (this.isConverting) {
+			new Notice("OCR Preview: A conversion is already running.");
 			return false;
 		}
 		return true;
 	}
 
-	private async konvertieren(datei: TFile, seiten?: string): Promise<void> {
-		if (!this.konvertierungFrei()) return;
-		this.konvertiertGerade = true;
-		const name = datei.basename;
-		let laufendeNotice: Notice | null = null;
+	private async convert(file: TFile, pages?: string): Promise<void> {
+		if (!this.checkConversionFree()) return;
+		this.isConverting = true;
+		const name = file.basename;
+		let progressNotice: Notice | null = null;
 		try {
-			// Gleiche Stems in verschiedenen Ordnern wuerden dieselbe
-			// <out>/<stem>.md ueberschreiben — lieber mit klarer Meldung
-			// abbrechen als still die Vorschau der anderen Datei zerstoeren.
-			const gleichnamige = this.app.vault
+			const duplicateStems = this.app.vault
 				.getFiles()
 				.filter(
-					(f) => f.extension === "pdf" && f.basename === name && f.path !== datei.path,
+					(f) => f.extension === "pdf" && f.basename === name && f.path !== file.path,
 				);
-			if (gleichnamige.length > 0) {
+			if (duplicateStems.length > 0) {
 				new Notice(
-					`OCR-Vorschau: „${name}“ existiert auch als ${gleichnamige
+					`OCR Preview: "${name}" also exists as ${duplicateStems
 						.map((f) => f.path)
-						.join(", ")} — die Ausgabe würde sich überschreiben. Bitte eine der Dateien umbenennen.`,
+						.join(", ")} — output would overwrite. Please rename one of the files.`,
 				);
 				return;
 			}
 			const adapter = this.app.vault.adapter;
 			if (!(adapter instanceof FileSystemAdapter)) {
-				new Notice("OCR-Vorschau: Konvertierung braucht Dateisystemzugriff (Desktop).");
+				new Notice("OCR Preview: Conversion requires file system access (Desktop).");
 				return;
 			}
-			const basis = adapter.getBasePath();
-			// Vault-relative Pfade, Kindprozess mit cwd=Vault-Wurzel: pdf2md.py
-			// schreibt den PDF-Pfad unveraendert in `quelle-pdf` und den
-			// `Quelle: [[…]]`-Link der erzeugten Notiz. Ein absoluter,
-			// maschinenspezifischer Pfad waere dort ein toter Link.
-			const pdfRel = datei.path;
-			const outRel = normalizePath(this.einstellungen.vorschauOrdner);
-			laufendeNotice = new Notice(`OCR-Vorschau: Konvertiere „${name}“ …`, 0);
-			// Abbruch-Button in der Notice: geordneter Abbruch (SIGTERM, nach
-			// Frist SIGKILL). Die Stufe, die gegriffen hat, steht im
-			// Ergebnis — Code 6 (pdf2md hat die Teildatei geschrieben),
-			// Code 7 (Abbruch vor der ersten Seite, keine Datei) oder
-			// Signal SIGTERM/SIGKILL.
-			let abgebrochen = false;
-			const abbruchKnopf = laufendeNotice.containerEl.createEl("button", {
-				text: "Abbrechen",
+			const base = adapter.getBasePath();
+			const pdfRel = file.path;
+			const outRel = normalizePath(this.settings.previewFolder);
+			progressNotice = new Notice(`OCR Preview: Converting "${name}" …`, 0);
+			let cancelled = false;
+			const cancelBtn = progressNotice.containerEl.createEl("button", {
+				text: "Cancel",
 				cls: "ocr-notice-abbrechen",
 			});
-			abbruchKnopf.addEventListener("click", () => {
-				if (abgebrochen) return;
-				abgebrochen = true;
-				abbruchKnopf.detach();
-				laufendeNotice?.setMessage(`OCR-Vorschau: „${name}“ wird abgebrochen …`);
-				if (this.laufendesKind !== null) kindAbbrechen(this.laufendesKind);
+			cancelBtn.addEventListener("click", () => {
+				if (cancelled) return;
+				cancelled = true;
+				cancelBtn.detach();
+				progressNotice?.setMessage(`OCR Preview: "${name}" is being cancelled …`);
+				if (this.runningChild !== null) abortChild(this.runningChild);
 			});
-			const ergebnis = await pdfKonvertieren(
+			const result = await convertPdf(
 				pdfRel,
 				outRel,
-				pdf2mdAufloesen(),
-				basis,
+				resolvePdf2md(),
+				base,
 				undefined,
 				{
-					timeoutMs: KONVERTIERUNG_TIMEOUT_MS,
-					...(seiten && seiten.length > 0 ? { seiten } : {}),
-					onKind: (kind) => {
-						this.laufendesKind = kind;
+					timeoutMs: CONVERSION_TIMEOUT_MS,
+					...(pages && pages.length > 0 ? { pages } : {}),
+					onChild: (child) => {
+						this.runningChild = child;
 					},
-					onFortschritt: (e) => {
-						if (e.typ !== "seite" || abgebrochen) return;
-						if (laufendeNotice) {
-							const txt = e.entgleist
-								? `— Seite ${e.nr} von ${e.von} (entgleist)`
-								: `— Seite ${e.nr} von ${e.von}`;
-							laufendeNotice.setMessage(
-								`OCR-Vorschau: Konvertiere "${name}"${txt} …`
+					onProgress: (e) => {
+						if (e.type !== "page" || cancelled) return;
+						if (progressNotice) {
+							const txt = e.derailed
+								? `— page ${e.num} of ${e.total} (derailed)`
+								: `— page ${e.num} of ${e.total}`;
+							progressNotice.setMessage(
+								`OCR Preview: Converting "${name}" ${txt} …`
 							);
 						}
 					},
 				},
 			);
-			this.laufendesKind = null;
-			laufendeNotice.hide();
-			laufendeNotice = null;
-			if (ergebnis.code !== 0) {
-				const stderrLetzte = ergebnis.stderrLetzte;
-				// Fortschrittszeilen („→ S.3: …") sind keine Fehlerursache — ohne
-				// stderr-Rest darf keine davon als Detail durchrutschen.
-				const stdoutLetzte = ergebnis.stdoutLetzte.filter((z) => !z.startsWith("→"));
+			this.runningChild = null;
+			progressNotice.hide();
+			progressNotice = null;
+			if (result.code !== 0) {
+				const stderrLast = result.stderrLast;
+				const stdoutLast = result.stdoutLast.filter((z) => !z.startsWith("→"));
 				const detail =
-					(stderrLetzte.length > 0
-						? stderrLetzte[stderrLetzte.length - 1]
+					(stderrLast.length > 0
+						? stderrLast[stderrLast.length - 1]
 						: undefined) ??
-					(stdoutLetzte.length > 0 ? stdoutLetzte[stdoutLetzte.length - 1] : undefined) ??
+					(stdoutLast.length > 0 ? stdoutLast[stdoutLast.length - 1] : undefined) ??
 					"";
-			let codeText: string;
-			if (ergebnis.code === 6) {
-				// pdf2md hat auf SIGTERM geordnet beendet: Teildatei liegt im
-				// Vorschau-Ordner, im Frontmatter als unvollstaendig markiert.
-				codeText = "abgebrochen — Teildatei erstellt (unvollständig)";
-			} else if (ergebnis.code === 7) {
-				// Abbruch vor der ersten Seite (z. B. haengender Modell-Download
-				// beim Timeout): pdf2md hat nichts geschrieben — keine Teildatei.
-				codeText = "abgebrochen — vor der ersten Seite (keine Teildatei)";
-			} else if (ergebnis.signal === "SIGKILL") {
-				// Stufe 2: der Prozess hat die Frist nach SIGTERM nicht
-				// geschafft und wurde hart beendet — keine Teildatei.
-				codeText = "abgebrochen — nach Frist hart beendet (SIGKILL)";
-			} else if (ergebnis.timeout) {
-				codeText = `nach ${KONVERTIERUNG_TIMEOUT_MS / 60000} min abgebrochen`;
-			} else if (ergebnis.code === null && ergebnis.signal !== null) {
-				codeText = `abgebrochen (Signal ${ergebnis.signal})`;
-			} else if (ergebnis.code === null) {
-				codeText = "Startfehler";
-			} else {
-				codeText = `Code ${ergebnis.code}`;
-			}
-				let zusatz = detail.length > 0 ? ` — ${detail}` : "";
-				if (ergebnis.code === null && /ENOENT/.test(detail)) {
-					// Der ausfuehrbare Kandidat existiert nicht (oder ist nicht
-					// startbar) — der haeufigste Fehler auf frischen Maschinen:
-					// gezielter Hinweis statt roher ENOENT-Zeile.
-					zusatz = " — pdf2md nicht gefunden. Bitte setup.sh im Repo ausführen.";
+				let codeText: string;
+				if (result.code === 6) {
+					codeText = "cancelled — partial file created (incomplete)";
+				} else if (result.code === 7) {
+					codeText = "cancelled — before first page (no partial file)";
+				} else if (result.signal === "SIGKILL") {
+					codeText = "cancelled — force terminated after grace period (SIGKILL)";
+				} else if (result.timeout) {
+					codeText = `cancelled after ${CONVERSION_TIMEOUT_MS / 60000} min`;
+				} else if (result.code === null && result.signal !== null) {
+					codeText = `cancelled (Signal ${result.signal})`;
+				} else if (result.code === null) {
+					codeText = "Start error";
+				} else {
+					codeText = `Code ${result.code}`;
 				}
-				new Notice(`OCR-Vorschau: Konvertierung fehlgeschlagen (${codeText})${zusatz}.`);
+				let extra = detail.length > 0 ? ` — ${detail}` : "";
+				if (result.code === null && /ENOENT/.test(detail)) {
+					extra = " — pdf2md not found. Please run setup.sh in repo.";
+				}
+				new Notice(`OCR Preview: Conversion failed (${codeText})${extra}.`);
 				return;
 			}
-			// Der Vault-Listener wuerde den neuen Eintrag frueher oder spaeter
-			// sehen; fuer den direkten Uebergang in die Ansicht ist der Bestand
-			// jetzt besser frisch. Obsidians Datei-Index laeuft dem Prozessende
-			// aber um Bruchteile hinterher — deshalb nachlegen, bis der Eintrag
-			// da ist.
-			const eintrag = `${name}.md`;
-			const istDa = () => this.bestand.eintraege.some((b) => b.name === eintrag);
-			await this.bestand.abgleichen();
-			for (let schritt = 0; !istDa() && schritt < INDEX_WARTE_SCHRITTE; schritt++) {
-				await new Promise((fertig) => setTimeout(fertig, INDEX_WARTE_MS));
-				await this.bestand.abgleichen();
+			const entryName = `${name}.md`;
+			const isPresent = () => this.inventory.entries.some((b) => b.name === entryName);
+			await this.inventory.reconcile();
+			for (let step = 0; !isPresent() && step < INDEX_WAIT_STEPS; step++) {
+				await new Promise((done) => window.setTimeout(done, INDEX_WAIT_MS));
+				await this.inventory.reconcile();
 			}
-			if (istDa()) {
-				await this.ansichtOeffnen(eintrag);
-				new Notice(`OCR-Vorschau: „${name}“ fertig — Abgleich geöffnet.`);
+			if (isPresent()) {
+				await this.revealView(entryName);
+				new Notice(`OCR Preview: "${name}" finished — comparison opened.`);
 			} else {
 				new Notice(
-					`OCR-Vorschau: „${name}“ fertig, aber nicht im Vorschau-Ordner gelandet (Ziel: ${this.einstellungen.vorschauOrdner}).`,
+					`OCR Preview: "${name}" finished, but was not placed in preview folder (Target: ${this.settings.previewFolder}).`,
 				);
 			}
-		} catch (fehler) {
-			// Auch nach erfolgreicher Konvertierung kann die Ansicht scheitern
-			// (Workspace/Leaf) — ohne catch bliebe das eine unbehandelte
-			// Rejection ohne jede Benutzermeldung.
-			new Notice(`OCR-Vorschau: Konvertierung fehlgeschlagen — ${String(fehler)}.`);
+		} catch (err) {
+			new Notice(`OCR Preview: Conversion failed — ${String(err)}.`);
 		} finally {
-			laufendeNotice?.hide();
-			this.konvertiertGerade = false;
-			this.laufendesKind = null;
+			progressNotice?.hide();
+			this.isConverting = false;
+			this.runningChild = null;
 		}
 	}
 
-	/** Datei-Menue: auf Vorschau-`.md` und auf PDFs mit passendem Stem. */
-	private dateiMenuBefuellen(menu: Menu, datei: TAbstractFile): void {
-		if (!(datei instanceof TFile)) return;
-		if (datei.extension === "md" && this.istVorschauDatei(datei)) {
+	private populateFileMenu(menu: Menu, file: TAbstractFile): void {
+		if (!(file instanceof TFile)) return;
+		if (file.extension === "md" && this.isPreviewFile(file)) {
 			menu.addItem((i) =>
 				i
-					.setTitle("Im OCR-Abgleich öffnen")
+					.setTitle("Open in OCR comparison")
 					.setIcon("columns-3")
-					.onClick(() => void this.ansichtOeffnen(datei.name)),
+					.onClick(() => void this.revealView(file.name)),
 			);
-		} else if (datei.extension === "pdf") {
-			const stem = `${datei.basename}.md`;
-			if (this.bestand.eintraege.some((b) => b.name === stem)) {
+		} else if (file.extension === "pdf") {
+			const stem = `${file.basename}.md`;
+			if (this.inventory.entries.some((b) => b.name === stem)) {
 				menu.addItem((i) =>
 					i
-						.setTitle("Im OCR-Abgleich öffnen")
+						.setTitle("Open in OCR comparison")
 						.setIcon("columns-3")
-						.onClick(() => void this.ansichtOeffnen(stem)),
+						.onClick(() => void this.revealView(stem)),
 				);
 			}
 		}
 	}
 
-	private istVorschauPfad(pfad: string): boolean {
-		const e = this.einstellungen;
-		const eltern = pfad.slice(0, pfad.lastIndexOf("/"));
+	private isPreviewPath(path: string): boolean {
+		const s = this.settings;
+		const parent = path.slice(0, path.lastIndexOf("/"));
 		return (
-			eltern === e.vorschauOrdner ||
-			eltern === e.akzeptiertOrdner ||
-			eltern === e.abgelehntOrdner
+			parent === s.previewFolder ||
+			parent === s.acceptedFolder ||
+			parent === s.rejectedFolder
 		);
 	}
 
-	private istVorschauDatei(datei: TFile): boolean {
-		return this.istVorschauPfad(datei.path);
+	private isPreviewFile(file: TFile): boolean {
+		return this.isPreviewPath(file.path);
 	}
 }
