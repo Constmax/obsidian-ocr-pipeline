@@ -51,6 +51,18 @@ export default class OcrPreviewPlugin extends Plugin {
 
 		this.registerView(VIEW_TYPE, (leaf) => new OcrComparisonView(leaf, this));
 
+		this.app.workspace.onLayoutReady(async () => {
+			await this.inventory.reconcile();
+			const view = this.openView();
+			if (view !== null) {
+				view.update();
+				if (view.activeName === null) {
+					const first = view.firstVisible();
+					if (first !== null) void view.openPreview(first);
+				}
+			}
+		});
+
 		const relevant = (file: TAbstractFile): boolean =>
 			file instanceof TFile && file.extension === "md" && this.isPreviewFile(file);
 		const trigger = () => this.triggerReconcile();
