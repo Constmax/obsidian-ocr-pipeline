@@ -12,6 +12,7 @@ import {
 	ViewStateResult,
 	WorkspaceLeaf,
 	loadPdfJs,
+	normalizePath,
 	setIcon,
 } from "obsidian";
 
@@ -326,6 +327,8 @@ export class OcrComparisonView extends ItemView {
 
 		for (const candidate of candidates) {
 			if (candidate === null || candidate.length === 0) continue;
+			const byPath = this.app.vault.getFileByPath(normalizePath(candidate));
+			if (byPath instanceof TFile) return byPath;
 			const dest = this.app.metadataCache.getFirstLinkpathDest(candidate, file.path);
 			if (dest !== null) return dest;
 		}
