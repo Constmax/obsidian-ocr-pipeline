@@ -828,8 +828,13 @@ export class PageSelectModal extends Modal {
 			text: `PDF: ${this.file.basename}`,
 		});
 		try {
-			if (typeof window.pdfjsLib === "undefined") await loadPdfJs();
-			const pdfjs = window.pdfjsLib as { getDocument: (opts: object) => { promise: Promise<{ numPages: number }> } };
+			const loaded = (typeof window.pdfjsLib === "undefined" ? await loadPdfJs() : window.pdfjsLib) as {
+				getDocument: (opts: object) => { promise: Promise<{ numPages: number }> };
+			};
+			const pdfjs = window.pdfjsLib ?? loaded;
+			if (typeof window.pdfjsLib === "undefined" && pdfjs) {
+				(window as unknown as { pdfjsLib: unknown }).pdfjsLib = pdfjs;
+			}
 			const doc = await pdfjs.getDocument({
 				url: this.app.vault.getResourcePath(this.file),
 			}).promise;

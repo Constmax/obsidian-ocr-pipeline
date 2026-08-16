@@ -144,8 +144,11 @@ export class PdfColumn {
 	}
 
 	private async loadDocument(file: TFile, run: number): Promise<void> {
-		if (typeof window.pdfjsLib === "undefined") await loadPdfJs();
-		const pdfjs = window.pdfjsLib as PdfJsLib;
+		const loaded = (typeof window.pdfjsLib === "undefined" ? await loadPdfJs() : window.pdfjsLib) as PdfJsLib;
+		const pdfjs = window.pdfjsLib ?? loaded;
+		if (typeof window.pdfjsLib === "undefined" && pdfjs) {
+			(window as unknown as { pdfjsLib: PdfJsLib }).pdfjsLib = pdfjs;
+		}
 		const loading = pdfjs.getDocument({
 			url: this.app.vault.getResourcePath(file),
 			cMapUrl: "/lib/pdfjs/cmaps/",
