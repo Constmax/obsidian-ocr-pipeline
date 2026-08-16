@@ -153,17 +153,17 @@ def test_no_pdf_with_check():
     with tempfile.TemporaryDirectory() as tmpdir:
         Ergebnis = _run_check("--out", str(tmpdir))
         # Should not fail with "argparse error" about missing PDF
-        assert "Erfordert eine PDF-Datei" not in (Ergebnis.stderr + Ergebnis.stdout)
+        assert "Requires a PDF file" not in (Ergebnis.stderr + Ergebnis.stdout)
 
 
 def test_check_rejects_pdf_argument():
-    """--check weist ein explizites PDF-Argument mit Meldung zurueck."""
+    """--check rejects an explicit PDF argument with an informative error message."""
     with tempfile.TemporaryDirectory() as tmpdir:
         fake_pdf = Path(tmpdir) / "test.pdf"
         fake_pdf.touch()
         Ergebnis = _run_check("--out", str(tmpdir), str(fake_pdf))
         assert Ergebnis.returncode != 0
-        assert "--check benoetigt keine PDF-Datei" in Ergebnis.stderr
+        assert "--check does not require a PDF file" in Ergebnis.stderr
 
 
 def test_check_ohne_out_fasst_repo_ordner_nicht_an():

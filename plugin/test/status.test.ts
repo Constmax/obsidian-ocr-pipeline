@@ -2,371 +2,366 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-	abgleichen,
-	altesDatumAus,
-	entscheidungEintragen,
-	leeresManifest,
-	manifestLesen,
-	manifestSchreiben,
-	zielordner,
+	reconcile,
+	oldDateFrom,
+	recordDecision,
+	emptyManifest,
+	readManifest,
+	writeManifest,
+	targetFolder,
 } from "../src/status.ts";
-import type { GefundeneDatei, StatusManifest } from "../src/typen.ts";
+import type { FoundFile, StatusManifest } from "../src/types.ts";
 
-const JETZT = "2026-08-05T12:00:00+02:00";
+const NOW = "2026-08-05T12:00:00+02:00";
 
-const ORDNER = {
-	vorschauOrdner: "_ocr-vorschau",
-	akzeptiertOrdner: "_ocr-vorschau/_akzeptiert",
-	abgelehntOrdner: "_ocr-vorschau/_abgelehnt",
+const FOLDERS = {
+	previewFolder: "_ocr-preview",
+	acceptedFolder: "_ocr-preview/_accepted",
+	rejectedFolder: "_ocr-preview/_rejected",
 };
 
-function datei(
+function makeFile(
 	name: string,
-	lage: GefundeneDatei["lage"],
+	location: FoundFile["location"],
 	frontmatter: Record<string, unknown> = {},
-): GefundeneDatei {
-	const ordner = zielordner(lage, ORDNER);
-	return { name, pfad: `${ordner}/${name}`, lage, frontmatter };
+): FoundFile {
+	const folder = targetFolder(location, FOLDERS);
+	return { name, path: `${folder}/${name}`, location, frontmatter };
 }
 
-function mitEintrag(
+function withEntry(
 	name: string,
-	teil: Partial<StatusManifest["eintraege"][string]>,
+	partial: Partial<StatusManifest["entries"][string]>,
 ): StatusManifest {
-	const m = leeresManifest(JETZT);
-	m.eintraege[name] = {
-		status: "offen",
-		pfad: `_ocr-vorschau/${name}`,
-		"quelle-pdf": null,
-		"quelle-pdf-manuell": null,
-		seiten: null,
-		"seiten-ocr": null,
-		"seiten-diagramm": null,
-		"ocr-datum": null,
-		"ocr-zeitpunkt": null,
-		entschieden: null,
-		"geprueft-bis": null,
-		notiz: null,
-		vorher: null,
-		...teil,
+	const m = emptyManifest(NOW);
+	m.entries[name] = {
+		status: "open",
+		path: `_ocr-preview/${name}`,
+		"source-pdf": null,
+		"manual-source-pdf": null,
+		pages: null,
+		"pages-ocr": null,
+		"pages-diagram": null,
+		"ocr-date": null,
+		"ocr-timestamp": null,
+		decided: null,
+		"checked-until": null,
+		note: null,
+		previous: null,
+		...partial,
 	};
 	return m;
 }
 
-// ── Regel 1: die startsWith-Falle ───────────────────────────────────────────
+// ── Rule 1: startsWith trap ───────────────────────────────────────────
 
-test("Regel 1: eine Datei in _akzeptiert zaehlt nicht als offen", () => {
-	const e = abgleichen(
-		[datei("Fall 8.md", "akzeptiert")],
-		leeresManifest(JETZT),
-		JETZT,
+test("Rule 1: a file in _accepted does not count as open", () => {
+	const res = reconcile(
+		[makeFile("Case 8.md", "accepted")],
+		emptyManifest(NOW),
+		NOW,
 	);
-	assert.equal(e.manifest.eintraege["Fall 8.md"]?.status, "akzeptiert");
-	// Der Pfad liegt innerhalb von _ocr-vorschau — ein Praefixtest im Aufrufer
-	// wuerde die Datei doppelt sehen. Hier ist dokumentiert, was gelten muss.
+	assert.equal(res.manifest.entries["Case 8.md"]?.status, "accepted");
 	assert.ok(
-		e.manifest.eintraege["Fall 8.md"]?.pfad.startsWith("_ocr-vorschau/"),
-		"Unterordner liegt bewusst innerhalb des Vorschau-Ordners",
+		res.manifest.entries["Case 8.md"]?.path.startsWith("_ocr-preview/"),
+		"subfolder is inside preview folder",
 	);
 });
 
-// ── Regel 3: Datei ohne Eintrag ─────────────────────────────────────────────
+// ── Rule 3: File without entry ─────────────────────────────────────────────
 
-test("Regel 3: neue Datei bekommt einen Eintrag aus dem Frontmatter", () => {
-	const e = abgleichen(
+test("Rule 3: new file gets an entry from frontmatter", () => {
+	const res = reconcile(
 		[
-			datei("Fall 8.md", "offen", {
-				"quelle-pdf": "raw/VwR/Fall 8.pdf",
-				seiten: "14",
-				"seiten-ocr": "9",
-				"seiten-diagramm": "2",
-				"ocr-datum": "2026-07-30",
+			makeFile("Case 8.md", "open", {
+				"source-pdf": "raw/VwR/Case 8.pdf",
+				pages: "14",
+				"pages-ocr": "9",
+				"pages-diagram": "2",
+				"ocr-date": "2026-07-30",
 			}),
 		],
-		leeresManifest(JETZT),
-		JETZT,
+		emptyManifest(NOW),
+		NOW,
 	);
-	const eintrag = e.manifest.eintraege["Fall 8.md"];
-	assert.equal(eintrag?.status, "offen");
-	assert.equal(eintrag?.["quelle-pdf"], "raw/VwR/Fall 8.pdf");
-	assert.equal(eintrag?.seiten, 14);
-	assert.equal(eintrag?.["seiten-ocr"], 9);
-	assert.equal(eintrag?.["ocr-datum"], "2026-07-30");
-	assert.equal(eintrag?.entschieden, null, "kein Zeitpunkt wird erfunden");
+	const entry = res.manifest.entries["Case 8.md"];
+	assert.equal(entry?.status, "open");
+	assert.equal(entry?.["source-pdf"], "raw/VwR/Case 8.pdf");
+	assert.equal(entry?.pages, 14);
+	assert.equal(entry?.["pages-ocr"], 9);
+	assert.equal(entry?.["ocr-date"], "2026-07-30");
+	assert.equal(entry?.decided, null, "no timestamp invented");
 });
 
-test("Regel 3: Datei liegt bereits in _abgelehnt, ohne dass wir sie bewegt haetten", () => {
-	const e = abgleichen(
-		[datei("Fall 9.md", "abgelehnt")],
-		leeresManifest(JETZT),
-		JETZT,
+test("Rule 3: file is already in _rejected without us having moved it", () => {
+	const res = reconcile(
+		[makeFile("Case 9.md", "rejected")],
+		emptyManifest(NOW),
+		NOW,
 	);
-	assert.equal(e.manifest.eintraege["Fall 9.md"]?.status, "abgelehnt");
-	assert.equal(e.manifest.eintraege["Fall 9.md"]?.entschieden, null);
+	assert.equal(res.manifest.entries["Case 9.md"]?.status, "rejected");
+	assert.equal(res.manifest.entries["Case 9.md"]?.decided, null);
 });
 
-// ── Regel 2: das Dateisystem gewinnt ────────────────────────────────────────
+// ── Rule 2: file system wins ────────────────────────────────────────
 
-test("Regel 2: von Hand nach _ocr-vorschau zurueckgeschoben → wieder offen", () => {
-	const vorher = mitEintrag("Fall 8.md", {
-		status: "akzeptiert",
-		pfad: "_ocr-vorschau/_akzeptiert/Fall 8.md",
-		entschieden: "2026-08-01T10:00:00+02:00",
-		notiz: "S. 7 kaputt",
-		"geprueft-bis": 12,
-		"ocr-datum": "2026-07-30",
+test("Rule 2: manually moved back to _ocr-preview -> open again", () => {
+	const prev = withEntry("Case 8.md", {
+		status: "accepted",
+		path: "_ocr-preview/_accepted/Case 8.md",
+		decided: "2026-08-01T10:00:00+02:00",
+		note: "p. 7 broken",
+		"checked-until": 12,
+		"ocr-date": "2026-07-30",
 	});
-	const e = abgleichen(
-		[datei("Fall 8.md", "offen", { "ocr-datum": "2026-07-30" })],
-		vorher,
-		JETZT,
+	const res = reconcile(
+		[makeFile("Case 8.md", "open", { "ocr-date": "2026-07-30" })],
+		prev,
+		NOW,
 	);
-	const eintrag = e.manifest.eintraege["Fall 8.md"];
-	assert.equal(eintrag?.status, "offen");
-	assert.equal(eintrag?.entschieden, null, "Entscheidung zurueckgenommen");
-	assert.equal(eintrag?.notiz, "S. 7 kaputt", "Anmerkung bleibt");
-	assert.equal(eintrag?.["geprueft-bis"], 12, "Lesefortschritt bleibt");
-	assert.deepEqual(e.korrigiert, ["Fall 8.md"]);
-	assert.deepEqual(e.neuErzeugt, []);
+	const entry = res.manifest.entries["Case 8.md"];
+	assert.equal(entry?.status, "open");
+	assert.equal(entry?.decided, null, "decision revoked");
+	assert.equal(entry?.note, "p. 7 broken", "note remains");
+	assert.equal(entry?.["checked-until"], 12, "reading progress remains");
+	assert.deepEqual(res.corrected, ["Case 8.md"]);
+	assert.deepEqual(res.reCreated, []);
 });
 
-test("Regel 2: von Hand nach _akzeptiert geschoben → Status folgt dem Ordner", () => {
-	const vorher = mitEintrag("Fall 8.md", { status: "offen" });
-	const e = abgleichen([datei("Fall 8.md", "akzeptiert")], vorher, JETZT);
-	assert.equal(e.manifest.eintraege["Fall 8.md"]?.status, "akzeptiert");
-	assert.deepEqual(e.korrigiert, ["Fall 8.md"]);
+test("Rule 2: manually moved to _accepted -> status follows folder", () => {
+	const prev = withEntry("Case 8.md", { status: "open" });
+	const res = reconcile([makeFile("Case 8.md", "accepted")], prev, NOW);
+	assert.equal(res.manifest.entries["Case 8.md"]?.status, "accepted");
+	assert.deepEqual(res.corrected, ["Case 8.md"]);
 });
 
-// ── Regel 5/6: Neukonvertierung ─────────────────────────────────────────────
+// ── Rule 5/6: Re-conversion ─────────────────────────────────────────────
 
-test("Regel 6: zwei Fassungen gleichzeitig → neu-erzeugt, alte Entscheidung bleibt erhalten", () => {
-	const vorher = mitEintrag("Fall 8.md", {
-		status: "akzeptiert",
-		pfad: "_ocr-vorschau/_akzeptiert/Fall 8.md",
-		entschieden: "2026-08-01T10:00:00+02:00",
-		"ocr-datum": "2026-07-30",
+test("Rule 6: two versions at the same time -> re-created, old decision retained", () => {
+	const prev = withEntry("Case 8.md", {
+		status: "accepted",
+		path: "_ocr-preview/_accepted/Case 8.md",
+		decided: "2026-08-01T10:00:00+02:00",
+		"ocr-date": "2026-07-30",
 	});
-	const e = abgleichen(
+	const res = reconcile(
 		[
-			datei("Fall 8.md", "offen", { "ocr-datum": "2026-08-05" }),
-			datei("Fall 8.md", "akzeptiert", { "ocr-datum": "2026-07-30" }),
+			makeFile("Case 8.md", "open", { "ocr-date": "2026-08-05" }),
+			makeFile("Case 8.md", "accepted", { "ocr-date": "2026-07-30" }),
 		],
-		vorher,
-		JETZT,
+		prev,
+		NOW,
 	);
-	const eintrag = e.manifest.eintraege["Fall 8.md"];
-	assert.equal(eintrag?.status, "neu-erzeugt");
-	assert.equal(eintrag?.["ocr-datum"], "2026-08-05", "die frische Fassung zaehlt");
-	assert.equal(eintrag?.vorher?.status, "akzeptiert");
-	assert.equal(eintrag?.vorher?.["ocr-datum"], "2026-07-30");
-	assert.equal(eintrag?.vorher?.entschieden, "2026-08-01T10:00:00+02:00");
-	assert.deepEqual(e.neuErzeugt, ["Fall 8.md"]);
+	const entry = res.manifest.entries["Case 8.md"];
+	assert.equal(entry?.status, "re-created");
+	assert.equal(entry?.["ocr-date"], "2026-08-05", "fresh version counts");
+	assert.equal(entry?.previous?.status, "accepted");
+	assert.equal(entry?.previous?.["ocr-date"], "2026-07-30");
+	assert.equal(entry?.previous?.decided, "2026-08-01T10:00:00+02:00");
+	assert.deepEqual(res.reCreated, ["Case 8.md"]);
 });
 
-test("Regel 6: nur eine Fassung, aber anderes ocr-datum → auch neu-erzeugt", () => {
-	const vorher = mitEintrag("Fall 8.md", {
-		status: "abgelehnt",
-		"ocr-datum": "2026-07-30",
-		entschieden: "2026-08-01T10:00:00+02:00",
+test("Rule 6: only one version, but different ocr-date -> also re-created", () => {
+	const prev = withEntry("Case 8.md", {
+		status: "rejected",
+		"ocr-date": "2026-07-30",
+		decided: "2026-08-01T10:00:00+02:00",
 	});
-	const e = abgleichen(
-		[datei("Fall 8.md", "offen", { "ocr-datum": "2026-08-05" })],
-		vorher,
-		JETZT,
+	const res = reconcile(
+		[makeFile("Case 8.md", "open", { "ocr-date": "2026-08-05" })],
+		prev,
+		NOW,
 	);
-	assert.equal(e.manifest.eintraege["Fall 8.md"]?.status, "neu-erzeugt");
-	assert.equal(e.manifest.eintraege["Fall 8.md"]?.vorher?.status, "abgelehnt");
+	assert.equal(res.manifest.entries["Case 8.md"]?.status, "re-created");
+	assert.equal(res.manifest.entries["Case 8.md"]?.previous?.status, "rejected");
 });
 
-test("Regel 6 grenzt sich vom Handverschub ab: gleiches ocr-datum ist keine Neukonvertierung", () => {
-	const vorher = mitEintrag("Fall 8.md", {
-		status: "akzeptiert",
-		"ocr-datum": "2026-07-30",
-		entschieden: "2026-08-01T10:00:00+02:00",
+test("Rule 6 differs from manual move: same ocr-date is not a re-conversion", () => {
+	const prev = withEntry("Case 8.md", {
+		status: "accepted",
+		"ocr-date": "2026-07-30",
+		decided: "2026-08-01T10:00:00+02:00",
 	});
-	const e = abgleichen(
-		[datei("Fall 8.md", "offen", { "ocr-datum": "2026-07-30" })],
-		vorher,
-		JETZT,
+	const res = reconcile(
+		[makeFile("Case 8.md", "open", { "ocr-date": "2026-07-30" })],
+		prev,
+		NOW,
 	);
-	assert.equal(e.manifest.eintraege["Fall 8.md"]?.status, "offen");
-	assert.deepEqual(e.neuErzeugt, []);
-	assert.deepEqual(e.korrigiert, ["Fall 8.md"]);
+	assert.equal(res.manifest.entries["Case 8.md"]?.status, "open");
+	assert.deepEqual(res.reCreated, []);
+	assert.deepEqual(res.corrected, ["Case 8.md"]);
 });
 
-test("neu-erzeugt im offenen Ordner wird nicht jedes Mal erneut korrigiert", () => {
-	const vorher = mitEintrag("Fall 8.md", {
-		status: "neu-erzeugt",
-		"ocr-datum": "2026-08-05",
-		vorher: {
-			status: "akzeptiert",
-			entschieden: "2026-08-01T10:00:00+02:00",
-			"ocr-datum": "2026-07-30",
+test("re-created in open folder is not re-corrected every time", () => {
+	const prev = withEntry("Case 8.md", {
+		status: "re-created",
+		"ocr-date": "2026-08-05",
+		previous: {
+			status: "accepted",
+			decided: "2026-08-01T10:00:00+02:00",
+			"ocr-date": "2026-07-30",
 		},
 	});
-	const e = abgleichen(
-		[datei("Fall 8.md", "offen", { "ocr-datum": "2026-08-05" })],
-		vorher,
-		JETZT,
+	const res = reconcile(
+		[makeFile("Case 8.md", "open", { "ocr-date": "2026-08-05" })],
+		prev,
+		NOW,
 	);
-	assert.equal(e.manifest.eintraege["Fall 8.md"]?.status, "neu-erzeugt");
-	assert.deepEqual(e.korrigiert, []);
+	assert.equal(res.manifest.entries["Case 8.md"]?.status, "re-created");
+	assert.deepEqual(res.corrected, []);
 });
 
-// ── Regel 4: Eintrag ohne Datei ─────────────────────────────────────────────
+// ── Rule 4: Entry without file ─────────────────────────────────────────────
 
-test("Regel 4: Datei liegt woanders im Vault → uebernommen, Eintrag bleibt", () => {
-	const vorher = mitEintrag("Fall 8.md", {
-		status: "akzeptiert",
-		pfad: "wiki/fall-8.md",
+test("Rule 4: file is elsewhere in vault -> adopted, entry remains", () => {
+	const prev = withEntry("Case 8.md", {
+		status: "accepted",
+		path: "wiki/case-8.md",
 	});
-	const e = abgleichen([], vorher, JETZT, (p) => p === "wiki/fall-8.md");
-	assert.equal(e.manifest.eintraege["Fall 8.md"]?.status, "uebernommen");
-	assert.deepEqual(e.entfernt, []);
+	const res = reconcile([], prev, NOW, (p) => p === "wiki/case-8.md");
+	assert.equal(res.manifest.entries["Case 8.md"]?.status, "adopted");
+	assert.deepEqual(res.removed, []);
 });
 
-test("Regel 4: Datei nirgends mehr → Cache-Zeile faellt weg (keine Datei wird geloescht)", () => {
-	const vorher = mitEintrag("Fall 8.md", { status: "akzeptiert" });
-	const e = abgleichen([], vorher, JETZT, () => false);
-	assert.equal(e.manifest.eintraege["Fall 8.md"], undefined);
-	assert.deepEqual(e.entfernt, ["Fall 8.md"]);
+test("Rule 4: file nowhere anymore -> cache row removed (no file deleted)", () => {
+	const prev = withEntry("Case 8.md", { status: "accepted" });
+	const res = reconcile([], prev, NOW, () => false);
+	assert.equal(res.manifest.entries["Case 8.md"], undefined);
+	assert.deepEqual(res.removed, ["Case 8.md"]);
 });
 
-// ── Manifest ist nur Cache ──────────────────────────────────────────────────
+// ── Manifest is cache only ──────────────────────────────────────────────────
 
-test("geloeschtes Manifest baut sich vollstaendig aus der Ordnerlage neu auf", () => {
-	const dateien = [
-		datei("A.md", "offen", { seiten: "3" }),
-		datei("B.md", "akzeptiert", { seiten: "5" }),
-		datei("C.md", "abgelehnt", { seiten: "7" }),
+test("deleted manifest rebuilds completely from folder structure", () => {
+	const files = [
+		makeFile("A.md", "open", { pages: "3" }),
+		makeFile("B.md", "accepted", { pages: "5" }),
+		makeFile("C.md", "rejected", { pages: "7" }),
 	];
-	const e = abgleichen(dateien, leeresManifest(JETZT), JETZT);
-	assert.equal(e.manifest.eintraege["A.md"]?.status, "offen");
-	assert.equal(e.manifest.eintraege["B.md"]?.status, "akzeptiert");
-	assert.equal(e.manifest.eintraege["C.md"]?.status, "abgelehnt");
+	const res = reconcile(files, emptyManifest(NOW), NOW);
+	assert.equal(res.manifest.entries["A.md"]?.status, "open");
+	assert.equal(res.manifest.entries["B.md"]?.status, "accepted");
+	assert.equal(res.manifest.entries["C.md"]?.status, "rejected");
 });
 
-// ── Serialisierung ──────────────────────────────────────────────────────────
+// ── Serialization ──────────────────────────────────────────────────────────
 
-test("Manifest ueberlebt Schreiben und Lesen", () => {
-	const vorher = mitEintrag("Fall 8.md", {
-		status: "akzeptiert",
-		seiten: 14,
-		"seiten-ocr": 9,
-		notiz: "S. 7 Lesereihenfolge kaputt",
-		"geprueft-bis": 12,
-		entschieden: JETZT,
-		vorher: { status: "abgelehnt", entschieden: null, "ocr-datum": "2026-07-01" },
+test("manifest survives serialization and deserialization", () => {
+	const prev = withEntry("Case 8.md", {
+		status: "accepted",
+		pages: 14,
+		"pages-ocr": 9,
+		note: "p. 7 reading order broken",
+		"checked-until": 12,
+		decided: NOW,
+		previous: { status: "rejected", decided: null, "ocr-date": "2026-07-01" },
 	});
-	const wieder = manifestLesen(manifestSchreiben(vorher), JETZT);
-	assert.deepEqual(wieder.eintraege, vorher.eintraege);
+	const parsed = readManifest(writeManifest(prev), NOW);
+	assert.deepEqual(parsed.entries, prev.entries);
 });
 
-test("Manifest mit unbekanntem Status faellt auf offen zurueck statt zu werfen", () => {
-	const wieder = manifestLesen(
+test("manifest with unknown status falls back to open instead of throwing", () => {
+	const parsed = readManifest(
 		JSON.stringify({
 			version: 1,
-			eintraege: { "X.md": { status: "quatsch", pfad: "_ocr-vorschau/X.md" } },
+			entries: { "X.md": { status: "garbage", path: "_ocr-preview/X.md" } },
 		}),
-		JETZT,
+		NOW,
 	);
-	assert.equal(wieder.eintraege["X.md"]?.status, "offen");
+	assert.equal(parsed.entries["X.md"]?.status, "open");
 });
 
-test("Eintraege werden sortiert geschrieben, damit ein Diff lesbar bleibt", () => {
-	const m = leeresManifest(JETZT);
+test("entries are written sorted so a diff remains readable", () => {
+	const m = emptyManifest(NOW);
 	for (const name of ["Z.md", "A.md", "M.md"]) {
-		m.eintraege[name] = mitEintrag(name, {}).eintraege[name]!;
+		m.entries[name] = withEntry(name, {}).entries[name]!;
 	}
-	const text = manifestSchreiben(m);
+	const text = writeManifest(m);
 	assert.ok(text.indexOf('"A.md"') < text.indexOf('"M.md"'));
 	assert.ok(text.indexOf('"M.md"') < text.indexOf('"Z.md"'));
 });
 
-// ── Entscheidung eintragen ──────────────────────────────────────────────────
+// ── Record decision ──────────────────────────────────────────────────
 
-test("entscheidungEintragen setzt Status, Pfad und Zeitpunkt", () => {
-	const vorher = mitEintrag("Fall 8.md", { status: "offen" });
-	const nachher = entscheidungEintragen(
-		vorher,
-		"Fall 8.md",
-		"akzeptiert",
-		"_ocr-vorschau/_akzeptiert/Fall 8.md",
-		JETZT,
+test("recordDecision sets status, path, and timestamp", () => {
+	const prev = withEntry("Case 8.md", { status: "open" });
+	const next = recordDecision(
+		prev,
+		"Case 8.md",
+		"accepted",
+		"_ocr-preview/_accepted/Case 8.md",
+		NOW,
 	);
-	const e = nachher.eintraege["Fall 8.md"];
-	assert.equal(e?.status, "akzeptiert");
-	assert.equal(e?.pfad, "_ocr-vorschau/_akzeptiert/Fall 8.md");
-	assert.equal(e?.entschieden, JETZT);
+	const entry = next.entries["Case 8.md"];
+	assert.equal(entry?.status, "accepted");
+	assert.equal(entry?.path, "_ocr-preview/_accepted/Case 8.md");
+	assert.equal(entry?.decided, NOW);
 });
 
-test("Zuruecksetzen auf offen loescht den Entscheidungszeitpunkt", () => {
-	const vorher = mitEintrag("Fall 8.md", {
-		status: "akzeptiert",
-		entschieden: JETZT,
+test("resetting to open clears decision timestamp", () => {
+	const prev = withEntry("Case 8.md", {
+		status: "accepted",
+		decided: NOW,
 	});
-	const nachher = entscheidungEintragen(
-		vorher,
-		"Fall 8.md",
-		"offen",
-		"_ocr-vorschau/Fall 8.md",
-		JETZT,
+	const next = recordDecision(
+		prev,
+		"Case 8.md",
+		"open",
+		"_ocr-preview/Case 8.md",
+		NOW,
 	);
-	assert.equal(nachher.eintraege["Fall 8.md"]?.entschieden, null);
+	assert.equal(next.entries["Case 8.md"]?.decided, null);
 });
 
-test("Eine neue Entscheidung loescht die Erinnerung an die alte", () => {
-	// `vorher` beantwortet die Frage „was galt vor der Neukonvertierung?". Ist
-	// neu entschieden, ist sie beantwortet — bliebe sie stehen, zeigte die
-	// Seitenleiste ein „Vorher …" zu einem Zustand, den es nicht mehr gibt.
-	const vorher = mitEintrag("Fall 8.md", {
-		status: "neu-erzeugt",
-		vorher: {
-			status: "akzeptiert",
-			entschieden: "2026-08-01T10:00:00+02:00",
-			"ocr-datum": "2026-07-30",
+test("a new decision clears memory of the old one", () => {
+	const prev = withEntry("Case 8.md", {
+		status: "re-created",
+		previous: {
+			status: "accepted",
+			decided: "2026-08-01T10:00:00+02:00",
+			"ocr-date": "2026-07-30",
 		},
 	});
-	const nachher = entscheidungEintragen(
-		vorher,
-		"Fall 8.md",
-		"akzeptiert",
-		"_ocr-vorschau/_akzeptiert/Fall 8.md",
-		JETZT,
+	const next = recordDecision(
+		prev,
+		"Case 8.md",
+		"accepted",
+		"_ocr-preview/_accepted/Case 8.md",
+		NOW,
 	);
-	assert.equal(nachher.eintraege["Fall 8.md"]?.vorher, null);
+	assert.equal(next.entries["Case 8.md"]?.previous, null);
 });
 
-test("zielordner bildet alle drei Lagen ab", () => {
-	assert.equal(zielordner("offen", ORDNER), "_ocr-vorschau");
-	assert.equal(zielordner("akzeptiert", ORDNER), "_ocr-vorschau/_akzeptiert");
-	assert.equal(zielordner("abgelehnt", ORDNER), "_ocr-vorschau/_abgelehnt");
+test("targetFolder maps all three locations", () => {
+	assert.equal(targetFolder("open", FOLDERS), "_ocr-preview");
+	assert.equal(targetFolder("accepted", FOLDERS), "_ocr-preview/_accepted");
+	assert.equal(targetFolder("rejected", FOLDERS), "_ocr-preview/_rejected");
 });
 
-test("altesDatumAus: Frontmatter der alten Datei schlaegt die Erinnerung", () => {
-	const eintrag = mitEintrag("Fall 8.md", {
-		"ocr-datum": "2026-07-30",
-		vorher: {
-			status: "akzeptiert",
-			entschieden: JETZT,
-			"ocr-datum": "2026-06-01",
+test("oldDateFrom: frontmatter of old file beats memory", () => {
+	const entry = withEntry("Case 8.md", {
+		"ocr-date": "2026-07-30",
+		previous: {
+			status: "accepted",
+			decided: NOW,
+			"ocr-date": "2026-06-01",
 		},
-	}).eintraege["Fall 8.md"];
-	assert.equal(altesDatumAus(eintrag, { "ocr-datum": "2026-06-15" }), "2026-06-15");
+	}).entries["Case 8.md"];
+	assert.equal(oldDateFrom(entry, { "ocr-date": "2026-06-15" }), "2026-06-15");
 });
 
-test("altesDatumAus: der Eintrag einer Neukonvertierung traegt das NEUE Datum — genutzt wird die Erinnerung", () => {
-	const eintrag = mitEintrag("Fall 8.md", {
-		"ocr-datum": "2026-07-30",
-		vorher: {
-			status: "akzeptiert",
-			entschieden: JETZT,
-			"ocr-datum": "2026-06-01",
+test("oldDateFrom: entry of re-conversion carries NEW date — memory is used", () => {
+	const entry = withEntry("Case 8.md", {
+		"ocr-date": "2026-07-30",
+		previous: {
+			status: "accepted",
+			decided: NOW,
+			"ocr-date": "2026-06-01",
 		},
-	}).eintraege["Fall 8.md"];
-	assert.equal(altesDatumAus(eintrag, {}), "2026-06-01");
+	}).entries["Case 8.md"];
+	assert.equal(oldDateFrom(entry, {}), "2026-06-01");
 });
 
-test("altesDatumAus: ohne Anhaltspunkt bleibt 'alt'", () => {
-	assert.equal(altesDatumAus(undefined, {}), "alt");
+test("oldDateFrom: without indication remains 'old'", () => {
+	assert.equal(oldDateFrom(undefined, {}), "old");
 });
