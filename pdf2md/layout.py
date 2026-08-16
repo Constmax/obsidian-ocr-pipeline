@@ -2,13 +2,13 @@
 """Page geometry: columns, boxes, tables, diagrams (Stage 2, Issue #8).
 
 Separated from pdf2md.py. Operates on fitz Page objects and is thus not
-headless testable — pure functions on line lists reside in zusammenbau.py.
-Imports only from zusammenbau (one direction, no cycle).
+headless testable — pure functions on line lists reside in assembly.py.
+Imports only from assembly (one direction, no cycle).
 """
 import re
 import statistics
 
-from zusammenbau import ENUMERATION, NO_JOIN, is_boilerplate, clean_text
+from assembly import ENUMERATION, NO_JOIN, is_boilerplate, clean_text
 
 
 def _column_gap(with_box):

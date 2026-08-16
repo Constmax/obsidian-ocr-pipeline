@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generates fixture file plugin/test/fixtures/beispiel-vorschau.md
-from pure assembly (zusammenbau module + fixed inputs).
+from pure assembly (assembly module + fixed inputs).
 
 Uses pure functions build_frontmatter, page_marker, and build_document
-from zusammenbau.py — the same ones that pdf2md.py main() calls.
+from assembly.py — the same ones that pdf2md.py main() calls.
 """
 
 import sys
@@ -11,11 +11,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "pdf2md"))
 
-from zusammenbau import build_frontmatter, page_marker, build_document
+from assembly import build_frontmatter, page_marker, build_document
 
 
 # ---------------------------------------------------------------------------
-# Fixed inputs — assembly itself lives in zusammenbau.build_frontmatter.
+# Fixed inputs — assembly itself lives in assembly.build_frontmatter.
 # ---------------------------------------------------------------------------
 PDF_STEM = "Verwaltungsrecht AT Fall 8"
 PDF_PATH = Path("raw/VwR/Verwaltungsrecht AT Fall 8.pdf")

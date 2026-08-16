@@ -23,10 +23,10 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
-import abbruch
+import cancellation
 import dictionary
-import zusammenbau
-from zusammenbau import (as_callout, build_document, clean_text, merge_fragments,
+import assembly
+from assembly import (as_callout, build_document, clean_text, merge_fragments,
                         build_frontmatter, page_marker, assemble_paragraphs)
 from layout import (image_ratio, detect_boxes, assign_boxes,
                    detect_layout, split_columns, tables_markdown)
@@ -160,7 +160,7 @@ def analyze_pages(pdf, dpi, ocr_only=False, selection=None):
             sys.exit(f"page numbers {sorted(invalid)} do not exist "
                      f"(PDF has {doc.page_count} pages)")
         selection = {n for n in selection if 1 <= n <= doc.page_count}
-    zusammenbau.set_running(running_lines(doc))
+    assembly.set_running(running_lines(doc))
     pages = []
     for i in range(doc.page_count):
         if selection is not None and (i + 1) not in selection:
@@ -254,7 +254,7 @@ def main():
         else:
             forced.add(int(part))
     selection = parse_pages(a.pages)
-    abbruch.install()
+    cancellation.install()
 
     global TMP
     OUT.mkdir(parents=True, exist_ok=True)
@@ -369,7 +369,7 @@ def main():
         dump = []
 
         for nr, png, chars, layout_type, gutter, textlayer, boxes, diagram in pages:
-            if abbruch.requested():
+            if cancellation.requested():
                 break
             t = time.perf_counter()
             diagram = diagram or nr in forced
@@ -433,7 +433,7 @@ def main():
                       f"{layout_type}, {mode}", discarded, trace, f"ocr | {layout_type}, {mode}",
                       findings)
 
-        if abbruch.requested() and pages and last_page < pages[-1][0]:
+        if cancellation.requested() and pages and last_page < pages[-1][0]:
             written = [s for s in pages if s[0] <= last_page]
             if not written:
                 print("Cancellation before first page — no partial file written.")

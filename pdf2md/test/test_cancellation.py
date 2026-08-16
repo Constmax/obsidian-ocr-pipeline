@@ -14,15 +14,15 @@ from pathlib import Path
 
 import pytest
 
-import abbruch
+import cancellation
 
 
 @pytest.fixture
 def handler():
     """Install handlers, reset flag and handlers after test."""
-    abbruch.install()
+    cancellation.install()
     yield
-    abbruch.reset()
+    cancellation.reset()
     signal.signal(signal.SIGINT, signal.default_int_handler)
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
@@ -34,13 +34,13 @@ def _signal(sig):
 def test_first_signal_sets_only_the_flag(handler):
     _signal(signal.SIGINT)
 
-    assert abbruch.requested() is True
+    assert cancellation.requested() is True
 
 
 def test_first_sigterm_sets_the_flag(handler):
     _signal(signal.SIGTERM)
 
-    assert abbruch.requested() is True
+    assert cancellation.requested() is True
 
 
 def test_second_signal_exits_with_code_6(handler):
@@ -53,16 +53,16 @@ def test_second_signal_exits_with_code_6(handler):
 
 
 def test_without_signal_no_cancellation(handler):
-    assert abbruch.requested() is False
+    assert cancellation.requested() is False
 
 
 def test_reset_makes_cancellable_again(handler):
     _signal(signal.SIGINT)
-    abbruch.reset()
-    assert abbruch.requested() is False
+    cancellation.reset()
+    assert cancellation.requested() is False
 
     _signal(signal.SIGINT)
-    assert abbruch.requested() is True
+    assert cancellation.requested() is True
 
 
 def _make_vector_pdf(path: Path, pages: int = 50) -> None:
