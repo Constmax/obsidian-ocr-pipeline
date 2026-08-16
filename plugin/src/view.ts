@@ -88,7 +88,6 @@ export class OcrComparisonView extends ItemView {
 
 	private ensureUiBuilt(): void {
 		if (this.uiBuilt) return;
-		this.uiBuilt = true;
 
 		this.frame = this.contentEl.createDiv({ cls: "ocr-abgleich" });
 
@@ -124,7 +123,7 @@ export class OcrComparisonView extends ItemView {
 		this.pdfErrorBanner.hide();
 
 		this.pdfColumn = new PdfColumn(this.app, pdfCol, () => this.plugin.settings.pdfZoomMax);
-		this.pdfColumn.onMeasurementNeeded = () => this.coupling.remeasure();
+		this.pdfColumn.onMeasurementNeeded = () => this.coupling?.remeasure();
 		this.pdfColumn.onLoaded = (name, pages) => this.pdfLoaded(name, pages);
 		this.pdfColumn.onError = (error) => this.showPdfError(error);
 
@@ -165,7 +164,6 @@ export class OcrComparisonView extends ItemView {
 		});
 		setIcon(this.editButton.createSpan({ cls: "ocr-ikon" }), "pencil");
 		this.editButton.addEventListener("click", () => this.toggleEdit());
-		this.updateEditButton();
 		const moreBtn = mdTools.createEl("button", {
 			cls: "ocr-ikonknopf",
 			attr: { "aria-label": "More", title: "More" },
@@ -179,10 +177,11 @@ export class OcrComparisonView extends ItemView {
 			this,
 			() => this.plugin.settings.mdEagerLimit,
 		);
-		this.mdColumn.onMeasurementNeeded = () => this.coupling.remeasure();
+		this.mdColumn.onMeasurementNeeded = () => this.coupling?.remeasure();
 		this.mdColumn.onChange = () => this.triggerSaveChange();
 		this.mdColumn.onFocusLost = () => void this.saveChangeImmediately();
 		this.highlightToggle(this.plugin.settings.markdownView);
+		this.updateEditButton();
 
 		// ── Coupling and Widths ──────────────────────────────────────────────
 		this.coupling = new Coupling({
@@ -196,6 +195,7 @@ export class OcrComparisonView extends ItemView {
 		this.wireHandle(handle2, 1, 2);
 
 		this.registerHotkeys();
+		this.uiBuilt = true;
 	}
 
 	async onOpen(): Promise<void> {
@@ -628,7 +628,7 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private updateEditButton(): void {
-		if (this.editButton === undefined) return;
+		if (this.editButton === undefined || this.mdColumn === undefined) return;
 		const active = this.mdColumn.isEditable();
 		this.editButton.toggleClass("ocr-ikonknopf-aktiv", active);
 		const label = active ? "Disable edit mode (e)" : "Edit (e)";
