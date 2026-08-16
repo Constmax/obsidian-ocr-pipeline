@@ -27,7 +27,7 @@ import { PdfSpalte } from "./pdf-pane.ts";
 import { Seitenleiste } from "./seitenleiste.ts";
 import { Kopplung } from "./sync.ts";
 import type { Ordnerlage, Vorschau } from "./typen.ts";
-import { vorschauParsen } from "./vorschau-parser.ts";
+import { vorschauParsen, vorschauZusammenbauen } from "./vorschau-parser.ts";
 
 export const ANSICHT_TYP = "ocr-vorschau-abgleich";
 
@@ -52,6 +52,9 @@ export class OcrAbgleichAnsicht extends ItemView {
 	private pdfSeiten = 0;
 	private oeffnenLauf = 0;
 	private geprueftBisTimer: number | null = null;
+	private mdSpeicherTimer: number | null = null;
+	private mdSchreibKette: Promise<void> = Promise.resolve();
+	private editierenKnopf!: HTMLButtonElement;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -152,6 +155,12 @@ export class OcrAbgleichAnsicht extends ItemView {
 		});
 		ablehnen.addClass("ocr-knopf-ablehnen");
 		this.kleinknopf(mdWerkzeuge, "In Obsidian öffnen", "", () => void this.inObsidianOeffnen());
+		this.editierenKnopf = mdWerkzeuge.createEl("button", {
+			cls: "ocr-ikonknopf",
+		});
+		setIcon(this.editierenKnopf.createSpan({ cls: "ocr-ikon" }), "pencil");
+		this.editierenKnopf.addEventListener("click", () => this.editierenUmschalten());
+		this.editierenKnopfAktualisieren();
 		const mehr = mdWerkzeuge.createEl("button", {
 			cls: "ocr-ikonknopf",
 			attr: { "aria-label": "Mehr", title: "Mehr" },
@@ -166,6 +175,8 @@ export class OcrAbgleichAnsicht extends ItemView {
 			() => this.plugin.einstellungen.mdEagerLimit,
 		);
 		this.mdSpalte.beiVermessungNoetig = () => this.kopplung.neuVermessen();
+		this.mdSpalte.beiAenderung = () => this.aenderungSpeichernAnstossen();
+		this.mdSpalte.beiFokusVerlust = () => void this.aenderungSofortSpeichern();
 		// Startmarkierung aus den Einstellungen, nicht fest auf „Gerendert":
 		// wer „Quelltext" als Standard gewaehlt hat, sah sonst die falsche
 		// Schaltflaeche hervorgehoben.
@@ -188,6 +199,7 @@ export class OcrAbgleichAnsicht extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		await this.aenderungSofortSpeichern();
 		this.kopplung?.zerstoeren();
 		this.pdfSpalte?.zerstoeren();
 		this.mdSpalte?.leeren();
@@ -244,6 +256,7 @@ export class OcrAbgleichAnsicht extends ItemView {
 	// ── Öffnen und PDF-Auflösung ──────────────────────────────────────────────
 
 	async oeffnen(name: string): Promise<void> {
+		await this.aenderungSofortSpeichern();
 		const lauf = ++this.oeffnenLauf;
 		const bestand = this.bestand.eintraege.find((b) => b.name === name);
 		if (bestand === undefined) {
@@ -332,6 +345,7 @@ export class OcrAbgleichAnsicht extends ItemView {
 	// ── Entscheiden und Navigieren ────────────────────────────────────────────
 
 	private async entscheiden(lage: Ordnerlage): Promise<void> {
+		await this.aenderungSofortSpeichern();
 		const name = this.seitenleiste.ausgewaehltName();
 		if (name === null) return;
 		const ergebnis = await this.bestand.entscheiden(name, lage);
@@ -451,7 +465,36 @@ export class OcrAbgleichAnsicht extends ItemView {
 		}, GEPRUEFT_BIS_MS);
 	}
 
+	private aenderungSpeichernAnstossen(): void {
+		if (this.mdSpeicherTimer !== null) window.clearTimeout(this.mdSpeicherTimer);
+		this.mdSpeicherTimer = window.setTimeout(() => {
+			this.mdSpeicherTimer = null;
+			void this.aenderungSofortSpeichern();
+		}, 500);
+	}
+
+	private async aenderungSofortSpeichern(): Promise<void> {
+		if (this.mdSpeicherTimer !== null) {
+			window.clearTimeout(this.mdSpeicherTimer);
+			this.mdSpeicherTimer = null;
+		}
+		const vorschau = this.mdSpalte?.aktuelleVorschau();
+		const datei = this.mdSpalte?.aktuelleDatei();
+		if (vorschau === null || vorschau === undefined || datei === null || datei === undefined) return;
+		const text = vorschauZusammenbauen(vorschau);
+		this.mdSchreibKette = this.mdSchreibKette.then(async () => {
+			try {
+				await this.app.vault.modify(datei, text);
+			} catch (fehler) {
+				console.error("OCR-Vorschau: Konvertierten Text speichern fehlgeschlagen", fehler);
+				new Notice("OCR-Vorschau: Änderungen konnten nicht in Datei gespeichert werden.");
+			}
+		});
+		await this.mdSchreibKette;
+	}
+
 	private darstellungSetzen(darstellung: Darstellung): void {
+		void this.aenderungSofortSpeichern();
 		this.mdSpalte.darstellungSetzen(darstellung);
 		this.umschalterMarkieren(darstellung);
 	}
@@ -465,6 +508,27 @@ export class OcrAbgleichAnsicht extends ItemView {
 				option.dataset["darstellung"] === darstellung,
 			);
 		}
+	}
+
+	private editierenUmschalten(): void {
+		const neuerStatus = !this.mdSpalte.istEditierbar();
+		this.mdSpalte.editierbarSetzen(neuerStatus);
+		if (neuerStatus && this.mdSpalte.aktuelleDarstellung() === "gerendert") {
+			this.darstellungSetzen("quelltext");
+		}
+		if (!neuerStatus) {
+			void this.aenderungSofortSpeichern();
+		}
+		this.editierenKnopfAktualisieren();
+	}
+
+	private editierenKnopfAktualisieren(): void {
+		if (this.editierenKnopf === undefined) return;
+		const aktiv = this.mdSpalte.istEditierbar();
+		this.editierenKnopf.toggleClass("ocr-ikonknopf-aktiv", aktiv);
+		const label = aktiv ? "Bearbeitungsmodus deaktivieren (e)" : "Bearbeiten (e)";
+		this.editierenKnopf.setAttribute("aria-label", label);
+		this.editierenKnopf.setAttribute("title", label);
 	}
 
 	private zoomen(schritt: number): void {
@@ -587,6 +651,7 @@ export class OcrAbgleichAnsicht extends ItemView {
 				this.mdSpalte.aktuelleDarstellung() === "gerendert" ? "quelltext" : "gerendert",
 			),
 		);
+		taste("e", () => this.editierenUmschalten());
 		taste(" ", () => this.seiteWeiter());
 		taste("g", () => this.geheZuSeite());
 		taste("s", () => this.syncUmschalten());

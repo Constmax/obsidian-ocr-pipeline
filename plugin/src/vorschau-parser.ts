@@ -99,6 +99,7 @@ export function vorschauParsen(quelltext: string): Vorschau {
 	const bloecke: Seitenblock[] = [];
 	const vorspannZeilen: string[] = [];
 	let quelleAusLink: string | null = null;
+	let ersterMarkerZeile = -1;
 
 	let aktuell: Seitenblock | null = null;
 	let sammlung: string[] = [];
@@ -129,10 +130,14 @@ export function vorschauParsen(quelltext: string): Vorschau {
 
 		const treffer = inZaun ? null : MARKER.exec(zeile);
 		if (treffer !== null && treffer[1] !== undefined) {
+			if (ersterMarkerZeile < 0) {
+				ersterMarkerZeile = i;
+			}
 			abschliessen();
 			aktuell = {
 				nr: Number.parseInt(treffer[1], 10),
 				...zusatzZerlegen(treffer[2]),
+				markerZeile: zeile,
 				markdown: "",
 			};
 			continue;
@@ -151,6 +156,11 @@ export function vorschauParsen(quelltext: string): Vorschau {
 	}
 	abschliessen();
 
+	const roherVorspann =
+		ersterMarkerZeile >= 0
+			? zeilen.slice(0, ersterMarkerZeile).join("\n")
+			: quelltext;
+
 	const quelleAusFrontmatter = frontmatter["quelle-pdf"];
 	return {
 		frontmatter,
@@ -159,8 +169,65 @@ export function vorschauParsen(quelltext: string): Vorschau {
 				? quelleAusFrontmatter
 				: quelleAusLink,
 		vorspann: vorspannZeilen.join("\n").trim(),
+		roherVorspann,
 		bloecke,
 	};
+}
+
+export function markerBauen(block: Seitenblock): string {
+	const zusatz: string[] = [];
+	if (block.herkunft !== undefined) zusatz.push(block.herkunft);
+	if (block.layout !== undefined) zusatz.push(block.layout);
+	if (zusatz.length > 0) {
+		return `%% S. ${block.nr} | ${zusatz.join(" | ")} %%`;
+	}
+	return `%% S. ${block.nr} %%`;
+}
+
+/**
+ * Setzt eine Vorschau-Struktur verlustfrei wieder zu einem Markdown-Dokument zusammen.
+ */
+export function vorschauZusammenbauen(vorschau: Vorschau): string {
+	if (vorschau.bloecke.length === 0) {
+		return vorschau.roherVorspann ?? (vorschau.vorspann.length > 0 ? vorschau.vorspann + "\n" : "");
+	}
+
+	const teile: string[] = [];
+	if (vorschau.roherVorspann !== undefined) {
+		const vorspannGetrimmt = vorschau.roherVorspann.trimEnd();
+		if (vorspannGetrimmt.length > 0) {
+			teile.push(vorspannGetrimmt);
+		}
+	} else {
+		// Fallback: Vorspann aus Frontmatter und Quelle konstruieren
+		const kopfTeile: string[] = [];
+		const fmKeys = Object.keys(vorschau.frontmatter);
+		if (fmKeys.length > 0) {
+			kopfTeile.push("---");
+			for (const k of fmKeys) {
+				kopfTeile.push(`${k}: ${vorschau.frontmatter[k]}`);
+			}
+			kopfTeile.push("---");
+		}
+		if (vorschau.quellePdf !== null) {
+			kopfTeile.push(`Quelle: [[${vorschau.quellePdf}]]`);
+		}
+		if (vorschau.vorspann.length > 0) {
+			kopfTeile.push(vorschau.vorspann);
+		}
+		if (kopfTeile.length > 0) {
+			teile.push(kopfTeile.join("\n\n"));
+		}
+	}
+
+	for (const block of vorschau.bloecke) {
+		const marker = block.markerZeile ?? markerBauen(block);
+		teile.push(
+			block.markdown.length > 0 ? `${marker}\n\n${block.markdown}` : marker,
+		);
+	}
+
+	return teile.join("\n\n") + "\n";
 }
 
 /** Zahl aus dem Frontmatter, `null` wenn nicht vorhanden oder keine Zahl. */
