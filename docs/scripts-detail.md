@@ -372,3 +372,51 @@ Es dürfen zukünftig weitere Felder zu den Ereignissen hinzugefügt werden.
 Leser (Plugin, UI, Drittanbieter) müssen solchen ihnen unbekannten Felder
 ignorieren und dürfen das Vorhandensein dieser Felder nicht als Fehler
 werten.
+
+## --check (Stufe 2)
+
+Preflight-Prüfung ohne Modelllauf und ohne Eingabedatei. Antwortet in unter
+einer Sekunde. `--check` weist ein überflüssiges PDF-Argument mit Fehler
+zurück. Ohne `--out` prüft `--check` gegen ein temporäres Verzeichnis und
+legt den Standardordner `pdf2md/out-C` nicht an. Prüfungen:
+
+| Name | Was | Fehlt wenn |
+|---|---|---|
+| `python` | Python-Version | < 3.9 |
+| `fitz` | PyMuPDF importierbar | Import schlägt fehl |
+| `mlx_vlm` | MLX-VLM importierbar | Import schlägt fehl |
+| `modell` | Modell im HuggingFace-Cache | Kein Cache-Eintrag (respektiert `$HF_HUB_CACHE`, `$HF_HOME`) |
+| `ausgabe` | Schreibrecht auf `--out` | Verzeichnis nicht anlegbar / nicht beschreibbar |
+| `speicher` | Gesamt-RAM (macOS `sysctl`) | `n/a` = unbekannt trotzdem ok; unter 8 GiB = Warnung, kein Abbruch |
+
+Ausgabe (Mensch): eine Zeile je Prüfung mit `[ ok ]` oder `[fehlt]`, plus
+Warn-Zeilen und Zusammenfassung.
+
+```bash
+pdf2md.py --check --out _ocr-vorschau
+# [ ok ] python: 3.12.4
+# [ ok ] fitz: 1.24.10
+# [fehlt] mlx_vlm: nicht installiert
+# [fehlt] modell: nicht im Cache (~/.cache/huggingface/hub/models--...)
+# [ ok ] ausgabe: .../_ocr-vorschau
+# [ ok ] speicher: 16.0 GiB
+# —
+# fehlgeschlagen
+```
+
+`--check --fortschritt` liefert dasselbe als ein JSON-Dokument auf stdout:
+
+```json
+{"typ":"check","ok":false,"checks":[{"name":"python","ok":true,"detail":"3.12.4"},…],"warnungen":["speicher: …"]}
+```
+
+### Exit-Codes
+
+- **0** — alle Prüfungen ok
+- **2** — argparse-Fehler (z. B. PDF-Argument bei `--check`)
+- **4** — mindestens eine Prüfung fehlgeschlagen
+- **1** — (Wrapper) MLX-venv nicht vorhanden
+
+Die Wrapper-Logik in `bin/pdf2md` ueberspringt bei `--check` den eigenen
+fitz-Import-Check und laesst die Bewertung komplett an `pdf2md.py` — so
+bleibt der Exit-Code einheitlich.
