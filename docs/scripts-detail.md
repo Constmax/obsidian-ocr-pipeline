@@ -326,3 +326,48 @@ One event object emitted per state transition. Downstream parsers must accept an
 
 Additional fields may be introduced to events in future revisions. Parsers (plugins, UIs, external tools) must ignore unrecognized fields without throwing errors.
 
+## --check (Stage 2)
+
+Preflight check without model execution and without input PDF. Responds in under
+one second. `--check` rejects superfluous PDF arguments with an error. Without `--out`,
+`--check` tests against a temporary directory and does not create the default `pdf2md/out-C`
+folder. Checks:
+
+| Name | Check | Missing if |
+|---|---|---|
+| `python` | Python version | < 3.9 |
+| `fitz` | PyMuPDF importable | Import fails |
+| `mlx_vlm` | MLX-VLM importable | Import fails |
+| `modell` | Model in HuggingFace cache | No cache entry found (respects `$HF_HUB_CACHE`, `$HF_HOME`) |
+| `ausgabe` | Write permission on `--out` | Directory cannot be created / not writable |
+| `speicher` | Total RAM (macOS `sysctl`) | `n/a` = unknown still ok; < 8 GiB = warning, no abort |
+
+Human output: one line per check with `[ ok ]` or `[fehlt]`, plus warning lines and summary.
+
+```bash
+pdf2md.py --check --out _ocr-preview
+# [ ok ] python: 3.12.4
+# [ ok ] fitz: 1.24.10
+# [fehlt] mlx_vlm: nicht installiert
+# [fehlt] modell: nicht im Cache (~/.cache/huggingface/hub/models--...)
+# [ ok ] ausgabe: .../_ocr-preview
+# [ ok ] speicher: 16.0 GiB
+# —
+# fehlgeschlagen
+```
+
+`--check --progress` (or `--check --fortschritt`) outputs the same as a single JSON document on stdout:
+
+```json
+{"typ":"check","ok":false,"checks":[{"name":"python","ok":true,"detail":"3.12.4"},…],"warnungen":["speicher: …"]}
+```
+
+### Exit Codes
+
+- **0** — all checks passed
+- **2** — argparse error (e.g. PDF argument with `--check`)
+- **4** — at least one check failed
+- **1** — (wrapper) MLX venv does not exist
+
+The wrapper logic in `bin/pdf2md` skips its own fitz import check when `--check` is passed, delegating evaluation entirely to `pdf2md.py` for consistent exit codes.
+
