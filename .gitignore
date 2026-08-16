@@ -33,6 +33,9 @@ map_page*.json
 *_FAILED_*.pdf
 *.bak
 
+# Superpowers plan workspace — plans are session scratch, not repo content
+docs/superpowers/plans/
+
 # Plugin-Toolchain (Stufe 3). main.js wird eingecheckt, damit ein Clone ohne
 # Build lauffaehig ist — bei Aenderungen an src/ mit `npm run build` neu bauen.
 # data.json sind vault-eigene Einstellungen.
