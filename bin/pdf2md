@@ -19,11 +19,15 @@ if [ ! -x "$VENV_PY" ]; then
     echo "❌ MLX-venv fehlt ($VENV_PY). Einmal ./setup.sh im Repo ausführen." >&2
     exit 1
 fi
-# Ein venv ohne pymupdf liesse pdf2md.py erst am `import fitz` scheitern
-# (nach dem Modell-Download) — hier mit klarer Meldung abfangen.
-if ! "$VENV_PY" -c "import fitz" >/dev/null 2>&1; then
-    echo "❌ pymupdf fehlt in $VENV_PY — ./setup.sh im Repo erneut ausführen." >&2
-    exit 1
+# Bei --check ueberspringen wir den fitz-Check: pdf2md.py prueft fitz selbst
+# und meldet es als fehlende Abhaengigkeit (Exit-Code 4).
+if [[ " $* " != *" --check "* ]]; then
+    # Ein venv ohne pymupdf liesse pdf2md.py erst am `import fitz` scheitern
+    # (nach dem Modell-Download) — hier mit klarer Meldung abfangen.
+    if ! "$VENV_PY" -c "import fitz" >/dev/null 2>&1; then
+        echo "❌ pymupdf fehlt in $VENV_PY — ./setup.sh im Repo erneut ausführen." >&2
+        exit 1
+    fi
 fi
 
 exec "$VENV_PY" "$SCRIPT_DIR/../pdf2md/pdf2md.py" "$@"
