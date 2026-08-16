@@ -44,6 +44,12 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 - Install into a vault: `VAULT_ROOT=<path> plugin/install-plugin.sh` (default
   copies, no build; `--build` to build, `--symlink` only outside iCloud).
 - ESLint: `eslint-plugin-obsidianmd`; `sentence-case` rule is enabled for English UI; `no-console` allows only `error`/`warn`.
+- **Obsidian API Invariants & Quirks**:
+  - **No `open()` on Views**: Never define a custom method named `open()` on classes extending `ItemView` / `View` (collides with Obsidian's internal `View.prototype.open(containerEl)` lifecycle). Use `openPreview()`.
+  - **`loadPdfJs()` caching**: Obsidian's `loadPdfJs()` returns `Promise<any>` and may not attach to `window.pdfjsLib` automatically. Always use `const pdfjs = window.pdfjsLib ?? await loadPdfJs(); (window as any).pdfjsLib = pdfjs;`.
+  - **Idempotent UI Initialization**: Initialize view panes via `ensureUiBuilt()` before any `openPreview()`, `update()`, `setState()`, or `onOpen()` calls so that leaf restorations and conversions never encounter uninitialized subcomponents.
+  - **Startup Indexing**: Reconcile cache and open initial previews within `app.workspace.onLayoutReady(...)` to avoid reading incomplete vault metadata on startup.
+  - **Bug Fixes**: Always follow the systematic debugging workflow (`systematic-debugging` skill) to trace root causes before modifying code.
 
 ## Setup / environments
 

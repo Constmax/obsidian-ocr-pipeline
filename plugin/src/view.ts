@@ -6,6 +6,7 @@ import {
 	Menu,
 	Modal,
 	Notice,
+	Scope,
 	Setting,
 	SuggestModal,
 	TFile,
@@ -15,6 +16,7 @@ import {
 	normalizePath,
 	setIcon,
 } from "obsidian";
+import type { KeymapEventHandler } from "obsidian";
 
 import type OcrPreviewPlugin from "./main.ts";
 import { Inventory, type InventoryEntry } from "./file-actions.ts";
@@ -24,6 +26,7 @@ import { Sidebar } from "./sidebar.ts";
 import { Coupling } from "./sync.ts";
 import type { FolderLocation, Preview } from "./types.ts";
 import { parsePreview, buildPreview } from "./preview-parser.ts";
+import { LatestTaskQueue } from "./open-queue.ts";
 
 export const VIEW_TYPE = "ocr-preview-comparison";
 
@@ -49,6 +52,14 @@ export class OcrComparisonView extends ItemView {
 	private pdfFile: TFile | null = null;
 	private pdfPages = 0;
 	private openRun = 0;
+	private readonly openQueue = new LatestTaskQueue();
+	private requestedName: string | null = null;
+	private hasRestoredTarget = false;
+	private autoOpenAttempted = false;
+	private loadingName: string | null = null;
+	private closed = false;
+	private reloadName: string | null = null;
+	private hotkeyHandlers: KeymapEventHandler[] = [];
 	private checkedUntilTimer: number | null = null;
 	private mdSaveTimer: number | null = null;
 	private mdWriteChain: Promise<void> = Promise.resolve();
@@ -60,6 +71,11 @@ export class OcrComparisonView extends ItemView {
 	) {
 		super(leaf);
 		this.navigation = true;
+		// Obsidian does not assign `scope` on plugin views (the workspace
+		// keymap resolves `activeLeaf.view.scope` lazily instead). Without an
+		// own scope, registerHotkeys crashes on `undefined` and the hotkeys
+		// never fire.
+		this.scope = new Scope(this.app.scope);
 	}
 
 	getViewType(): string {
@@ -78,7 +94,6 @@ export class OcrComparisonView extends ItemView {
 
 	private ensureUiBuilt(): void {
 		if (this.uiBuilt) return;
-		this.uiBuilt = true;
 
 		this.frame = this.contentEl.createDiv({ cls: "ocr-abgleich" });
 
@@ -88,7 +103,7 @@ export class OcrComparisonView extends ItemView {
 			listCol,
 			() => this.plugin.settings.previewFolder,
 		);
-		this.sidebar.onSelect = (name) => void this.openPreview(name);
+		this.sidebar.onSelect = (name) => this.safelyOpenPreview(name);
 		this.sidebar.onRefresh = () => void this.reconcile();
 		this.sidebar.onSettings = () => openSettings(this.plugin);
 
@@ -114,7 +129,7 @@ export class OcrComparisonView extends ItemView {
 		this.pdfErrorBanner.hide();
 
 		this.pdfColumn = new PdfColumn(this.app, pdfCol, () => this.plugin.settings.pdfZoomMax);
-		this.pdfColumn.onMeasurementNeeded = () => this.coupling.remeasure();
+		this.pdfColumn.onMeasurementNeeded = () => this.coupling?.remeasure();
 		this.pdfColumn.onLoaded = (name, pages) => this.pdfLoaded(name, pages);
 		this.pdfColumn.onError = (error) => this.showPdfError(error);
 
@@ -155,7 +170,6 @@ export class OcrComparisonView extends ItemView {
 		});
 		setIcon(this.editButton.createSpan({ cls: "ocr-ikon" }), "pencil");
 		this.editButton.addEventListener("click", () => this.toggleEdit());
-		this.updateEditButton();
 		const moreBtn = mdTools.createEl("button", {
 			cls: "ocr-ikonknopf",
 			attr: { "aria-label": "More", title: "More" },
@@ -169,10 +183,11 @@ export class OcrComparisonView extends ItemView {
 			this,
 			() => this.plugin.settings.mdEagerLimit,
 		);
-		this.mdColumn.onMeasurementNeeded = () => this.coupling.remeasure();
+		this.mdColumn.onMeasurementNeeded = () => this.coupling?.remeasure();
 		this.mdColumn.onChange = () => this.triggerSaveChange();
 		this.mdColumn.onFocusLost = () => void this.saveChangeImmediately();
 		this.highlightToggle(this.plugin.settings.markdownView);
+		this.updateEditButton();
 
 		// ── Coupling and Widths ──────────────────────────────────────────────
 		this.coupling = new Coupling({
@@ -186,27 +201,43 @@ export class OcrComparisonView extends ItemView {
 		this.wireHandle(handle2, 1, 2);
 
 		this.registerHotkeys();
+		this.uiBuilt = true;
 	}
 
 	async onOpen(): Promise<void> {
+		this.closed = false;
+		const reload = this.reloadName;
+		if (reload !== null) {
+			this.requestedName = reload;
+			this.reloadName = null;
+		}
 		this.ensureUiBuilt();
 		this.update();
-		if (this.activeName === null) {
-			const first = this.firstVisible();
-			if (first !== null) void this.openPreview(first);
-		}
+		if (reload !== null) this.safelyOpenPreview(reload);
 	}
 
 	async onClose(): Promise<void> {
+		this.closed = true;
+		this.reloadName = this.requestedName ?? this.activeName;
+		this.openRun++;
+		this.openQueue.cancel();
+		this.requestedName = null;
+		if (this.scope !== null) {
+			for (const handler of this.hotkeyHandlers) this.scope.unregister(handler);
+		}
+		this.hotkeyHandlers = [];
 		await this.saveChangeImmediately();
 		this.coupling?.destroy();
 		this.pdfColumn?.destroy();
 		this.mdColumn?.clear();
+		this.pdfFile = null;
+		this.uiBuilt = false;
+		this.contentEl.empty();
 		if (this.checkedUntilTimer !== null) window.clearTimeout(this.checkedUntilTimer);
 	}
 
 	getState(): Record<string, unknown> {
-		return { datei: this.activeName };
+		return { datei: this.requestedName ?? this.reloadName ?? this.activeName };
 	}
 
 	async setState(state: unknown, result: ViewStateResult): Promise<void> {
@@ -214,11 +245,16 @@ export class OcrComparisonView extends ItemView {
 		const file =
 			(state as { datei?: unknown; file?: unknown } | null)?.file ??
 			(state as { datei?: unknown } | null)?.datei;
-		if (typeof file === "string") {
-			await this.openPreview(file);
-		} else if (this.activeName === null) {
-			const first = this.firstVisible();
-			if (first !== null) await this.openPreview(first);
+		if (typeof file === "string" && file.length > 0) {
+			this.hasRestoredTarget = true;
+			try {
+				await this.openPreview(file);
+			} catch (err) {
+				this.reportOpenFailure(file, err);
+			}
+		} else {
+			this.ensureUiBuilt();
+			this.update();
 		}
 	}
 
@@ -226,15 +262,23 @@ export class OcrComparisonView extends ItemView {
 		const name = this.activeName;
 		if (name === null) {
 			const first = this.sidebar.moveSelection(1);
-			if (first !== null) void this.openPreview(first);
+			if (first !== null) this.safelyOpenPreview(first);
 			return;
 		}
 		const nextItem = this.sidebar.nextAfter(name);
-		if (nextItem !== null) void this.openPreview(nextItem);
+		if (nextItem !== null) this.safelyOpenPreview(nextItem);
 	}
 
 	firstVisible(): string | null {
 		return this.sidebar?.firstVisible() ?? null;
+	}
+
+	hasPendingPreview(): boolean {
+		return this.requestedName !== null;
+	}
+
+	async waitForPreview(): Promise<void> {
+		await this.openQueue.waitForIdle();
 	}
 
 	private async reconcile(): Promise<void> {
@@ -243,6 +287,7 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	update(): void {
+		if (this.closed) return;
 		this.ensureUiBuilt();
 		const folderMissing =
 			this.app.vault.getFolderByPath(this.plugin.settings.previewFolder) === null;
@@ -250,63 +295,110 @@ export class OcrComparisonView extends ItemView {
 		this.sidebar?.update(entries, folderMissing);
 		if (
 			this.activeName !== null &&
-			!entries.some((b) => b.name === this.activeName)
+			!entries.some((b) => b.name === this.activeName) &&
+			this.requestedName === null &&
+			this.reloadName === null
 		) {
 			this.noSelection();
 		}
+		if (
+			this.activeName === null &&
+			this.requestedName === null &&
+			!this.hasRestoredTarget &&
+			!this.autoOpenAttempted
+		) {
+			const first = this.firstVisible();
+			if (first !== null) {
+				this.autoOpenAttempted = true;
+				this.safelyOpenPreview(first);
+			}
+		}
 	}
 
-	async openPreview(name: string): Promise<void> {
-		if (typeof name !== "string" || name.length === 0) return;
+	async openPreview(name: string): Promise<boolean> {
+		if (typeof name !== "string" || name.length === 0) return false;
+		if (this.closed) return false;
 		this.ensureUiBuilt();
-		await this.saveChangeImmediately();
+		this.requestedName = name;
+		this.app.workspace.requestSaveLayout();
 		const run = ++this.openRun;
+		const completed = await this.openQueue.enqueue(() => this.loadPreview(name, run));
+		return completed && !this.closed && this.activeName === name && this.requestedName === null;
+	}
+
+	private async loadPreview(name: string, run: number): Promise<void> {
+		await this.saveChangeImmediately();
+		if (this.closed || run !== this.openRun) return;
 		const item = this.inventory?.entries.find((b) => b.name === name);
 		if (item === undefined) {
+			if (run === this.openRun) this.requestedName = null;
 			new Notice(`"${name}" is no longer in preview list.`);
 			this.update();
 			return;
 		}
-		this.activeName = name;
-		this.sidebar.setSelected(name);
-		this.app.workspace.requestSaveLayout();
 
-		let preview: Preview | null = null;
+		this.loadingName = name;
 		try {
+			if (this.closed || run !== this.openRun) return;
 			const text = await this.app.vault.read(item.file);
-			if (run !== this.openRun) return;
-			preview = parsePreview(text);
-		} catch (err) {
-			console.error("OCR Preview: File readable error", err);
-			new Notice(`"${name}" could not be read.`);
-		}
-		if (run !== this.openRun) return;
-
-		if (preview !== null) {
+			if (this.closed || run !== this.openRun) return;
+			await this.saveChangeImmediately();
+			if (this.closed || run !== this.openRun) return;
+			const preview = parsePreview(text);
 			await this.mdColumn.open(
 				item.file,
 				preview,
 				this.plugin.settings.markdownView,
 			);
-		} else {
-			this.mdColumn.clear("The file could not be read.");
-		}
-		if (run !== this.openRun) return;
+			if (this.closed || run !== this.openRun) return;
 
-		const pdfFile = await this.findOriginal(item, preview);
-		if (run !== this.openRun) return;
-		this.pdfFile = pdfFile;
-		if (pdfFile === null) {
+			const pdfFile = await this.findOriginal(item, preview);
+			if (this.closed || run !== this.openRun) return;
+			this.pdfFile = pdfFile;
+			if (pdfFile === null) {
+				await this.pdfColumn.open(null);
+				this.showPdfError("Original PDF not found.");
+			} else {
+				this.showPdfError(null);
+				await this.pdfColumn.open(pdfFile);
+			}
+
+			if (this.closed || run !== this.openRun) return;
+			this.loadingName = null;
+			this.activeName = name;
+			this.requestedName = null;
+			this.sidebar.setSelected(name);
+			this.app.workspace.requestSaveLayout();
+			this.coupling.remeasure();
+			const until = item.entry["checked-until"];
+			if (until !== null && until > 1) this.coupling.goToPage(until);
+		} catch (err) {
+			if (this.closed || run !== this.openRun) return;
+			console.error("OCR Preview: Preview failed to open", err);
+			await this.saveChangeImmediately();
+			if (this.closed || run !== this.openRun) return;
+			this.activeName = null;
+			this.requestedName = null;
+			this.sidebar.setSelected(null);
+			this.mdColumn.clear("The preview could not be loaded.");
+			this.pdfFile = null;
 			await this.pdfColumn.open(null);
-			this.showPdfError("Original PDF not found.");
-		} else {
+			this.pdfLoaded(null, 0);
 			this.showPdfError(null);
-			await this.pdfColumn.open(pdfFile);
+			this.app.workspace.requestSaveLayout();
+			new Notice(`OCR Preview: "${name}" could not be opened.`);
+		} finally {
+			if (this.loadingName === name) this.loadingName = null;
 		}
+	}
 
-		this.coupling.remeasure();
-		const until = item.entry["checked-until"];
-		if (until !== null && until > 1) this.coupling.goToPage(until);
+	private safelyOpenPreview(name: string): void {
+		void this.openPreview(name).catch((err) => this.reportOpenFailure(name, err));
+	}
+
+	private reportOpenFailure(name: string, err: unknown): void {
+		console.error(`OCR Preview: Unexpected error opening "${name}"`, err);
+		new Notice(`OCR Preview: "${name}" could not be opened.`);
 	}
 
 	private async findOriginal(
@@ -336,15 +428,35 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private async decide(location: FolderLocation): Promise<void> {
-		await this.saveChangeImmediately();
 		const name = this.sidebar.selectedName();
-		if (name === null) return;
+		if (name === null || !this.canDecide(name)) return;
+		await this.saveChangeImmediately();
+		if (!this.canDecide(name)) return;
+		const nextItem = location === "open" ? null : this.sidebar.nextAfter(name);
 		const result = await this.inventory.decide(name, location);
 		if (result === "collision") {
 			this.reportCollision(name, location);
 			return;
 		}
 		if (result !== "ok") return;
+		await this.finishDecision(name, location, nextItem);
+	}
+
+	private canDecide(name: string): boolean {
+		return (
+			!this.closed &&
+			this.requestedName === null &&
+			this.loadingName === null &&
+			this.activeName === name &&
+			this.sidebar.selectedName() === name
+		);
+	}
+
+	private async finishDecision(
+		name: string,
+		location: FolderLocation,
+		nextItem: string | null,
+	): Promise<void> {
 
 		const label =
 			location === "accepted" ? "Accepted" : location === "rejected" ? "Rejected" : "Reset";
@@ -357,8 +469,9 @@ export class OcrComparisonView extends ItemView {
 
 		this.update();
 		if (location === "open") return;
-		const nextItem = this.sidebar.nextAfter(name);
-		if (nextItem !== null) void this.openPreview(nextItem);
+		if (this.sidebar.selectedName() !== name) return;
+		if (this.requestedName !== null && this.requestedName !== name) return;
+		if (nextItem !== null) this.safelyOpenPreview(nextItem);
 		else this.noSelection();
 	}
 
@@ -379,24 +492,41 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private async replaceAndDecide(name: string, location: FolderLocation): Promise<void> {
+		if (!this.canDecide(name)) return;
+		await this.saveChangeImmediately();
+		if (!this.canDecide(name)) return;
+		const nextItem = location === "open" ? null : this.sidebar.nextAfter(name);
 		if (!(await this.inventory.replaceOldVersion(name))) {
 			new Notice(`OCR Preview: "${name}" could not be replaced.`);
 			this.update();
 			return;
 		}
-		await this.decide(location);
+		const result = await this.inventory.decide(name, location);
+		if (result === "collision") {
+			this.reportCollision(name, location);
+			return;
+		}
+		if (result === "ok") await this.finishDecision(name, location, nextItem);
 	}
 
 	private async undo(): Promise<void> {
 		const name = await this.inventory.undo();
 		this.update();
-		if (name !== null) void this.openPreview(name);
+		if (name !== null) this.safelyOpenPreview(name);
 	}
 
 	private noSelection(): void {
+		this.openRun++;
+		this.openQueue.cancel();
+		this.requestedName = null;
+		this.reloadName = null;
+		void this.saveChangeImmediately().catch((err) => {
+			console.error("OCR Preview: Failed to save before clearing selection", err);
+		});
 		this.activeName = null;
 		this.sidebar.setSelected(null);
 		this.mdColumn.clear("No preview selected — select an entry on the left.");
+		this.pdfFile = null;
 		void this.pdfColumn.open(null);
 		this.pdfLoaded(null, 0);
 		this.app.workspace.requestSaveLayout();
@@ -424,13 +554,14 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private showPage(p: number): void {
-		if (this.pdfFile === null || this.pdfPages === 0) return;
+		if (this.loadingName !== null || this.pdfFile === null || this.pdfPages === 0) return;
 		const nr = Math.min(Math.max(Math.floor(p), 1), this.pdfPages);
 		this.pdfPagesDisplay.setText(`p. ${nr} / ${this.pdfPages}`);
 		this.updateCheckedUntil(nr);
 	}
 
 	private updateCheckedUntil(nr: number): void {
+		if (this.loadingName !== null) return;
 		const name = this.activeName;
 		if (name === null) return;
 		const item = this.inventory.entries.find((b) => b.name === name);
@@ -459,16 +590,17 @@ export class OcrComparisonView extends ItemView {
 		}
 		const preview = this.mdColumn?.currentPreview();
 		const file = this.mdColumn?.currentFile();
-		if (preview === null || preview === undefined || file === null || file === undefined) return;
-		const text = buildPreview(preview);
-		this.mdWriteChain = this.mdWriteChain.then(async () => {
-			try {
-				await this.app.vault.modify(file, text);
-			} catch (err) {
-				console.error("OCR Preview: Save converted text failed", err);
-				new Notice("OCR Preview: Changes could not be saved to file.");
-			}
-		});
+		if (preview !== null && preview !== undefined && file !== null && file !== undefined) {
+			const text = buildPreview(preview);
+			this.mdWriteChain = this.mdWriteChain.then(async () => {
+				try {
+					await this.app.vault.modify(file, text);
+				} catch (err) {
+					console.error("OCR Preview: Save converted text failed", err);
+					new Notice("OCR Preview: Changes could not be saved to file.");
+				}
+			});
+		}
 		await this.mdWriteChain;
 	}
 
@@ -502,7 +634,7 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private updateEditButton(): void {
-		if (this.editButton === undefined) return;
+		if (this.editButton === undefined || this.mdColumn === undefined) return;
 		const active = this.mdColumn.isEditable();
 		this.editButton.toggleClass("ocr-ikonknopf-aktiv", active);
 		const label = active ? "Disable edit mode (e)" : "Edit (e)";
@@ -516,12 +648,12 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private async openInPdfViewer(): Promise<void> {
-		if (this.pdfFile === null) return;
+		if (this.closed || this.requestedName !== null || this.pdfFile === null) return;
 		await this.app.workspace.openLinkText(this.pdfFile.path, "");
 	}
 
 	private async openInObsidian(): Promise<void> {
-		if (this.activeName === null) return;
+		if (this.closed || this.requestedName !== null || this.activeName === null) return;
 		const item = this.inventory.entries.find((b) => b.name === this.activeName);
 		if (item === undefined) return;
 		await this.app.workspace.openLinkText(item.file.path, "");
@@ -581,7 +713,7 @@ export class OcrComparisonView extends ItemView {
 		modal.setPlaceholder("Search original PDF…");
 		modal.onSelection = (file) => {
 			void this.inventory.updateEntry(name, { "manual-source-pdf": file.path });
-			void this.openPreview(name);
+			this.safelyOpenPreview(name);
 		};
 		modal.open();
 	}
@@ -601,19 +733,19 @@ export class OcrComparisonView extends ItemView {
 		const scope = this.scope;
 		if (scope === null) return;
 		const key = (k: string, fn: () => void) =>
-			scope.register([], k, (evt) => {
+			this.hotkeyHandlers.push(scope.register([], k, (evt) => {
 				if (isInputTarget(evt.target)) return true;
 				fn();
 				return false;
-			});
+			}));
 
 		key("j", () => {
 			const name = this.sidebar.moveSelection(1);
-			if (name !== null) void this.openPreview(name);
+			if (name !== null) this.safelyOpenPreview(name);
 		});
 		key("k", () => {
 			const name = this.sidebar.moveSelection(-1);
-			if (name !== null) void this.openPreview(name);
+			if (name !== null) this.safelyOpenPreview(name);
 		});
 		key("a", () => void this.decide("accepted"));
 		key("x", () => void this.decide("rejected"));

@@ -237,7 +237,7 @@ def preflight(out):
     checks.append(("python", sys.version_info >= (3, 9), pv))
     # 2. fitz (PyMuPDF)
     try:
-        import fitz
+        import pymupdf as fitz
         checks.append(("fitz", True, getattr(fitz, "__version__", "?")))
     except ImportError:
         checks.append(("fitz", False, "nicht installiert"))
