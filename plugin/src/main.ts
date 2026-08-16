@@ -53,14 +53,7 @@ export default class OcrPreviewPlugin extends Plugin {
 
 		this.app.workspace.onLayoutReady(async () => {
 			await this.inventory.reconcile();
-			const view = this.openView();
-			if (view !== null) {
-				view.update();
-				if (view.activeName === null) {
-					const first = view.firstVisible();
-					if (first !== null) void view.openPreview(first);
-				}
-			}
+			for (const view of this.openViews()) view.update();
 		});
 
 		const relevant = (file: TAbstractFile): boolean =>
@@ -114,7 +107,7 @@ export default class OcrPreviewPlugin extends Plugin {
 		this.addCommand({
 			id: "abgleich-weiter",
 			name: "Jump to next preview entry",
-			callback: () => this.openView()?.next(),
+			callback: () => void this.jumpToNextPreview(),
 		});
 		this.addCommand({
 			id: "pdf-konvertieren-und-abgleich",
@@ -208,7 +201,7 @@ export default class OcrPreviewPlugin extends Plugin {
 	}
 
 	/** Opens the view tab, optionally with an entry. */
-	async revealView(name?: string): Promise<void> {
+	async revealView(name?: string): Promise<boolean> {
 		const { workspace } = this.app;
 		let leaf = workspace.getLeavesOfType(VIEW_TYPE)[0];
 		if (leaf === undefined) {
@@ -220,11 +213,25 @@ export default class OcrPreviewPlugin extends Plugin {
 		// a DeferredView and the entry below would silently never be opened.
 		await leaf.loadIfDeferred();
 		const view = leaf.view instanceof OcrComparisonView ? leaf.view : null;
-		if (view === null) return;
-		if (name !== undefined) await view.openPreview(name);
-		else if (view.activeName === null) {
+		if (view === null) return false;
+		if (name !== undefined) return await view.openPreview(name);
+		if (view.activeName === null && !view.hasPendingPreview()) {
 			const first = view.firstVisible();
-			if (first !== null) await view.openPreview(first);
+			if (first !== null) return await view.openPreview(first);
+		}
+		return true;
+	}
+
+	private async jumpToNextPreview(): Promise<void> {
+		try {
+			await this.revealView();
+			const view = this.openView();
+			if (view === null) return;
+			await view.waitForPreview();
+			view.next();
+		} catch (err) {
+			console.error("OCR Preview: Could not open next preview", err);
+			new Notice("OCR Preview: The next preview could not be opened.");
 		}
 	}
 
@@ -353,15 +360,22 @@ export default class OcrPreviewPlugin extends Plugin {
 				return;
 			}
 			const entryName = `${name}.md`;
-			const isPresent = () => this.inventory.entries.some((b) => b.name === entryName);
+			const isPresent = () =>
+				this.inventory.entries.some(
+					(b) => b.name === entryName && b.file.parent?.path === outRel,
+				);
 			await this.inventory.reconcile();
 			for (let step = 0; !isPresent() && step < INDEX_WAIT_STEPS; step++) {
 				await new Promise((done) => window.setTimeout(done, INDEX_WAIT_MS));
 				await this.inventory.reconcile();
 			}
 			if (isPresent()) {
-				await this.revealView(entryName);
-				new Notice(`OCR Preview: "${name}" finished — comparison opened.`);
+				const opened = await this.revealView(entryName);
+				new Notice(
+					opened
+						? `OCR Preview: "${name}" finished — comparison opened.`
+						: `OCR Preview: "${name}" finished — preview created.`,
+				);
 			} else {
 				new Notice(
 					`OCR Preview: "${name}" finished, but was not placed in preview folder (Target: ${this.settings.previewFolder}).`,
