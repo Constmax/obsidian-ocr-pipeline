@@ -1,111 +1,112 @@
-# Vault-Integration — Zusammenarbeit mit CLAUDE.md-Workflows
+# Vault Integration — Co-existence with CLAUDE.md Workflows
 
-Dieser Skill ist die Pre-Processing-Stufe für Vault-Workflows. Nach der PDF-Verarbeitung übernimmt der Vault-spezifische Ingest-Workflow (definiert in `<vault>/CLAUDE.md`).
+This skill serves as the pre-processing stage for vault workflows. Following PDF processing, the vault-specific ingest workflow (defined in `<vault>/CLAUDE.md`) takes over.
 
-## Rollenverteilung
+## Division of Responsibilities
 
-| Komponente | Zuständig für |
+| Component | Responsible For |
 |---|---|
-| **Dieser Skill** | Bilder/PDFs → durchsuchbare, komprimierte PDF in `raw/` |
-| **Vault CLAUDE.md** | `raw/` → `wiki/` (Zusammenfassungen, Probleme, Schemata, Queryverlinkung) |
+| **This Skill** | Images/PDFs → searchable, compressed PDF in `raw/` |
+| **Vault CLAUDE.md** | `raw/` → `wiki/` (Summaries, legal issues, structures, query linking) |
 
-Der Skill **beendet** seine Arbeit wenn das finale PDF in `raw/` liegt. Er schreibt **keine Wiki-Seiten** und aktualisiert **keinen Index**.
+This skill **completes** its execution once the final PDF resides in `raw/`. It writes **no wiki pages** and updates **no index**.
 
-## Typische Ingest-Sequenz
+## Typical Ingest Sequence
 
-### Szenario A: Einzelne Quelle (Urteil, kurzes Skript, Klausur)
-
-```
-1. Nutzer: "Ich habe ein neues BGH-Urteil gescannt, bitte ingest"
-2. Skill aktiv
-   ├─ raw/assets/ prüfen → Bilder oder schon eine PDF?
-   ├─ pdf-workflow oder pdf-combine entsprechend
-   └─ Output nach raw/ verschieben
-3. Skill beendet → CLAUDE.md-Workflow "Ingest" startet
-   ├─ Quelle lesen
-   ├─ Zusammenfassung in wiki/ erstellen
-   ├─ Probleme extrahieren
-   └─ Index + Log updaten
-```
-
-### Szenario B: Massen-Import (ganzes Hemmer-Paket)
+### Scenario A: Single Source (Court Decision, Short Script, Exam Case)
 
 ```
-1. Nutzer: "Hier sind 40 Skripte aus dem Semester, batch-ingest"
-2. Skill aktiv
+1. User: "I scanned a new BGH court decision, please ingest"
+2. Skill active
+   ├─ Check raw/assets/ → images or existing PDF?
+   ├─ Execute pdf-workflow or pdf-combine accordingly
+   └─ Move output to raw/
+3. Skill completes → CLAUDE.md "Ingest" workflow starts
+   ├─ Read source file
+   ├─ Create summary page in wiki/
+   ├─ Extract legal issues
+   └─ Update index + log
+```
+
+### Scenario B: Batch Import (Entire Course Material Set)
+
+```
+1. User: "Here are 40 course scripts from this semester, run batch-ingest"
+2. Skill active
    ├─ pdf-auto raw/assets --cleanup --fast --engine tesseract
-   │    (tesseract weil Hemmer = Zweispalter)
-   ├─ _processed/*.pdf nach raw/ verschieben
-   └─ _archive/ mit Originalen prüfen
-3. Skill beendet → CLAUDE.md "Batch-Ingest" Workflow übernimmt
+   │    (tesseract because course scripts = two-column layout)
+   ├─ Move _processed/*.pdf to raw/
+   └─ Verify _archive/ containing original scans
+3. Skill completes → CLAUDE.md "Batch-Ingest" workflow takes over
 ```
 
-### Szenario C: Klausur-Ingest (Spezialfall!)
+### Scenario C: Exam Case Ingest (Special Case!)
 
-CLAUDE.md unterscheidet strikt zwischen normalem Ingest und Klausur-Ingest. Der Skill ist in beiden Fällen identisch — nur die nachfolgende Wiki-Arbeit unterscheidet sich.
+CLAUDE.md maintains a strict distinction between standard ingest and exam case ingest. This skill operates identically in both scenarios — only subsequent wiki processing differs.
 
-**Wichtig**: Der Skill markiert nichts als "Klausur". Das passiert erst im Wiki-Workflow basierend auf Nutzerangabe.
+**Important**: This skill does not tag content as an "exam". Classification occurs exclusively during the wiki workflow based on user instruction.
 
-## Engine-Empfehlungen nach Quellentyp
+## Engine Recommendations by Source Type
 
-Passend zur CLAUDE.md-Taxonomie:
+Aligned with CLAUDE.md taxonomy:
 
-| Quellentyp (CLAUDE.md) | Layout | Engine | Grund |
+| Source Type (CLAUDE.md) | Layout | Engine | Rationale |
 |---|---|---|---|
-| Hemmer/Kaiser-Skripte | 2-spaltig, kleiner Druck | `tesseract` | Spaltenerkennung kritisch |
-| BGH/BVerwG-Urteile | 1-spaltig, Fließtext | `apple` | schneller, sauber |
-| Lehrbuchkapitel (Scans) | 1-spaltig meist | `apple` | besser bei Handyfotos |
-| Aufsätze (JuS/NJW) | 2-spaltig oft | `tesseract` | Spalten |
-| Vorlesungsnotizen | variabel | `apple` | Handschrift möglich |
-| Klausuren / Musterlösungen | 1-spaltig | `apple` | Standard |
+| Course Scripts (Hemmer/Kaiser) | 2-column, fine print | `tesseract` | Column detection critical |
+| Court Decisions (BGH/BVerwG) | 1-column, body text | `apple` | Faster, cleaner |
+| Textbook Chapters (Scans) | 1-column mostly | `apple` | Handles phone photos better |
+| Law Journal Articles (JuS/NJW) | 2-column often | `tesseract` | Column handling |
+| Lecture Notes | Variable | `apple` | Handles handwriting |
+| Exam Cases / Solution Sketches | 1-column | `apple` | Standard |
 
-## Konventionen beachten
+## Adhering to Naming Conventions
 
-Aus CLAUDE.md:
+From CLAUDE.md:
 
-> Dateinamen: Kleinbuchstaben, Bindestriche statt Leerzeichen
-> Keine Umlaute in Dateinamen (ue, ae, oe, ss statt ü, ä, ö, ß)
+> Filenames: lowercase, hyphens instead of spaces
+> No umlauts in filenames (ue, ae, oe, ss instead of ü, ä, ö, ß)
 
-**Relevanz für diesen Skill**: Beim Erzeugen von Output-Namen diese Konventionen einhalten:
+**Relevance to this skill**: Apply these naming conventions when constructing output file names:
 
 ```bash
-# ✅ Konvention-konform
+# ✅ Compliant with conventions
 pdf-combine raw/assets/urteile urteil-bgh-ix-zr-42-24
 
-# ❌ Verletzt Konvention (Großbuchstaben, Leerzeichen, Umlaute)
+# ❌ Violates conventions (uppercase, spaces, umlauts)
 pdf-combine raw/assets/urteile "Urteil BGH IX ZR 42 über Bürgschaft"
 ```
 
-Wenn der Nutzer einen Namen mit Umlauten/Großbuchstaben nennt, empfehlen oder stillschweigend umbenennen — je nach Präferenz.
+If the user supplies a name containing uppercase letters or umlauts, suggest or silently format to compliant style according to user preference.
 
-## pdf-auto Teil-Detection und CLAUDE.md
+## pdf-auto Part Detection and CLAUDE.md
 
-Das "Teil N"-Pattern in `pdf-auto` passt nicht direkt zur Dateinamens-Konvention:
-- Teil-Pattern verlangt Leerzeichen: `Verwaltungsrecht AT Teil 1.pdf`
-- Konvention verlangt Bindestriche: `verwaltungsrecht-at-teil-1.pdf`
+The "Teil N" (Part N) pattern in `pdf-auto` differs from the vault filename convention:
+- Part pattern requires spaces: `Verwaltungsrecht AT Teil 1.pdf`
+- Vault convention requires hyphens: `verwaltungsrecht-at-teil-1.pdf`
 
-**Praktische Empfehlung**:
-- **In raw/assets/** (Input): beliebige Namen, oft mit Leerzeichen + "Teil N"
-- **In raw/** (Output): gemäß Konvention in Kleinbuchstaben
+**Practical Recommendation**:
+- **In raw/assets/** (Input): arbitrary filenames, often with spaces + "Teil N"
+- **In raw/** (Output): formatted to lowercase hyphenated convention
 
-`pdf-auto` produziert Outputs wie `Verwaltungsrecht AT.pdf` (Teil-Suffix gestripped, aber Rest unverändert). Der nachfolgende Vault-Workflow kann dann umbenennen wenn nötig:
+`pdf-auto` generates outputs such as `Verwaltungsrecht AT.pdf` (part suffix stripped, remaining string preserved). The downstream vault workflow can rename as needed:
 
 ```bash
 mv "raw/assets/_processed/Verwaltungsrecht AT.pdf" "raw/verwaltungsrecht-at.pdf"
 ```
 
-## Spezialfall: Obsidian iCloud-Sync
+## Special Case: Obsidian iCloud Sync
 
-Wenn der Vault in iCloud liegt, passiert nach dem Script-Output:
-1. Scripts schreiben `raw/foo.pdf` lokal
-2. iCloud-Sync läuft automatisch im Hintergrund
-3. Obsidian auf anderen Geräten bekommt die PDF nach 1-5 Minuten
+When the vault resides in iCloud:
+1. Scripts write `raw/foo.pdf` locally
+2. iCloud Sync runs in background automatically
+3. Obsidian on secondary devices receives the PDF after 1-5 minutes
 
-Wenn der Skill mehrere PDFs in schneller Folge erzeugt: iCloud kann mit dem Upload hinterherhängen. Kein Problem für den Skill, nur Info für den Nutzer falls er auf iPad/iPhone arbeitet.
+When this skill generates multiple PDFs in rapid succession, iCloud upload may lag slightly behind local writing. This poses no issue for the skill, but serves as informational context for users working across iPad/iPhone devices.
 
-## Zusammenspiel mit Batch-Ingest
+## Interaction with Batch Ingest
 
-CLAUDE.md Batch-Ingest-Schritt 2 sagt:
-> Führe `pdf-auto raw/assets --cleanup --fast` aus. Dies erstellt für jeden Unterordner/jede Gruppe eine fertige PDF in `raw/assets/_processed/`.
+CLAUDE.md Batch Ingest Step 2 states:
+> Execute `pdf-auto raw/assets --cleanup --fast`. This generates a finalized PDF in `raw/assets/_processed/` for each subdirectory or group.
 
-Der Skill implementiert genau das. Die zusätzliche Intelligenz dieses Skills: **Engine-Auswahl basierend auf Quellentyp** (wenn der Nutzer Hemmer erwähnt → `--engine tesseract` automatisch).
+This skill implements that exact step. The additional intelligence provided by this skill: **Engine selection based on source type** (e.g., automatically applying `--engine tesseract` when course scripts are mentioned).
+

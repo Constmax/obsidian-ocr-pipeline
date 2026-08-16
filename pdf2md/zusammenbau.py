@@ -1,300 +1,223 @@
 #!/usr/bin/env python3
-"""Markdown-Zusammenbau: reine Funktionen auf Zeilenlisten (Stufe 2, Issue #8).
+"""Markdown assembly: pure functions operating on line lists (Stage 2, Issue #8).
 
-Von pdf2md.py abgetrennt, damit die Schicht, die sich am haeufigsten aendert,
-ohne MLX, fitz und Vault-Bestand testbar ist (pdf2md/test). Importiert nichts
-aus den Geschwistermodulen — die Abhaengigkeit laeuft nur in diese Richtung:
+Separated from pdf2md.py so that the layer changing most frequently can be tested
+without MLX, fitz, and Vault assets (pdf2md/test). Imports nothing from sibling
+modules — dependency flows only in this direction:
 
     pdf2md.py (CLI)  →  layout.py, ocr.py  →  zusammenbau.py
 
-Die schweren Importe (fitz, numpy, PIL) liegen in allen Modulen funktionslokal.
+Heavy imports (fitz, numpy, PIL) are function-local in all modules.
 """
 import json
 import re
 import statistics
 
 LOC = re.compile(r"<\|LOC_(\d+)\|>")
-# --- Nachbearbeitung -------------------------------------------------------
+# --- Post-processing -------------------------------------------------------
 
-# Woerter, die nach einem Zeilenendbindestrich NICHT angeklebt werden duerfen
-# ("Verfahrens- und Formfehler" ist kein getrenntes Wort).
-KEIN_JOIN = re.compile(r"^(und|oder|bzw|sowie|als|wie|bis|von|zu|im|in)\b", re.I)
-# --- Hemmer-Boilerplate ----------------------------------------------------
+# Words that must NOT be joined after a line-end hyphen.
+NO_JOIN = re.compile(r"^(und|oder|bzw|sowie|als|wie|bis|von|zu|im|in)\b", re.I)
 
-STAEDTE = ("Augsburg Bayreuth Berlin Potsdam Bielefeld Bochum Bonn Bremen "
-           "Düsseldorf Erlangen Frankfurt Freiburg Göttingen Greifswald Halle "
-           "Hamburg Hannover Heidelberg Jena Kiel Köln Konstanz Leipzig "
-           "Lüneburg Mainz Mannheim Marburg Gießen München Münster Nürnberg "
-           "Osnabrück Passau Regensburg Saarbrücken Trier Tübingen Stuttgart "
-           "Wiesbaden Würzburg Rostock Dresden").split()
+# --- Hemmer Boilerplate ----------------------------------------------------
 
-STADT_FRAGMENT = re.compile(
-    r"^(?:" + "|".join(STAEDTE) + r")\s*[-–]\s*"
+CITIES = ("Augsburg Bayreuth Berlin Potsdam Bielefeld Bochum Bonn Bremen "
+          "Düsseldorf Erlangen Frankfurt Freiburg Göttingen Greifswald Halle "
+          "Hamburg Hannover Heidelberg Jena Kiel Köln Konstanz Leipzig "
+          "Lüneburg Mainz Mannheim Marburg Gießen München Münster Nürnberg "
+          "Osnabrück Passau Regensburg Saarbrücken Trier Tübingen Stuttgart "
+          "Wiesbaden Würzburg Rostock Dresden").split()
+
+CITY_FRAGMENT = re.compile(
+    r"^(?:" + "|".join(CITIES) + r")\s*[-–]\s*"
     r"(?:[A-ZÄÖÜ][A-Za-zäöüß]{0,12}\.?)?$")
 
 BOILERPLATE = [
     re.compile(r"^Juristisches\s+Repetitorium"),
     re.compile(r"^hemmer\s*$", re.I),
     re.compile(r"^Hauptkurs\s*/"),
-    re.compile(r"^h\s*/\s*w\s*/\s*t\b"),                  # Fusszeile
-    re.compile(r"^\\lambda\s*/\s*\\omega"),               # dieselbe, als LaTeX verlesen
+    re.compile(r"^h\s*/\s*w\s*/\s*t\b"),                  # Footer
+    re.compile(r"^\\lambda\s*/\s*\\omega"),               # Same, misread as LaTeX
     re.compile(r"^[–\-—]\s*\d+\s*[–\-—]?\s*$"),           # "– 1 –"
     re.compile(r"^\d{1,3}\s*[-–]\s*[Il1]\s*$"),           # "26-I"
 ]
 
-
-# Schwache Signale, die nur in der Kopf-/Fusszone als Boilerplate gelten.
-# Dort ist ein Fehlalarm harmlos, im Textkoerper waere er Inhaltsverlust.
-ZONEN_SIGNAL = [
-    # VERANKERT, nicht als Teilstring: Boilerplate ist die alleinstehende
-    # Logo-Zeile. Ein Teilstring-Treffer wuerde "len Sie HEMMER/WÜST, BGB-AT I,
-    # Rn. 56 ff." loeschen — eine echte Literaturangabe.
+# Weak signals that count as boilerplate only in header/footer zones.
+ZONE_SIGNALS = [
     re.compile(r"^he[mn]+er\s*[.,:]?$", re.I),
     re.compile(r"^\W*(Juristisches\s*)?Repetitorium\W*$", re.I),
     re.compile(r"^(BGB|StGB|StR|ZR|OeR|ÖR)[\s-]*(AT|BT)?\s*$"),
     re.compile(r"(Lösung|Sachverhalte?|Übersicht)\s*[-–]\s*Seite", re.I),
-    re.compile(r"^Fall\s*\d*\s*[-–]?\s*L[äöa]?"),      # "Fall 3 - Lä" (abgeschnitten)
+    re.compile(r"^Fall\s*\d*\s*[-–]?\s*L[äöa]?"),      # "Fall 3 - Lä" (truncated)
     re.compile(r"^\s*Seite\s*\d+\s*$", re.I),
 ]
 
+# Filled per document from set_running().
+RUNNING = set()
 
-# Wird je Dokument aus laufende_zeilen() gefuellt.
-LAUFEND = set()
+
+def set_running(lines):
+    """Set running header/footer lines of the document."""
+    RUNNING.clear()
+    RUNNING.update(lines)
 
 
-def laufend_setzen(zeilen):
-    """Laufende Kopf-/Fusszeilen des Dokuments setzen (aus laufende_zeilen()).
-
-    In-place statt Umbinden: `LAUFEND` ist Modul-Global, gelesen wird es in
-    ist_boilerplate(). Eine Zuweisung von aussen wuerde nur den Namen im
-    aufrufenden Modul umbinden und die Unterdrueckung still ausfallen lassen.
-    """
-    LAUFEND.clear()
-    LAUFEND.update(zeilen)
-
-def ist_boilerplate(text, y=None, kopf=70, fuss=950):
-    """Hemmer-Boilerplate erkennen.
-
-    `y` ist die normierte Zeilenposition (0–1000). In der Kopf- und Fusszone
-    greifen zusaetzlich schwache Signale (einzelner Ortsname, verlesenes
-    "hemmer", abgeschnittene Seitenangabe) — die Kopfzeile laeuft ueber die
-    volle Blattbreite, wird vom Kachelschnitt zerteilt und kommt als
-    unvorhersehbares Fragment an, gegen das reine Textmuster nicht ankommen.
-    """
-    # Fett-Marker vorher entfernen: fett_markieren() laeuft frueher, und
-    # "**BGB-AT**" wuerde sonst an keinem ^-verankerten Muster mehr greifen.
+def is_boilerplate(text, y=None, header_zone=70, footer_zone=950):
+    """Detect Hemmer boilerplate."""
     t = text.strip().strip("*").strip()
     if not t:
         return False
-    # Nachgewiesene laufende Kopf-/Fusszeile: exakter Treffer aus einer Zeile,
-    # die auf mehreren Seiten in derselben Zone stand. Staerkeres Indiz als
-    # jedes Textmuster, weil es aus dem Dokument selbst kommt.
-    # Leerraum GLEICH normieren wie beim Sammeln: die Kopfzeile enthaelt
-    # "Fall 12  |  Begleitskript" mit doppelten Leerzeichen, der gesammelte
-    # Vergleichswert hat einfache.
-    if LAUFEND and re.sub(r"\s+", " ", re.sub(r"\*", "", t)).strip() in LAUFEND:
+    if RUNNING and re.sub(r"\s+", " ", re.sub(r"\*", "", t)).strip() in RUNNING:
         return True
     if any(p.search(t) for p in BOILERPLATE):
         return True
-    if t.count(" - ") >= 2 and sum(1 for s in STAEDTE if s in t) >= 2:
+    if t.count(" - ") >= 2 and sum(1 for s in CITIES if s in t) >= 2:
         return True
-    # Die Staedteliste im Briefkopf steht fuenfzeilig am rechten Blattrand und
-    # wird vom Kachelschnitt zerhackt: "Mainz - Man", "Passau - Reg". Die
-    # unteren Zeilen liegen ausserhalb der Kopfzone und blieben deshalb stehen.
-    # Streng verankert — Stadtname am Zeilenanfang, dahinter hoechstens ein
-    # angeschnittenes Wort — damit kein Zitat wie "OLG München - Urteil vom …"
-    # hineinlaeuft.
-    if STADT_FRAGMENT.match(t):
+    if CITY_FRAGMENT.match(t):
         return True
 
-    # Kurze Zeilen: Laengengrenze ersetzt die Zonenpruefung. Notwendig, weil das
-    # Modell fuer manche Seiten gar keine Koordinaten liefert — dann ist y None.
-    # Der Laengenschutz bewahrt echten Inhalt: "HEMMER/Wuest, BGB-AT I, Rn. 56
-    # ff." und "jurisbyhemmer" stehen in langen Saetzen und bleiben erhalten.
-    if len(t) <= 45 and any(p.search(t) for p in ZONEN_SIGNAL):
+    if len(t) <= 45 and any(p.search(t) for p in ZONE_SIGNALS):
         return True
 
-    # Blosse Seitenzahl. Stand bisher als eigener Absatz in der Ausgabe und
-    # zerlegte bei Doppelseiten zusaetzlich das Spalten-Histogramm. Eigene,
-    # weitere Zone: die Skripte setzen sie oberhalb der Fusszone, in der die
-    # Textsignale greifen. 905 statt 920 ist gemessen — auf den Scanseiten von
-    # "Strafrecht AT VI" liegt die Seitenzahl bei y = 911…938, vier von zwoelf
-    # blieben deshalb stehen. Was zwischen 905 und 920 sonst noch nackt
-    # herumsteht, sind nach dem Anbinden der Fussnotennummern nur noch
-    # Seitenzahlen (54 im Bestand, geprueft).
     if (y is not None and (y <= 80 or y >= 905)
             and re.fullmatch(r"\d{1,4}", t)):
         return True
 
-    in_zone = y is not None and (y <= kopf or y >= fuss)
+    in_zone = y is not None and (y <= header_zone or y >= footer_zone)
     if in_zone:
-        if any(p.search(t) for p in ZONEN_SIGNAL):
+        if any(p.search(t) for p in ZONE_SIGNALS):
             return True
-        # Fragmentierte Staedteliste: "Augsburg - Ba", "Erlangen - Fr"
-        if len(t) <= 40 and sum(1 for s in STAEDTE if s in t) >= 1 and "-" in t:
+        if len(t) <= 40 and sum(1 for s in CITIES if s in t) >= 1 and "-" in t:
             return True
     return False
-# Das Modell gibt Pfeile mal als Zeichen, mal als LaTeX aus. Ein Muster je
-# Befehl statt einer Liste je Schreibweise: die Dollarzeichen sind optional,
-# weil beide Formen vorkommen.
-PFEILE = {"rightarrow": "→", "Rightarrow": "⇒", "leftarrow": "←",
+
+
+ARROWS = {"rightarrow": "→", "Rightarrow": "⇒", "leftarrow": "←",
           "Leftarrow": "⇐", "leftrightarrow": "↔", "Leftrightarrow": "⇔",
           "downarrow": "↓", "Downarrow": "⇩", "uparrow": "↑", "to": "→",
           "Longrightarrow": "⟹", "mapsto": "↦"}
 
 LATEX = [
-    (re.compile(r"\$?\\(" + "|".join(PFEILE) + r")\$?(?![A-Za-z])"),
-     lambda m: PFEILE[m.group(1)]),
+    (re.compile(r"\$?\\(" + "|".join(ARROWS) + r")\$?(?![A-Za-z])"),
+     lambda m: ARROWS[m.group(1)]),
     (re.compile(r"\\\(\\underline\{\\text\{(.*?)\}\}\\\)"), r"\1"),
     (re.compile(r"\\underline\{(.*?)\}"), r"\1"),
     (re.compile(r"\\text\{(.*?)\}"), r"\1"),
     (re.compile(r"\\\(|\\\)"), ""),
-    (re.compile(r"\^\{(\d{1,2})\}"), r"[^\1]"),      # Fussnotenzeichen → Obsidian
+    (re.compile(r"\^\{(\d{1,2})\}"), r"[^\1]"),      # Footnote mark → Obsidian
     (re.compile(r"\$\^\{(\d{1,2})\}\$"), r"[^\1]"),
 ]
-# Fussnotendefinition am Seitenfuss: "1 Vgl. BGH, …" / "2 So auch MüKo-BGB, …"
-# Die Klammer gehoert dazu: "4 (= Wiederbeschaffungswert abzüglich Restwert)"
-# blieb sonst im Text der vorangehenden Fussnote stecken, und der Verweis im
-# Fliesstext fand keine Definition.
-FN_ANFANG = r"[A-ZÄÖÜ„»§(]"
-FN_DEF = re.compile(r"^(\d{1,2})\s+(?=" + FN_ANFANG + r")(.+)$")
-def fussnoten_obsidian(absaetze):
-    """Fussnoten in Obsidian-Syntax bringen: [^n] im Text, [^n]: am Blockende.
 
-    Definitionen werden nur dann als solche gewertet, wenn die Nummer klein und
-    aufsteigend ist — sonst wuerde jede mit einer Zahl beginnende Zeile
-    (Gliederungspunkte, Betraege) falsch erkannt.
-    """
+FN_START = r"[A-ZÄÖÜ„»§(]"
+FN_DEF = re.compile(r"^(\d{1,2})\s+(?=" + FN_START + r")(.+)$")
+
+
+def footnotes_obsidian(paragraphs):
+    """Convert footnotes to Obsidian syntax: [^n] in text, [^n]: at block end."""
     defs, rest = {}, []
-    ist_tabelle = lambda p: p.lstrip().startswith("|")
-    for p in absaetze:
-        if ist_tabelle(p):
+    is_table = lambda p: p.lstrip().startswith("|")
+    for p in paragraphs:
+        if is_table(p):
             rest.append(p)
             continue
-        # Fett-Marker stoeren die Nummernerkennung ("**7 Vgl. Grueneberg …**");
-        # bei einer Fussnotendefinition ist die Auszeichnung ohnehin belanglos.
         p = re.sub(r"\*\*(.+?)\*\*", r"\1", p) if FN_DEF.match(p.strip("* ")) else p
-        # Mehrere Definitionen koennen in einer Zeile stehen: "2 … 3 …"
         m = FN_DEF.match(p.strip())
         if m and int(m.group(1)) <= 99:
-            teile = re.split(r"(?<=[.\s])(?=\d{1,2}\s+" + FN_ANFANG + ")", p.strip())
-            erkannt = False
-            for t in teile:
-                mm = FN_DEF.match(t.strip())
+            parts = re.split(r"(?<=[.\s])(?=\d{1,2}\s+" + FN_START + ")", p.strip())
+            detected = False
+            for part in parts:
+                mm = FN_DEF.match(part.strip())
                 if mm:
-                    # Anhaengen statt ueberschreiben: auf Doppelseiten stehen
-                    # zwei Fussnotenbloecke nebeneinander und dieselbe Nummer
-                    # kann zweimal auftreten. Ueberschreiben loeschte den
-                    # ersten Text ersatzlos — genau der Fehler, der ohne das
-                    # Original nicht mehr auffindbar ist.
                     k = int(mm.group(1))
                     defs[k] = (defs[k] + " " if k in defs else "") \
                         + mm.group(2).strip()
-                    erkannt = True
-            if erkannt:
+                    detected = True
+            if detected:
                 continue
         rest.append(p)
 
     if not defs:
         return rest
 
-    # Inline-Marker: "entbehrlich.1" → "entbehrlich.[^1]"
-    #
-    # Entscheidend ist das FEHLENDE Leerzeichen: ein hochgestelltes
-    # Fussnotenzeichen klebt am Wort ("entbehrlich.1", "Geschaeftspartners4"),
-    # waehrend Bestandteile von Normzitaten immer eines haben ("S. 1",
-    # "Alt. 2", "Rn. 9"). Ohne diese Unterscheidung werden aus Normzitaten
-    # Fussnoten — und ein verfaelschtes Zitat ist der teuerste Fehler ueberhaupt.
-    ZITAT_VOR = re.compile(
+    CITATION_BEFORE = re.compile(
         r"(§+|Art\.|Abs\.|S\.|Satz|Alt\.|Nr\.|Rn\.|Rz\.|Hs\.|Halbs\.|Var\.|"
         r"lit\.|Buchst\.|Seite|Fall|Teil|Rspr\.|Anm\.)\s*$")
     nums = sorted(defs)
 
-    def markiere(s):
+    def mark(s):
         for n in nums:
             for m in re.finditer(rf"(?<=[a-zäöüßA-ZÄÖÜ)\].,;:]){n}(?![\d\]])", s):
-                if ZITAT_VOR.search(s[:m.start()]):
+                if CITATION_BEFORE.search(s[:m.start()]):
                     continue
                 s = s[:m.start()] + f"[^{n}]" + s[m.end():]
                 break
         return s
-    rest = [p if ist_tabelle(p) else markiere(p) for p in rest]
+    rest = [p if is_table(p) else mark(p) for p in rest]
     rest += [""] + [f"[^{n}]: {defs[n]}" for n in nums]
     return rest
-# Word setzt Aufzaehlungszeichen und Pfeile aus Symbolfonts. Deren ToUnicode
-# zeigt in den Private-Use-Bereich (U+F000 + Fontcode) — Obsidian rendert dort
-# ein Tofu-Kaestchen. Die Tabelle deckt alle 441 Vorkommen im Bestand ab.
+
+
 PUA = {
-    "\uf0f0": "\u21e8",   # Wingdings 0xF0  Schattenpfeil nach rechts
-    "\uf0e0": "\u21e8",   # Wingdings 0xE0  Blockpfeil nach rechts
-    "\uf0d8": "\u27a2",   # Wingdings 0xD8  Pfeilspitze als Aufzaehlungszeichen
-    "\uf0fc": "\u2714",   # Wingdings 0xFC  Haken
-    "\uf0b7": "\u2022",   # Symbol    0xB7  Punkt
-    "\uf020": " ",        # Symbol    0x20  Leerzeichen
+    "\uf0f0": "\u21e8",   # Wingdings 0xF0  Right shadow arrow
+    "\uf0e0": "\u21e8",   # Wingdings 0xE0  Right block arrow
+    "\uf0d8": "\u27a2",   # Wingdings 0xD8  Arrowhead bullet
+    "\uf0fc": "\u2714",   # Wingdings 0xFC  Checkmark
+    "\uf0b7": "\u2022",   # Symbol    0xB7  Bullet
+    "\uf020": " ",        # Symbol    0x20  Space
 }
-PUA_VON, PUA_BIS = "\ue000", "\uf8ff"
-def entpua(s):
-    if not any(PUA_VON <= c <= PUA_BIS for c in s):
+PUA_FROM, PUA_TO = "\ue000", "\uf8ff"
+
+
+def strip_pua(s):
+    if not any(PUA_FROM <= c <= PUA_TO for c in s):
         return s
-    # Unbekannte Symbolglyphe: \u25aa ist der kleinste gemeinsame Nenner. Ein
-    # konkretes Zeichen zu raten waere falsch, ein Tofu-Kaestchen aber auch.
-    return "".join(PUA.get(c, "\u25aa") if PUA_VON <= c <= PUA_BIS else c
+    return "".join(PUA.get(c, "\u25aa") if PUA_FROM <= c <= PUA_TO else c
                    for c in s)
-def saeubern(s):
-    s = entpua(s)
+
+
+def clean_text(s):
+    s = strip_pua(s)
     for pat, rep in LATEX:
         s = pat.sub(rep, s)
-    # $ statt § — nur wenn eine Zahl folgt, sonst bleibt es ein Dollarzeichen
     s = re.sub(r"\$\s*(?=\d)", "§ ", s)
     s = re.sub(r"§\s*§\s*", "§§ ", s)                 # "§ § 929" → "§§ 929"
     s = re.sub(r"§\s+(?=\d)", "§ ", s)
-    # Roemische I in Normzitaten als Pipe gelesen: "§ 854 | BGB"
     s = re.sub(r"(§+\s*\d+[a-z]?\s*)\|", r"\1I", s)
     s = re.sub(r"\|\s+(?=(BGB|StGB|GG|VwGO|VwVfG|ZPO|HGB)\b)", "I ", s)
-    # Benachbarte Fett-Laeufe verschmelzen: der Textlayer trennt Spans oft
-    # mitten in einer fetten Wortgruppe ("**gesetzliches** **Schuldverhaeltnis**").
     s = re.sub(r"\*\*(\s*)\*\*", r"\1", s)
     return s.rstrip()
-def parse_zeilen(text):
-    """['text', (x_min, y_min, x_max, y_max)] je Ausgabezeile."""
-    zeilen = []
-    for roh in text.splitlines():
-        koords = [int(m) for m in LOC.findall(roh)]
-        klartext = LOC.sub("", roh).strip()
-        if not klartext:
+
+
+def parse_lines(text):
+    """['text', (x_min, y_min, x_max, y_max)] per output line."""
+    lines = []
+    for raw in text.splitlines():
+        coords = [int(m) for m in LOC.findall(raw)]
+        plain = LOC.sub("", raw).strip()
+        if not plain:
             continue
-        if len(koords) >= 8:
-            xs, ys = koords[0::2], koords[1::2]
+        if len(coords) >= 8:
+            xs, ys = coords[0::2], coords[1::2]
             box = (min(xs), min(ys), max(xs), max(ys))
         else:
             box = None
-        zeilen.append([klartext, box])
-    return zeilen
-# Gliederungsmarker juristischer Aufschriebe. aa)/bb)/cc) und (1)/(2) sind
-# eigene Ebenen — sie muessen einen Absatz aufmachen, sonst verschmelzen
-# Pruefungspunkte, und die Gliederungstiefe ist im Gutachten tragender Inhalt.
-AUFZAEHLUNG = re.compile(
+        lines.append([plain, box])
+    return lines
+
+
+ENUMERATION = re.compile(
     r"^\s*([-•·▪○●⇒⇨→➢✔]"
     r"|\(?\d{1,2}[.)]"
     r"|[a-z]{1,3}[.)]"
-    r"|[IVXL]{1,5}\.)(?=\s|$)"          # Zeilenende zaehlt: der Textlayer liefert
-)                                       # den Marker als eigenes, getrimmtes Fragment
-# Kastenartige Einschuebe im Hemmer-Layout beginnen einen eigenen Block
-SCHLAGWORT_WOERTER = (r"Anmerkung|Hinweis|Merksatz|Merke|Ergebnis|Beachte|"
-                      r"Achtung|Exkurs|Vertiefung|Klausurtipp|"
-                      r"Zwischenergebnis|Beispiele|Beispiel|Definition")
-SCHLAGWORT = re.compile(r"^(" + SCHLAGWORT_WOERTER + r")\s*:", re.I)
-# Dieselben Woerter, aber als ALLEINSTEHENDE Zeile — die Form, in der Hemmer
-# sie in den linken Rand setzt.
-RANDLABEL = re.compile(r"^\**\s*(?:" + SCHLAGWORT_WOERTER
-                       + r")\s*:?\s*\**$", re.I)
-# Ebenen der juristischen Gliederung in ihrer ueblichen Ordnung. Der Grad
-# beginnt bei ## — # bleibt dem Dokumenttitel vorbehalten. (1)/(a) stehen vor
-# den einfachen Zahlen, sonst faengt "\(?\d" die geklammerte Form zuerst.
-# `f.` und `ff.` fehlen bewusst: das ist die Abkuerzung fuer "folgende"
-# ("§§ 842 ff. (P: …)"), im Bestand 15 solcher Stellen gegen 8 echte f)/ff).
-# Die Klammerform bleibt, sie ist eindeutig.
-EBENEN = (
+    r"|[IVXL]{1,5}\.)(?=\s|$)"
+)
+KEYWORD_WORDS = (r"Anmerkung|Hinweis|Merksatz|Merke|Ergebnis|Beachte|"
+                 r"Achtung|Exkurs|Vertiefung|Klausurtipp|"
+                 r"Zwischenergebnis|Beispiele|Beispiel|Definition")
+KEYWORD = re.compile(r"^(" + KEYWORD_WORDS + r")\s*:", re.I)
+MARGIN_LABEL = re.compile(r"^\**\s*(?:" + KEYWORD_WORDS
+                          + r")\s*:?\s*\**$", re.I)
+LEVELS = (
     (re.compile(r"^\((?:\d{1,2}|[a-h]{1,2})\)(?=\s)"), 6),
     (re.compile(r"^(?:(?:aa|bb|cc|dd|ee|gg|hh)[.)]|ff\))(?=\s)"), 6),
     (re.compile(r"^(?:[a-eg-h][.)]|f\))(?=\s)"), 5),
@@ -302,503 +225,325 @@ EBENEN = (
     (re.compile(r"^[IVX]{1,5}\.(?=\s)"), 3),
     (re.compile(r"^[A-H][.)](?=\s)"), 2),
 )
-# Steht hinter dem Marker gleich die naechste Abkuerzung, war es keine:
-# "h. L.", "h. M.", "d. h.", "a. A." — der Punkt gehoert zum Fachkuerzel.
-ABKUERZUNG = re.compile(r"^[A-Za-zÄÖÜ]{1,2}\.")
-def ebene(text):
-    """Gliederungsgrad (2–6) oder None."""
-    # Fett-Sternchen ganz heraus: der Textlayer zeichnet oft den Marker allein
-    # aus ("**a)** Gemaess …"), dann steht hinter der Klammer kein Leerzeichen.
-    nackt = re.sub(r"\*+", "", text).lstrip()
-    for pat, grad in EBENEN:
-        m = pat.match(nackt)
-        if m:
-            return None if ABKUERZUNG.match(nackt[m.end():].lstrip()) else grad
-    return None
-def ohne_fett(text):
-    return re.sub(r"\*\*", "", text).strip()
-def nur_fett(text):
-    """Besteht der Absatz ausschliesslich aus fetten Laeufen?
+ABBREVIATION = re.compile(r"^[A-Za-zÄÖÜ]{1,2}\.")
 
-    Auch ueber mehrere Zeilen hinweg ("**IV. Exkurs: … – V** **ZR 67/22**") —
-    solche Ueberschriften sind laenger als die 90-Zeichen-Grenze, und die
-    Grenze zu lockern hiesse 133 weitere Absaetze zu Ueberschriften zu machen,
-    darunter Inhaltsverzeichniszeilen mit Fuellpunkten.
-    """
+
+def level(text):
+    """Outline level (2–6) or None."""
+    bare = re.sub(r"\*+", "", text).lstrip()
+    for pat, lvl in LEVELS:
+        m = pat.match(bare)
+        if m:
+            return None if ABBREVIATION.match(bare[m.end():].lstrip()) else lvl
+    return None
+
+
+def without_bold(text):
+    return re.sub(r"\*\*", "", text).strip()
+
+
+def only_bold(text):
+    """Does paragraph consist exclusively of bold spans?"""
     return bool(text.strip()) and not re.sub(r"\*\*.*?\*\*", "", text,
                                              flags=re.S).strip()
-def fett_ausgleichen(text):
-    """Ungerade Zahl von `**` heilen.
 
-    Entsteht beim Verschmelzen ueber einen Trennstrich hinweg, wenn nur eine
-    der beiden Zeilen fett erkannt wurde. Obsidian faerbt sonst den Rest des
-    Absatzes — der Fehler ist im Text unsichtbar und erst im Rendern zu sehen.
-    """
+
+def balance_bold(text):
+    """Fix odd count of `**`."""
     if text.count("**") % 2 == 0:
         return text
     i = text.rfind("**")
     return text[:i] + text[i + 2:]
-# Alleinstehende Fussnotennummer und der Anfang ihres Textes
-FN_NUMMER = re.compile(r"^\**\s*(\d{1,2})\s*\**$")
+
+
+FN_NUMBER = re.compile(r"^\**\s*(\d{1,2})\s*\**$")
 FN_TEXT = re.compile(r"^[A-ZÄÖÜ„»§]")
-def fussnotennummern_anbinden(zeilen, fuss=900, naehe=40):
-    """Ausgerueckte Fussnotennummer am Seitenfuss mit ihrem Text verbinden.
 
-    Der Satz stellt die Nummer der Definition nach links aus; als eigene Zeile
-    ist sie danach eine blosse Zahl. Die Boilerplate-Regel haelt sie fuer eine
-    Seitenzahl und wirft sie weg — der Definition fehlt anschliessend die
-    Nummer, und die Verweise im Text bleiben als nackte Ziffer am Wort kleben
-    ("abzulehnen.9" statt "abzulehnen.[^9]").
 
-    Erkennungszeichen ist der haengende Einzug: die Nummer beginnt LINKS von
-    ihrem Text (gemessen 8 gegen 82, 53 gegen 137). Das trennt sie von den
-    hochgestellten Verweiszeichen im Fliesstext, die am rechten Rand stehen
-    (x = 977 vor einer Textzeile bei x = 98). Eine feste x-Grenze taugt dafuer
-    nicht: auf zweispaltigen Seiten beginnt der rechte Fussnotenblock bei 523
-    und blieb damit unerkannt — 151 Faelle im Bestand.
-    """
-    aus, i = [], 0
-    while i < len(zeilen):
-        z = zeilen[i]
-        n = zeilen[i + 1] if i + 1 < len(zeilen) else None
-        m = FN_NUMMER.match(z[0].strip())
-        if (m and n and z[1] and n[1] and z[1][1] >= fuss
+def attach_footnote_numbers(lines, footer=900, proximity=40):
+    """Attach out-dented footnote number at page footer with its text."""
+    out, i = [], 0
+    while i < len(lines):
+        z = lines[i]
+        n = lines[i + 1] if i + 1 < len(lines) else None
+        m = FN_NUMBER.match(z[0].strip())
+        if (m and n and z[1] and n[1] and z[1][1] >= footer
                 and z[1][0] <= n[1][0]
-                and abs(n[1][1] - z[1][1]) <= naehe
+                and abs(n[1][1] - z[1][1]) <= proximity
                 and FN_TEXT.match(n[0].lstrip("*").lstrip())):
             box = (min(z[1][0], n[1][0]), min(z[1][1], n[1][1]),
                    max(z[1][2], n[1][2]), max(z[1][3], n[1][3]))
-            aus.append([f"{m.group(1)} {n[0].lstrip()}", box] + list(n[2:]))
+            out.append([f"{m.group(1)} {n[0].lstrip()}", box] + list(n[2:]))
             i += 2
             continue
-        aus.append(z)
+        out.append(z)
         i += 1
-    return aus
-def ist_ueberschrift(text, nackt):
-    """Ist diese kurze, vollstaendig fette Zeile eine Ueberschrift?
+    return out
 
-    Ausgenommen ist die blosse Randmarke ("**Beispiel:**", "**Merke**"). Die
-    gehoert VOR ihren Text, nicht darueber: als Ueberschrift gewertet setzt sie
-    `war_ueberschrift` und reisst den folgenden Satz ab. Auf `Strafrecht AT VI`
-    S. 3 wurde so aus "Beispiel: Mutter M putzt gerade die Fenster …" ein
-    Absatz "**Beispiel:**" und ein zweiter, der mitten im Satz beginnt.
 
-    Eigene Funktion, damit `regress_randmarke.py` die alte Fassung dagegen
-    rechnen kann.
-    """
+def is_heading(text, bare):
+    """Is this short, entirely bold line a heading?"""
     return (text.startswith("**") and text.endswith("**")
-            and text.count("**") == 2 and len(nackt) <= 90
-            and not RANDLABEL.match(text.strip()))
-def randlabel_vorziehen(zeilen, normal, ausrueckung=25, fenster=8):
-    """Ausgerueckte Randbeschriftung an den Anfang ihres Blocks ziehen.
+            and text.count("**") == 2 and len(bare) <= 90
+            and not MARGIN_LABEL.match(text.strip()))
 
-    Hemmer setzt "Beispiel:", "Anmerkung:" & Co. in den linken Rand, und zwar
-    senkrecht MITTIG zu dem Block, den sie beschriften. Nach y sortiert landet
-    die Marke damit irgendwo im Fliesstext — im Bestand mitten im Satz:
-    "stiess dabei aus Unachtsamkeit einen **Beispiel:** Blumentopf herunter".
-    Sie gehoert vor den Block, nicht in ihn.
 
-    Erkennungszeichen ist wie bei den Fussnotennummern der haengende Einzug:
-    die Marke beginnt links vom Rumpf ihrer Nachbarschaft. Der Rumpf wird
-    lokal bestimmt, nicht ueber die Seite — auf zweispaltigen Seiten haben
-    die Spalten je eigene Einzuege.
-
-    Rueckwaerts gelaufen wird nur innerhalb des Blocks: an einer Absatzluecke,
-    einem Gliederungsmarker oder einer weiteren Randzeile ist Schluss.
-    """
-    if not normal or len(zeilen) < 4:
-        return zeilen
-    aus = list(zeilen)
-    for i in range(1, len(aus)):
-        z = aus[i]
-        if not z[1] or not RANDLABEL.match(z[0].strip()):
+def promote_margin_labels(lines, normal, outdent=25, window=8):
+    """Pull out-dented margin label to start of its block."""
+    if not normal or len(lines) < 4:
+        return lines
+    out = list(lines)
+    for i in range(1, len(out)):
+        z = out[i]
+        if not z[1] or not MARGIN_LABEL.match(z[0].strip()):
             continue
-        nah = [x for x in aus[max(0, i - fenster):i + fenster + 1]
-               if x[1] and x is not z]
-        if len(nah) < 4:
+        near = [x for x in out[max(0, i - window):i + window + 1]
+                if x[1] and x is not z]
+        if len(near) < 4:
             continue
-        rumpf = statistics.median([x[1][0] for x in nah])
-        if z[1][0] > rumpf - ausrueckung:
-            continue                          # steht nicht im Rand
-        j, letztes_y = i, None
+        body = statistics.median([x[1][0] for x in near])
+        if z[1][0] > body - outdent:
+            continue
+        j, last_y = i, None
         while j > 0:
-            vor = aus[j - 1]
-            if not vor[1] or vor[1][0] < rumpf - ausrueckung:
-                break                         # Sonderzeile oder zweite Marke
-            if letztes_y is not None and vor[1][3] < letztes_y - 1.6 * normal:
-                break                         # Absatzluecke
-            # Sternchen ganz heraus, nicht nur vorne abgestreift: der Textlayer
-            # zeichnet den Marker oft allein aus ("**1.** Der Anspruch …"),
-            # dann steht hinter dem Punkt kein Leerzeichen und AUFZAEHLUNG
-            # greift nicht.
-            if AUFZAEHLUNG.match(re.sub(r"\*+", "", vor[0]).lstrip()):
-                break                         # Gliederungspunkt bleibt oben
-            letztes_y = vor[1][1]
+            prev = out[j - 1]
+            if not prev[1] or prev[1][0] < body - outdent:
+                break
+            if last_y is not None and prev[1][3] < last_y - 1.6 * normal:
+                break
+            if ENUMERATION.match(re.sub(r"\*+", "", prev[0]).lstrip()):
+                break
+            last_y = prev[1][1]
             j -= 1
         if j < i:
-            aus.insert(j, aus.pop(i))
-    return aus
-def kurze_zeilen(zeilen, fenster=15, luft=0.08, block_anteil=0.55):
-    """Je Zeile: endet sie im Blocksatz erkennbar vor dem rechten Rand?
+            out.insert(j, out.pop(i))
+    return out
 
-    Im Blocksatz ist die kurze Zeile der Beweis fuer das Ende einer Einheit —
-    das einzige Signal, das eine Gliederungsueberschrift von ihrem Fliesstext
-    trennt, wenn der Satz keinen zusaetzlichen Abstand dazwischen setzt.
 
-    Der Rand wird aus der NACHBARSCHAFT bestimmt, nicht aus der Seite: Spalten
-    und OCR-Kacheln haben je eigene Satzspiegel (gemessen 876 und 957 auf
-    derselben Seite), ein gemeinsamer Rand erklaerte die schmalere Spalte
-    vollstaendig zu Kurzzeilen.
-    """
-    n = len(zeilen)
-    kurz, block = [False] * n, [False] * n
-    idx = [i for i, z in enumerate(zeilen) if z[1]]
-    for rang, i in enumerate(idx):
-        nah = [zeilen[j] for k, j in enumerate(idx) if abs(k - rang) <= fenster]
-        xs = sorted(z[1][2] for z in nah)
-        rand = statistics.median(xs[-max(3, len(nah) // 5):])
-        breite = rand - min(z[1][0] for z in nah)
-        if breite <= 0:
+def short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
+    """Per line: does it end visibly before right margin in justified text?"""
+    n = len(lines)
+    short, block = [False] * n, [False] * n
+    idx = [i for i, z in enumerate(lines) if z[1]]
+    for rank, i in enumerate(idx):
+        near = [lines[j] for k, j in enumerate(idx) if abs(k - rank) <= window]
+        xs = sorted(z[1][2] for z in near)
+        margin = statistics.median(xs[-max(3, len(near) // 5):])
+        width = margin - min(z[1][0] for z in near)
+        if width <= 0:
             continue
-        voll = sum(1 for z in nah if z[1][2] >= rand - 0.02 * breite)
-        if voll < block_anteil * len(nah):   # kein Blocksatz: der Rand sagt nichts
+        full = sum(1 for z in near if z[1][2] >= margin - 0.02 * width)
+        if full < block_ratio * len(near):
             continue
         block[i] = True
-        kurz[i] = zeilen[i][1][2] < rand - luft * breite
-    # Zeilen ohne Koordinaten: das Modell liefert das Grounding nicht immer
-    # (gemessen 1 von 13 Kacheln). Ersatzmass ist die Zeichenzahl — gemessen
-    # trennt 0,95 die Absatzenden (≤ 0,93) sauber vom Fliesstext (≥ 0,98).
-    # Bewusst nur als Notbehelf: `block` bleibt hier False, das Mass steuert
-    # deshalb allein die Gliederungsregel und nicht die Absatzlogik insgesamt.
-    ohne = [i for i, z in enumerate(zeilen) if not z[1]]
-    if len(ohne) >= 6:
-        med = statistics.median([len(zeilen[i][0].strip()) for i in ohne]) or 1
-        for i in ohne:
-            kurz[i] = len(zeilen[i][0].strip()) < 0.95 * med
-    # Eine klein beginnende Folgezeile setzt den Satz fort — dort waere der
-    # Umbruch falsch. Gemessen: nach kurzer Zeile 10–17 % solcher Faelle, nach
-    # voller Zeile 53 %. Der Filter nimmt der Regel genau diesen Fehlschnitt.
+        short[i] = lines[i][1][2] < margin - margin_slack * width
+
+    without_coords = [i for i, z in enumerate(lines) if not z[1]]
+    if len(without_coords) >= 6:
+        med = statistics.median([len(lines[i][0].strip()) for i in without_coords]) or 1
+        for i in without_coords:
+            short[i] = len(lines[i][0].strip()) < 0.95 * med
     for i in range(n - 1):
-        if kurz[i] and zeilen[i + 1][0].lstrip("*").lstrip()[:1].islower():
-            kurz[i] = False
-    return kurz, block
-def zusammenfuegen(zeilen):
-    """Trennstriche aufloesen und Zeilen zu Absaetzen verschmelzen.
+        if short[i] and lines[i + 1][0].lstrip("*").lstrip()[:1].islower():
+            short[i] = False
+    return short, block
 
-    Weicher Zeilenumbruch innerhalb eines Absatzes wird geschluckt; ein neuer
-    Absatz beginnt erst bei auffaelligem senkrechten Abstand oder an einem
-    Aufzaehlungs-/Gliederungsmarker. Ohne Koordinaten bleibt jede Zeile eigen.
-    """
-    zeilen = fussnotennummern_anbinden(zeilen)
-    # typischen Zeilenabstand aus den Boxen schaetzen
-    ys = [z[1][1] for z in zeilen if z[1]]
-    abstaende = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 200]
-    normal = statistics.median(abstaende) if abstaende else None
-    # Vor kurze_zeilen(): die Nachbarschaftsfenster dort rechnen mit der
-    # Reihenfolge, die Randmarke soll sie nicht mehr verschieben.
-    zeilen = randlabel_vorziehen(zeilen, normal)
-    kurz, block = kurze_zeilen(zeilen)
 
-    aus, puffer, letztes_y, verworfen = [], "", None, []
-    war_ueberschrift, letzte_marke, vorher, puffer_x0 = False, None, None, None
-    for i, z in enumerate(zeilen):
+def assemble_paragraphs(lines):
+    """Resolve hyphens and merge lines into paragraphs."""
+    lines = attach_footnote_numbers(lines)
+    ys = [z[1][1] for z in lines if z[1]]
+    distances = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 200]
+    normal = statistics.median(distances) if distances else None
+    lines = promote_margin_labels(lines, normal)
+    short, block = short_lines(lines)
+
+    out, buffer, last_y, discarded = [], "", None, []
+    was_heading, last_marker, prev_idx, buffer_x0 = False, None, None, None
+    for i, z in enumerate(lines):
         text, box = z[0], z[1]
-        marke = z[2] if len(z) > 2 else None
-        if marke == "tabelle":
-            # Unangetastet: keine Saeuberung (Pipes!), kein Boilerplate-Test,
-            # kein Verschmelzen mit Nachbarabsaetzen.
-            if puffer:
-                aus.append(puffer)
-                puffer = ""
-            aus.append(text)
-            war_ueberschrift, letztes_y = False, (box[3] if box else letztes_y)
-            letzte_marke = marke
+        marker = z[2] if len(z) > 2 else None
+        if marker == "tabelle":
+            if buffer:
+                out.append(buffer)
+                buffer = ""
+            out.append(text)
+            was_heading, last_y = False, (box[3] if box else last_y)
+            last_marker = marker
             continue
-        text = saeubern(text)
+        text = clean_text(text)
         y = box[1] if box else None
         if not text:
             continue
-        if ist_boilerplate(text, y):
-            # Verworfenes mitprotokollieren: stilles Loeschen von Inhalt ist der
-            # gefaehrlichste Fehler dieser Pipeline, weil er ohne das Original
-            # unauffindbar ist.
-            verworfen.append(text)
+        if is_boilerplate(text, y):
+            discarded.append(text)
             continue
 
-        # Ein Trennstrich am Zeilenende ist fuer sich schon Beweis der
-        # Fortsetzung — er gilt unabhaengig von jeder Abstandsheuristik.
-        # Auch dann, wenn die Folgezeile fett anfaengt: die Fetterkennung
-        # arbeitet zeilenweise und setzt die Auszeichnung mitten ins Wort
-        # ("Berei-" / "**cherungsrecht, Rn. 395)**").
-        weiter = text.lstrip("*")
-        trennstrich = (puffer.rstrip("*").endswith("-")
-                       and not KEIN_JOIN.match(weiter) and weiter[:1].islower())
+        cont = text.lstrip("*")
+        hyphen = (buffer.rstrip("*").endswith("-")
+                  and not NO_JOIN.match(cont) and cont[:1].islower())
 
-        # Marker-Pruefung ohne Fett-Sternchen: "**I. Der Ausgangspunkt**" ist
-        # ein Gliederungsmarker. Die Sternchen setzt entweder fett_markieren()
-        # oder der Textlayer — beide laufen vorher, und beide wuerden hier
-        # sonst jeden Marker unsichtbar machen.
-        nackt = text.lstrip("*").lstrip()
-        ueberschrift = ist_ueberschrift(text, nackt)
-        # Zwei Gruende, warum eine fette Zeile KEINE Ueberschrift ist, sondern
-        # die Fortsetzung der laufenden: die Vorzeile reichte im Blocksatz bis
-        # an den Rand, oder die Zeile steht auf dem Fortsetzungseinzug des
-        # Absatzes. Beides trifft die Hemmer-Gliederung, deren Ueberschriften
-        # ausgerueckt sind und mitten im Satz fett weiterlaufen
-        # ("1. Anspruch aus § 985 BGB auf Rueckgabe des" / "**Bargeldes.**",
-        # "5. Wertersatz, § 818 II BGB (Geld ist nicht" /
-        # "**mehr identifizierbar vorhanden)**").
-        # Dazu das Textsignal: Komma oder Trennstrich am Ende ist ein
-        # unfertiger Satz ("B. Gefaehrliche Koerperverletzung, §§ 223 I," /
-        # "**224 I Nr. 2, 5 StGB (+)**" — der Trennstrich allein genuegt hier
-        # nicht, weil die Folgezeile mit einer Ziffer beginnt). Der Doppelpunkt
-        # bleibt aussen vor: "III. Arbeitsanleitung:" ist fertig.
-        laeuft_weiter = (vorher is not None and block[vorher] and not kurz[vorher]
-                         or box and puffer_x0 is not None
-                         and box[0] > puffer_x0 + 8
-                         or bool(re.search(r"[,;\-–]\**$", puffer)))
+        bare = text.lstrip("*").lstrip()
+        heading = is_heading(text, bare)
+        continues = (prev_idx is not None and block[prev_idx] and not short[prev_idx]
+                     or box and buffer_x0 is not None
+                     and box[0] > buffer_x0 + 8
+                     or bool(re.search(r"[,;\-–]\**$", buffer)))
 
-        if not puffer or trennstrich:
-            neu = False
-        elif marke != letzte_marke:
-            # Kastengrenze. Ein umrandeter Kasten ist immer ein eigener
-            # Gedanke — bisher verschmolz er mit dem Vorabsatz, weil er weder
-            # Schlagwort noch Gliederungsmarker mitbringt.
-            neu = True
-        elif (AUFZAEHLUNG.match(nackt) or SCHLAGWORT.match(nackt)
-              or (ueberschrift and not laeuft_weiter) or war_ueberschrift):
-            # war_ueberschrift: nach einer Ueberschrift beginnt immer ein neuer
-            # Absatz — sonst zieht die Ueberschrift den Folgetext an sich.
-            neu = True
-        elif y is not None and letztes_y is not None and y < letztes_y - 50:
-            # Der Text springt an den Kopf der naechsten Spalte oder Kachel
-            # zurueck. Dort laeuft ein Absatz nur weiter, wenn der Satz
-            # sichtbar unfertig ist — Trennstrich faengt das oben ab, sonst
-            # die Kleinschreibung. Bisher blieb der Rueckwaertssprung
-            # unbemerkt (negativer Abstand ist nie > normal * 1.6) und der
-            # Fussnotenblock der einen Spalte verschmolz mit dem Fliesstext
-            # der naechsten.
-            neu = not text[:1].islower()
-        elif normal and y is not None and letztes_y is not None:
-            neu = (y - letztes_y) > normal * 1.6
+        if not buffer or hyphen:
+            new_p = False
+        elif marker != last_marker:
+            new_p = True
+        elif (ENUMERATION.match(bare) or KEYWORD.match(bare)
+              or (heading and not continues) or was_heading):
+            new_p = True
+        elif y is not None and last_y is not None and y < last_y - 50:
+            new_p = not text[:1].islower()
+        elif normal and y is not None and last_y is not None:
+            new_p = (y - last_y) > normal * 1.6
         else:
-            # Ohne Koordinaten (das Modell liefert das Grounding-Format nicht
-            # immer): am Satzende trennen, sonst weiterlaufen lassen. Jede Zeile
-            # als eigenen Absatz zu behandeln zerstueckelt Fliesstext.
-            neu = bool(re.search(r'[.!?:]["“»)]?\s*$', puffer))
+            new_p = bool(re.search(r'[.!?:]["“»)]?\s*$', buffer))
 
-        if puffer and not neu:
-            if trennstrich:
-                puffer = puffer.rstrip("*")[:-1] + weiter
+        if buffer and not new_p:
+            if hyphen:
+                buffer = buffer.rstrip("*")[:-1] + cont
             else:
-                puffer = puffer + " " + text
+                buffer = buffer + " " + text
         else:
-            if puffer:
-                aus.append(puffer)
-            puffer, puffer_x0 = text, (box[0] if box else None)
-        # Ein Gliederungspunkt endet, sobald eine seiner Zeilen vor dem rechten
-        # Rand aufhoert. Ohne diese Regel zieht die Ueberschrift den Fliesstext
-        # ihres eigenen Punktes in sich hinein — im Gutachten der haeufigste
-        # Fall, weil dort zwischen Ueberschrift und Text kein Abstand steht.
-        # Nur solange der Punkt selbst noch als Ueberschrift durchgeht: bei
-        # laengerem Fliesstext hinter dem Marker traegt die Regel nichts mehr
-        # bei, wuerde aber auf Kachelseiten ohne Koordinaten (Zeichenmass
-        # statt Rand) mitten im Satz schneiden.
-        # Reicht die fette Zeile im Blocksatz bis an den Rand, ist die
-        # Ueberschrift nicht zu Ende — sie laeuft in der naechsten weiter
-        # ("**IV. Exkurs: … – V**" / "**ZR 67/22**").
-        war_ueberschrift = ((ueberschrift and puffer == text
-                             and not (block[i] and not kurz[i]))
-                            or (kurz[i] and ebene(puffer) is not None
-                                and (len(ohne_fett(puffer)) <= 90
-                                     or nur_fett(puffer))))
-        letztes_y, letzte_marke, vorher = y, marke, i
-    if puffer:
-        aus.append(puffer)
-    # Erst hier, nicht in saeubern(): "**a** **b**" entsteht ueberhaupt erst
-    # beim Verschmelzen zweier Zeilen, also nach der zeilenweisen Saeuberung.
-    aus = [fett_ausgleichen(re.sub(r"\*\*(\s*)\*\*", r"\1", p)) for p in aus]
-    zusammenfuegen.verworfen = verworfen
-    return gliederung_auszeichnen(fussnoten_obsidian(aus))
-# Satzschlusszeichen. Eine Ueberschrift traegt keines — daran unterscheidet
-# sich "3. Anspruch aus § 816 I S. 2 BGB" von "cc) Diese Ansicht ist mit der
-# h.M. abzulehnen." und "1. Was versteht man unter Geldwertvindikation?"
-SATZENDE = re.compile(r"[.!?][\"“»)\]]?$")
-def gliederung_auszeichnen(absaetze, max_ueberschrift=90):
-    """Gliederungsebenen sichtbar machen.
+            if buffer:
+                out.append(buffer)
+            buffer, buffer_x0 = text, (box[0] if box else None)
 
-    Im Gutachten ist die Ebene tragender Inhalt: a) und aa) sind
-    Pruefungsschritte. Markdown kennt fuer `a)` aber keine Liste — die Ebene
-    stand deshalb als gewoehnlicher Text im Absatz und war unsichtbar.
+        was_heading = ((heading and buffer == text
+                        and not (block[i] and not short[i]))
+                       or (short[i] and level(buffer) is not None
+                           and (len(without_bold(buffer)) <= 90
+                                or only_bold(buffer))))
+        last_y, last_marker, prev_idx = y, marker, i
+    if buffer:
+        out.append(buffer)
+    out = [balance_bold(re.sub(r"\*\*(\s*)\*\*", r"\1", p)) for p in out]
+    assemble_paragraphs.discarded = discarded
+    return format_headings(footnotes_obsidian(out))
 
-    Kurzer Absatz ohne Satzschlusszeichen wird echte Ueberschrift (und damit
-    auch anklickbar in Obsidians Gliederungsleiste), sonst wird wenigstens der
-    Marker fett. Zahlmarker bleiben unangetastet: `1.` traegt Markdown schon
-    als Liste, und ein `**1.**` naehme ihm diese Einrueckung.
-    """
-    aus = []
-    for p in absaetze:
-        roh = p.lstrip()
-        grad = ebene(roh)
-        if grad is None or roh[:1] in "|>[":
-            aus.append(p)
+
+SENTENCE_END = re.compile(r"[.!?][\"“»)\]]?$")
+
+
+def format_headings(paragraphs, max_heading=90):
+    """Make outline levels visible."""
+    out = []
+    for p in paragraphs:
+        raw = p.lstrip()
+        lvl = level(raw)
+        if lvl is None or raw[:1] in "|>[":
+            out.append(p)
             continue
-        blank = ohne_fett(roh)
-        # Satzschlusszeichen spricht gegen die Ueberschrift ("cc) Diese Ansicht
-        # ist mit der h.M. aber abzulehnen."), Fettschrift dafuer: Hemmer setzt
-        # die Gliederungspunkte fett, auch die mit Punkt am Ende ("1. Anspruch
-        # aus § 985 BGB auf Rueckgabe des **Bargeldes.**").
-        if ((len(blank) <= max_ueberschrift or nur_fett(roh))
-                and (not SATZENDE.search(blank) or "**" in roh)):
-            aus.append("#" * grad + " " + blank)
-        elif not roh.startswith("**"):
-            marke, rest = roh.split(None, 1) if " " in roh else (roh, "")
-            aus.append(f"**{marke}** {rest}" if not marke[:1].isdigit()
+        blank = without_bold(raw)
+        if ((len(blank) <= max_heading or only_bold(raw))
+                and (not SENTENCE_END.search(blank) or "**" in raw)):
+            out.append("#" * lvl + " " + blank)
+        elif not raw.startswith("**"):
+            marker, rest = raw.split(None, 1) if " " in raw else (raw, "")
+            out.append(f"**{marker}** {rest}" if not marker[:1].isdigit()
                        else p)
         else:
-            aus.append(p)
-    return aus
-# Ein Fragment, das fuer sich allein nur ein Gliederungs- oder
-# Aufzaehlungszeichen traegt. Word setzt den Marker an einen Tabulator, und
-# PyMuPDF macht daraus eine eigene "line" — "1." und "Die Abtretung als
-# Verfuegung" stehen auf derselben Grundlinie, kommen aber getrennt an.
-# Buchstabenmarker nur mit Klammer: "aus.", "bzw.", "vgl." sind im Blocksatz
-# ebenfalls eigene Fragmente und wuerden als "a.b.c."-Marker durchgehen.
-MARKER_ALLEIN = re.compile(
+            out.append(p)
+    return out
+
+
+STANDALONE_MARKER = re.compile(
     r"^(?:\*\*)?\s*(?:[-•·▪○●⇒⇨→➢✔o]"
     r"|\(?\d{1,2}[.)]"
     r"|\(?[a-z]{1,3}\)"
     r"|[IVXL]{1,5}\.)\s*(?:\*\*)?$"
 )
-def fragmente_verschmelzen(zeilen, W, luecke=0.15, max_pt=60):
-    """Marker-Fragment und Folgetext derselben Grundlinie zusammenziehen.
 
-    Bewusst NUR fuer alleinstehende Marker, nicht fuer beliebige Fragmente auf
-    gleicher Hoehe: eine allgemeine Regel wuerde auf zweispaltigen Seiten die
-    linke und die rechte Spalte in eine Zeile ziehen, und die Spaltenlogik
-    kaeme nie mehr zum Zug. Ein Prosaabsatz kann nie ein alleinstehender
-    Marker sein — die Regel ist damit von der Spaltenfrage unabhaengig.
 
-    Ohne das hier passiert zweierlei, beides in der Ausgabe sichtbar:
-      * "1." wird ein eigener Absatz, die Ueberschrift der naechste
-      * der Marker steht am Zeilenende ohne trennendes \\s, dadurch greift
-        AUFZAEHLUNG nicht und die Listenpunkte verschmelzen zu einem Absatz
-    """
-    # Nach Grundlinie gruppieren, nicht nach Oberkante: der Courier-Punkt einer
-    # Aufzaehlung sitzt 0,8 pt tiefer als der Times-Text daneben. Nach Oberkante
-    # sortiert steht er hinter seiner eigenen Zeile und wandert beim Verschmelzen
-    # an den Anfang der naechsten ("keine ueberzogenen o Anforderungen").
-    reihen = []
-    for z in sorted(zeilen, key=lambda z: z[1][1]):
+def merge_fragments(lines, W, gap=0.15, max_pt=60):
+    """Merge marker fragment and follow-up text on same baseline."""
+    rows = []
+    for z in sorted(lines, key=lambda z: z[1][1]):
         y0, y1 = z[1][1], z[1][3]
-        if reihen:
-            r = reihen[-1]
+        if rows:
+            r = rows[-1]
             ry0 = min(a[1][1] for a in r)
             ry1 = max(a[1][3] for a in r)
-            hoch = min(y1 - y0, ry1 - ry0) or 1
-            if (min(y1, ry1) - max(y0, ry0)) > 0.5 * hoch:
+            height = min(y1 - y0, ry1 - ry0) or 1
+            if (min(y1, ry1) - max(y0, ry0)) > 0.5 * height:
                 r.append(z)
                 continue
-        reihen.append([z])
+        rows.append([z])
 
-    aus = []
-    for r in reihen:
+    out = []
+    for r in rows:
         r.sort(key=lambda z: z[1][0])
         i = 0
         while i < len(r):
             text, box = r[i][0], r[i][1]
-            while (i + 1 < len(r) and MARKER_ALLEIN.match(text.strip())
+            while (i + 1 < len(r) and STANDALONE_MARKER.match(text.strip())
                    and r[i + 1][1][0] >= box[2]
-                   and r[i + 1][1][0] - box[2] < min(luecke * W, max_pt)):
+                   and r[i + 1][1][0] - box[2] < min(gap * W, max_pt)):
                 t2, b2 = r[i + 1][0], r[i + 1][1]
                 text = re.sub(r"\*\*(\s*)\*\*", r"\1",
                               text.rstrip() + " " + t2.lstrip())
                 box = (box[0], min(box[1], b2[1]), b2[2], max(box[3], b2[3]))
                 i += 1
-            aus.append([text, box])
+            out.append([text, box])
             i += 1
-    return aus
-def als_callout(absaetze, titel):
-    """Text in ein eingeklapptes Obsidian-Callout legen.
-
-    Wichtig fuer die Suche: `semantic_search.py` indiziert Text, keine Bilder.
-    Ein Diagramm nur als Bild abzulegen macht die Seite unfindbar — genau das,
-    was die Umstellung auf .md vermeiden soll. Darum Bild ZUERST, Text darunter
-    eingeklappt.
-    """
-    aus = [f"> [!note]- {titel}"]
-    for p in absaetze:
-        aus += ["> " + z for z in p.splitlines()] + [">"]
-    return "\n".join(aus).rstrip("\n>").rstrip()
+    return out
 
 
-def seitenmarker(nr, zusatz=None):
-    """Seitenmarker im Grammatik-Format.
+def as_callout(paragraphs, title):
+    """Put text into a collapsed Obsidian callout."""
+    out = [f"> [!note]- {title}"]
+    for p in paragraphs:
+        out += ["> " + z for z in p.splitlines()] + [">"]
+    return "\n".join(out).rstrip("\n>").rstrip()
 
-    Wenn `zusatz` None ist, wird nur `%% S. nr %%` erzeugt (kompatibel mit
-    Läufen vor der Marker-Erweiterung).
-    """
-    if zusatz is not None:
-        return f"%% S. {nr} | {zusatz} %%\n\n"
+
+def page_marker(nr, extra=None):
+    """Page marker in grammar format."""
+    if extra is not None:
+        return f"%% S. {nr} | {extra} %%\n\n"
     return f"%% S. {nr} %%\n\n"
 
 
-def dokument_bauen(frontmatter_text, quelle_text, bloecke_texte):
-    """Erzeugt den vollständigen Vorschau-Markdown-Text.
-
-    Entspricht der Zusammenbau-Logik in pdf2md.py main():
-    `kopf + "\n" + quelle + "\n" + "\n\n".join(md) + "\n"`
-
-    Alle drei Argumente sind fertige Strings (nicht gelistete Werte).
-    """
-    return f"{frontmatter_text}\n{quelle_text}\n" + "\n\n".join(bloecke_texte) + "\n"
+def build_document(frontmatter_text, source_text, blocks_texts):
+    """Generate complete preview markdown text."""
+    return f"{frontmatter_text}\n{source_text}\n" + "\n\n".join(blocks_texts) + "\n"
 
 
-def frontmatter_bauen(titel, quelle_pdf_pfad, seiten, seiten_textlayer,
-                      seiten_ocr, seiten_diagramm=0, seiten_entgleist=0,
-                      woerter_verdaechtig=0, woerter_korrigiert=0,
-                      ocr_modell=None, ocr_datum=None, ocr_zeitpunkt=None,
-                      abgebrochen=None):
-    """Baut das YAML-Frontmatter der Vorschau-Datei.
-
-    Reine Form der Logik aus pdf2md.py main() — genau hier lebt sie, damit
-    Fixture-Generator und main() dieselbe Quelle nutzen (Format-Drift wird im
-    CI rot). Konditionale Felder nur bei > 0 / gesetztem Wert, wie in main().
-
-    `abgebrochen` (z. B. "seite 5 von 10") kennzeichnet eine Teildatei aus
-    einem geordneten Abbruch (Issue #25): die Datei ist unvollstaendig, aber
-    bewusst geschrieben statt verworfen.
-
-    `vorschau-format: 1` kennzeichnet Konformitaet mit docs/vorschau-format.md
-    und steht immer; es ist aktuell reserviert (kein Konsument im Plugin).
-    """
-    zeilen = [
+def build_frontmatter(title, source_pdf_path, pages, pages_textlayer,
+                      pages_ocr, pages_diagram=0, pages_derailed=0,
+                      words_suspect=0, words_corrected=0,
+                      ocr_model=None, ocr_date=None, ocr_timestamp=None,
+                      aborted=None):
+    """Build YAML frontmatter for preview file."""
+    lines = [
         "---",
-        f"titel: {titel}",
-        # JSON-Zitat statt nacktem Path: Pfade mit Leerzeichen („Fall 8")
-        # waeren sonst kein gueltiges YAML und die Review-Ansicht koennte
-        # `quelle-pdf` nicht aufloesen.
-        f"quelle-pdf: {json.dumps(str(quelle_pdf_pfad), ensure_ascii=False)}",
-        f"seiten: {seiten}",
-        f"seiten-textlayer: {seiten_textlayer}",
-        f"seiten-ocr: {seiten_ocr}",
+        f"titel: {title}",
+        f"quelle-pdf: {json.dumps(str(source_pdf_path), ensure_ascii=False)}",
+        f"seiten: {pages}",
+        f"seiten-textlayer: {pages_textlayer}",
+        f"seiten-ocr: {pages_ocr}",
     ]
-    if seiten_diagramm:
-        zeilen.append(f"seiten-diagramm: {seiten_diagramm}")
-    if seiten_entgleist:
-        zeilen.append(f"seiten-entgleist: {seiten_entgleist}")
-    if woerter_verdaechtig:
-        zeilen.append(f"woerter-verdaechtig: {woerter_verdaechtig}")
-    if woerter_korrigiert:
-        zeilen.append(f"woerter-korrigiert: {woerter_korrigiert}")
-    if abgebrochen:
-        zeilen.append(f"abgebrochen: {abgebrochen}")
-    if ocr_modell:
-        zeilen.append(f"ocr-modell: {ocr_modell}")
-    zeilen += [
-        f"ocr-datum: {ocr_datum}",
-        f"ocr-zeitpunkt: {ocr_zeitpunkt}",
+    if pages_diagram:
+        lines.append(f"seiten-diagramm: {pages_diagram}")
+    if pages_derailed:
+        lines.append(f"seiten-entgleist: {pages_derailed}")
+    if words_suspect:
+        lines.append(f"woerter-verdaechtig: {words_suspect}")
+    if words_corrected:
+        lines.append(f"woerter-korrigiert: {words_corrected}")
+    if aborted:
+        lines.append(f"abgebrochen: {aborted}")
+    if ocr_model:
+        lines.append(f"ocr-modell: {ocr_model}")
+    lines += [
+        f"ocr-datum: {ocr_date}",
+        f"ocr-zeitpunkt: {ocr_timestamp}",
         "vorschau-format: 1",
         "---",
     ]
-    return "\n".join(zeilen) + "\n"
+    return "\n".join(lines) + "\n"

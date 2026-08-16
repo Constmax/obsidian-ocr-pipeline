@@ -1,48 +1,49 @@
 #!/usr/bin/env python3
-"""Abbruch-Koordination fuer pdf2md (SIGINT/SIGTERM, Issue #25).
+"""Cancellation coordination for pdf2md (SIGINT/SIGTERM, Issue #25).
 
-Das erste Signal setzt nur ein Flag: die laufende Seite wird zu Ende
-gerechnet, danach beendet sich der Seitenlauf geordnet. Ein zweites Signal
-erhebt SystemExit mit Exit-Code 6 — das raeumt ueber die finally-Bloecke und
-TemporaryDirectory-Kontexte des Aufrufers mit auf, der Prozess haengt also
-auch dann keine Temporärdateien hinter.
+The first signal sets only a flag: the currently running page finishes its
+calculation, after which page execution terminates orderly. A second signal
+raises SystemExit with exit code 6 — this cleans up via finally blocks and
+TemporaryDirectory contexts of the caller, so the process does not leave
+temporary files behind.
 """
 import signal
 import sys
 
 EXIT_CODE = 6
 
-_angefordert = False
+_requested = False
 _exit_code = EXIT_CODE
 
 
-def installieren(exit_code=EXIT_CODE):
-    """SIGINT/SIGTERM-Handler installieren; erstes Signal setzt das Flag,
-    zweites beendet sofort mit `exit_code`."""
+def install(exit_code=EXIT_CODE):
+    """Install SIGINT/SIGTERM handlers; first signal sets the flag,
+    second exits immediately with `exit_code`."""
     global _exit_code
     _exit_code = exit_code
-    signal.signal(signal.SIGINT, _behandeln)
-    signal.signal(signal.SIGTERM, _behandeln)
+    signal.signal(signal.SIGINT, _handle)
+    signal.signal(signal.SIGTERM, _handle)
 
 
-def angefordert():
-    """True, sobald ein Signal einen geordneten Abbruch angefordert hat."""
-    return _angefordert
+def requested():
+    """True as soon as a signal requested an orderly cancellation."""
+    return _requested
 
 
-def zuruecksetzen():
-    """Flag zuruecksetzen (fuer Tests und erneute Lauefe im selben Prozess)."""
-    global _angefordert
-    _angefordert = False
+def reset():
+    """Reset flag (for tests and repeated runs in the same process)."""
+    global _requested
+    _requested = False
 
 
-def _behandeln(signum, frame):
-    global _angefordert
-    if _angefordert:
+def _handle(signum, frame):
+    global _requested
+    if _requested:
         raise SystemExit(_exit_code)
-    _angefordert = True
+    _requested = True
     name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
     sys.stderr.write(
-        f"{name} empfangen — Abbruch angefordert, laufende Seite wird fertig "
-        "gerechnet. Nochmaliges Signal beendet sofort.\n")
+        f"{name} received — cancellation requested, current page will finish "
+        "calculation. Repeating signal exits immediately.\n")
     sys.stderr.flush()
+
