@@ -1,13 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-// ── Laufzeit-Shim ───────────────────────────────────────────────────────────
-// `Kopplung` laeuft unter `window` (Lock-Timer, requestAnimationFrame).
-// node kennt beides nicht: Die Lock-Timer sind echte Timer, der Frame-
-// Scheduler wird hier manuell abgearbeitet (`rafAusfuehren`) — damit sind
-// die Schreibvorgaenge deterministisch pruefbar.
+// ── Runtime Shim ───────────────────────────────────────────────────────────
 
-let rafAuffraege: Array<() => void> = [];
+let rafCallbacks: Array<() => void> = [];
 
 Object.defineProperty(globalThis, "window", {
 	configurable: true,
@@ -15,31 +11,29 @@ Object.defineProperty(globalThis, "window", {
 		setTimeout: (fn: () => void, ms?: number) => setTimeout(fn, ms),
 		clearTimeout: (id?: NodeJS.Timeout) => clearTimeout(id),
 		requestAnimationFrame: (cb: () => void) => {
-			rafAuffraege.push(cb);
-			return rafAuffraege.length;
+			rafCallbacks.push(cb);
+			return rafCallbacks.length;
 		},
 		cancelAnimationFrame: () => undefined,
 	},
 });
 
-function rafAusfuehren(): void {
-	const arbeit = rafAuffraege;
-	rafAuffraege = [];
-	for (const cb of arbeit) cb();
+function runRaf(): void {
+	const work = rafCallbacks;
+	rafCallbacks = [];
+	for (const cb of work) cb();
 }
 
-function schlafen(ms: number): Promise<void> {
+function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-import type { SyncQuelle } from "../src/sync.ts";
-const { Kopplung } = await import("../src/sync.ts");
-type Kopplung = InstanceType<typeof Kopplung>;
+import type { SyncSource } from "../src/sync.ts";
+const { Coupling } = await import("../src/sync.ts");
+type Coupling = InstanceType<typeof Coupling>;
 
-// ── Falsches DOM ────────────────────────────────────────────────────────────
+// ── Fake DOM ────────────────────────────────────────────────────────────
 
-/** Scroll-Container: speichert den Listener, `feuern` simuliert das
- *  scroll-Ereignis, das ein Schreibvorgang im echten DOM ausloest. */
 class FakeScrollEl {
 	scrollTop = 0;
 	scrollHeight: number;
@@ -51,11 +45,11 @@ class FakeScrollEl {
 		this.clientHeight = clientHeight;
 	}
 
-	addEventListener(_typ: string, handler: () => void): void {
+	addEventListener(_type: string, handler: () => void): void {
 		this.handler = handler;
 	}
 
-	removeEventListener(_typ: string, _handler: () => void): void {
+	removeEventListener(_type: string, _handler: () => void): void {
 		this.handler = null;
 	}
 
@@ -63,238 +57,229 @@ class FakeScrollEl {
 		return { top: 0 };
 	}
 
-	feuern(): void {
+	fire(): void {
 		this.handler?.();
 	}
 }
 
-/** Block-Element einer Spalte. Die rects sind scroll-invariant — die
- *  Vermessung wird im Test immer vor dem Scrollen durchgefuehrt, was der
- *  echten Scroll-Invarianz des DOM entspricht. */
 class FakeBlock {
 	private readonly top: number;
-	private readonly hoehe: number;
+	private readonly height: number;
 
-	constructor(top: number, hoehe: number) {
+	constructor(top: number, height: number) {
 		this.top = top;
-		this.hoehe = hoehe;
+		this.height = height;
 	}
 
 	getBoundingClientRect(): { top: number; height: number } {
-		return { top: this.top, height: this.hoehe };
+		return { top: this.top, height: this.height };
 	}
 }
 
-interface Aufbau {
-	kopplung: Kopplung;
+interface Setup {
+	coupling: Coupling;
 	pdf: FakeScrollEl;
 	md: FakeScrollEl;
 }
 
-/** Bloecke als [seitennummer, top, hoehe]. */
-function aufbauen(
-	pdfBloecke: Array<[number, number, number]>,
-	mdBloecke: Array<[number, number, number]>,
-): Aufbau {
+function build(
+	pdfBlocks: Array<[number, number, number]>,
+	mdBlocks: Array<[number, number, number]>,
+): Setup {
 	const pdf = new FakeScrollEl(2000, 600);
 	const md = new FakeScrollEl(2000, 600);
-	const spalte = (
+	const column = (
 		el: FakeScrollEl,
-		bloecke: Array<[number, number, number]>,
-	): SyncQuelle => ({
+		blocks: Array<[number, number, number]>,
+	): SyncSource => ({
 		scrollEl: el as unknown as HTMLElement,
-		elemente: () =>
+		elements: () =>
 			new Map<number, HTMLElement>(
-				bloecke.map(
-					([nr, top, hoehe]) =>
-						[nr, new FakeBlock(top, hoehe) as unknown as HTMLElement] as const,
+				blocks.map(
+					([nr, top, height]) =>
+						[nr, new FakeBlock(top, height) as unknown as HTMLElement] as const,
 				),
 			),
 	});
-	const kopplung = new Kopplung({ pdf: spalte(pdf, pdfBloecke), md: spalte(md, mdBloecke) });
-	kopplung.neuVermessen();
-	return { kopplung, pdf, md };
+	const coupling = new Coupling({ pdf: column(pdf, pdfBlocks), md: column(md, mdBlocks) });
+	coupling.remeasure();
+	return { coupling, pdf, md };
 }
 
-const BLOECKE: Array<[number, number, number]> = [
+const BLOCKS: Array<[number, number, number]> = [
 	[1, 0, 100],
 	[2, 100, 100],
 	[3, 200, 100],
 ];
 
-// ── Abbildung ───────────────────────────────────────────────────────────────
+// ── Mapping ───────────────────────────────────────────────────────────────
 
-test("position: Bruchteil ueber die Blockhoehe, nicht ueber die Seitenzahl", () => {
-	const { kopplung, pdf } = aufbauen(
+test("position: fraction over block height, not over page number", () => {
+	const { coupling, pdf } = build(
 		[
 			[1, 0, 100],
 			[2, 100, 200],
 			[3, 300, 100],
 		],
-		BLOECKE,
+		BLOCKS,
 	);
 	pdf.scrollTop = 150;
-	assert.equal(kopplung.position("pdf"), 2.25);
+	assert.equal(coupling.position("pdf"), 2.25);
 });
 
-test("position klemmt ans Ende, nie ueber die letzte Seite", () => {
-	const { kopplung, pdf } = aufbauen(BLOECKE, BLOECKE);
+test("position clamps to end, never past last page", () => {
+	const { coupling, pdf } = build(BLOCKS, BLOCKS);
 	pdf.scrollTop = 9999;
-	assert.equal(kopplung.position("pdf"), 3.999);
+	assert.equal(coupling.position("pdf"), 3.999);
 });
 
-test("ohne Vermessung oder ohne Elemente bleibt die Kopplung stumm", () => {
+test("without measurement or without elements coupling remains silent", () => {
 	const pdf = new FakeScrollEl(2000, 600);
 	const md = new FakeScrollEl(2000, 600);
-	const kopplung = new Kopplung({
-		pdf: { scrollEl: pdf as unknown as HTMLElement, elemente: () => new Map() },
-		md: { scrollEl: md as unknown as HTMLElement, elemente: () => new Map() },
+	const coupling = new Coupling({
+		pdf: { scrollEl: pdf as unknown as HTMLElement, elements: () => new Map() },
+		md: { scrollEl: md as unknown as HTMLElement, elements: () => new Map() },
 	});
-	assert.equal(kopplung.position("pdf"), null);
+	assert.equal(coupling.position("pdf"), null);
 	pdf.scrollTop = 150;
-	pdf.feuern();
-	rafAusfuehren();
+	pdf.fire();
+	runRaf();
 	assert.equal(md.scrollTop, 0);
 });
 
-// ── Treiber → Folger ────────────────────────────────────────────────────────
+// ── Driver → Follower ────────────────────────────────────────────────────────
 
-test("Scroll auf pdf treibt md auf denselben Bruchteil", () => {
-	const { kopplung, pdf, md } = aufbauen(BLOECKE, BLOECKE);
-	let gemeldet: number | null = null;
-	kopplung.beiSeite = (s) => (gemeldet = s);
+test("scroll on pdf drives md to same fraction", () => {
+	const { coupling, pdf, md } = build(BLOCKS, BLOCKS);
+	let reported: number | null = null;
+	coupling.onPage = (s) => (reported = s);
 	pdf.scrollTop = 150;
-	pdf.feuern();
-	assert.equal(gemeldet, 2.5);
-	rafAusfuehren();
+	pdf.fire();
+	assert.equal(reported, 2.5);
+	runRaf();
 	assert.equal(md.scrollTop, 150);
 });
 
-test("Besitzer-Token: der Echo-Scroll des Folgers spielt nichts zurueck", () => {
-	const { pdf, md } = aufbauen(BLOECKE, BLOECKE);
+test("owner token: echo scroll of follower does not play back", () => {
+	const { pdf, md } = build(BLOCKS, BLOCKS);
 	pdf.scrollTop = 250;
-	pdf.feuern();
-	rafAusfuehren();
+	pdf.fire();
+	runRaf();
 	assert.equal(md.scrollTop, 250);
-	// Das Schreiben selbst loest im echten DOM ein scroll-Ereignis aus.
-	md.feuern();
-	rafAusfuehren();
-	assert.equal(md.scrollTop, 250, "md bleibt stehen");
-	assert.equal(pdf.scrollTop, 250, "pdf wird nicht zurueckgeschrieben");
+	md.fire();
+	runRaf();
+	assert.equal(md.scrollTop, 250, "md stays still");
+	assert.equal(pdf.scrollTop, 250, "pdf is not written back");
 });
 
-test("Epsilon: Zittern unter 2 px wird nicht weitergeschrieben", () => {
-	const { pdf, md } = aufbauen(BLOECKE, BLOECKE);
+test("epsilon: jitter below 2 px is not written", () => {
+	const { pdf, md } = build(BLOCKS, BLOCKS);
 	md.scrollTop = 151.9;
 	pdf.scrollTop = 150;
-	pdf.feuern();
-	rafAusfuehren();
+	pdf.fire();
+	runRaf();
 	assert.equal(md.scrollTop, 151.9);
 });
 
-test("Epsilon: Abstand von genau 2 px ist noch ein Schreibvorgang", () => {
-	const { pdf, md } = aufbauen(BLOECKE, BLOECKE);
+test("epsilon: distance of exactly 2 px is still a write operation", () => {
+	const { pdf, md } = build(BLOCKS, BLOCKS);
 	md.scrollTop = 148;
 	pdf.scrollTop = 150;
-	pdf.feuern();
-	rafAusfuehren();
+	pdf.fire();
+	runRaf();
 	assert.equal(md.scrollTop, 150);
 });
 
-test("Schreiben klemmt an die Scrollgrenzen des Folgers", () => {
-	const { pdf, md } = aufbauen(BLOECKE, BLOECKE);
+test("write clamps to scroll bounds of follower", () => {
+	const { pdf, md } = build(BLOCKS, BLOCKS);
 	md.scrollHeight = 350;
 	md.clientHeight = 100;
 	pdf.scrollTop = 9999;
-	pdf.feuern();
-	rafAusfuehren();
-	// Ziel waere 3,999·100+… — aber der Folger kann nur bis 250.
+	pdf.fire();
+	runRaf();
 	assert.equal(md.scrollTop, 250);
 });
 
-test("Zwei Treiber-Ereignisse im selben Frame werden zu einem Schreibvorgang", () => {
-	const { pdf, md } = aufbauen(BLOECKE, BLOECKE);
+test("two driver events in same frame become single write operation", () => {
+	const { pdf, md } = build(BLOCKS, BLOCKS);
 	pdf.scrollTop = 150;
-	pdf.feuern();
+	pdf.fire();
 	pdf.scrollTop = 250;
-	pdf.feuern();
-	assert.equal(rafAuffraege.length, 1, "genau ein Frame-Schreibvorgang");
-	rafAusfuehren();
-	assert.equal(md.scrollTop, 250, "der letzte Stand gewinnt");
+	pdf.fire();
+	assert.equal(rafCallbacks.length, 1, "exactly one frame write operation");
+	runRaf();
+	assert.equal(md.scrollTop, 250, "last state wins");
 });
 
-test("Klemmen: fehlende Folger-Seite — Bruchteil verfaellt, exakter Anfang", () => {
-	// pdf hat alle Seiten, md nur 1 und 3 (z.B. --nur-ocr).
-	const { pdf, md } = aufbauen(BLOECKE, [
+test("clamping: missing follower page — fraction dropped, exact start", () => {
+	const { pdf, md } = build(BLOCKS, [
 		[1, 0, 100],
 		[3, 100, 100],
 	]);
 	pdf.scrollTop = 150;
-	pdf.feuern();
-	rafAusfuehren();
-	// p = 2,5 — Seite 2 fehlt in md, geklemmt wird auf den Anfang von 1.
+	pdf.fire();
+	runRaf();
 	assert.equal(md.scrollTop, 0);
 });
 
 // ── Lock ────────────────────────────────────────────────────────────────────
 
-test("Lock: nachgetriggert — Ereignisse im Fenster verlaengern ihn", async () => {
-	const { pdf, md } = aufbauen(BLOECKE, BLOECKE);
+test("lock: retriggered — events in window extend it", async () => {
+	const { pdf, md } = build(BLOCKS, BLOCKS);
 	pdf.scrollTop = 150;
-	pdf.feuern();
-	rafAusfuehren();
-	await schlafen(80);
-	// Ein weiteres Treiber-Ereignis im Lock-Fenster: der Lock beginnt neu.
+	pdf.fire();
+	runRaf();
+	await sleep(80);
 	pdf.scrollTop = 250;
-	pdf.feuern();
-	rafAusfuehren();
+	pdf.fire();
+	runRaf();
 	assert.equal(md.scrollTop, 250);
-	await schlafen(80); // t=160 — Lock laeuft noch (Ende waere t=200)
-	md.feuern();
-	rafAusfuehren();
-	assert.equal(pdf.scrollTop, 250, "md wird noch nicht gehoert");
-	await schlafen(80); // t=240 — Lock abgelaufen
+	await sleep(80);
+	md.fire();
+	runRaf();
+	assert.equal(pdf.scrollTop, 250, "md not heard yet");
+	await sleep(80);
 	md.scrollTop = 50;
-	md.feuern();
-	rafAusfuehren();
-	assert.equal(pdf.scrollTop, 50, "md treibt jetzt pdf");
+	md.fire();
+	runRaf();
+	assert.equal(pdf.scrollTop, 50, "md now drives pdf");
 });
 
-test("zuSeite setzt beide Spalten auf den Seitenanfang", () => {
-	const { kopplung, pdf, md } = aufbauen(BLOECKE, BLOECKE);
-	const gemeldet: number[] = [];
-	kopplung.beiSeite = (s) => gemeldet.push(s);
-	kopplung.zuSeite(2);
+test("goToPage sets both columns to page start", () => {
+	const { coupling, pdf, md } = build(BLOCKS, BLOCKS);
+	const reported: number[] = [];
+	coupling.onPage = (s) => reported.push(s);
+	coupling.goToPage(2);
 	assert.equal(pdf.scrollTop, 100);
 	assert.equal(md.scrollTop, 100);
-	assert.deepEqual(gemeldet, [2]);
+	assert.deepEqual(reported, [2]);
 });
 
-test("zuSeite klemmt ueber das Ende hinaus auf die letzte Seite", () => {
-	const { kopplung, pdf, md } = aufbauen(BLOECKE, BLOECKE);
-	kopplung.zuSeite(99);
+test("goToPage clamps past end to last page", () => {
+	const { coupling, pdf, md } = build(BLOCKS, BLOCKS);
+	coupling.goToPage(99);
 	assert.equal(pdf.scrollTop, 200);
 	assert.equal(md.scrollTop, 200);
 });
 
-test("aktiv=false: Position wird gemeldet, geschrieben nicht", () => {
-	const { kopplung, pdf, md } = aufbauen(BLOECKE, BLOECKE);
-	kopplung.aktiv = false;
-	const gemeldet: number[] = [];
-	kopplung.beiSeite = (s) => gemeldet.push(s);
+test("active=false: position reported, not written", () => {
+	const { coupling, pdf, md } = build(BLOCKS, BLOCKS);
+	coupling.active = false;
+	const reported: number[] = [];
+	coupling.onPage = (s) => reported.push(s);
 	pdf.scrollTop = 150;
-	pdf.feuern();
-	assert.deepEqual(gemeldet, [2.5]);
-	rafAusfuehren();
+	pdf.fire();
+	assert.deepEqual(reported, [2.5]);
+	runRaf();
 	assert.equal(md.scrollTop, 0);
 });
 
-test("zerstoeren loest Listener und Timer", () => {
-	const { kopplung, pdf, md } = aufbauen(BLOECKE, BLOECKE);
-	kopplung.zerstoeren();
+test("destroy detaches listeners and timers", () => {
+	const { coupling, pdf, md } = build(BLOCKS, BLOCKS);
+	coupling.destroy();
 	pdf.scrollTop = 150;
-	pdf.feuern();
-	rafAusfuehren();
+	pdf.fire();
+	runRaf();
 	assert.equal(md.scrollTop, 0);
 	assert.equal(pdf.scrollTop, 150);
 });
