@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Wrapper für Stufe 2: führt pdf2md.py mit dem MLX-venv aus.
-# Wird von setup.sh nach ~/bin verlinkt; funktioniert von überall.
+# Wrapper for Stage 2: executes pdf2md.py with the MLX venv.
+# Symlinked to ~/bin by setup.sh; works from anywhere.
 
 set -euo pipefail
 
@@ -16,18 +16,19 @@ SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 
 VENV_PY="${VENV_ROOT:-$HOME/.venvs}/mlxocr/bin/python"
 if [ ! -x "$VENV_PY" ]; then
-    echo "❌ MLX-venv fehlt ($VENV_PY). Einmal ./setup.sh im Repo ausführen." >&2
+    echo "❌ MLX venv missing ($VENV_PY). Run ./setup.sh in repo once." >&2
     exit 1
 fi
-# Bei --check ueberspringen wir den fitz-Check: pdf2md.py prueft fitz selbst
-# und meldet es als fehlende Abhaengigkeit (Exit-Code 4).
+# With --check we skip the fitz check: pdf2md.py checks fitz itself
+# and reports it as missing dependency (exit code 4).
 if [[ " $* " != *" --check "* ]]; then
-    # Ein venv ohne pymupdf liesse pdf2md.py erst am `import fitz` scheitern
-    # (nach dem Modell-Download) — hier mit klarer Meldung abfangen.
+    # A venv without pymupdf would only let pdf2md.py fail at `import fitz`
+    # (after downloading model) — catch here with a clear error message.
     if ! "$VENV_PY" -c "import fitz" >/dev/null 2>&1; then
-        echo "❌ pymupdf fehlt in $VENV_PY — ./setup.sh im Repo erneut ausführen." >&2
+        echo "❌ pymupdf missing in $VENV_PY — re-run ./setup.sh in repo." >&2
         exit 1
     fi
 fi
 
 exec "$VENV_PY" "$SCRIPT_DIR/../pdf2md/pdf2md.py" "$@"
+

@@ -1,24 +1,9 @@
-// Original-PDF seitenweise, lazy gerendert.
+// Original PDF rendered page-by-page lazily.
 //
-// Dies ist der Risikoschritt des Plugins — nicht wegen der Mechanik, sondern
-// wegen der Abhaengigkeit von Obsidians pdf.js-Fork. Drei Absicherungen:
-//
-// 1. Alle pdf.js-Aufrufe liegen in dieser Datei, das eigentliche Rendern
-//    gebuendelt in `seiteZeichnen(page, canvas, skala)`. Aendert Obsidian die
-//    Signatur, ist das ein Einzeiler-Fix statt einer Vault-Jagd.
-// 2. Jeder Fehler degradiert statt zu blockieren: Banner im Kopf mit „Im
-//    PDF-Viewer oeffnen" als Weg in Obsidians eigenen Betrachter.
-// 3. `loadPdfJs()` ist die dokumentierte Obsidian-API — der Worker ist von
-//    Obsidian bereits verdrahtet (`GlobalWorkerOptions.workerSrc` ist gesetzt).
-//    Es gibt keinen Blob-Worker-Bau und keinen CSP-Kampf, und das Bundle
-//    bleibt bei ~60–80 kB statt ~2,5 MB.
-//
-// Platzhalter-Strategie: nach `getDocument` werden ALLE Viewports bei
-// Massstab 1 geholt — das liest nur das Seiten-Dictionary, rastert nichts.
-// Jeder Seiten-Container bekommt sein Seitenverhaeltnis als CSS-Custom-
-// Property; Hoehen und Breiten folgen daraus via `aspect-ratio`, ohne
-// JavaScript-Nachkorrektur. Die Scrollbar hat damit ab Frame eins die richtige
-// Geometrie — Springen beim Nachladen ist verhindert statt kompensiert.
+// All pdf.js calls are isolated to this file, actual rendering in `drawPage(page, canvas, scale)`.
+// Placeholder strategy: after `getDocument`, ALL viewports at scale 1 are queried.
+// Custom properties set CSS aspect-ratio on containers before rasterization,
+// preventing jumpiness on lazy loading.
 
 import { App, TFile } from "obsidian";
 import { loadPdfJs } from "obsidian";
@@ -31,152 +16,124 @@ import type {
 	PdfViewport,
 } from "../types/pdfjs.d.ts";
 
-/** Renderparallelitaet: mehr bedeutet beim Zurueckscrollen weniger Warten,
- *  kostet aber Speicher und Laeden am Worker. */
 const PARALLEL = 2;
-/** Deckel fuer gepufferte Canvases. Ein A4-Canvas bei Faktor 2 ist ~4,5 MB
- *  RGBA; beim Raeumen wird der Puffer per width/height = 0 freigegeben, sonst
- *  bleibt er liegen. */
 const MAX_CANVAS = 12;
-const RESIZE_ENTPRELLT_MS = 150;
+const RESIZE_DEBOUNCE_MS = 150;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2;
 
-interface Seitenzustand {
+interface PageState {
 	nr: number;
 	el: HTMLElement;
 	canvas: HTMLCanvasElement;
-	seite: PdfSeite | null;
+	page: PdfSeite | null;
 	viewport: PdfViewport | null;
 	task: PdfRenderTask | null;
-	/** Rasterung (oder Fehleranzeige) abgeschlossen. */
-	gerendert: boolean;
-	/** Zuletzt im rootMargin-Fenster gesehen. */
-	sichtbar: boolean;
-	/** LRU-Stempel: `performance.now()` bei Sichtbarkeit und nach dem Zeichnen. */
-	zuletztGenutzt: number;
+	rendered: boolean;
+	visible: boolean;
+	lastUsed: number;
 }
 
-interface Zeichenauftrag {
+interface DrawTask {
 	nr: number;
-	erzwingen: boolean;
+	force: boolean;
 }
 
-export class PdfSpalte {
+export class PdfColumn {
 	readonly scrollEl: HTMLElement;
 
-	/** Hoehen haben sich geaendert (Canvas eingewechselt, Breite gewachsen,
-	 *  Zoom veraendert) — die Kopplung soll neu vermessen. */
-	beiVermessungNoetig: (() => void) | null = null;
-	/** Fehler beim Laden — das Banner baut die Ansicht im PDF-Kopf. */
-	beiFehler: ((fehler: string | null) => void) | null = null;
-	/** PDF geladen: Name und Seitenzahl fuer den Spaltenkopf. */
-	beiGeladen: ((name: string | null, seiten: number) => void) | null = null;
+	onMeasurementNeeded: (() => void) | null = null;
+	onError: ((error: string | null) => void) | null = null;
+	onLoaded: ((name: string | null, pages: number) => void) | null = null;
 
 	private container: HTMLElement;
-	private stapel: HTMLElement;
-	private leerZustand: HTMLElement;
-	private seiten = new Map<number, Seitenzustand>();
+	private stack: HTMLElement;
+	private emptyState: HTMLElement;
+	private pages = new Map<number, PageState>();
 	private doc: PdfDokument | null = null;
-	private pdfDatei: TFile | null = null;
-	private lauf = 0;
+	private pdfFile: TFile | null = null;
+	private run = 0;
 	private observer: IntersectionObserver | null = null;
 	private resizeObserver: ResizeObserver | null = null;
 	private resizeTimer: number | null = null;
-	private warteschlange: Zeichenauftrag[] = [];
-	private angefragt = new Set<number>();
-	private aktiveZeichnungen = 0;
-	private zoom = 1;
+	private queue: DrawTask[] = [];
+	private requested = new Set<number>();
+	private activeDraws = 0;
+	private zoomLevel = 1;
 
 	constructor(
 		private app: App,
-		wurzel: HTMLElement,
-		/** Obergrenze des Renderfaktors aus den Einstellungen. */
+		root: HTMLElement,
 		private zoomMax: () => number,
 	) {
-		this.scrollEl = wurzel.createDiv({ cls: "ocr-pdf-scroll" });
+		this.scrollEl = root.createDiv({ cls: "ocr-pdf-scroll" });
 		this.container = this.scrollEl.createDiv({ cls: "ocr-pdf-inhalt" });
-		this.stapel = this.container.createDiv({ cls: "ocr-pdf-stapel" });
-		this.leerZustand = this.container.createDiv({
+		this.stack = this.container.createDiv({ cls: "ocr-pdf-stapel" });
+		this.emptyState = this.container.createDiv({
 			cls: "ocr-leer ocr-pdf-leer",
-			text: "Kein Original-PDF geladen.",
+			text: "No original PDF loaded.",
 		});
-		// Breitenaenderung aendert die Pixel-Skala und (ueber aspect-ratio) alle
-		// Hoehen — beides will neu vermessen sein. Entprellt, s. Plan Abschnitt 3.
-		this.resizeObserver = new ResizeObserver(() => this.entprelltVermessen());
+		this.resizeObserver = new ResizeObserver(() => this.debouncedMeasure());
 		this.resizeObserver.observe(this.scrollEl);
 	}
 
-	/** Seitencontainer fuer die Scroll-Kopplung — existieren ab Frame eins,
-	 *  laengst bevor die erste Seite gerastert ist. */
-	elemente(): Map<number, HTMLElement> {
+	elements(): Map<number, HTMLElement> {
 		const m = new Map<number, HTMLElement>();
-		for (const [nr, z] of this.seiten) m.set(nr, z.el);
+		for (const [nr, z] of this.pages) m.set(nr, z.el);
 		return m;
 	}
 
-	aktuelleZoom(): number {
-		return this.zoom;
+	currentZoom(): number {
+		return this.zoomLevel;
 	}
 
-	zoomen(schritt: number): void {
-		const vorher = this.zoom;
-		this.zoom = Math.min(Math.max(this.zoom + schritt, ZOOM_MIN), ZOOM_MAX);
-		if (this.zoom === vorher) return;
-		this.stapel.style.setProperty("--ocr-pdf-zoom", String(this.zoom));
-		// Zoom aendert alle Layout-Hoehen — die Kopplung muss neu vermessen,
-		// sonst springt die Markdown-Spalte auf tote Positionen.
-		this.beiVermessungNoetig?.();
-		// Und die Rasterung muss mit: ein vorhandener Canvas wird durch `zoom`
-		// nur hochskaliert. Ohne erzwungenes Neuzeichnen ist Vergroessern reine
-		// Unschaerfe statt mehr Detail.
-		for (const z of this.seiten.values()) {
-			if (z.sichtbar) this.zeichnenAnstossen(z.nr, true);
+	zoom(step: number): void {
+		const prev = this.zoomLevel;
+		this.zoomLevel = Math.min(Math.max(this.zoomLevel + step, ZOOM_MIN), ZOOM_MAX);
+		if (this.zoomLevel === prev) return;
+		this.stack.style.setProperty("--ocr-pdf-zoom", String(this.zoomLevel));
+		this.onMeasurementNeeded?.();
+		for (const z of this.pages.values()) {
+			if (z.visible) this.triggerRender(z.nr, true);
 		}
 	}
 
-	/** Laedt ein neues Dokument oder raeumt die Spalte (null). */
-	async oeffnen(datei: TFile | null): Promise<void> {
-		const lauf = ++this.lauf;
-		// `destroy` ist asynchron. Das alte Dokument SOFORT abhaengen, sonst
-		// greifen zwei schnell aufeinanderfolgende Aufrufe (zweimal `j`) beide auf
-		// dasselbe Dokument zu und zerstoeren es doppelt.
-		const alt = this.doc;
+	async open(file: TFile | null): Promise<void> {
+		const run = ++this.run;
+		const oldDoc = this.doc;
 		this.doc = null;
-		if (alt !== null) await alt.destroy().catch(() => undefined);
-		// Ab hier gilt der Laufcheck: ohne ihn raeumt der ueberholte Aufruf gleich
-		// den Stapel des neueren weg und baut seine eigenen Seiten hinein.
-		if (lauf !== this.lauf) return;
+		if (oldDoc !== null) await oldDoc.destroy().catch(() => undefined);
+		if (run !== this.run) return;
 		this.observer?.disconnect();
 		this.observer = null;
-		this.pdfDatei = null;
-		this.seiten.clear();
-		this.stapel.empty();
-		this.warteschlange = [];
-		this.angefragt.clear();
-		this.aktiveZeichnungen = 0;
-		this.leerZustand.show();
-		this.beiFehler?.(null);
+		this.pdfFile = null;
+		this.pages.clear();
+		this.stack.empty();
+		this.queue = [];
+		this.requested.clear();
+		this.activeDraws = 0;
+		this.emptyState.show();
+		this.onError?.(null);
 
-		if (datei === null) {
-			this.beiGeladen?.(null, 0);
+		if (file === null) {
+			this.onLoaded?.(null, 0);
 			return;
 		}
-		this.pdfDatei = datei;
-		this.leerZustand.hide();
+		this.pdfFile = file;
+		this.emptyState.hide();
 		try {
-			await this.dokumentLaden(datei, lauf);
-			if (lauf !== this.lauf) return; // inzwischen gewechselt
-			this.beobachten();
-		} catch (fehler) {
-			if (lauf !== this.lauf) return;
-			console.error("OCR-Vorschau: PDF nicht ladbar", fehler);
-			this.beiFehler?.(`Das PDF „${datei.name}“ konnte nicht geladen werden.`);
+			await this.loadDocument(file, run);
+			if (run !== this.run) return;
+			this.observe();
+		} catch (err) {
+			if (run !== this.run) return;
+			console.error("OCR Preview: PDF failed to load", err);
+			this.onError?.(`The PDF "${file.name}" could not be loaded.`);
 		}
 	}
 
-	zerstoeren(): void {
-		this.lauf++;
+	destroy(): void {
+		this.run++;
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
 		this.observer?.disconnect();
@@ -186,244 +143,195 @@ export class PdfSpalte {
 		this.doc = null;
 	}
 
-	private async dokumentLaden(datei: TFile, lauf: number): Promise<void> {
+	private async loadDocument(file: TFile, run: number): Promise<void> {
 		if (typeof window.pdfjsLib === "undefined") await loadPdfJs();
 		const pdfjs = window.pdfjsLib as PdfJsLib;
-		const ladevorgang = pdfjs.getDocument({
-			url: this.app.vault.getResourcePath(datei),
-			// cMaps sind nicht optional: PDFs mit eingebetteten CID/Type0-Fonts —
-			// genau das Material hier — rendern sonst leer. Rezept aus Excalidraw.
-			// Fester Pfad in Obsidians App-Bundle: faellt er weg, bleiben CID-Fonts
-			// leer — sichtbar als weisse Seite trotz erfolgreichem Rendern.
+		const loading = pdfjs.getDocument({
+			url: this.app.vault.getResourcePath(file),
 			cMapUrl: "/lib/pdfjs/cmaps/",
 			cMapPacked: true,
 			standardFontDataUrl: "/lib/pdfjs/standard_fonts/",
 		});
-		const doc = await ladevorgang.promise;
-		// Erst nach dem Laufcheck uebernehmen — ein ueberholter Ladevorgang darf
-		// das inzwischen gueltige Dokument nicht verdraengen.
-		if (lauf !== this.lauf) {
+		const doc = await loading.promise;
+		if (run !== this.run) {
 			void doc.destroy().catch(() => undefined);
 			return;
 		}
 		this.doc = doc;
 
 		for (let nr = 1; nr <= doc.numPages; nr++) {
-			const seite = await doc.getPage(nr);
-			// Jede Seite ist ein eigener await: ohne Check im Schleifenkoerper
-			// schoebe ein ueberholter Lauf seine Seiten in den fremden Stapel.
-			if (lauf !== this.lauf) return;
-			const viewport = seite.getViewport({ scale: 1 });
-			const el = this.stapel.createDiv({ cls: "ocr-pdf-seite" });
+			const page = await doc.getPage(nr);
+			if (run !== this.run) return;
+			const viewport = page.getViewport({ scale: 1 });
+			const el = this.stack.createDiv({ cls: "ocr-pdf-seite" });
 			el.dataset["seite"] = String(nr);
-			// Seitenverhaeltnis als Custom Property: Hoehe und Breite des
-			// Platzhalters folgen daraus via aspect-ratio — kein inline-style.
 			el.style.setProperty(
 				"--ocr-seitenverhaeltnis",
 				`${viewport.width} / ${viewport.height}`,
 			);
 			const canvas = el.createEl("canvas", { cls: "ocr-pdf-canvas" });
-			this.seiten.set(nr, {
+			this.pages.set(nr, {
 				nr,
 				el,
 				canvas,
-				seite,
+				page,
 				viewport,
 				task: null,
-				gerendert: false,
-				sichtbar: false,
-				zuletztGenutzt: 0,
+				rendered: false,
+				visible: false,
+				lastUsed: 0,
 			});
 		}
-		this.beiGeladen?.(datei.name, doc.numPages);
+		this.onLoaded?.(file.name, doc.numPages);
 	}
 
-	private beobachten(): void {
+	private observe(): void {
 		const observer = new IntersectionObserver(
-			(eintraege) => {
-				for (const eintrag of eintraege) {
-					const nr = Number((eintrag.target as HTMLElement).dataset["seite"]);
-					const z = this.seiten.get(nr);
+			(entries) => {
+				for (const entry of entries) {
+					const nr = Number((entry.target as HTMLElement).dataset["seite"]);
+					const z = this.pages.get(nr);
 					if (z === undefined) continue;
-					z.sichtbar = eintrag.isIntersecting;
-					if (eintrag.isIntersecting) {
-						z.zuletztGenutzt = performance.now();
-						this.zeichnenAnstossen(nr);
+					z.visible = entry.isIntersecting;
+					if (entry.isIntersecting) {
+						z.lastUsed = performance.now();
+						this.triggerRender(nr);
 					}
 				}
 			},
 			{ root: this.scrollEl, rootMargin: "200% 0px" },
 		);
-		for (const z of this.seiten.values()) observer.observe(z.el);
+		for (const z of this.pages.values()) observer.observe(z.el);
 		this.observer = observer;
 	}
 
-	/** Entprellt, weil ein Resize-Ereignis pro Frame ankommt. */
-	private entprelltVermessen(): void {
+	private debouncedMeasure(): void {
 		if (this.resizeTimer !== null) window.clearTimeout(this.resizeTimer);
 		this.resizeTimer = window.setTimeout(() => {
 			this.resizeTimer = null;
-			this.beiVermessungNoetig?.();
-			// Breite geaendert → Pixel-Skala geaendert → sichtbare Seiten
-			// (auch bereits gerenderte) neu zeichnen.
-			for (const z of this.seiten.values()) {
-				if (z.sichtbar) this.zeichnenAnstossen(z.nr, true);
+			this.onMeasurementNeeded?.();
+			for (const z of this.pages.values()) {
+				if (z.visible) this.triggerRender(z.nr, true);
 			}
-		}, RESIZE_ENTPRELLT_MS);
+		}, RESIZE_DEBOUNCE_MS);
 	}
 
-	/** `erzwingen` zeichnet auch bereits gerenderte Seiten neu (Zoom/Resize). */
-	private zeichnenAnstossen(nr: number, erzwingen = false): void {
-		const z = this.seiten.get(nr);
-		if (z === undefined || this.angefragt.has(nr)) return;
-		if (z.gerendert && !erzwingen) return;
-		this.angefragt.add(nr);
-		this.warteschlange.push({ nr, erzwingen });
-		this.weitermachen();
+	private triggerRender(nr: number, force = false): void {
+		const z = this.pages.get(nr);
+		if (z === undefined || this.requested.has(nr)) return;
+		if (z.rendered && !force) return;
+		this.requested.add(nr);
+		this.queue.push({ nr, force });
+		this.continueRendering();
 	}
 
-	private weitermachen(): void {
-		while (this.aktiveZeichnungen < PARALLEL) {
-			const auftrag = this.warteschlange.shift();
-			if (auftrag === undefined) break;
-			this.angefragt.delete(auftrag.nr);
-			const z = this.seiten.get(auftrag.nr);
+	private continueRendering(): void {
+		while (this.activeDraws < PARALLEL) {
+			const taskItem = this.queue.shift();
+			if (taskItem === undefined) break;
+			this.requested.delete(taskItem.nr);
+			const z = this.pages.get(taskItem.nr);
 			if (z === undefined) continue;
-			if (z.gerendert && !auftrag.erzwingen) continue;
-			this.aktiveZeichnungen++;
-			// `.catch` ist Pflicht, nicht Vorsicht: `getPage` und der synchrone
-			// Wurf von `seiteZeichnen` (kein 2D-Kontext) liegen ausserhalb des
-			// try-Blocks in `zeichnen`. Mit blossem `.finally` entkaeme das als
-			// unbehandelte Rejection.
-			void this.zeichnen(z)
-				.catch((fehler: unknown) => this.seitenFehler(z, fehler))
+			if (z.rendered && !taskItem.force) continue;
+			this.activeDraws++;
+			void this.renderPage(z)
+				.catch((err: unknown) => this.pageError(z, err))
 				.finally(() => {
-					this.aktiveZeichnungen--;
-					this.weitermachen();
+					this.activeDraws--;
+					this.continueRendering();
 				});
 		}
 	}
 
-	private async zeichnen(z: Seitenzustand): Promise<void> {
+	private async renderPage(z: PageState): Promise<void> {
 		const doc = this.doc;
 		if (doc === null) return;
-		if (z.seite === null) z.seite = await doc.getPage(z.nr);
-		const seite = z.seite;
-		if (seite === null) return;
-		if (z.viewport === null) z.viewport = seite.getViewport({ scale: 1 });
-		// Eine erzwungene Wiederholung (Zoom, Resize) trifft auch Seiten, die
-		// beim letzten Mal gescheitert sind. Deren Fehleranzeige zuerst weg:
-		// sonst stapeln sich die Banner, oder eines bleibt ueber einer Seite
-		// stehen, die inzwischen laengst wieder zeichnet.
-		this.fehlerZuruecksetzen(z);
-		const skala = this.skalaFuer(z);
-		// Vor dem Neuzeichnen canceln: ohne das meldet pdf.js „Cannot use the
-		// same canvas during multiple render operations".
+		if (z.page === null) z.page = await doc.getPage(z.nr);
+		const page = z.page;
+		if (page === null) return;
+		if (z.viewport === null) z.viewport = page.getViewport({ scale: 1 });
+		this.resetError(z);
+		const scale = this.scaleFor(z);
 		z.task?.cancel();
-		const task = this.seiteZeichnen(seite, z.canvas, skala);
+		const task = this.drawPage(page, z.canvas, scale);
 		z.task = task;
 		try {
 			await task.promise;
-		} catch (fehler) {
+		} catch (err) {
 			if (z.task === task) z.task = null;
-			// cancel() wirft die RenderingCancelledException — erwartet, die
-			// Nachfolge-Zeichnung uebernimmt.
-			if (istAbbruch(fehler)) return;
-			this.seitenFehler(z, fehler);
+			if (isCancelled(err)) return;
+			this.pageError(z, err);
 			return;
 		}
 		if (z.task === task) z.task = null;
-		z.gerendert = true;
-		z.zuletztGenutzt = performance.now();
-		this.raeumen();
-		// Canvas eingewechselt — die Kopplung soll neu vermessen (Plan: die
-		// vier Ereignisse, nach denen neu vermessen wird).
-		this.beiVermessungNoetig?.();
+		z.rendered = true;
+		z.lastUsed = performance.now();
+		this.evict();
+		this.onMeasurementNeeded?.();
 	}
 
-	/** Der eigentliche pdf.js-Renderaufruf. Einzige Stelle, an der die
-	 *  Render-Signatur des Forks steht. */
-	private seiteZeichnen(
-		seite: PdfSeite,
+	private drawPage(
+		page: PdfSeite,
 		canvas: HTMLCanvasElement,
-		skala: number,
+		scale: number,
 	): PdfRenderTask {
-		const viewport = seite.getViewport({ scale: skala });
+		const viewport = page.getViewport({ scale });
 		canvas.width = Math.floor(viewport.width);
 		canvas.height = Math.floor(viewport.height);
-		const kontext = canvas.getContext("2d");
-		if (kontext === null) {
-			throw new Error("Canvas-Kontext nicht verfügbar");
+		const ctx = canvas.getContext("2d");
+		if (ctx === null) {
+			throw new Error("Canvas context not available");
 		}
-		return seite.render({ canvasContext: kontext, viewport });
+		return page.render({ canvasContext: ctx, viewport });
 	}
 
-	/** Pixel-Skala: Seitenbreite in CSS-Pixeln gefuellt, scharf fuer den
-	 *  Bildschirm, gedeckelt durch die Speicherbremse aus den Einstellungen.
-	 *
-	 *  `zoom` liegt auf `.ocr-pdf-stapel`, also auf dem ELTERNelement. Die
-	 *  Seiten-Container messen sich darin in lokalen, unskalierten Koordinaten —
-	 *  ihre tatsaechliche Groesse auf dem Schirm ist `clientWidth * zoom`. Genau
-	 *  dieser Faktor muss in die Rasterung, sonst zeigt „200 %" dieselbe
-	 *  Pixelzahl, nur groesser gezogen. */
-	private skalaFuer(z: Seitenzustand): number {
+	private scaleFor(z: PageState): number {
 		const viewport = z.viewport;
 		if (viewport === null) return 1;
-		const breite = Math.max(z.el.clientWidth * this.zoom, 1);
+		const width = Math.max(z.el.clientWidth * this.zoomLevel, 1);
 		return Math.min(
-			(breite / viewport.width) * window.devicePixelRatio,
+			(width / viewport.width) * window.devicePixelRatio,
 			this.zoomMax(),
 		);
 	}
 
-	/** Fehlerzustand einer Seite loeschen — vor jedem Zeichenversuch. */
-	private fehlerZuruecksetzen(z: Seitenzustand): void {
+	private resetError(z: PageState): void {
 		z.el.removeClass("ocr-pdf-seite-fehler");
 		for (const banner of z.el.querySelectorAll(".ocr-pdf-seitenfehler")) {
 			banner.remove();
 		}
 	}
 
-	private seitenFehler(z: Seitenzustand, fehler: unknown): void {
-		console.error("OCR-Vorschau: Seite nicht darstellbar", z.nr, fehler);
-		this.fehlerZuruecksetzen(z);
-		// Als gerendert markieren, damit der Beobachter nicht in eine
-		// Endlosschleife laeuft; der Weg bleibt der PDF-Viewer von Obsidian.
-		z.gerendert = true;
+	private pageError(z: PageState, err: unknown): void {
+		console.error("OCR Preview: Page failed to render", z.nr, err);
+		this.resetError(z);
+		z.rendered = true;
 		z.el.addClass("ocr-pdf-seite-fehler");
 		z.el.createDiv({
 			cls: "ocr-pdf-seitenfehler",
-			text: `Seite ${z.nr}: nicht darstellbar. Im PDF-Viewer öffnen?`,
+			text: `Page ${z.nr}: display failed. Open in PDF viewer?`,
 		});
 	}
 
-	/** LRU-Raeumung: mehr als MAX_CANVAS gepufferte Seiten kosten ~4,5 MB
-	 *  pro Stueck. Der Canvas-Puffer wird freigegeben, das Element bleibt —
-	 *  sonst muesste der DOM-Baum (und damit die Kopplung) umgebaut werden. */
-	private raeumen(): void {
-		const gepuffert = [...this.seiten.values()].filter(
-			(z) => z.gerendert && z.task === null,
+	private evict(): void {
+		const buffered = [...this.pages.values()].filter(
+			(z) => z.rendered && z.task === null,
 		);
-		if (gepuffert.length <= MAX_CANVAS) return;
-		// Sichtbare Seiten sind nie Raeumkandidaten. Der IntersectionObserver
-		// meldet sich erst bei der naechsten Sichtbarkeitsaenderung wieder — eine
-		// geraeumte sichtbare Seite bliebe also leer stehen, bis der Nutzer
-		// wegscrollt und zurueckkommt.
-		const kandidaten = gepuffert.filter((z) => !z.sichtbar);
-		kandidaten.sort((a, b) => a.zuletztGenutzt - b.zuletztGenutzt);
-		for (const z of kandidaten.slice(0, gepuffert.length - MAX_CANVAS)) {
-			z.gerendert = false;
+		if (buffered.length <= MAX_CANVAS) return;
+		const candidates = buffered.filter((z) => !z.visible);
+		candidates.sort((a, b) => a.lastUsed - b.lastUsed);
+		for (const z of candidates.slice(0, buffered.length - MAX_CANVAS)) {
+			z.rendered = false;
 			z.canvas.width = 0;
 			z.canvas.height = 0;
-			z.seite?.cleanup();
+			z.page?.cleanup();
 		}
 	}
 }
 
-/** Die Abbruch-Exception von pdf.js: `cancel()` ruft sie absichtlich hervor. */
-function istAbbruch(fehler: unknown): boolean {
-	if (fehler instanceof Error && fehler.name === "RenderingCancelledException") {
+function isCancelled(err: unknown): boolean {
+	if (err instanceof Error && err.name === "RenderingCancelledException") {
 		return true;
 	}
-	return String(fehler).includes("RenderingCancelledException");
+	return String(err).includes("RenderingCancelledException");
 }

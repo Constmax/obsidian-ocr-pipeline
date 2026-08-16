@@ -16,7 +16,7 @@
 # ============================================================
 
 # ── Defaults ────────────────────────────────────────────────
-DEFAULT_DPI=300          # Tesseract sweet spot; was 200 — too low for Kleindruck
+DEFAULT_DPI=300          # Tesseract sweet spot; was 200 — too low for fine print
 DEFAULT_JOBS=2
 FAST_DPI=200             # --fast floor: never below 200 with tesseract
 FAST_JOBS=1
@@ -53,7 +53,7 @@ check_deps() {
         command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
     done
     if [ ${#missing[@]} -gt 0 ]; then
-        echo "❌ Fehlende Tools: ${missing[*]}" >&2
+        echo "❌ Missing tools: ${missing[*]}" >&2
         return 1
     fi
     return 0
@@ -80,21 +80,21 @@ resolve_engine() {
                 USE_APPLE=true
                 ENGINE_DESC="Apple Vision (auto)"
             else
-                ENGINE_DESC="Tesseract (auto-Fallback)"
+                ENGINE_DESC="Tesseract (auto-fallback)"
             fi ;;
         apple)
             if [ "$APPLE_AVAILABLE" = true ]; then
                 USE_APPLE=true
-                ENGINE_DESC="Apple Vision (manuell)"
+                ENGINE_DESC="Apple Vision (manual)"
             else
-                echo "❌ Apple Vision Plugin nicht installiert." >&2
-                echo "   Installieren: pip install ocrmypdf-appleocr" >&2
+                echo "❌ Apple Vision plugin not installed." >&2
+                echo "   Install: pip install ocrmypdf-appleocr" >&2
                 return 1
             fi ;;
         tesseract)
-            ENGINE_DESC="Tesseract (manuell)" ;;
+            ENGINE_DESC="Tesseract (manual)" ;;
         *)
-            echo "❌ --engine muss 'auto', 'apple' oder 'tesseract' sein" >&2
+            echo "❌ --engine must be 'auto', 'apple', or 'tesseract'" >&2
             return 1 ;;
     esac
     return 0
@@ -124,7 +124,7 @@ detect_safe_jobs() {
     local ram_gb
     ram_gb=$(sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}')
     if [ -z "$ram_gb" ] || [ "$ram_gb" -le 8 ]; then
-        JOBS=1    # 8 GB: OCR seriell — jedes vermeidet Swap-Tod
+        JOBS=1    # 8 GB: serial OCR — avoids swap thrashing
     elif [ "$ram_gb" -le 16 ]; then
         JOBS=2
     else
@@ -158,7 +158,7 @@ fix_mediabox() {
         return 0
     fi
 
-    echo "   📐 MediaBox-Fix: ${w}×${h} pts → A4 (595×842 pts)"
+    echo "   📐 MediaBox fix: ${w}×${h} pts → A4 (595×842 pts)"
 
     gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.7 \
        -dNOPAUSE -dQUIET -dBATCH \
@@ -168,7 +168,7 @@ fix_mediabox() {
        "$input" 2>/dev/null
 
     if [ ! -f "$output" ]; then
-        echo "   ⚠️  MediaBox-Fix fehlgeschlagen, fahre mit Original fort"
+        echo "   ⚠️  MediaBox fix failed, continuing with original"
         cp "$input" "$output"
     fi
     return 0
@@ -205,10 +205,10 @@ gs_downscale() {
 
     if [ -f "$output" ]; then
         size_after=$(du -h "$output" 2>/dev/null | cut -f1)
-        echo "   🔽 Downscaling auf $dpi DPI ($DOWNSAMPLE_TYPE): $size_before → $size_after"
+        echo "   🔽 Downscaling to $dpi DPI ($DOWNSAMPLE_TYPE): $size_before → $size_after"
         return 0
     else
-        echo "   ⚠️  Downscaling fehlgeschlagen, fahre mit Original fort"
+        echo "   ⚠️  Downscaling failed, continuing with original"
         cp "$input" "$output"
         return 0  # non-fatal
     fi
@@ -236,29 +236,29 @@ split_two_column_pdf() {
             mode_flag="--all"
         fi
         # Guarded: a failing split must not kill the script under `set -e` —
-        # otherwise the "Fallback auf gs" below is unreachable dead code.
+        # otherwise the fallback to gs below is unreachable dead code.
         if ! "$PYTHON_BIN" "$SCRIPT_DIR/column_tools.py" split "$input" "$output" \
             --map "$SPLIT_MAP" "$mode_flag" 2>&1; then
-            echo "   ⚠️  column_tools.py split fehlgeschlagen" >&2
+            echo "   ⚠️  column_tools.py split failed" >&2
         fi
         if [ -f "$output" ]; then
             return 0
         fi
-        echo "   ⚠️  column_tools.py split lieferte kein Ergebnis, Fallback auf gs" >&2
+        echo "   ⚠️  column_tools.py split yielded no result, fallback to gs" >&2
     fi
 
     # ── Fallback: legacy Ghostscript loop ──
     local total_pages tmpdir width height half_width page_num
     total_pages=$(pdfinfo "$input" 2>/dev/null | awk '/^Pages:/ {print $2}')
     if [ -z "$total_pages" ] || [ "$total_pages" -lt 1 ]; then
-        echo "   ⚠️  Column-Split: Kann Seitenzahl nicht ermitteln" >&2
+        echo "   ⚠️  Column split: Cannot determine page count" >&2
         cp "$input" "$output"; return 0
     fi
     read -r width height < <(pdfinfo "$input" 2>/dev/null | awk '/^Page size:/ {
         gsub(/pts/, "", $3); gsub(/pts/, "", $5); print int($3), int($5)
     }')
     if [ -z "$width" ] || [ -z "$height" ]; then
-        echo "   ⚠️  Column-Split: Kann Seitenmaße nicht ermitteln" >&2
+        echo "   ⚠️  Column split: Cannot determine page dimensions" >&2
         cp "$input" "$output"; return 0
     fi
     half_width=$((width / 2))
@@ -284,7 +284,7 @@ split_two_column_pdf() {
     qpdf --empty --pages "${page_list[@]}" -- "$output" 2>/dev/null
     rm -rf "$tmpdir"
     if [ ! -f "$output" ]; then
-        echo "   ⚠️  Column-Split fehlgeschlagen, fahre mit Original fort"
+        echo "   ⚠️  Column split failed, continuing with original"
         cp "$input" "$output"
     fi
     SPLIT_MAP=""  # no map in fallback mode
@@ -298,7 +298,7 @@ merge_split_pdf() {
     local input="$1" output="$2"
 
     if [ "$KEEP_SPLIT" = true ]; then
-        echo "   ⏭️  Re-Merge übersprungen (--keep-split)"
+        echo "   ⏭️  Re-merge skipped (--keep-split)"
         [ "$input" != "$output" ] && cp "$input" "$output"
         return 0
     fi
@@ -313,14 +313,14 @@ merge_split_pdf() {
         # kill the caller under `set -e` — fall through to the warning below.
         if ! "$PYTHON_BIN" "$SCRIPT_DIR/column_tools.py" merge "$input" "$output" \
             --map "$SPLIT_MAP" 2>&1; then
-            echo "   ⚠️  column_tools.py merge fehlgeschlagen" >&2
+            echo "   ⚠️  column_tools.py merge failed" >&2
         fi
         if [ -f "$output" ]; then
             return 0
         fi
     fi
 
-    echo "   ⚠️  Merge nicht möglich — behalte gesplittete Version" >&2
+    echo "   ⚠️  Merge not possible — keeping split version" >&2
     [ "$input" != "$output" ] && cp "$input" "$output"
     return 0
 }
@@ -386,7 +386,7 @@ build_ocr_args() {
 # Runs ocrmypdf with the given arguments.
 # The array is passed by name for bash 3.2 compatibility.
 # --max-image-mpixels is baked into the args by build_ocr_args — generous for
-# edge cases; after fix_mediabox, A4@300 DPI ≈ 8.7 MP/Seite.
+# edge cases; after fix_mediabox, A4@300 DPI ≈ 8.7 MP/page.
 # Returns 0 on success, non-zero on failure.
 run_ocr() {
     local input="$1" output="$2" array_name="$3"
@@ -421,7 +421,7 @@ quality_check() {
     pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/^Pages:/ {print $2}')
 
     if [ -z "$pages" ] || [ "$pages" -eq 0 ]; then
-        echo "   🔍 Quality: Kann Seitenzahl nicht ermitteln → als OK gewertet"
+        echo "   🔍 Quality: Cannot determine page count → evaluated as OK"
         return 0
     fi
 
@@ -429,15 +429,15 @@ quality_check() {
 
     # ── Metric 1: raw character density ──
     if [ "$chars_per_page" -lt "$threshold" ]; then
-        echo "   🗑️  Quality-FAIL: Nur $chars_per_page Zeichen/Seite (min: $threshold)"
+        echo "   🗑️  Quality-FAIL: Only $chars_per_page chars/page (min: $threshold)"
         return 1
     fi
-    echo "   📊 Quality: $chars_per_page Zeichen/Seite ✓"
+    echo "   📊 Quality: $chars_per_page chars/page ✓"
 
     # ── Metric 1.5: Split-specific text loss check ──
     if [ -n "$SPLIT_MAP" ] && [ -f "$SPLIT_MAP" ] && [ -n "$PYTHON_BIN" ] && [ -f "$SCRIPT_DIR/column_tools.py" ]; then
         if ! "$PYTHON_BIN" "$SCRIPT_DIR/column_tools.py" verify "$pdf" --map "$SPLIT_MAP"; then
-            echo "   🗑️  Quality-FAIL: Einseitiger Textverlust auf gesplitteter Seite erkannt"
+            echo "   🗑️  Quality-FAIL: One-sided text loss on split page detected"
             return 1
         fi
     fi
@@ -496,23 +496,23 @@ print(total, isolated, mixed_case, digit_alpha)
     digit_r=$(python3 -c "print(round($digit_alpha / $total_words, 3))" 2>/dev/null || echo "0")
     garbage_score=$(python3 -c "print(round(($isolated + $mixed_case * 3 + $digit_alpha * 2) / $total_words, 3))" 2>/dev/null || echo "0")
 
-    echo "   🔬 Garbage-Score: $garbage_score (iso=$isolated_r mixed=$mixed_r digit=$digit_r | $total_words Wörter)"
+    echo "   🔬 Garbage Score: $garbage_score (iso=$isolated_r mixed=$mixed_r digit=$digit_r | $total_words words)"
 
     # Threshold: garbage_score > 0.40 → likely corrupted
     # Set at 0.40 (not lower) to tolerate minor OCR errors in older Hemmer scans.
     # iso-ratio > 0.40 is still caught below as column-mixing (separate check).
     if [ "$(python3 -c "print(1 if $garbage_score > 0.40 else 0)")" = "1" ]; then
-        echo "   🗑️  Quality-FAIL: Garbage-Score $garbage_score > 0.40"
+        echo "   🗑️  Quality-FAIL: Garbage score $garbage_score > 0.40"
         return 1
     fi
 
     # Special case: extremely high isolated-char ratio (>40 %) → guaranteed column mixing
     if [ "$(python3 -c "print(1 if $isolated_r > 0.40 else 0)")" = "1" ]; then
-        echo "   🗑️  Quality-FAIL: Spaltenvermischung erkannt (iso=$isolated_r)"
+        echo "   🗑️  Quality-FAIL: Column mixing detected (iso=$isolated_r)"
         return 1
     fi
 
-    echo "   ✅ Quality-Gate bestanden"
+    echo "   ✅ Quality gate passed"
     return 0
 }
 
@@ -540,13 +540,13 @@ ocr_with_retry() {
     fi
 
     # ── Attempt 1: primary engine ──
-    echo "   🔤 OCR (Versuch 1): $ENGINE_DESC"
+    echo "   🔤 OCR (attempt 1): $ENGINE_DESC"
 
     local work_pdf="$input"
     local ocr_tmp="$scratch_dir/ocr_retry_tmp_qc.pdf"
 
     if ! run_ocr "$work_pdf" "$ocr_tmp" "$args_name"; then
-        echo "   ❌ OCR (Versuch 1) fehlgeschlagen"
+        echo "   ❌ OCR (attempt 1) failed"
         rm -f "$ocr_tmp"
     elif quality_check "$ocr_tmp"; then
         mv "$ocr_tmp" "$output"
@@ -556,7 +556,7 @@ ocr_with_retry() {
 
     # ── Attempt 2: try --split-columns (if tesseract and not already split) ──
     if [ "$USE_APPLE" = false ] && [ "$SPLIT_COLUMNS" = false ] && [ "$no_split" != "true" ]; then
-        echo "   🔄 Retry mit --split-columns..."
+        echo "   🔄 Retry with --split-columns..."
         local split_pdf="$scratch_dir/ocr_retry_split.pdf"
         split_two_column_pdf "$input" "$split_pdf"
 
@@ -565,7 +565,7 @@ ocr_with_retry() {
         # below, and deskew was already done pre-split) without assuming which other flags the caller built in.
         local split_args=() _orig_arg
         eval "_orig_args=(\"\${${args_name}[@]}\")"
-        # _orig_args wurde per eval-String belegt (Pass-by-Name, bash 3.2).
+        # _orig_args was assigned via eval string (pass-by-name, bash 3.2).
         # shellcheck disable=SC2154
         for _orig_arg in "${_orig_args[@]}"; do
             [ "$_orig_arg" = "--rotate-pages" ] && continue
@@ -574,7 +574,7 @@ ocr_with_retry() {
         done
 
         if ! run_ocr "$split_pdf" "$ocr_tmp" split_args; then
-            echo "   ❌ Split-OCR fehlgeschlagen"
+            echo "   ❌ Split OCR failed"
             rm -f "$ocr_tmp"
         elif quality_check "$ocr_tmp"; then
             # Reassemble the split halves back into original-page format
@@ -597,12 +597,12 @@ ocr_with_retry() {
 
     # ── Attempt 3: switch engine ──
     if [ "$alt_engine" != "$ENGINE_DESC" ] && [ -n "$alt_engine" ]; then
-        echo "   🔄 Retry mit alternativer Engine: $alt_engine"
+        echo "   🔄 Retry with alternative engine: $alt_engine"
 
         local saved_apple=$USE_APPLE saved_desc=$ENGINE_DESC
         if ! resolve_engine "$alt_engine"; then
             USE_APPLE=$saved_apple; ENGINE_DESC=$saved_desc
-            echo "   ❌ Alternative Engine nicht verfügbar"
+            echo "   ❌ Alternative engine not available"
             [ "$own_scratch_dir" = true ] && rm -rf "$scratch_dir"
             return 1
         fi
@@ -610,9 +610,9 @@ ocr_with_retry() {
         # Rebuild args with new engine — always use --force-ocr on retry
         # since the input may have residual text from a prior attempt.
         # Preserve split column flags if needed.
-        # retry_args wird per Namen an build_ocr_args/run_ocr gereicht
-        # (Pass-by-Name, bash 3.2) — die Nutzung sieht shellcheck in
-        # build_ocr_args nicht.
+        # retry_args is passed by name to build_ocr_args/run_ocr
+        # (pass-by-name, bash 3.2) — usage is not seen by shellcheck in
+        # build_ocr_args.
         # shellcheck disable=SC2034
         retry_args=()
         local retry_flags=(--force-ocr --clean)
@@ -622,7 +622,7 @@ ocr_with_retry() {
         build_ocr_args retry_args "${retry_flags[@]}"
 
         if ! run_ocr "$input" "$ocr_tmp" retry_args; then
-            echo "   ❌ OCR (Versuch 3) fehlgeschlagen"
+            echo "   ❌ OCR (attempt 3) failed"
             rm -f "$ocr_tmp"
         elif quality_check "$ocr_tmp"; then
             mv "$ocr_tmp" "$output"
@@ -633,7 +633,7 @@ ocr_with_retry() {
         USE_APPLE=$saved_apple; ENGINE_DESC=$saved_desc
     fi
 
-    echo "   ⚠️  Alle OCR-Versuche erschöpft — verwende best-effort Ergebnis"
+    echo "   ⚠️  All OCR attempts exhausted — using best-effort result"
     # Save last attempt if any file exists, even if quality check failed
     if [ -f "$ocr_tmp" ]; then
         mv "$ocr_tmp" "$output"
@@ -653,12 +653,12 @@ print_summary() {
     local success="$1" fail="$2" output_dir="$3"
     echo ""
     echo "═══════════════════════════════════════════"
-    echo "✅ Batch abgeschlossen"
+    echo "✅ Batch complete"
     echo "═══════════════════════════════════════════"
     echo "🧠 Engine:      $ENGINE_DESC"
-    echo "📊 Erfolgreich: $success"
-    [ "$fail" -gt 0 ] && echo "❌ Fehlgeschlagen: $fail"
-    echo "📁 Ausgabe:     $output_dir"
+    echo "📊 Successful: $success"
+    [ "$fail" -gt 0 ] && echo "❌ Failed: $fail"
+    echo "📁 Output:     $output_dir"
 }
 
 # ════════════════════════════════════════════════════════════
@@ -671,7 +671,7 @@ print_summary() {
 lib_init() {
     local engine="${1:-auto}" fast="${2:-false}"
 
-    echo "🔍 Prüfe Abhängigkeiten..."
+    echo "🔍 Checking dependencies..."
     check_deps ocrmypdf qpdf gs pdftotext || exit 1
 
     detect_apple_ocr
@@ -686,7 +686,7 @@ lib_init() {
         fi
     done
     if [ -z "$PYTHON_BIN" ]; then
-        echo "   ⚠️  pikepdf nicht gefunden — Split/Merge nur im Fallback-Modus"
+        echo "   ⚠️  pikepdf not found — split/merge in fallback mode only"
     fi
 
     if ! resolve_engine "$engine"; then
@@ -699,7 +699,7 @@ lib_init() {
         [ "$JOBS" = "$DEFAULT_JOBS" ] && JOBS=$FAST_JOBS
     fi
 
-    # RAM-bewusster Default für JOBS (nur wenn Nutzer kein --jobs gesetzt hat)
+    # RAM-aware default for JOBS (only if user didn't set --jobs)
     if [ "$JOBS" = "$DEFAULT_JOBS" ]; then
         detect_safe_jobs
     fi
@@ -713,10 +713,11 @@ lib_init() {
     # is false, which becomes lib_init's own return status and kills the
     # calling script right here (silently) whenever the flag isn't set.
     if [ "$fast" = "true" ]; then
-        echo "   🏃 --fast aktiv"
+        echo "   🏃 --fast active"
     fi
     if [ "$SPLIT_COLUMNS" = true ]; then
-        echo "   📐 --split-columns aktiv (Split + Re-Merge)"
+        echo "   📐 --split-columns active (split + re-merge)"
     fi
     return 0
 }
+

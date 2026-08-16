@@ -4,13 +4,13 @@
 #
 # Runs the full pdf-combine pipeline on a copy of the source file and
 # overwrites the original ONLY if both hold:
-#   1. Seitenzahl bleibt exakt erhalten (kein stiller Halbseiten-Bug)
-#   2. jede Seite hat mindestens --min-chars Zeichen (B5-Gate — ein
-#      dokumentweiter Zeichen-Durchschnitt kann eine einzelne komplett
-#      textlose Seite verstecken, siehe BUGREPORT-2026-07-06-split-merge.md)
+#   1. Page count is preserved exactly (no silent half-page bug)
+#   2. Every page has at least --min-chars characters (B5 gate — a
+#      document-wide character average can hide a single completely
+#      textless page, see BUGREPORT-2026-07-06-split-merge.md)
 #
-# Bei Fehlschlag bleibt die Quelldatei unverändert; das fehlerhafte
-# Ergebnis wird zur Inspektion daneben abgelegt (<name>_FAILED_*.pdf).
+# On failure, the source file remains unchanged; the failed
+# result is saved alongside for inspection (<name>_FAILED_*.pdf).
 # ============================================================
 
 set -euo pipefail
@@ -24,22 +24,22 @@ fi
 
 if [ $# -lt 1 ]; then
     cat <<EOF
-Usage: $(basename "$0") <raw-pdf-datei> [pdf-combine-Optionen] [--min-chars N] [--allow-pages LISTE]
+Usage: $(basename "$0") <raw-pdf-file> [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
 
-Verarbeitet eine bestehende raw/-PDF-Datei mit der aktuellen Pipeline neu
-und überschreibt sie NUR nach bestandener B5-Verifikation:
-   1. Seitenzahl exakt erhalten
-   2. jede Seite >= --min-chars Zeichen (Default: 50)
+Re-processes an existing raw/ PDF file using the current pipeline
+and overwrites it ONLY after passing B5 verification:
+   1. Page count preserved exactly
+   2. Every page >= --min-chars characters (Default: 50)
 
-Optionen:
-   --min-chars N        Mindest-Zeichen pro Seite (Default: 50)
-   --allow-pages LISTE  Seiten von Check 2 ausnehmen, z.B. "1,5-7"
-                        (bekannte Deckblatt-/Grafik-Seiten ohne Fließtext)
+Options:
+   --min-chars N        Minimum characters per page (Default: 50)
+   --allow-pages LIST   Exempt pages from check 2, e.g. "1,5-7"
+                        (known cover/diagram pages without body text)
 
-Alle anderen Flags werden 1:1 an pdf-combine durchgereicht
-(z.B. --engine, --split-columns, --force-ocr, --dpi).
+All other flags are passed through 1:1 to pdf-combine
+(e.g. --engine, --split-columns, --force-ocr, --dpi).
 
-Beispiel:
+Example:
    $(basename "$0") "raw/StR/Rep-Faelle/strafrecht-fall-01.pdf" --force-ocr --split-columns
 EOF
     exit 1
@@ -47,7 +47,7 @@ fi
 
 SRC="$1"; shift
 if [ ! -f "$SRC" ]; then
-    echo "❌ Datei nicht gefunden: $SRC"; exit 1
+    echo "❌ File not found: $SRC"; exit 1
 fi
 SRC_ABS="$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")"
 
@@ -65,26 +65,26 @@ done
 BASE="$(basename "$SRC_ABS" .pdf)"
 ORIG_PAGES=$(pdfinfo "$SRC_ABS" 2>/dev/null | awk '/^Pages:/ {print $2}')
 if [ -z "$ORIG_PAGES" ]; then
-    echo "❌ Kann Seitenzahl von $SRC_ABS nicht ermitteln"; exit 1
+    echo "❌ Cannot determine page count of $SRC_ABS"; exit 1
 fi
 
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 cp "$SRC_ABS" "$WORK_DIR/"
-# Output-Name bewusst != Input-Basisname: pdf-combine schließt sonst die
-# Quelldatei selbst aus der PDF-Liste aus (Kollisions-Guard gegen
-# Endlosschleifen bei Re-Runs) und meldet "Keine PDFs gefunden".
+# Output name intentionally != input base name: otherwise pdf-combine excludes
+# the source file itself from the PDF list (collision guard against
+# infinite loops during re-runs) and reports "No PDFs found".
 OUTNAME="${BASE}_reprocessed"
 
-echo "🔄 Reprocessing: $SRC_ABS ($ORIG_PAGES Seiten)"
+echo "🔄 Reprocessing: $SRC_ABS ($ORIG_PAGES pages)"
 if ! "$PDF_COMBINE" "$WORK_DIR" "$OUTNAME" "${COMBINE_ARGS[@]}"; then
-    echo "❌ pdf-combine fehlgeschlagen — $SRC_ABS bleibt unverändert"
+    echo "❌ pdf-combine failed — $SRC_ABS remains unchanged"
     exit 1
 fi
 
 OUT="$WORK_DIR/${OUTNAME}.pdf"
 if [ ! -f "$OUT" ]; then
-    echo "❌ Kein Output erzeugt — $SRC_ABS bleibt unverändert"
+    echo "❌ No output generated — $SRC_ABS remains unchanged"
     exit 1
 fi
 
@@ -92,12 +92,12 @@ NEW_PAGES=$(pdfinfo "$OUT" 2>/dev/null | awk '/^Pages:/ {print $2}')
 if [ "$NEW_PAGES" != "$ORIG_PAGES" ]; then
     FAILED_OUT="${SRC_ABS%.pdf}_FAILED_pagecount.pdf"
     cp "$OUT" "$FAILED_OUT"
-    echo "❌ Seitenzahl-Mismatch (Original: $ORIG_PAGES, Neu: $NEW_PAGES) — $SRC_ABS bleibt unverändert"
-    echo "   Ergebnis zur Prüfung abgelegt: $FAILED_OUT (danach löschen)"
+    echo "❌ Page count mismatch (Original: $ORIG_PAGES, New: $NEW_PAGES) — $SRC_ABS remains unchanged"
+    echo "   Result saved for inspection: $FAILED_OUT (delete afterwards)"
     exit 1
 fi
 
-echo "📋 B5-Gate: prüfe Zeichen/Seite (min: $MIN_CHARS)..."
+echo "📋 B5 Gate: checking chars/page (min: $MIN_CHARS)..."
 PYTHON_BIN=""
 for candidate in "${VENV_ROOT:-$HOME/.venvs}/ocrmypdf/bin/python3" "python3"; do
     if "$candidate" -c "import pikepdf" 2>/dev/null; then
@@ -107,10 +107,10 @@ for candidate in "${VENV_ROOT:-$HOME/.venvs}/ocrmypdf/bin/python3" "python3"; do
 done
 
 if [ -z "$PYTHON_BIN" ]; then
-    echo "⚠️  pikepdf nicht gefunden — B5-Gate kann nicht geprüft werden, breche sicherheitshalber ab"
+    echo "⚠️  pikepdf not found — cannot check B5 gate, aborting for safety"
     FAILED_OUT="${SRC_ABS%.pdf}_FAILED_noverify.pdf"
     cp "$OUT" "$FAILED_OUT"
-    echo "   Ergebnis zur manuellen Prüfung abgelegt: $FAILED_OUT"
+    echo "   Result saved for manual inspection: $FAILED_OUT"
     exit 1
 fi
 
@@ -122,10 +122,11 @@ fi
 if ! "$PYTHON_BIN" "$SCRIPT_DIR/column_tools.py" "${VERIFY_ARGS[@]}"; then
     FAILED_OUT="${SRC_ABS%.pdf}_FAILED_pages.pdf"
     cp "$OUT" "$FAILED_OUT"
-    echo "❌ B5-Gate fehlgeschlagen (siehe Seiten oben) — $SRC_ABS bleibt unverändert"
-    echo "   Ergebnis zur Prüfung abgelegt: $FAILED_OUT (danach löschen, oder --allow-pages nachreichen)"
+    echo "❌ B5 gate failed (see pages above) — $SRC_ABS remains unchanged"
+    echo "   Result saved for inspection: $FAILED_OUT (delete afterwards, or provide --allow-pages)"
     exit 1
 fi
 
 cp "$OUT" "$SRC_ABS"
-echo "✅ Überschrieben: $SRC_ABS ($NEW_PAGES Seiten, B5-Gate bestanden)"
+echo "✅ Overwritten: $SRC_ABS ($NEW_PAGES pages, B5 gate passed)"
+

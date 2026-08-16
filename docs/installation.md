@@ -1,116 +1,115 @@
 # Installation & Troubleshooting
 
-Die Einrichtung läuft über das Einmal-Setup — `./setup.sh` im Repo-Root
-(dokumentiert in der [README](../README.md)). Diese Seite ist die
-Fehlersuche-Seite: was zu tun ist, wenn das Setup abbricht, und was zu tun
-ist, wenn danach etwas nicht funktioniert.
+Setup runs via the one-time setup — `./setup.sh` in repo root
+(documented in [README.md](../README.md)). This page is the
+troubleshooting guide: what to do if setup fails, and what to do
+if something fails afterwards.
 
-## Wenn `setup.sh` bei Schritt X abbricht
+## If `setup.sh` Fails at Step X
 
-Die Abschnitte folgen den Blöcken des Skripts.
+The sections correspond to the script's execution blocks.
 
-### ① Xcode-CLT / Homebrew
+### ① Xcode CLT / Homebrew
 
-- „Xcode CLT fehlen …" → `xcode-select --install` ausführen und den
-  macOS-Dialog bestätigen, danach `./setup.sh` erneut starten.
-- „Homebrew fehlt …" → das Skript installiert Homebrew selbst (offizielles
-  Installer-Skript). Das `eval` daraus wirkt nur im laufenden Prozess —
-  `setup.sh` trägt das `brew shellenv` deshalb in `~/.zprofile` nach.
-  Prüfen: `command -v brew` in einem **neuen** Terminal.
-- Schlägt die Installation fehl: Fehlermeldung des Installer-Skripts ansehen
-  (meist Netz oder fehlende Xcode-CLT, siehe oben).
+- "Xcode CLT missing …" → Run `xcode-select --install`, confirm the
+  macOS dialog, then re-run `./setup.sh`.
+- "Homebrew missing …" → The script installs Homebrew itself (official
+  installer script). The `eval` only affects the running process —
+  `setup.sh` therefore appends `brew shellenv` to `~/.zprofile`.
+  Check: `command -v brew` in a **new** terminal.
+- If installation fails: Check the installer script's error output
+  (usually network issues or missing Xcode CLT, see above).
 
-### ② `brew bundle` schlägt fehl
+### ② `brew bundle` Fails
 
-- Von Hand wiederholen: `brew bundle --file=Brewfile` — dort steht die
-  eigentliche Fehlermeldung.
-- `ocrmypdf` steht bewusst **nicht** im Brewfile (pyexpat, siehe unten) —
-  nicht nachinstallieren; es kommt aus dem venv-Schritt ③.
+- Retry manually: `brew bundle --file=Brewfile` — the detailed error message will appear there.
+- `ocrmypdf` is intentionally **not** in the Brewfile (pyexpat issue, see below) —
+  do not install via brew; it is installed in step ③ via venv.
 
 ### ③ uv / Python 3.12 / pyexpat
 
-- „kein Python 3.12 gefunden (uv python install 3.12)" → offline? Von Hand
-  `uv python install 3.12` — stderr zeigt den Grund.
-- „Python … hat ein kaputtes pyexpat" → die Abhilfe aus dem Skript:
+- "no Python 3.12 found (uv python install 3.12)" → Offline? Run manually:
+  `uv python install 3.12` — stderr shows the cause.
+- "Python … has a broken pyexpat" → Use the script's recommended workaround:
   ```bash
   uv python uninstall 3.12 && uv python install --force 3.12
   ```
-  danach `./setup.sh` erneut.
+  then re-run `./setup.sh`.
 
 ### ④ PATH (~/bin)
 
-- „ergänzt in ~/.zshrc" → in **neuen** Terminals ist `~/bin` im PATH; offene
-  Terminals sehen die Änderung nicht.
-- `command not found: pdf-auto` (nach dem Setup) → neues Terminal öffnen
-  (`.zshrc`/`.zprofile` werden nur beim Start gelesen).
+- "added to ~/.zshrc" → `~/bin` is in PATH in **new** terminals; already open
+  terminals do not reflect the change.
+- `command not found: pdf-auto` (after setup) → Open a new terminal
+  (`.zshrc`/`.zprofile` are only read at shell startup).
 
-### ⑤ `~/bin`-Links
+### ⑤ `~/bin` Symlinks
 
-- Bestehende Verknüpfungen, die woandershin zeigten, werden vor dem Ersetzen
-  nach `.setup-bin-backup-<datum>.txt` im Repo gesichert. Wiederherstellung
-  per `ln -sfn <ziel> ~/bin/<name>`.
-- „FEHLT   pdf-auto …" in der Verifikation → Schritt ④ prüfen.
+- Existing symlinks pointing elsewhere are backed up to
+  `.setup-bin-backup-<timestamp>.txt` in the repo before being replaced. Restore via
+  `ln -sfn <target> ~/bin/<name>`.
+- "MISSING pdf-auto …" in verification → Check step ④.
 
-### ⑥ MLX (Stufe 2) auf Intel-Macs
+### ⑥ MLX (Stage 2) on Intel Macs
 
-- Kein Fehler: Stufe 2 braucht Apple Silicon. Das Setup warnt („bleibt
-  offen") und endet mit Exit 0; Stufe 1 + Plugin funktionieren trotzdem.
+- Not an error: Stage 2 requires Apple Silicon. Setup issues a warning ("remains open")
+  and exits 0; Stage 1 + Plugin remain fully functional.
 
-### ⑦ Vault ohne `.obsidian/`
+### ⑦ Vault without `.obsidian/`
 
-- „'…' hat kein .obsidian/" → der Plugin-Schritt wird übersprungen; Stufe 1+2
-  sind installiert. Obsidian einmal starten (legt `.obsidian/` an), dann
-  `./setup.sh` erneut.
+- "'…' has no .obsidian/" → Plugin step is skipped; Stage 1+2 are
+  installed. Start Obsidian once (creates `.obsidian/`), then re-run
+  `./setup.sh`.
 
-## Python-3.12-expat-Bug
+## Python 3.12 expat Bug
 
-Homebrew-Builds von ocrmypdf laufen manchmal gegen ein Python mit kaputtem
-`pyexpat` auf macOS. Betroffen: Brew-Pythons ab 3.12 (u.a. 3.14). Symptome:
+Homebrew builds of ocrmypdf sometimes link against a Python with broken
+`pyexpat` on macOS. Affected: Brew Python 3.12 and newer (e.g. 3.14). Symptoms:
 
 ```
 ImportError: No module named expat
 Symbol not found: _XML_SetAllocTrackerActivationThreshold
 ```
 
-Deshalb installiert `setup.sh` ocrmypdf nie über brew, sondern in einem
-eigenen venv (`~/.venvs/ocrmypdf`) mit einem Python 3.12 aus **uv**
-(python-build-standalone) — das bundelt expat selbst mit.
+Because of this, `setup.sh` never installs ocrmypdf via brew, but inside a
+dedicated venv (`~/.venvs/ocrmypdf`) with Python 3.12 from **uv**
+(python-build-standalone) — which bundles expat itself.
 
-Prüfen, ob das eigene Python betroffen ist:
+Check if system Python is affected:
 
 ```bash
-~/.venvs/ocrmypdf/bin/python -c "import pyexpat" || echo "pyexpat kaputt"
+~/.venvs/ocrmypdf/bin/python -c "import pyexpat" || echo "pyexpat broken"
 ```
 
-Abhilfe: das uv-Python neu installieren und das Setup erneut laufen lassen:
+Fix: Reinstall uv Python and re-run setup:
 
 ```bash
 uv python uninstall 3.12 && uv python install --force 3.12
 ./setup.sh
 ```
 
-## Plugin (Stufe 3)
+## Plugin (Stage 3)
 
 ```bash
 VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh
 ```
 
-- Kopiert `main.js`, `manifest.json` und `styles.css` nach
-  `$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/`. Das eingecheckte `main.js`
-  ist der Default — kein Node nötig; nur `--build` (npm, Dev-Maschine)
-  braucht node/npm.
-- Kopie ist Default: bei einem Vault in iCloud Drive verlieren Symlinks
-  Dateien. `--symlink` bleibt als Dev-Opt-in (nur lokal, nie iCloud).
-- Danach in Obsidian: Einstellungen → Community-Plugins → „OCR-Vorschau"
-  aktivieren, einmal `Cmd+R`.
-- Bedienung: [review-ansicht.md](review-ansicht.md).
+- Copies `main.js`, `manifest.json`, and `styles.css` to
+  `$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/`. The committed `main.js`
+  is default — no Node needed; only `--build` (npm, dev machine)
+  requires node/npm.
+- Copying is default: when vault lives in iCloud Drive, symlinks can lose
+  files. `--symlink` remains a dev opt-in (local only, never iCloud).
+- Afterwards in Obsidian: Settings → Community Plugins → Enable "OCR Preview",
+  reload once (`Cmd+R`).
+- Usage: [review-view.md](review-view.md).
 
-## Verifikation
+## Verification
 
 ```bash
-# Hauptfunktionen testen
+# Test main tools
 ocrmypdf --version
-tesseract --list-langs    # muss 'deu' enthalten
+tesseract --list-langs    # must contain 'deu'
 gs --version
 sort -V /dev/null && echo "natural sort OK"
 
@@ -118,62 +117,63 @@ sort -V /dev/null && echo "natural sort OK"
 ocrmypdf --plugin ocrmypdf_appleocr --help >/dev/null 2>&1 && echo "Apple Vision OK"
 ```
 
-## Häufige Fehler
+## Common Errors
 
 ### `command not found: pdf-auto`
 
-PATH enthält `~/bin` nicht — neues Terminal öffnen (siehe „④ PATH" oben).
-Die Zeile steht in `~/.zshrc`:
+PATH does not include `~/bin` — open a new terminal (see "④ PATH" above).
+Line in `~/.zshrc`:
 
 ```bash
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-### `brew install ocrmypdf` schlägt fehl mit "pyexpat"
+### `brew install ocrmypdf` fails with "pyexpat"
 
-Bewusst so: brew-ocrmypdf nicht nutzen — siehe „Python-3.12-expat-Bug".
-`setup.sh` nimmt den venv-Weg.
+Intentional behavior: Do not use brew ocrmypdf — see "Python 3.12 expat Bug".
+`setup.sh` uses the venv approach.
 
 ### `'pngquant' could not be executed`
 
-Alte Script-Version die `--optimize 3` hardcoded. Scripts updaten.
+Legacy script version with hardcoded `--optimize 3`. Update scripts.
 
-### `zsh: killed` bei OCR
+### `zsh: killed` during OCR
 
-RAM-Kill durch macOS. Fix in dieser Reihenfolge probieren:
+RAM kill by macOS OOM killer. Try fixes in this order:
 1. `--jobs 1 --dpi 150`
 2. `--jobs 1 --dpi 100`
-3. Datei splitten (weniger Seiten gleichzeitig)
+3. Split file (fewer pages processed concurrently)
 
-### Pfade mit Leerzeichen werden missinterpretiert
+### Paths with spaces misquoted
 
-Immer in Anführungszeichen:
+Always wrap in quotes:
 
 ```bash
 pdf-auto "/path/with spaces/folder"
 ```
 
-oder aus Finder ins Terminal ziehen (auto-escape).
+or drag folder from Finder into Terminal (auto-escapes spaces).
 
-## iCloud-Besonderheiten
+## iCloud Notes
 
 ### Scripts in iCloud?
 
-Nein — Scripts gehören nach `~/bin/` (lokal, nicht iCloud). Nur die
-Input/Output-PDFs können in iCloud sein.
+No — scripts belong in `~/bin/` (local filesystem, not iCloud). Only
+input/output PDFs can reside in iCloud.
 
-### Vault in iCloud synchronisiert
+### Vault synchronized in iCloud
 
-Das ist normal. Die Scripts lesen/schreiben in iCloud-Pfade wie jeder andere
-Pfad auch. Bei "Optimize Mac Storage":
+This is normal. Scripts read/write to iCloud paths like any other
+path. If "Optimize Mac Storage" is enabled:
 
 ```bash
-# Alle Dateien in einem Ordner runterladen bevor Script läuft
+# Download all files in a folder before running script
 brctl download "<path>"
 ```
 
 ### Obsidian External Terminal Plugin
 
-Öffnet Terminal im Vault-Root. PATH/Scripts funktionieren normal, da sie in
-`~/bin/` liegen, nicht im Vault.
+Opens terminal at vault root. PATH/Scripts function normally since they live in
+`~/bin/`, not inside the vault.
+

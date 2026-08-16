@@ -1,205 +1,131 @@
-# Roadmap: vom Script-Bündel zum Obsidian-Plugin
+# Roadmap: From Script Bundle to Obsidian Plugin
 
-Dieses Dokument hält fest, was ein Plugin sein soll, was der aktuelle Code dafür
-schon hergibt und wo die echten Hürden liegen. Es ist ein Arbeitsstand, kein
-Versprechen.
+This document records what a plugin should be, what the current code already
+provides for it, and where the real hurdles lie. It is a work-in-progress status, not a promise.
 
-## Was das Plugin können soll
+## What the Plugin Should Do
 
-Ein Nutzer legt eine gescannte PDF in den Vault, klickt im Kontextmenü auf
-„OCR → Markdown" und bekommt eine lesbare, durchsuchbare `.md` daneben — mit
-Rücksprung-Link auf das Original. Kein Terminal, kein venv, kein Flag-Raten.
+A user places a scanned PDF into the vault, right-clicks in the context menu on
+"OCR → Markdown", and gets a readable, searchable `.md` alongside — with a
+backlink to the original PDF. No terminal, no venv, no guessing flags.
 
-Realistischer Funktionsumfang v1:
+Realistic v1 feature scope:
 
-- Kontextmenü-Eintrag auf PDF-Dateien im File-Explorer
-- Fortschrittsanzeige (Seite n von m) — bei 15–60 s/Seite ist das Pflicht
-- Ergebnis als `.md` in einem konfigurierbaren Zielordner
-- Einstellungen: Engine, DPI, Zielordner, Pfad zur lokalen Installation
-- Abbruch-Button, der den Kindprozess wirklich killt
+- Context menu entry on PDF files in File Explorer
+- Progress indicator (page n of m) — mandatory when running at 15–60 s/page
+- Output as `.md` in a configurable destination folder
+- Settings: Engine, DPI, output folder, path to local installation
+- Cancel button that cleanly kills the child process
 
-## Die zentrale Architekturfrage
+## The Core Architectural Question
 
-Obsidian-Plugins sind TypeScript in Electron. Diese Pipeline ist Bash + Python +
-MLX + Ghostscript + Tesseract. **Das lässt sich nicht bundeln.** Drei Wege:
+Obsidian plugins are TypeScript running in Electron. This pipeline is Bash + Python +
+MLX + Ghostscript + Tesseract. **This cannot be bundled directly.** Three approaches:
 
-### A · Thin Client über lokale Installation (empfohlen für v1)
+### A · Thin Client via Local Installation (Recommended for v1)
 
-Das Plugin ruft die installierten CLIs per `child_process.spawn` auf und parst
-deren stdout für den Fortschritt. Die Pipeline bleibt genau der Code in diesem
-Repo.
+The plugin executes the installed CLIs via `child_process.spawn` and parses
+their stdout for progress. The pipeline remains the exact code in this repository.
 
-- **Dafür:** Sofort machbar. Kein Reimplementieren. Alle Bugfixes an der
-  Pipeline kommen dem Plugin automatisch zugute.
-- **Dagegen:** Nur Desktop (`child_process` gibt es auf Mobile nicht). Der
-  Nutzer muss vorher `./setup.sh` laufen lassen. Der
-  Obsidian-Community-Store nimmt Plugins, die auf externe Binaries angewiesen
-  sind, nur mit klarer Kennzeichnung — für ein privates Plugin egal.
-- **Nötige Arbeit an diesem Repo:** die Scripts müssen maschinenlesbaren
-  Fortschritt ausgeben (`--json`-Flag oder eine Zeile `PROGRESS 7/20` auf
-  stderr). Aktuell ist der Output auf Menschen ausgelegt (Emoji, deutsche
-  Sätze). Das ist die konkreteste offene Aufgabe.
+- **Pros:** Immediately actionable. No re-implementation needed. All pipeline bugfixes automatically benefit the plugin.
+- **Cons:** Desktop only (`child_process` does not exist on mobile). The user must run `./setup.sh` beforehand. The Obsidian Community Store only accepts plugins relying on external binaries with clear labeling — for a private plugin, this is irrelevant.
+- **Required work on this repo:** Scripts must emit machine-readable progress output (`--json` flag or a line like `PROGRESS 7/20` on stderr). Currently output is formatted for human reading (emojis, German sentences). This is the most concrete pending task.
 
-### B · Sidecar-Daemon
+### B · Sidecar Daemon
 
-Ein kleiner lokaler HTTP-Server (Python, aus `pdf2md/`), den das Plugin startet
-und per `fetch` bedient.
+A lightweight local HTTP server (Python, out of `pdf2md/`) started by the plugin
+and served via `fetch`.
 
-- **Dafür:** Modell bleibt zwischen Aufträgen geladen — die 1,6 s Ladezeit
-  fallen nur einmal an. Sauberer Fortschritt über SSE. Vorstufe zu „läuft auf
-  dem Mac, bedient wird vom iPad".
-- **Dagegen:** Prozess-Lebenszyklus, Port-Konflikte, Zombie-Prozesse beim
-  Obsidian-Absturz. Deutlich mehr Code für wenig Mehrwert in v1.
+- **Pros:** Model remains loaded between jobs — the 1.6s load time is paid only once. Clean progress reporting via Server-Sent Events (SSE). Precursor to "runs on Mac, controlled from iPad".
+- **Cons:** Process lifecycle management, port conflicts, zombie processes on Obsidian crashes. Significantly more code for marginal gains in v1.
 
-### C · Reimplementierung in TypeScript/WASM
+### C · Re-implementation in TypeScript/WASM
 
-- **Dagegen:** PaddleOCR-VL über MLX gibt es nicht in WASM, und Tesseract.js ist
-  spürbar schlechter als die native Variante. Die gemessenen Ergebnisse in
-  `bench/ERGEBNIS.md` wären hinfällig. Kein Weg.
+- **Cons:** PaddleOCR-VL over MLX does not exist in WASM, and Tesseract.js is noticeably worse than native Tesseract binaries. Measured results in `bench/ERGEBNIS.md` would be voided. Non-viable path.
 
-**Entscheidung:** A für v1, B als Option, sobald Stapelverarbeitung über viele
-Dateien der Normalfall wird.
+**Decision:** A for v1, B as an option once batch processing across many files becomes the primary usage pattern.
 
-## Was schon plugin-tauglich ist
+## What is Already Plugin-Ready
 
-- `pdf2md.py` schreibt bereits Frontmatter mit `seiten-textlayer` /
-  `seiten-ocr` / `seiten-diagramm` und einem `Quelle:`-Link — genau das
-  Metadatenmodell, das ein Plugin in der Obsidian-UI anzeigen würde
-  (siehe [ocr-vorschau.md](ocr-vorschau.md)).
-- `--out <ordner>` existiert schon, das Ziel ist also konfigurierbar.
-- Die Trennung „Vorschau-Ordner ≠ Wiki" ist bereits gedacht und dokumentiert.
-- Diagrammseiten kommen als Bild + eingeklappter Callout — Obsidian-Syntax, kein
-  Nachbau nötig.
+- `pdf2md.py` already writes frontmatter containing `seiten-textlayer` / `seiten-ocr` / `seiten-diagramm` and a `Quelle:` link — exactly the metadata model that a plugin UI would display (see [ocr-vorschau.md](ocr-vorschau.md)).
+- `--out <folder>` already exists, making the target folder configurable.
+- The separation "Preview Folder ≠ Wiki" is already designed and documented.
+- Diagram pages are output as image + collapsed callout — native Obsidian syntax, no custom rendering needed.
 
-## Was fehlt
+## What is Missing
 
-| Aufgabe | Warum | Aufwand |
+| Task | Rationale | Effort |
 |---|---|---|
-| Maschinenlesbarer Fortschritt aus den Scripts | ohne das keine Fortschrittsanzeige | klein |
-| Sauberer Exit-Code je Fehlerklasse | Plugin muss „fehlende Abhängigkeit" von „OCR schlug fehl" unterscheiden | klein |
-| Preflight-Check als eigenes Kommando | Plugin-Settings will „Installation ok?" anzeigen können | klein |
-| Abbruchbarkeit (SIGTERM sauber behandeln, Temp aufräumen) | 30-Minuten-Läufe müssen abbrechbar sein | mittel |
-| Zusammenbau-Schicht stabilisieren | jüngste Komponente, Trennstriche/Leseordnung/Sperrschrift | groß |
-| Fußzeilen-Erkennung bei Kachelschnitt | Vollbreiten-Elemente werden am Schnitt abgeschnitten | mittel |
+| Machine-readable progress from scripts | Required for progress bar UI | Small |
+| Clean exit code per error class | Plugin must distinguish "missing dependency" from "OCR failed" | Small |
+| Preflight check as standalone command | Plugin Settings needs "Installation OK?" validation | Small |
+| Cancellability (SIGTERM handling, temp cleanup) | 30-minute runs must be cancellable cleanly | Medium |
+| Reassembly layer stabilization | Most recent component: divider lines, reading order, spaced text | Large |
+| Footer detection on tile splits | Full-width elements get truncated at tile splits | Medium |
 
-Die ersten drei Punkte sind zusammen ein Nachmittag und machen aus dem Repo eine
-plugin-fähige Schnittstelle. Der große Brocken ist die Zusammenbau-Schicht — die
-entscheidet über die wahrgenommene Qualität, nicht die OCR-Engine.
+The first three items take an afternoon combined and turn the repo into a plugin-ready interface. The major task is the reassembly layer — which determines perceived output quality far more than the OCR engine itself.
 
-## Offene Fehler
+## Known Issues
 
-| | Was | Gewicht |
+| | Issue | Weight |
 |---|---|---|
-| ~~1~~ | ~~**Entgleiste Seiten** — 15 % laufen in Schleifen oder brechen ab~~ | **erledigt**, 6 von 6 abgefangen |
-| ~~2~~ | ~~**Lesereihenfolge** `Klausur_2137` S. 7 (47,5 %)~~ | **erledigt**, Seite jetzt 96,1 % |
-| 3 | **Diagrammseite ohne Bild** — `Strafrecht AT VI` S. 8, kein Rückfall auf das Seitenbild | mittel, Behelf `--diagramm-seiten 8` |
-| 4 | **Ein Zweispalter zu wenig** — `Verwaltungsrecht AT Fall 8` S. 10, flacher Steg | bewusst gewählt (1 von 14) |
-| 5 | **Verschränkte Fußnotenblöcke** in 2131/2135/2143 | klein, dort auch der Restverlust von 1–2 Zeichen |
-| 6 | **Fußnotentext über den Seitenumbruch** wird abgeschnitten | klein |
-| ~~7~~ | ~~**`**Beispiel:**` mitten im Satz**~~ | **erledigt**, beide Bauformen |
-| 8 | **Wortfehler** — jetzt beziffert: 1,2 % über alle 40 Seiten; seit dem Wörterbuchabgleich wenigstens **auffindbar** | gering |
-| 9 | **Mehrspaltige Lesereihenfolge** — `2131_Lösung` S. 4 liegt bei 49,7 % | neu, jetzt der größte Einzelposten |
+| ~~1~~ | ~~**Derailed pages** — 15% run into infinite loops or abort~~ | **Resolved**, 6 of 6 caught |
+| ~~2~~ | ~~**Reading order** `Klausur_2137` p. 7 (47.5%)~~ | **Resolved**, page now at 96.1% |
+| 3 | **Diagram page missing image** — `Strafrecht AT VI` p. 8, missing fallback to page image | Medium, workaround `--diagramm-seiten 8` |
+| 4 | **One false negative on two-column** — `Verwaltungsrecht AT Fall 8` p. 10, shallow gutter | Intentionally chosen trade-off (1 of 14) |
+| 5 | **Interleaved footnote blocks** in 2131/2135/2143 | Small, accounts for remaining 1–2 char loss |
+| 6 | **Footnote text across page break** truncated | Small |
+| ~~7~~ | ~~**`**Beispiel:**` mid-sentence**~~ | **Resolved**, both structural variants |
+| 8 | **Word errors** — quantified: 1.2% across all 40 pages; since dictionary check at least **discoverable** | Low |
+| 9 | **Multi-column reading order** — `2131_Lösung` p. 4 at 49.7% | New, currently largest single issue |
 
-Zu Punkt 7: die Randmarke hatte **zwei** Bauformen, und nur eine war bekannt.
-Ausgerückt in den linken Rand (Hemmer-Skripte) → `randlabel_vorziehen()` holt
-sie an den Blockanfang. Als Vorspann derselben Zeile → sie galt als Überschrift
-und riss den Satz ab; `ist_ueberschrift()` nimmt sie jetzt aus. Der
-`**A.**`-Teil desselben Punktes war kein Fehler: die Marker tragen ihren Titel
-hinter sich, das ist korrektes Markdown.
+Regarding item 7: Margin labels had **two** structural variants, and only one was previously recognized. Outdented into left margin (Hemmer scripts) → `randlabel_vorziehen()` moves it to block start. As inline prefix to same line → was misclassified as heading and broke the sentence; `ist_ueberschrift()` now excludes it. The `**A.**` portion of the same item was not an error: markers carry their title after them, which is correct Markdown.
 
-Dazu ungeprüft: **~140 Scanseiten mit unter 50 Zeichen im alten Textlayer**.
-Unklar, ob dort Inhalt fehlt oder die Seiten leer sind.
+Untested in addition: **~140 scan pages with under 50 characters in legacy textlayer**. Unclear whether content is missing or pages are genuinely empty.
 
-## Noch nicht gebaut
+## Not Yet Built
 
-**Der LLM-Reparaturlauf** liegt auf Eis. Bei 98,5 % Wortgenauigkeit über alle
-Seiten steht der Ertrag nicht mehr gegen das Risiko, ein korrektes Normzitat zu
-„verbessern". Falls er doch kommt: der Benchmark misst ihn jetzt, und die
-Messlatte heißt **92,4 % Zitattreue** — er darf sie nicht senken.
+**The LLM repair pass** is on hold. At 98.5% word accuracy across all pages, the gain does not justify the risk of "improving" a correct statutory citation. If ever implemented: the benchmark suite now evaluates it, with the bar set at **92.4% citation accuracy** — it must not degrade accuracy below this threshold.
 
-**Der lokale Wörterbuchabgleich** (hunspell + juristische Begriffsliste) ist
-**gebaut** — genau als die Prüfhilfe, die hier angekündigt war:
-`pdf2md/woerterbuch.py` meldet, korrigiert aber nur die eindeutigen Fälle und
-nur auf ausdrückliches Verlangen. Der Ertrag ist die Arbeitsliste für den
-Begutachtungsdurchgang (`woerter-verdaechtig` im Frontmatter, `⌕` im
-Protokoll), nicht ein besserer Text. Offen bleibt der **dokumentinterne
-Abgleich**: kommt eine Verwechslungsvariante desselben Wortes auf derselben
-Seite häufig vor und das verdächtige Wort einmal, ist das ein Indiz, das kein
-Wörterbuch liefern kann — es fasst auch morphologisch wohlgeformte
-Scheinwörter wie `Verhaltungsakte`, die Grenze des jetzigen Wegs.
+**Local dictionary checking** (hunspell + legal term list) is **built** — serving as the verification aid planned here: `pdf2md/woerterbuch.py` reports issues, but replaces only unambiguous cases and only when explicitly requested. The primary benefit is the review queue (`woerter-verdaechtig` in frontmatter, `⌕` in logs), not automated text rewrites. Remaining open: **document-internal cross-checking**: if a confused variant of a word appears frequently on a page while the suspicious word appears once, that is a contextual clue no static dictionary can provide — dictionary checking also accepts morphologically well-formed pseudo-words like `Verhaltungsakte`, marking the boundary of the current approach.
 
-**Die Migration.** 701 `[[raw/…pdf]]`-Wikilinks zeigen noch auf die PDFs. Wartet
-auf die Entscheidung, wohin die Originale wandern — ohne sie sind die `.md` bei
-OCR-Seiten nicht belastbar.
+**Migration.** 701 `[[raw/…pdf]]` wikilinks still point to raw PDFs. Awaiting decision on final location of original files — without them, Markdown files are not fully reliable for OCR pages.
 
-**Kleinkram:** `pages.json` gehört in `.gitignore` — in diesem Repo erledigt
-(`bench/pages.json`), im Vault noch offen.
+**Minor items:** `pages.json` belongs in `.gitignore` — done in repo (`bench/pages.json`), pending in vault.
 
-## Vorgezogen: die Abgleich-Ansicht (v0.1)
+## Advanced Ahead of Schedule: Review View (v0.1)
 
-Dieser Abschnitt hält eine bewusste Abweichung fest, die nicht
-stillschweigend überholt werden soll. Details zur Ansicht selbst:
-[review-ansicht.md](review-ansicht.md).
+This section documents an intentional deviation from the original sequence. Details on the view itself: [review-view.md](review-view.md).
 
-Der Reihenfolge unten liegt das Plugin-Skelett als **Schritt 5** zugrunde.
-Gebaut wurde aber zuerst etwas anderes, mit anderem Umfang:
+The sequence below lists the plugin skeleton as **Step 5**. However, a different component with distinct scope was built first:
 
-- **Anderer Umfang:** Die Abgleich-Ansicht **liest nur** — keine
-  Konvertierung, kein `spawn`, kein Fortschrittsmodal. Sie zeigt die von
-  Stufe 2 erzeugten `.md`-Dateien seitenweise neben dem Original-PDF und
-  verschiebt sie per **Annehmen / Ablehnen** zwischen drei Ordnern. Von
-  „Was das Plugin können soll" oben ist nichts davon im Bau.
-- **Warum vorgezogen:** Die 15 % entgleisten Seiten (siehe „Offene Fehler",
-  Nr. 1) erzwingen heute schon einen Menschendurchgang — Datei und PDF in
-  zwei Fenstern, von Hand abgleichen. Genau dieser Durchgang hat keine
-  Oberfläche, und er ist der kritische: Er ist das Werkzeug, mit dem sich die
-  Entgleisungen überhaupt auffinden lassen.
-- **Architektur:** Die Ansicht ist **Weg A ohne den spawn-Teil** — sie ruft
-  nur Obsidians eigene PDF.js-Bibliothek (`loadPdfJs`), keinen Kindprozess.
-  An der A/B/C-Entscheidung oben ändert sich nichts; B und C bleiben unberührt.
-- **Die drei Schnittstellen-Aufgaben bleiben unberührt:** Maschinenlesbarer
-  Fortschritt, Exit-Codes, Preflight — nichts davon ist durch die Ansicht
-  erledigt oder überflüssig geworden. Sie sind weiterhin offen, wenn das
-  eigentliche Plugin (Schritt 5) gebaut wird.
+- **Different scope:** The Review View **is read-only** — no conversion, no `spawn`, no progress modal. It displays Stage 2 output `.md` files side-by-side with original PDFs and moves them via **Accept / Reject** between three folders. None of "What the plugin should do" above is implemented in this view.
+- **Why advanced:** The 15% derailed pages (see "Known Issues", #1) forced a manual human review process — comparing PDF and Markdown in split windows by hand. This review workflow lacked a dedicated interface and represents the critical bottleneck for identifying derailments.
+- **Architecture:** The view uses **Approach A without the spawn component** — calling Obsidian's built-in PDF.js library (`loadPdfJs`) without child processes. The A/B/C architectural decision remains unchanged.
+- **The three interface tasks remain open:** Machine-readable progress, exit codes, preflight checks — none were completed or rendered obsolete by this view. They remain pending for the core plugin implementation (Step 5).
 
-Einzige Berührung mit der Pipeline: `pdf2md.py` schreibt die Seitenherkunft
-jetzt in den Marker (Vertrag: `docs/ocr-vorschau.md`, „Marker-Grammatik").
-Nicht brechend — die alte Form `%% S. n %%` wird weiterhin gelesen.
+Sole interaction with the pipeline: `pdf2md.py` now writes page provenance into markers (contract: `docs/ocr-vorschau.md`, "Marker Grammar"). Non-breaking change — legacy `%% S. n %%` markers continue to be supported.
 
-## Gebaut danach: der Konvertierungs-Befehl (v0.2)
+## Built Next: Conversion Command (v0.2)
 
-Der erste Weg-A-Baustein steht: der Befehl **„PDF konvertieren und im
-OCR-Abgleich öffnen"**. Er wählt per Suggest-Modal eine PDF aus dem Vault,
-startet `~/bin/pdf2md <pdf> --out <vorschau-Ordner>` per `child_process.spawn`
-und öffnet den Abgleich mit dem Ergebnis. Rückmeldung bewusst nur per Notice.
+The initial Approach A building block is complete: command **"Convert PDF and open in OCR Review"**. Selects a PDF in vault via Suggest Modal, spawns `~/bin/pdf2md <pdf> --out <preview-folder>` via `child_process.spawn`, and opens Review View upon completion. Feedback delivered via Notice.
 
-Bewusst **nicht** enthalten (bleiben offen, siehe „Was fehlt"): Fortschritts-
-anzeige, Abbruch-Button, maschinenlesbarer Fortschritt, Preflight, der
-Kontextmenü-Eintrag auf PDF-Dateien und ein konfigurierbarer pdf2md-Pfad.
+Intentionally **omitted** (remaining pending, see "What is Missing"): Progress bar UI, cancel button, machine-readable progress output, preflight check, context menu entry on PDF files, and configurable pdf2md path.
 
-## Reihenfolge
+## Implementation Order
 
-1. ~~**Entgleisungserkennung**~~ — erledigt, 93,3 % → 98,5 %.
-2. **Offener Fehler 9** — mehrspaltige Lesereihenfolge (`2131_Lösung` S. 4).
-   Der größte verbliebene Einzelposten, und der Steg-Code ist frisch angefasst.
-3. **Offener Fehler 3** — Diagramm-Rückfall aufs Seitenbild. Braucht zuerst eine
-   Stichprobe handmarkierter Diagrammseiten; ohne die verschiebt jede Änderung
-   an `ist_diagramm()` nur Wahrscheinlichkeiten.
-4. **Scripts plugin-fähig machen** — Fortschritt, Exit-Codes, `--check`.
-5. **Zusammenbau-Schicht härten** — an einem Korpus von 20 Seiten mit
-   handgeprüfter Referenz, nicht nach Gefühl. Das Harness dafür steht in `bench/`.
-6. **Plugin-Skelett** — TypeScript, esbuild, Kontextmenü, `spawn`,
-   Fortschrittsmodal. `~/Developer/ask-my-notes` ist die vorhandene Vorlage.
-   *Die Abgleich-Ansicht (v0.1) ist bereits gebaut — siehe den Abschnitt
-   „Vorgezogen" oben; sie ersetzt diesen Schritt nicht, sie enthält nur
-   keinen seiner Teile.*
-7. **Settings-Tab** mit Preflight-Anzeige.
-8. Erst dann über Sidecar (Weg B) und Mobile nachdenken.
+1. ~~**Derailment detection**~~ — Complete, 93.3% → 98.5%.
+2. **Known Issue 9** — Multi-column reading order (`2131_Lösung` p. 4). Largest remaining single item; gutter logic recently updated.
+3. **Known Issue 3** — Diagram fallback to page image. Requires hand-labeled sample set of diagram pages first; otherwise tweaks to `ist_diagramm()` merely shift probabilities.
+4. **Make scripts plugin-ready** — Progress output, exit codes, `--check`.
+5. **Harden reassembly layer** — Against a benchmark corpus of 20 pages with verified reference text. Harness resides in `bench/`.
+6. **Plugin skeleton** — TypeScript, esbuild, context menu, `spawn`, progress modal. `~/Developer/ask-my-notes` serves as reference template. *Review View (v0.1) is built — see "Advanced Ahead of Schedule" above; it does not replace this step.*
+7. **Settings Tab** with preflight validation.
+8. Only then evaluate Sidecar (Approach B) and Mobile support.
 
-## Nicht-Ziele
+## Non-Goals
 
-- Kein Cloud-OCR. Die Quellen sind Kursmaterial; sie verlassen die Maschine nicht.
-- Kein automatisches Überschreiben von Wiki-Seiten. Das Plugin erzeugt
-  Vorschau-Dateien; die Übernahme ins Wiki bleibt ein bewusster Schritt.
-- Kein Anspruch auf fehlerfreie Ausgabe. Der Rücksprung-Link aufs Original ist
-  Teil der Architektur, nicht ein Zugeständnis.
+- No cloud OCR. Course materials remain local on machine.
+- No automatic overwriting of wiki pages. Plugin generates preview files; migration into wiki remains a deliberate human action.
+- No expectation of error-free output. Backlink to original PDF is a core architectural feature, not a fallback compromise.
+
