@@ -56,6 +56,7 @@ command -v brew >/dev/null 2>&1 || { echo "!! brew nicht verfügbar"; exit 1; }
 if grep -q 'brew shellenv' "$HOME/.zprofile" 2>/dev/null; then
     ok "brew shellenv schon in ~/.zprofile"
 else
+    # shellcheck disable=SC2016 # $(...) soll als Shell-Befehl literal in ~/.zprofile stehen
     printf '\n# obsidian-ocr-pipeline\neval "$(%s/bin/brew shellenv)"\n' "$(brew --prefix)" >> "$HOME/.zprofile"
     echo "   brew shellenv ergänzt in ~/.zprofile (neues Terminal nötig)"
 fi
