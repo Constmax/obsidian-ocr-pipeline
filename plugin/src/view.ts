@@ -6,6 +6,7 @@ import {
 	Menu,
 	Modal,
 	Notice,
+	Scope,
 	Setting,
 	SuggestModal,
 	TFile,
@@ -70,6 +71,11 @@ export class OcrComparisonView extends ItemView {
 	) {
 		super(leaf);
 		this.navigation = true;
+		// Obsidian does not assign `scope` on plugin views (the workspace
+		// keymap resolves `activeLeaf.view.scope` lazily instead). Without an
+		// own scope, registerHotkeys crashes on `undefined` and the hotkeys
+		// never fire.
+		this.scope = new Scope(this.app.scope);
 	}
 
 	getViewType(): string {
