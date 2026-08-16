@@ -13,6 +13,8 @@ export interface Seitenblock {
 	herkunft?: Herkunft;
 	/** Freitext hinter der Herkunft, z.B. "zweispaltig, senkrecht @48%". */
 	layout?: string;
+	/** Die urspruengliche Markerzeile aus der Datei, z.B. "%% S. 1 | textlayer %%". */
+	markerZeile?: string;
 	/** Blockinhalt ohne den Marker, ohne fuehrende/abschliessende Leerzeilen. */
 	markdown: string;
 }
@@ -24,6 +26,8 @@ export interface Vorschau {
 	/** Text vor dem ersten Seitenmarker (Frontmatter und `Quelle:`-Zeile
 	 *  ausgenommen). Normalerweise leer. */
 	vorspann: string;
+	/** Der gesamte Kopfbereich vor dem ersten Seitenmarker im Originalzustand. */
+	roherVorspann?: string;
 	bloecke: Seitenblock[];
 }
 

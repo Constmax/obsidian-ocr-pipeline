@@ -27,12 +27,17 @@ export class MarkdownSpalte {
 	private bloecke = new Map<number, HTMLElement>();
 	private renderKind: Component | null = null;
 	private darstellung: Darstellung = "gerendert";
+	private editierbar = false;
 	private vorschau: Vorschau | null = null;
 	private datei: TFile | null = null;
 	private lauf = 0;
 
 	/** Wird gerufen, wenn sich Hoehen geaendert haben koennen. */
 	beiVermessungNoetig: (() => void) | null = null;
+	/** Wird gerufen, wenn der Text eines Blocks editiert wurde. */
+	beiAenderung: ((block: Seitenblock, neuerText: string) => void) | null = null;
+	/** Wird gerufen, wenn ein Editor-Feld den Fokus verliert. */
+	beiFokusVerlust: (() => void) | null = null;
 
 	constructor(
 		private app: App,
@@ -54,6 +59,14 @@ export class MarkdownSpalte {
 		return this.bloecke;
 	}
 
+	aktuelleVorschau(): Vorschau | null {
+		return this.vorschau;
+	}
+
+	aktuelleDatei(): TFile | null {
+		return this.datei;
+	}
+
 	darstellungSetzen(wert: Darstellung): void {
 		if (this.darstellung === wert) return;
 		this.darstellung = wert;
@@ -62,6 +75,21 @@ export class MarkdownSpalte {
 
 	aktuelleDarstellung(): Darstellung {
 		return this.darstellung;
+	}
+
+	editierbarSetzen(wert: boolean): void {
+		if (this.editierbar === wert) return;
+		this.editierbar = wert;
+		for (const ta of this.container.querySelectorAll<HTMLTextAreaElement>(
+			"textarea.ocr-md-quelltext-editor",
+		)) {
+			ta.readOnly = !wert;
+			ta.toggleClass("ocr-md-quelltext-readonly", !wert);
+		}
+	}
+
+	istEditierbar(): boolean {
+		return this.editierbar;
 	}
 
 	async oeffnen(
@@ -135,8 +163,28 @@ export class MarkdownSpalte {
 			this.bloecke.set(block.nr, el);
 
 			if (this.darstellung === "quelltext") {
-				koerper.createEl("pre", { cls: "ocr-md-quelltext" }).createEl("code", {
-					text: block.markdown,
+				const textarea = koerper.createEl("textarea", {
+					cls: "ocr-md-quelltext-editor",
+					attr: {
+						"aria-label": `Quelltext Seite ${block.nr}`,
+						spellcheck: "false",
+					},
+				});
+				textarea.readOnly = !this.editierbar;
+				textarea.toggleClass("ocr-md-quelltext-readonly", !this.editierbar);
+				textarea.value = block.markdown;
+				this.hoeheAnpassen(textarea);
+
+				textarea.addEventListener("input", () => {
+					if (!this.editierbar) return;
+					block.markdown = textarea.value;
+					this.hoeheAnpassen(textarea);
+					this.beiAenderung?.(block, textarea.value);
+					this.beiVermessungNoetig?.();
+				});
+
+				textarea.addEventListener("blur", () => {
+					this.beiFokusVerlust?.();
 				});
 				continue;
 			}
@@ -155,7 +203,27 @@ export class MarkdownSpalte {
 			this.einbettungenNachbessern(koerper, datei);
 		}
 
+		if (this.darstellung === "quelltext") {
+			window.requestAnimationFrame(() => {
+				for (const ta of this.container.querySelectorAll<HTMLTextAreaElement>(
+					"textarea.ocr-md-quelltext-editor",
+				)) {
+					this.hoeheAnpassen(ta);
+				}
+				this.beiVermessungNoetig?.();
+			});
+		}
+
 		this.beiVermessungNoetig?.();
+	}
+
+	private hoeheAnpassen(textarea: HTMLTextAreaElement): void {
+		const basisHoehe = "auto";
+		textarea.style.setProperty("--ocr-editor-hoehe", basisHoehe);
+		textarea.style.setProperty(
+			"--ocr-editor-hoehe",
+			`${Math.max(textarea.scrollHeight, 36)}px`,
+		);
 	}
 
 	private kopfBauen(el: HTMLElement, block: Seitenblock): void {

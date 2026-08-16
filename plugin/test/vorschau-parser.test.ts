@@ -5,9 +5,11 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import {
-	vorschauParsen,
-	zahlAusFrontmatter,
+	markerBauen,
 	textAusFrontmatter,
+	vorschauParsen,
+	vorschauZusammenbauen,
+	zahlAusFrontmatter,
 } from "../src/vorschau-parser.ts";
 
 const HIER = dirname(fileURLToPath(import.meta.url));
@@ -141,4 +143,47 @@ test("Frontmatter-Helfer lesen Zahlen und Text", () => {
 	assert.equal(zahlAusFrontmatter(fm, "fehlt"), null);
 	assert.equal(textAusFrontmatter(fm, "titel"), "Fall 8");
 	assert.equal(textAusFrontmatter(fm, "leer"), null);
+});
+
+test("vorschauZusammenbauen: Fixture wird verlustfrei re-serialisiert", () => {
+	const v = vorschauParsen(FIXTURE);
+	const ergebnis = vorschauZusammenbauen(v);
+	assert.equal(ergebnis, FIXTURE);
+});
+
+test("vorschauZusammenbauen: modifizierter Seitenblock wird korrekt uebernommen", () => {
+	const v = vorschauParsen(FIXTURE);
+	assert.ok(v.bloecke[0]);
+	v.bloecke[0].markdown = "**A. Zulässigkeit der Klage (korrigiert)**";
+	const ergebnis = vorschauZusammenbauen(v);
+	assert.ok(ergebnis.includes("**A. Zulässigkeit der Klage (korrigiert)**"));
+	assert.ok(!ergebnis.includes("**A. Zulässigkeit der Klage**\n"));
+	assert.ok(ergebnis.includes("%% S. 1 | textlayer %%"));
+	assert.ok(ergebnis.includes("%% S. 2 | ocr | zweispaltig, senkrecht @48% %%"));
+});
+
+test("markerBauen erzeugt gueltige Marker mit und ohne Zusatz", () => {
+	assert.equal(markerBauen({ nr: 1, markdown: "" }), "%% S. 1 %%");
+	assert.equal(
+		markerBauen({ nr: 2, herkunft: "ocr", layout: "zweispaltig", markdown: "" }),
+		"%% S. 2 | ocr | zweispaltig %%",
+	);
+	assert.equal(
+		markerBauen({ nr: 3, herkunft: "textlayer", markdown: "" }),
+		"%% S. 3 | textlayer %%",
+	);
+});
+
+test("vorschauZusammenbauen ohne roherVorspann baut Fallback", () => {
+	const ergebnis = vorschauZusammenbauen({
+		frontmatter: { titel: "Test" },
+		quellePdf: "pfad/zur/datei.pdf",
+		vorspann: "Vorspann-Text",
+		bloecke: [{ nr: 1, herkunft: "ocr", markdown: "Inhalt" }],
+	});
+	assert.ok(ergebnis.includes("---"));
+	assert.ok(ergebnis.includes("titel: Test"));
+	assert.ok(ergebnis.includes("Quelle: [[pfad/zur/datei.pdf]]"));
+	assert.ok(ergebnis.includes("Vorspann-Text"));
+	assert.ok(ergebnis.includes("%% S. 1 | ocr %%\n\nInhalt"));
 });

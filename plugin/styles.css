@@ -156,6 +156,16 @@
 	color: var(--text-normal);
 }
 
+.ocr-ikonknopf-aktiv {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.ocr-ikonknopf-aktiv:hover {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
 .ocr-ikon {
 	display: flex;
 	width: 14px;
@@ -506,6 +516,42 @@
 	font-size: var(--font-ui-smaller);
 	white-space: pre-wrap;
 	word-break: break-word;
+}
+
+.ocr-md-quelltext-editor {
+	width: 100%;
+	height: var(--ocr-editor-hoehe, auto);
+	margin: 0;
+	padding: 8px;
+	background: var(--background-secondary);
+	border: 1px solid transparent;
+	border-radius: var(--radius-s);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	line-height: var(--line-height-normal);
+	color: var(--text-normal);
+	white-space: pre-wrap;
+	word-break: break-word;
+	resize: none;
+	overflow: hidden;
+	box-sizing: border-box;
+	display: block;
+	transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.ocr-md-quelltext-editor:focus {
+	border-color: var(--interactive-accent);
+	background: var(--background-primary);
+	outline: none;
+}
+
+.ocr-md-quelltext-editor.ocr-md-quelltext-readonly {
+	cursor: default;
+}
+
+.ocr-md-quelltext-editor.ocr-md-quelltext-readonly:focus {
+	border-color: transparent;
+	background: var(--background-secondary);
 }
 
 .ocr-md-platzhalter {
