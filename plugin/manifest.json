@@ -1,9 +1,9 @@
 {
-	"id": "ocr-vorschau",
-	"name": "OCR-Vorschau",
+	"id": "ocr-preview",
+	"name": "OCR Preview",
 	"version": "0.1.0",
 	"minAppVersion": "1.8.7",
-	"description": "Dreispaltiger Abgleich zwischen Original-PDF und erzeugter Markdown-Datei. Vorschau annehmen oder ablehnen.",
+	"description": "Three-column comparison between original PDF and generated Markdown file. Accept or reject previews.",
 	"author": "Constantin Janz",
 	"authorUrl": "https://github.com/constmax/obsidian-ocr-pipeline",
 	"isDesktopOnly": true

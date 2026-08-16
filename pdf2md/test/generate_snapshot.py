@@ -1,20 +1,8 @@
 #!/usr/bin/env python3
-"""Golden-Snapshot der reinen Zusammenbau-Funktionen.
+"""Golden snapshot of pure assembly functions.
 
-  python3 pdf2md/test/erzeuge_snapshot.py            # snapshot.json neu schreiben
-  python3 pdf2md/test/erzeuge_snapshot.py --pruefen  # gegen snapshot.json pruefen
-
-Faengt die einzige Verhaltensaenderung, die der Split nach Issue #8 riskiert:
-ein reines Verschieben von Funktionen zwischen Modulen darf die Ausgabe nicht
-aendern. Jeder Fall ruft eine Funktion mit festen, im Skript stehenden Eingaben
-und haelt Eingabe + Ausgabe in snapshot.json fest.
-
-Kein Modell, kein fitz, kein Vault-Bestand noetig — die Funktionen arbeiten
-auf Zeilenlisten. Die schweren Importe liegen funktionslokal in den Modulen.
-
-Importiert wird ueber eine Namensliste statt fester Modulnamen: vor dem Split
-liegt alles in pdf2md.py, danach in zusammenbau.py / layout.py / ocr.py. Das
-Skript selbst bleibt in beiden Welten unveraendert lauffaehig.
+  python3 pdf2md/test/generate_snapshot.py            # rewrite snapshot.json
+  python3 pdf2md/test/generate_snapshot.py --check    # check against snapshot.json
 """
 import argparse
 import json
@@ -25,26 +13,22 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 
-def module():
-    """Zielmodule laden; vor dem Split faellt alles auf pdf2md.py zurueck."""
-    try:
-        import layout
-        import ocr
-        import zusammenbau
-    except ImportError:
-        import pdf2md as zusammenbau
-        layout = ocr = zusammenbau
-    return zusammenbau, layout, ocr
+def modules():
+    """Load target modules."""
+    import layout
+    import ocr
+    import assembly
+    return assembly, layout, ocr
 
 
-def holen(name, module_map):
-    for modul in module_map:
-        if hasattr(modul, name):
-            return getattr(modul, name)
-    raise SystemExit(f"!! Funktion {name} nirgends gefunden")
+def get_func(name, module_map):
+    for mod in module_map:
+        if hasattr(mod, name):
+            return getattr(mod, name)
+    raise SystemExit(f"!! Function {name} not found anywhere")
 
 
-# --- Feste Eingaben ---------------------------------------------------------
+# --- Fixed Inputs ---------------------------------------------------------
 
 LOC_TEXT = ("<|LOC_100_210_880_225|><|LOC_100_210_880_225|>Er ist somit "
             "Besitzdiener iSd Paragraf 855 BGB.\n"
@@ -53,7 +37,7 @@ LOC_TEXT = ("<|LOC_100_210_880_225|><|LOC_100_210_880_225|>Er ist somit "
             "<|LOC_120_290_300_305|><|LOC_120_290_300_305|>1.\n"
             "Und eine Zeile ganz ohne Koordinaten.")
 
-SAEUBERN_TEXTE = [
+CLEAN_TEXTS = [
     r"$\rightarrow$ der Pfeil und \text{Fett}",
     r"\underline{unterstrichen} und \( \alpha \)",
     r"$ 5 BGB und $\^{12} als Fussnotenzeichen",
@@ -62,12 +46,12 @@ SAEUBERN_TEXTE = [
     r"\leftarrow \Rightarrow \uparrow \to",
 ]
 
-ENTPUA_TEXTE = [
+STRIP_PUA_TEXTS = [
     "\uf0f0 \uf0e0 \uf0d8 \uf0fc \uf0b7 \uf020 \uf001",
     "ganz normaler Text ohne Sonderzeichen",
 ]
 
-EBENE_TEXTE = [
+LEVEL_TEXTS = [
     "aa) Gemaess den Regeln der Dogmatik",
     "(1) Der Anspruch ist begruendet",
     "bb) Zweite Ebene",
@@ -80,7 +64,7 @@ EBENE_TEXTE = [
     "Fliesstext ohne jeden Marker",
 ]
 
-UEBERSCHRIFT_FAELLE = [
+HEADING_CASES = [
     ("**Beispiel:**", "Beispiel:"),
     ("**A. Grundsaetzliches zum Unterlassen**",
      "A. Grundsaetzliches zum Unterlassen"),
@@ -89,7 +73,7 @@ UEBERSCHRIFT_FAELLE = [
     ("**IV. Exkurs: Uebersicht – V**", "IV. Exkurs: Uebersicht – V"),
 ]
 
-BOILERPLATE_TEXTE = [
+BOILERPLATE_TEXTS = [
     ("Juristisches Repetitorium fuer Gesetz und Recht", None),
     ("hemmer", None),
     ("– 1 –", None),
@@ -101,7 +85,7 @@ BOILERPLATE_TEXTE = [
      None),
 ]
 
-LAUFEND_TEXTE = [
+RUNNING_TEXTS = [
     ("Fall 12  |  Begleitskript", None),
     ("Strafrecht BT V", None),
     ("Fall 12 | Begleitskript", None),
@@ -109,13 +93,13 @@ LAUFEND_TEXTE = [
     ("Schuldrecht AT – Fall 12 | Begleitskript", None),
 ]
 
-FETT_TEXTE = [
+BOLD_TEXTS = [
     "Text **fett",
     "**fett** Text **fett**",
     "ganz ohne Auszeichnung",
 ]
 
-KURZE_ZEILEN = [
+SHORT_LINES = [
     ["Die erste Zeile eines Absatzes im Blocksatz.", (100, 100, 900, 115)],
     ["Die zweite Zeile laeuft voll bis an den Rand.", (100, 120, 900, 135)],
     ["Kurz, mit kleinem Nachsatz", (100, 140, 600, 155)],
@@ -124,7 +108,7 @@ KURZE_ZEILEN = [
     ["Und die letzte Zeile endet frueh.", (100, 195, 700, 210)],
 ]
 
-RANDLABEL_ZEILEN = [
+MARGIN_LABEL_LINES = [
     ["Der Garant ist zur Abwendung des Erfolges verpflichtet, so dass sein",
      (200, 100, 900, 114)],
     ["**Merke:**", (150, 118, 210, 132)],
@@ -135,20 +119,20 @@ RANDLABEL_ZEILEN = [
     ["Sie ist der Kern jeder Unterlassungspruefung.", (200, 154, 900, 168)],
 ]
 
-FN_ANBINDEN_ZEILEN = [
+ATTACH_FN_LINES = [
     ["7", (8, 915, 20, 925)],
     ["Vgl. BGH, NJW 2014, 1524.", (50, 915, 400, 925)],
     ["Der Anspruch ist begruendet.", (90, 200, 800, 215)],
 ]
 
-FN_OBSIDIAN_ABSAETZE = [
+FN_OBSIDIAN_PARAGRAPHS = [
     "Er ist ein Besitzdiener.1",
     "1 Vgl. BGH, NJW 2014, 1524.",
     "2 So auch MüKo-BGB, § 855 Rn. 14.",
     "| a | b |",
 ]
 
-GLIEDERUNG_ABSAETZE = [
+FORMAT_HEADINGS_PARAGRAPHS = [
     "1. Anspruch aus § 816 I S. 2 BGB",
     "cc) Diese Ansicht ist mit der h.M. abzulehnen.",
     "Fliesstext ohne Marker",
@@ -156,13 +140,13 @@ GLIEDERUNG_ABSAETZE = [
     "3. Anspruch aus § 433 II BGB",
 ]
 
-FRAGMENT_ZEILEN = [
+FRAGMENT_LINES = [
     ["1.", (90, 210, 100, 225)],
     ["Die Abtretung als Verfuegung", (110, 210, 500, 225)],
     ["weiterer Text auf anderer Zeile", (90, 240, 400, 255)],
 ]
 
-ZUSAMMENFUEGEN_MARKE = [
+ASSEMBLE_MARGIN_LABEL = [
     ["**Beispiel:**", (166, 98, 237, 112)],
     ["Mutter M putzt gerade die Fenster ihrer Terrasse und stoesst dabei aus "
      "Unachtsamkeit einen", (166, 97, 899, 111)],
@@ -170,16 +154,16 @@ ZUSAMMENFUEGEN_MARKE = [
      (166, 116, 899, 130)],
 ]
 
-ZUSAMMENFUEGEN_FUSSNOTE = [
+ASSEMBLE_FOOTNOTE = [
     ["Juristisches Repetitorium", (0, 50, 1000, 65)],
     ["Der Anspruch ist begruendet.1", (90, 100, 800, 115)],
     ["1 Vgl. BGH, NJW 2014, 1524.", (8, 915, 500, 930)],
 ]
 
-CALLOUT_ABSAETZE = ["Absatz eins.", "Absatz zwei\nmit Umbruch",
-                    "Letzter Absatz."]
+CALLOUT_PARAGRAPHS = ["Absatz eins.", "Absatz zwei\nmit Umbruch",
+                      "Letzter Absatz."]
 
-RASTER_LINKS = [
+GRID_LEFT = [
     ["1. Was versteht man unter Geldwertvindikation?", (100, 100, 500, 115)],
     ["2. Welche Rechtsfolgen hat die Anfechtung?", (100, 130, 500, 145)],
     ["3. Was ist ein Anwartschaftsrecht?", (100, 160, 500, 175)],
@@ -188,7 +172,7 @@ RASTER_LINKS = [
     ["6. Wer ist Besitzer?", (100, 250, 500, 265)],
 ]
 
-RASTER_RECHTS = [
+GRID_RIGHT = [
     ["Besitzdiener iSd Paragraf 855 BGB.", (520, 100, 900, 115)],
     ["Die Anfechtung macht den Vertrag von", (520, 130, 900, 145)],
     ["Anfang an nichtig.", (520, 160, 900, 175)],
@@ -197,14 +181,14 @@ RASTER_RECHTS = [
     ["Der Besitzer hat die Sachherrschaft.", (520, 250, 900, 265)],
 ]
 
-SCHLEIFE_TEXTE = [
+LOOP_TEXTS = [
     " ".join(["a b c d e"] * 30),
     " ".join(f"({j})" for j in range(1982, 2260)),
     ("Der Anspruch des K gegen B ergibt sich aus dem Kaufvertrag nach "
      "Paragraf 433 Absatz 2 BGB."),
 ]
 
-ENTGLEIST_FAELLE = [
+DERAILED_CASES = [
     (" ".join(["a b c d e"] * 30), None, False),
     ("Der Anspruch ist begruendet und faellig, weil der Kaufvertrag "
      "wirksam zustande gekommen ist.", 500, False),
@@ -213,26 +197,27 @@ ENTGLEIST_FAELLE = [
      500, False),
 ]
 
-SCHLEIFE_KURZEN_ZEILEN = [
+TRIM_LOOP_LINES = [
     ["Dieselbe Fussnote steht hier.", (0, 0, 1000, 10)],
     ["Ansprueche aus Paragraf 823, Paragraf 826, Paragraf 831, Paragraf 840.",
      (0, 0, 1000, 10)],
 ]
 
-NAHT_OBEN = [
+SEAM_TOP = [
     ["Er ist somit Besitzdiener iSd Paragraf 855 BGB. Infolgedessen ist "
      "L kein Besitzer und nur M ist Besitzer des Mehls. Ob es",
      (0, 0, 1000, 10)],
 ]
 
-NAHT_UNTEN = [
-    ["Infolgedessen ist L kein Besitzer und nur M ist Besitzer des Mehls. "
-     "Ob es dem M abhanden gekommen ist, richtet sich nach Paragraf 935 BGB.",
+SEAM_BOTTOM = [
+    ["Infolgedessen ist L kein Besitzer und nur M ist Besitzer des "
+     "Mehls. Ob es dem M abhanden gekommen ist, richtet sich nach "
+     "Paragraf 935 BGB.",
      (0, 0, 1000, 10)],
     ["Fussnote 13: BGH NJW 2014, 1524.", (0, 0, 1000, 10)],
 ]
 
-NAHT_VERSCHOBEN = [
+SEAM_SHIFTED = [
     ["Anknuepfungspunkt waere also, dass H trotz des aus der "
      "Besitzverschaiung folgenden Anscheins nicht nachgeforscht hat.",
      (0, 0, 1000, 10)],
@@ -241,7 +226,7 @@ NAHT_VERSCHOBEN = [
      "Fuer eine Nachforschungsobliegenheit spricht wenig.", (0, 0, 1000, 10)],
 ]
 
-NAHT_DUPLETTE = [
+SEAM_DUPLICATE = [
     ["Die Voraussetzungen des Paragraf 823 Absatz 1 BGB liegen vor.",
      (0, 0, 1000, 10)],
     ["Die Voraussetzungen des Paragraf 823 Absatz 1 BGB liegen vor.",
@@ -250,147 +235,138 @@ NAHT_DUPLETTE = [
 ]
 
 
-def faelle(module_map):
-    """[(name, setup, arg_menge, funktion)] — setup laeuft vor den Aufrufen.
+def cases(module_map):
+    assembly, layout, ocr = module_map
 
-    `arg_menge` ist eine Liste von Argumentlisten: jede davon wird einmal
-    aufgerufen, die Ergebnisse kommen als Liste in den Snapshot.
-    """
-    zusammenbau, layout, ocr = module_map
+    def set_running_wrapper(values):
+        get_func("set_running", module_map)(values)
 
-    def laufend_setzt(werte):
-        if any(hasattr(m, "laufend_setzen") for m in module_map):
-            holen("laufend_setzen", module_map)(werte)
-        else:
-            zusammenbau.LAUFEND.clear()
-            zusammenbau.LAUFEND.update(werte)
-
-    def verworfen_lesen(_):
-        return getattr(holen("zusammenfuegen", module_map), "verworfen", [])
+    def read_discarded(_):
+        return getattr(get_func("assemble_paragraphs", module_map), "discarded", [])
 
     z = lambda t: [t, (0, 0, 1000, 10)]
-    M = lambda name: holen(name, module_map)
-    eins = lambda args: [args]
+    M = lambda name: get_func(name, module_map)
+    one = lambda args: [args]
 
     return [
-        ("parse_zeilen", None, eins([LOC_TEXT]), M("parse_zeilen")),
-        ("saeubern", None, [[t] for t in SAEUBERN_TEXTE], M("saeubern")),
-        ("entpua", None, [[t] for t in ENTPUA_TEXTE], M("entpua")),
-        ("ebene", None, [[t] for t in EBENE_TEXTE], M("ebene")),
+        ("parse_zeilen", None, one([LOC_TEXT]), M("parse_lines")),
+        ("saeubern", None, [[t] for t in CLEAN_TEXTS], M("clean_text")),
+        ("entpua", None, [[t] for t in STRIP_PUA_TEXTS], M("strip_pua")),
+        ("ebene", None, [[t] for t in LEVEL_TEXTS], M("level")),
         ("ist_ueberschrift", None,
-         [[t, n] for t, n in UEBERSCHRIFT_FAELLE], M("ist_ueberschrift")),
+         [[t, n] for t, n in HEADING_CASES], M("is_heading")),
         ("ist_boilerplate_ohne_laufend", None,
-         [[t, y] for t, y in BOILERPLATE_TEXTE], M("ist_boilerplate")),
+         [[t, y] for t, y in BOILERPLATE_TEXTS], M("is_boilerplate")),
         ("ist_boilerplate_mit_laufend",
-         lambda: laufend_setzt({"Fall 12 | Begleitskript", "Strafrecht BT V"}),
-         [[t, y] for t, y in LAUFEND_TEXTE], M("ist_boilerplate")),
-        ("fett_ausgleichen", None, [[t] for t in FETT_TEXTE],
-         M("fett_ausgleichen")),
-        ("kurze_zeilen", None, eins([KURZE_ZEILEN]), M("kurze_zeilen")),
-        ("randlabel_vorziehen", None, eins([RANDLABEL_ZEILEN, 18]),
-         M("randlabel_vorziehen")),
-        ("fussnotennummern_anbinden", None, eins([FN_ANBINDEN_ZEILEN]),
-         M("fussnotennummern_anbinden")),
-        ("fussnoten_obsidian", None, eins([FN_OBSIDIAN_ABSAETZE]),
-         M("fussnoten_obsidian")),
-        ("gliederung_auszeichnen", None, eins([GLIEDERUNG_ABSAETZE]),
-         M("gliederung_auszeichnen")),
-        ("fragmente_verschmelzen", None, eins([FRAGMENT_ZEILEN, 595]),
-         M("fragmente_verschmelzen")),
-        ("zusammenfuegen_randmarke", None, eins([ZUSAMMENFUEGEN_MARKE]),
-         M("zusammenfuegen")),
-        ("zusammenfuegen_fussnote", None, eins([ZUSAMMENFUEGEN_FUSSNOTE]),
-         M("zusammenfuegen")),
-        ("als_callout", None, eins([CALLOUT_ABSAETZE, "Test-Titel"]),
-         M("als_callout")),
+         lambda: set_running_wrapper({"Fall 12 | Begleitskript", "Strafrecht BT V"}),
+         [[t, y] for t, y in RUNNING_TEXTS], M("is_boilerplate")),
+        ("fett_ausgleichen", None, [[t] for t in BOLD_TEXTS],
+         M("balance_bold")),
+        ("kurze_zeilen", None, one([SHORT_LINES]), M("short_lines")),
+        ("randlabel_vorziehen", None, one([MARGIN_LABEL_LINES, 18]),
+         M("promote_margin_labels")),
+        ("fussnotennummern_anbinden", None, one([ATTACH_FN_LINES]),
+         M("attach_footnote_numbers")),
+        ("fussnoten_obsidian", None, one([FN_OBSIDIAN_PARAGRAPHS]),
+         M("footnotes_obsidian")),
+        ("gliederung_auszeichnen", None, one([FORMAT_HEADINGS_PARAGRAPHS]),
+         M("format_headings")),
+        ("fragmente_verschmelzen", None, one([FRAGMENT_LINES, 595]),
+         M("merge_fragments")),
+        ("zusammenfuegen_randmarke", None, one([ASSEMBLE_MARGIN_LABEL]),
+         M("assemble_paragraphs")),
+        ("zusammenfuegen_fussnote", None, one([ASSEMBLE_FOOTNOTE]),
+         M("assemble_paragraphs")),
+        ("als_callout", None, one([CALLOUT_PARAGRAPHS, "Test-Titel"]),
+         M("as_callout")),
         ("frage_antwort_raster", None,
-         eins([RASTER_LINKS, RASTER_RECHTS]), M("frage_antwort_raster")),
-        ("schleifenlaenge", None, [[t] for t in SCHLEIFE_TEXTE],
-         M("schleifenlaenge")),
-        ("entgleist", None, [list(f) for f in ENTGLEIST_FAELLE],
-         M("entgleist")),
+         one([GRID_LEFT, GRID_RIGHT]), M("question_answer_grid")),
+        ("schleifenlaenge", None, [[t] for t in LOOP_TEXTS],
+         M("loop_length")),
+        ("entgleist", None, [list(f) for f in DERAILED_CASES],
+         M("is_derailed")),
         ("schleife_kuerzen", None,
-         eins([SCHLEIFE_KURZEN_ZEILEN
+         one([TRIM_LOOP_LINES
                + [z("Dieselbe Fussnote steht hier.")] * 100
                + [z(" ".join(["V."] * 40))]]),
-         M("schleife_kuerzen")),
+         M("trim_loop")),
         ("ueberlappung_kuerzen_fortsetzung", None,
-         eins([NAHT_OBEN, NAHT_UNTEN]), M("ueberlappung_kuerzen")),
+         one([SEAM_TOP, SEAM_BOTTOM]), M("trim_overlap")),
         ("ueberlappung_kuerzen_duplette", None,
-         eins([NAHT_DUPLETTE[:1], NAHT_DUPLETTE[1:]]),
-         M("ueberlappung_kuerzen")),
+         one([SEAM_DUPLICATE[:1], SEAM_DUPLICATE[1:]]),
+         M("trim_overlap")),
         ("ueberlappung_kuerzen_lesefehler", None,
-         eins([NAHT_VERSCHOBEN[:1], NAHT_VERSCHOBEN[1:]]),
-         M("ueberlappung_kuerzen")),
-        ("zusammenfuegen_verworfen", None, eins([None]),
-         verworfen_lesen),
+         one([SEAM_SHIFTED[:1], SEAM_SHIFTED[1:]]),
+         M("trim_overlap")),
+        ("zusammenfuegen_verworfen", None, one([None]),
+         read_discarded),
     ]
 
 
-def jsonfaehig(x):
+def to_jsonable(x):
     if isinstance(x, tuple):
-        return [jsonfaehig(e) for e in x]
+        return [to_jsonable(e) for e in x]
     if isinstance(x, list):
-        return [jsonfaehig(e) for e in x]
+        return [to_jsonable(e) for e in x]
     if isinstance(x, set):
         return sorted(x)
     return x
 
 
-def ergebnis(module_map):
-    aus = []
-    for name, setup, arg_menge, funktion in faelle(module_map):
+def compute_result(module_map):
+    out = []
+    for name, setup, arg_set, func in cases(module_map):
         if setup:
             setup()
         try:
-            werte = [funktion(*a) for a in arg_menge]
+            values = [func(*a) for a in arg_set]
         except Exception as e:
             raise SystemExit(f"!! {name}: {e}")
-        aus.append({"name": name, "eingaben": jsonfaehig(arg_menge),
-                    "ausgabe": jsonfaehig(werte)})
-    return aus
+        out.append({"name": name, "eingaben": to_jsonable(arg_set),
+                    "ausgabe": to_jsonable(values)})
+    return out
 
 
-def vergleichen(neu, alt, pfad=""):
-    fehler = []
-    if isinstance(neu, list) and isinstance(alt, list) and len(neu) == len(alt) \
-            and neu and isinstance(neu[0], dict):
-        for n, a in zip(neu, alt):
-            fehler += vergleichen(n, a, pfad + "/" + a.get("name", "?"))
-        return fehler
-    if neu != alt:
-        fehler.append((pfad, neu, alt))
-    return fehler
+def compare(new_val, old_val, path=""):
+    errors = []
+    if isinstance(new_val, list) and isinstance(old_val, list) and len(new_val) == len(old_val) \
+            and new_val and isinstance(new_val[0], dict):
+        for n, a in zip(new_val, old_val):
+            errors += compare(n, a, path + "/" + a.get("name", "?"))
+        return errors
+    if new_val != old_val:
+        errors.append((path, new_val, old_val))
+    return errors
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pruefen", action="store_true",
-                    help="nur gegen snapshot.json pruefen, nicht schreiben")
+    ap.add_argument("--check", "--pruefen", dest="check", action="store_true",
+                    help="Only check against snapshot.json, do not write")
     a = ap.parse_args()
-    module_map = module()
+    module_map = modules()
 
-    daten = ROOT / "test" / "daten" / "snapshot.json"
-    if a.pruefen:
-        if not daten.exists():
-            raise SystemExit(f"!! {daten} fehlt — erst ohne --pruefen erzeugen")
-        alt = json.loads(daten.read_text())
-        neu = ergebnis(module_map)
-        fehler = vergleichen(neu, alt)
-        if fehler:
-            for pfad, n, x in fehler:
-                print(f"FEHL {pfad}\n"
-                      f"  neu: {json.dumps(n, ensure_ascii=False)[:200]}\n"
-                      f"  alt: {json.dumps(x, ensure_ascii=False)[:200]}")
-            print(f"\n{len(fehler)} Abweichung(en)")
+    data_file = ROOT / "test" / "daten" / "snapshot.json"
+    if a.check:
+        if not data_file.exists():
+            raise SystemExit(f"!! {data_file} missing — run without --check first")
+        old_data = json.loads(data_file.read_text())
+        new_data = compute_result(module_map)
+        errors = compare(new_data, old_data)
+        if errors:
+            for path, n, x in errors:
+                print(f"MISMATCH {path}\n"
+                      f"  new: {json.dumps(n, ensure_ascii=False)[:200]}\n"
+                      f"  old: {json.dumps(x, ensure_ascii=False)[:200]}")
+            print(f"\n{len(errors)} mismatch(es)")
             sys.exit(1)
-        print(f"snapshot.json unveraendert ({len(neu)} Faelle)")
+        print(f"snapshot.json unchanged ({len(new_data)} cases)")
         return
 
-    daten.parent.mkdir(parents=True, exist_ok=True)
-    daten.write_text(json.dumps(ergebnis(module_map), ensure_ascii=False,
-                                indent=1) + "\n", encoding="utf-8")
-    print(f"→ {daten}")
+    data_file.parent.mkdir(parents=True, exist_ok=True)
+    data_file.write_text(json.dumps(compute_result(module_map), ensure_ascii=False,
+                                    indent=1) + "\n", encoding="utf-8")
+    print(f"→ {data_file}")
 
 
 if __name__ == "__main__":

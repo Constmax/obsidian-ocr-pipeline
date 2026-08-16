@@ -331,7 +331,7 @@ def split_pdf_gs(input_pdf: str, output_pdf: str, map_path: str,
             lp = os.path.join(tmpdir, f"p{pn:04d}_l.pdf")
             _gs_crop(pn, f"[/CropBox [0 0 {sx} {h}] /PAGE pdfmark", lp, input_pdf)
 
-            # B6a: Normalisiere linke Hälfte (MediaBox = [0, 0, sx, h], CropBox löschen)
+            # B6a: Normalize left half (MediaBox = [0, 0, sx, h], delete CropBox)
             with Pdf.open(lp, allow_overwriting_input=True) as lp_pdf:
                 lp_page = lp_pdf.pages[0]
                 lp_page.MediaBox = pikepdf.Array([0, 0, sx, h])
@@ -342,7 +342,7 @@ def split_pdf_gs(input_pdf: str, output_pdf: str, map_path: str,
             rp = os.path.join(tmpdir, f"p{pn:04d}_r.pdf")
             _gs_crop(pn, f"[/CropBox [{sx} 0 {w} {h}] /PAGE pdfmark", rp, input_pdf)
 
-            # B6a: Normalisiere rechte Hälfte (Verschiebung um -sx, MediaBox = [0, 0, w - sx, h], CropBox löschen)
+            # B6a: Normalize right half (shift by -sx, MediaBox = [0, 0, w - sx, h], delete CropBox)
             with Pdf.open(rp, allow_overwriting_input=True) as rp_pdf:
                 rp_page = rp_pdf.pages[0]
                 shift_ops = f"1 0 0 1 {-sx} 0 cm\n".encode("ascii")
@@ -395,8 +395,8 @@ def split_pdf_gs(input_pdf: str, output_pdf: str, map_path: str,
         json.dump({"pages": page_map, "source": input_pdf}, f, indent=2)
 
     sc = sum(1 for e in page_map if e["type"] == "split")
-    print(f"   📐 Split: {total_pages} Seiten → {len(page_map)} "
-          f"({sc//2} gesplittet, {total_pages - sc//2} Vollseiten)", file=sys.stderr)
+    print(f"   📐 Split: {total_pages} pages → {len(page_map)} "
+          f"({sc//2} split, {total_pages - sc//2} full pages)", file=sys.stderr)
 
     shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -450,8 +450,8 @@ def merge_pdf(input_pdf: str, output_pdf: str, map_path: str):
             i += 1
 
     dst.save(output_pdf)
-    print(f"   📐 Merge: {len(src.pages)} → {len(dst.pages)} Seiten "
-          f"({len(src.pages) - len(dst.pages)} Paare reassembled)", file=sys.stderr)
+    print(f"   📐 Merge: {len(src.pages)} → {len(dst.pages)} pages "
+          f"({len(src.pages) - len(dst.pages)} pairs reassembled)", file=sys.stderr)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -516,7 +516,7 @@ def verify_all_pages(pdf_path: str, min_chars: int = 50, allow_pages: set = None
     (B4) while the file's overall average still looked acceptable.
 
     Returns a list of (page_num, char_count) for pages below the floor,
-    excluding page numbers in allow_pages (the "Leerseiten-Ausnahme" for
+    excluding page numbers in allow_pages (the "blank page exemption" for
     known legitimate low-text pages — cover sheets, pure diagrams). Empty
     list means the whole document passes.
     """
@@ -621,10 +621,11 @@ def main():
         failing = verify_all_pages(args.input, min_chars=args.min_chars, allow_pages=allow)
         if failing:
             for pn, n in failing:
-                print(f"   🗑️  Seite {pn}: nur {n} Zeichen (min: {args.min_chars})", file=sys.stderr)
+                print(f"   🗑️  Page {pn}: only {n} characters (min: {args.min_chars})", file=sys.stderr)
             sys.exit(1)
         sys.exit(0)
 
 
 if __name__ == "__main__":
     main()
+

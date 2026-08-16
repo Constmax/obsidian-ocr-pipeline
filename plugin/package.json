@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-ocr-vorschau",
+	"name": "obsidian-ocr-preview",
 	"version": "0.1.0",
-	"description": "Review-Ansicht für die OCR-Vorschau-Dateien der obsidian-ocr-pipeline",
+	"description": "Review view for OCR preview files of obsidian-ocr-pipeline",
 	"main": "main.js",
 	"type": "module",
 	"private": true,
