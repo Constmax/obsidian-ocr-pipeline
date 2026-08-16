@@ -73,7 +73,12 @@ export class OcrComparisonView extends ItemView {
 		return "columns-3";
 	}
 
-	async onOpen(): Promise<void> {
+	private uiBuilt = false;
+
+	private ensureUiBuilt(): void {
+		if (this.uiBuilt) return;
+		this.uiBuilt = true;
+
 		this.frame = this.contentEl.createDiv({ cls: "ocr-abgleich" });
 
 		// ── Left: Preview list ──────────────────────────────────────────────
@@ -180,6 +185,10 @@ export class OcrComparisonView extends ItemView {
 		this.wireHandle(handle2, 1, 2);
 
 		this.registerHotkeys();
+	}
+
+	async onOpen(): Promise<void> {
+		this.ensureUiBuilt();
 		this.update();
 		if (this.activeName === null) {
 			const first = this.firstVisible();
@@ -233,6 +242,7 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	update(): void {
+		this.ensureUiBuilt();
 		const folderMissing =
 			this.app.vault.getFolderByPath(this.plugin.settings.previewFolder) === null;
 		const entries = this.inventory?.entries ?? [];
@@ -247,6 +257,7 @@ export class OcrComparisonView extends ItemView {
 
 	async openPreview(name: string): Promise<void> {
 		if (typeof name !== "string" || name.length === 0) return;
+		this.ensureUiBuilt();
 		await this.saveChangeImmediately();
 		const run = ++this.openRun;
 		const item = this.inventory?.entries.find((b) => b.name === name);
