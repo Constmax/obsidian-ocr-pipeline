@@ -45,8 +45,8 @@ export default class OcrPreviewPlugin extends Plugin {
 	private runningChild: ChildProcess | null = null;
 
 	async onload(): Promise<void> {
-		await this.loadSettings();
 		this.inventory = new Inventory(this.app, () => this.settings);
+		await this.loadSettings();
 		await this.inventory.load();
 
 		this.registerView(VIEW_TYPE, (leaf) => new OcrComparisonView(leaf, this));
@@ -194,10 +194,10 @@ export default class OcrPreviewPlugin extends Plugin {
 		await workspace.revealLeaf(leaf);
 		const view = leaf.view instanceof OcrComparisonView ? leaf.view : null;
 		if (view === null) return;
-		if (name !== undefined) await view.open(name);
+		if (name !== undefined) await view.openPreview(name);
 		else if (view.activeName === null) {
 			const first = view.firstVisible();
-			if (first !== null) await view.open(first);
+			if (first !== null) await view.openPreview(first);
 		}
 	}
 

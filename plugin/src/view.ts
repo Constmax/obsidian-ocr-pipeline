@@ -32,7 +32,9 @@ const CHECKED_UNTIL_MS = 800;
 export class OcrComparisonView extends ItemView {
 	activeName: string | null = null;
 
-	private inventory!: Inventory;
+	private get inventory(): Inventory {
+		return this.plugin.inventory;
+	}
 	private sidebar!: Sidebar;
 	private pdfColumn!: PdfColumn;
 	private mdColumn!: MarkdownColumn;
@@ -72,8 +74,6 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
-		this.inventory = this.plugin.inventory;
-
 		this.frame = this.contentEl.createDiv({ cls: "ocr-abgleich" });
 
 		// ── Left: Preview list ──────────────────────────────────────────────
@@ -82,7 +82,7 @@ export class OcrComparisonView extends ItemView {
 			listCol,
 			() => this.plugin.settings.previewFolder,
 		);
-		this.sidebar.onSelect = (name) => void this.open(name);
+		this.sidebar.onSelect = (name) => void this.openPreview(name);
 		this.sidebar.onRefresh = () => void this.reconcile();
 		this.sidebar.onSettings = () => openSettings(this.plugin);
 
@@ -181,6 +181,10 @@ export class OcrComparisonView extends ItemView {
 
 		this.registerHotkeys();
 		this.update();
+		if (this.activeName === null) {
+			const first = this.firstVisible();
+			if (first !== null) void this.openPreview(first);
+		}
 	}
 
 	async onClose(): Promise<void> {
@@ -197,46 +201,55 @@ export class OcrComparisonView extends ItemView {
 
 	async setState(state: unknown, result: ViewStateResult): Promise<void> {
 		result.history = false;
-		const file = (state as { datei?: unknown } | null)?.datei;
-		if (typeof file === "string") await this.open(file);
+		const file =
+			(state as { datei?: unknown; file?: unknown } | null)?.file ??
+			(state as { datei?: unknown } | null)?.datei;
+		if (typeof file === "string") {
+			await this.openPreview(file);
+		} else if (this.activeName === null) {
+			const first = this.firstVisible();
+			if (first !== null) await this.openPreview(first);
+		}
 	}
 
 	next(): void {
 		const name = this.activeName;
 		if (name === null) {
 			const first = this.sidebar.moveSelection(1);
-			if (first !== null) void this.open(first);
+			if (first !== null) void this.openPreview(first);
 			return;
 		}
 		const nextItem = this.sidebar.nextAfter(name);
-		if (nextItem !== null) void this.open(nextItem);
+		if (nextItem !== null) void this.openPreview(nextItem);
 	}
 
 	firstVisible(): string | null {
-		return this.sidebar.firstVisible();
+		return this.sidebar?.firstVisible() ?? null;
 	}
 
 	private async reconcile(): Promise<void> {
-		await this.inventory.reconcile();
+		await this.inventory?.reconcile();
 		this.update();
 	}
 
 	update(): void {
 		const folderMissing =
 			this.app.vault.getFolderByPath(this.plugin.settings.previewFolder) === null;
-		this.sidebar.update(this.inventory.entries, folderMissing);
+		const entries = this.inventory?.entries ?? [];
+		this.sidebar?.update(entries, folderMissing);
 		if (
 			this.activeName !== null &&
-			!this.inventory.entries.some((b) => b.name === this.activeName)
+			!entries.some((b) => b.name === this.activeName)
 		) {
 			this.noSelection();
 		}
 	}
 
-	async open(name: string): Promise<void> {
+	async openPreview(name: string): Promise<void> {
+		if (typeof name !== "string" || name.length === 0) return;
 		await this.saveChangeImmediately();
 		const run = ++this.openRun;
-		const item = this.inventory.entries.find((b) => b.name === name);
+		const item = this.inventory?.entries.find((b) => b.name === name);
 		if (item === undefined) {
 			new Notice(`"${name}" is no longer in preview list.`);
 			this.update();
@@ -331,7 +344,7 @@ export class OcrComparisonView extends ItemView {
 		this.update();
 		if (location === "open") return;
 		const nextItem = this.sidebar.nextAfter(name);
-		if (nextItem !== null) void this.open(nextItem);
+		if (nextItem !== null) void this.openPreview(nextItem);
 		else this.noSelection();
 	}
 
@@ -363,7 +376,7 @@ export class OcrComparisonView extends ItemView {
 	private async undo(): Promise<void> {
 		const name = await this.inventory.undo();
 		this.update();
-		if (name !== null) void this.open(name);
+		if (name !== null) void this.openPreview(name);
 	}
 
 	private noSelection(): void {
@@ -554,7 +567,7 @@ export class OcrComparisonView extends ItemView {
 		modal.setPlaceholder("Search original PDF…");
 		modal.onSelection = (file) => {
 			void this.inventory.updateEntry(name, { "manual-source-pdf": file.path });
-			void this.open(name);
+			void this.openPreview(name);
 		};
 		modal.open();
 	}
@@ -582,11 +595,11 @@ export class OcrComparisonView extends ItemView {
 
 		key("j", () => {
 			const name = this.sidebar.moveSelection(1);
-			if (name !== null) void this.open(name);
+			if (name !== null) void this.openPreview(name);
 		});
 		key("k", () => {
 			const name = this.sidebar.moveSelection(-1);
-			if (name !== null) void this.open(name);
+			if (name !== null) void this.openPreview(name);
 		});
 		key("a", () => void this.decide("accepted"));
 		key("x", () => void this.decide("rejected"));
