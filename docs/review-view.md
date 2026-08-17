@@ -6,7 +6,7 @@ Stage 2: Original PDF and generated Markdown file coupled page by page, with
 is located in `plugin/`.
 
 What this is about: 15% of pages derail (repetition loops or aborts)
-and drag accuracy down from 98.5% to 93.3% — see `README.md`,
+and drag accuracy down from 98.2% to 93.3% (measured against `ddf69e9`) — see `README.md`,
 "Status". This view is the tool used to locate exactly those pages when
 reviewing before anything moves into the wiki.
 
