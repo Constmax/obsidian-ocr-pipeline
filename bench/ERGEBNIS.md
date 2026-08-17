@@ -152,11 +152,12 @@ dem Vorabsatz — braucht Rahmenerkennung, nicht Schlagwortliste.
 54 Seiten in unter einer Sekunde. Damit laesst sich der Bestand vorab pruefen,
 statt Layoutfehler nach 23 h Rechenzeit zu finden.
 
-## Nebenbefund
+## Nebenbefund (Geklärt in Nachtrag 16)
 
-140 Scanseiten haben unter 50 Zeichen im aktuellen Textlayer — entweder
-Leerseiten oder OCR-Ausfaelle der bestehenden Pipeline. In beiden Faellen fuer
-jede Suche heute unsichtbar. Noch nicht untersucht.
+140 Scanseiten hatten unter 50 Zeichen im damaligen Erfassungsstand von `pages.json`.
+Die vollständige Analyse und Aufschlüsselung findet sich in **Nachtrag 16**: Es handelte
+sich um archivierte Rohscans in `_archive`/`repair-stage`, ein inzwischen nach Markdown
+überführtes Skript und eine handschriftliche Skizze — im aktiven Bestand fehlt kein Text.
 
 ## Nachtrag 2026-07-30 (2): Wie schnell geht Pfad C überhaupt?
 
@@ -1484,3 +1485,34 @@ Sechs-Seiten-Lauf von `bench_defekt.py` blieb dieselbe Seite bei 23,2 %, weil
 `_guete` den Neuversuch (26649 Z. Schleife) verwarf. Der Unterschied liegt am
 Codestand zwischen beiden Läufen; die Zahlen in Abschnitt 3 stammen aus dem
 älteren und werden von der Tabelle oben abgelöst.
+
+## Nachtrag 2026-08-17 (16): Klärung der 140 Scanseiten mit unter 50 Zeichen
+
+Im frühen Nebenbefund (Abschnitt oben) standen **140 Scanseiten mit unter 50 Zeichen**
+im Textlayer als ungeklärte Zahl im Raum — mit dem Verdacht, dass Stufe 1 Seiten
+übergangen haben könnte oder Inhalt verloren ging.
+
+Die systematische Untersuchung aller 140 Seiten (aus dem damaligen `pages.json`-Stand
+von 2.922 Seiten Gesamtbestand, 1.496 Scanseiten) zeigt: **alle 140 Seiten hatten exakt
+0 Zeichen**, und keine einzige davon ist ein unerkannter Verlust im aktiven Studienbestand.
+
+### Aufschlüsselung der 140 Seiten
+
+| Kategorie / Pfad | Seiten | Dateien | Ursache & Status |
+|---|---|---|---|
+| `raw/assets/_archive/` | **68** | 5 | Unbearbeitete Original-Scans im Archivordner (`schuldrecht-at-fall-13-14-original-scan.pdf` (9 S.), `schuldrecht-at-fall-19-20-original-scan.pdf` (15 S.), `schuldrecht-at-fall-22-original-scan.pdf` (9 S.), `schuldrecht-at-fall-6-7-original-scan.pdf` (12 S.), `strafrecht-at-v-irrtuemer-ii-original-scan.pdf` (23 S.)). Alle 5 Dateien liegen im aktiven Vault vollständig mit OCR-Textlayer (28.000–58.000 Zeichen pro Datei) vor. |
+| `raw/assets/repair-stage/` | **47** | 3 | Rohe Eingangs-PDFs im Reparatur-Zwischenordner (`fall-19-20.pdf` (15 S.), `fall-22.pdf` (9 S.), `strafrecht-at-v.pdf` (23 S.)). Die fertig gerechneten `-ocr.pdf`-Fassungen liegen direkt daneben mit vollständigem Textlayer. |
+| `raw/StR/Strafrecht-BT/` | **24** | 1 | `strafrecht-bt-diebstahl-skript-1.pdf`: War zum Zeitpunkt der Ersterfassung ein Rohscan ohne Textlayer. Wurde am 2026-08-09 per Mistral-OCR (Stufe 2) vollständig nach Markdown (`strafrecht-bt-diebstahl-skript-1.md`, 56 KB Text, 1.028 Zeilen) überführt und das PDF nach `Pdfs_Alt/` archiviert. |
+| `raw/ZR/Schuldrecht-AT/` | **1** | 1 | `Skizze-2134.pdf`: Eine 1-seitige handschriftliche Prüfungsskizze/Diagramm. Tesseract lieferte 0 Zeichen (reine Handschrift); Apple OCR (Vision) erkennt darauf 38 Textzeilen. |
+| **Summe** | **140** | **10** | **Vollständig aufgeklärt** |
+
+### Befund für den aktiven Bestand
+
+Im aktiven Studienbestand (außerhalb von `raw/assets/` Archiv und Reparatur-Staging) gibt es **keine unvollständig oder fehlerhaft ausgelassenen Textseiten**.
+
+Die einzigen verbleibenden Seiten mit unter 50 Zeichen im aktiven Bestand sind:
+1. **Titel-, Trenn- und Schlussfolien** in Vorlesungs- und Klausurfolien (z. B. `VERTIEFUNGSTEIL 🤓`, `KLVK Zivilrecht RA Dr. Issa`, `Schlaft gut und schönes Wochenende!`, `IHR HABT ES GESCHAFFT`).
+2. Die handschriftliche Prüfungsskizze `Skizze-2134.pdf`.
+
+Damit ist vor dem Stapellauf (#21) gesichert: Die Zahl von 140 Seiten war ein Erfassungsartefakt unbereinigter Rohdateien in `_archive` und `repair-stage`, kein Pipeline-Ausfall.
+

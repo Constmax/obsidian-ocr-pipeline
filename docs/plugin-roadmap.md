@@ -81,7 +81,7 @@ The first three items take an afternoon combined and turn the repo into a plugin
 
 Regarding item 7: Margin labels had **two** structural variants, and only one was previously recognized. Outdented into left margin (Hemmer scripts) → `randlabel_vorziehen()` moves it to block start. As inline prefix to same line → was misclassified as heading and broke the sentence; `ist_ueberschrift()` now excludes it. The `**A.**` portion of the same item was not an error: markers carry their title after them, which is correct Markdown.
 
-Untested in addition: **~140 scan pages with under 50 characters in legacy textlayer**. Unclear whether content is missing or pages are genuinely empty.
+~~Untested in addition: **~140 scan pages with under 50 characters in legacy textlayer**.~~ **Resolved** (see `bench/ERGEBNIS.md` Addendum 16: raw archive scans in `_archive`/`repair-stage`, a converted script, and a handwritten sketch — no missing study content in active corpus).
 
 ## Not Yet Built
 
