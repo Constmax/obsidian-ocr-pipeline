@@ -1484,3 +1484,47 @@ Sechs-Seiten-Lauf von `bench_defekt.py` blieb dieselbe Seite bei 23,2 %, weil
 `_guete` den Neuversuch (26649 Z. Schleife) verwarf. Der Unterschied liegt am
 Codestand zwischen beiden Läufen; die Zahlen in Abschnitt 3 stammen aus dem
 älteren und werden von der Tabelle oben abgelöst.
+
+---
+
+## Nachtrag 2026-08-17 (16): Benchmark-Neumessung gegen den gemergten `main` (`ddf69e9`)
+
+Neumessung aller 40 Seiten gegen den Textlayer (`bench/bench_ocr.py`, PaddleOCR-VL-1.5-4bit) nach Abschluss der Refactorings (Modulaufteilung Issue #8, Preflight-Check #24, geordneter Abbruch #25, Marker-Herkunft #10 und Übersetzung nach Englisch #41). Gemessen gegen Commit `ddf69e9`.
+
+### 1. Gesamtergebnis: Vergleich gegen Stand `038689b`
+
+40 Seiten aus 40 Dateien, 17 234 Wörter, 224 Normzitate:
+
+| | 038689b (pdf2md/entgleisungsschutz) | **ddf69e9 (main)** |
+|---|---|---|
+| **Wortgenauigkeit gesamt** | 98,5 % | **98,2 %** |
+| **Zitattreue gesamt** | 92,4 % | **92,0 %** |
+| **Reihenfolge (Median)** | 93,7 % | **98,1 %** |
+
+Nicht wiedergegebene Normzitate: **18 in 12 Formen** (Stand 038689b: 17 in 12 Formen).
+
+### 2. Abweichungen im Detail
+
+Der minimale Unterschied in Wortgenauigkeit (−0,3 %) und Zitattreue (−0,4 %) geht im Wesentlichen auf eine annotierte Scanseite zurück:
+
+- **`Klausur_2143_korrigiert.pdf` S. 9**: 99,4 % → **83,3 %** Wortgenauigkeit, Reihenfolge 74,0 % → **31,6 %**, Zitattreue 100 % → **60,0 %** (3 von 5 Zitaten). Die Seite enthält handschriftliche Korrekturanmerkungen des Korrektors am Rand und im Fließtext. Das Vision-Modell transkribiert diese handschriftlichen Randbemerkungen („*Sie müssen an dieser Stelle strukturierter als auch dogmatischer vorgehen...*"), die im maschinengeschriebenen PDF-Textlayer nicht vorkommen. Zudem fehlen im PDF-Textlayer die Wortzwischenräume („*DieIdentitätsfeststellungmüssteverhältnismäßigsein*").
+- **`UNIREP_KK_SR_SV_12_12_2025.pdf` S. 3**: 98,6 % → **95,6 %** (keine Normzitate auf der Seite).
+- **`klausur-erbe-auf-umwegen.pdf` S. 5**: 97,3 % → **97,0 %** Wortgenauigkeit, Zitattreue **85,7 % → 100,0 %** (alle Zitate wiedergefunden).
+- **37 der 40 Seiten** sind identisch oder liegen innerhalb von ±0,2 % des Vorstands.
+
+### 3. Schwächste zehn Seiten auf `ddf69e9`
+
+| Datei | S. | Wort | Reihe | Zitat |
+|---|---|---|---|---|
+| `Klausur_2143_korrigiert.pdf` | 9 | 83,3 % | 31,6 % | 60 % |
+| `2131_Lösung_OeffentlichesRecht_Hessen.pdf` | 4 | 88,2 % | 49,8 % | 64 % |
+| `UNIREP_KK_SR_SV_12_12_2025.pdf` | 3 | 95,6 % | 90,7 % | — |
+| `2147_SV_OeffentlichesRecht_Hessen.pdf` | 2 | 95,7 % | 97,5 % | 100 % |
+| `Klausur_2137_Strafrecht_Loesung.pdf` | 7 | 96,1 % | 96,8 % | 61 % |
+| `grundrechtstraegerschaft-juristische-personen.pdf` | 4 | 96,2 % | 95,4 % | 100 % |
+| `klausur-erbe-auf-umwegen.pdf` | 5 | 97,0 % | 76,9 % | 100 % |
+| `UNIREP_KK_OER_SV_05_12_2025.pdf` | 3 | 97,7 % | 95,5 % | — |
+| `Klausur_2146_Zivilrecht.pdf` | 2 | 98,1 % | 98,2 % | 100 % |
+| `Klausur_2130_Zivilrecht_Loesung.pdf` | 8 | 98,5 % | 98,2 % | 100 % |
+
+Normzitate, die der OCR-Pfad auf `ddf69e9` nicht wiedergibt: 18 in 12 Formen (`§ 244 I Nr. 3 StGB` 3×, `Art. 3` 2×, `§ 123 I StGB` 2×, `§ 243 I S. 2 Nr. 1 StGB` 2×, `§ 11 II SPolG` 2×, `Art. 20` 1×, `§ 13 I` 1×, `§ 39 I` 1×, `§ 48 HVwVfG` 1×, `§ 48 I HVwVfG` 1×, `§ 370 AO` 1×, `Art. 21 I` 1×).
