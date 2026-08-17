@@ -76,7 +76,7 @@ The first three items take an afternoon combined and turn the repo into a plugin
 | 5 | **Interleaved footnote blocks** in 2131/2135/2143 | Small, accounts for remaining 1–2 char loss |
 | 6 | **Footnote text across page break** truncated | Small |
 | ~~7~~ | ~~**`**Beispiel:**` mid-sentence**~~ | **Resolved**, both structural variants |
-| 8 | **Word errors** — quantified: 1.2% across all 40 pages; since dictionary check at least **discoverable** | Low |
+| 8 | **Word errors** — quantified: 1.8% across all 40 pages (measured against commit `ddf69e9`); since dictionary check at least **discoverable** | Low |
 | 9 | **Multi-column reading order** — `2131_Lösung` p. 4 at 49.7% | New, currently largest single issue |
 
 Regarding item 7: Margin labels had **two** structural variants, and only one was previously recognized. Outdented into left margin (Hemmer scripts) → `randlabel_vorziehen()` moves it to block start. As inline prefix to same line → was misclassified as heading and broke the sentence; `ist_ueberschrift()` now excludes it. The `**A.**` portion of the same item was not an error: markers carry their title after them, which is correct Markdown.
@@ -85,7 +85,7 @@ Untested in addition: **~140 scan pages with under 50 characters in legacy textl
 
 ## Not Yet Built
 
-**The LLM repair pass** is on hold. At 98.5% word accuracy across all pages, the gain does not justify the risk of "improving" a correct statutory citation. If ever implemented: the benchmark suite now evaluates it, with the bar set at **92.4% citation accuracy** — it must not degrade accuracy below this threshold.
+**The LLM repair pass** is on hold. At 98.2% word accuracy across all pages (measured against commit `ddf69e9`), the gain does not justify the risk of "improving" a correct statutory citation. If ever implemented: the benchmark suite now evaluates it, with the bar set at **92.0% citation accuracy** — it must not degrade accuracy below this threshold.
 
 **Local dictionary checking** (hunspell + legal term list) is **built** — serving as the verification aid planned here: `pdf2md/woerterbuch.py` reports issues, but replaces only unambiguous cases and only when explicitly requested. The primary benefit is the review queue (`woerter-verdaechtig` in frontmatter, `⌕` in logs), not automated text rewrites. Remaining open: **document-internal cross-checking**: if a confused variant of a word appears frequently on a page while the suspicious word appears once, that is a contextual clue no static dictionary can provide — dictionary checking also accepts morphologically well-formed pseudo-words like `Verhaltungsakte`, marking the boundary of the current approach.
 
@@ -114,7 +114,7 @@ Intentionally **omitted** (remaining pending, see "What is Missing"): Progress b
 
 ## Implementation Order
 
-1. ~~**Derailment detection**~~ — Complete, 93.3% → 98.5%.
+1. ~~**Derailment detection**~~ — Complete, 93.3% → 98.2% (measured against commit `ddf69e9`).
 2. **Known Issue 9** — Multi-column reading order (`2131_Lösung` p. 4). Largest remaining single item; gutter logic recently updated.
 3. **Known Issue 3** — Diagram fallback to page image. Requires hand-labeled sample set of diagram pages first; otherwise tweaks to `ist_diagramm()` merely shift probabilities.
 4. **Make scripts plugin-ready** — Progress output, exit codes, `--check`.
