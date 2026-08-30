@@ -19,6 +19,7 @@ import {
 import type { KeymapEventHandler } from "obsidian";
 
 import type OcrPreviewPlugin from "./main.ts";
+import { EditStateTracker } from "./edit-state.ts";
 import { Inventory, type InventoryEntry } from "./file-actions.ts";
 import { MarkdownColumn, type Representation } from "./md-pane.ts";
 import { PdfColumn } from "./pdf-pane.ts";
@@ -64,6 +65,7 @@ export class OcrComparisonView extends ItemView {
 	private mdSaveTimer: number | null = null;
 	private mdWriteChain: Promise<void> = Promise.resolve();
 	private editButton!: HTMLButtonElement;
+	private editTracker = new EditStateTracker();
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -227,6 +229,7 @@ export class OcrComparisonView extends ItemView {
 		}
 		this.hotkeyHandlers = [];
 		await this.saveChangeImmediately();
+		this.editTracker.reset();
 		this.coupling?.destroy();
 		this.pdfColumn?.destroy();
 		this.mdColumn?.clear();
@@ -364,6 +367,9 @@ export class OcrComparisonView extends ItemView {
 			}
 
 			if (this.closed || run !== this.openRun) return;
+			this.editTracker.reset();
+			this.mdColumn.setEditable(false);
+			this.updateEditButton();
 			this.loadingName = null;
 			this.activeName = name;
 			this.requestedName = null;
@@ -525,6 +531,9 @@ export class OcrComparisonView extends ItemView {
 		});
 		this.activeName = null;
 		this.sidebar.setSelected(null);
+		this.editTracker.reset();
+		this.mdColumn.setEditable(false);
+		this.updateEditButton();
 		this.mdColumn.clear("No preview selected — select an entry on the left.");
 		this.pdfFile = null;
 		void this.pdfColumn.open(null);
@@ -604,7 +613,13 @@ export class OcrComparisonView extends ItemView {
 		await this.mdWriteChain;
 	}
 
-	private setRepresentation(representation: Representation): void {
+	private setRepresentation(
+		representation: Representation,
+		isExplicit = true,
+	): void {
+		if (isExplicit) {
+			this.editTracker.onExplicitRepresentationChange();
+		}
 		void this.saveChangeImmediately();
 		this.mdColumn.setRepresentation(representation);
 		this.highlightToggle(representation);
@@ -622,12 +637,15 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private toggleEdit(): void {
-		const newStatus = !this.mdColumn.isEditable();
-		this.mdColumn.setEditable(newStatus);
-		if (newStatus && this.mdColumn.currentRepresentation() === "rendered") {
-			this.setRepresentation("source");
+		const result = this.editTracker.toggle(
+			this.mdColumn.currentRepresentation(),
+			this.mdColumn.isEditable(),
+		);
+		this.mdColumn.setEditable(result.editable);
+		if (result.representationToSet !== null) {
+			this.setRepresentation(result.representationToSet, false);
 		}
-		if (!newStatus) {
+		if (!result.editable) {
 			void this.saveChangeImmediately();
 		}
 		this.updateEditButton();
