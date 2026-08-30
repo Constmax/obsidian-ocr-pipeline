@@ -242,13 +242,15 @@ export default class OcrPreviewPlugin extends Plugin {
 			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
 		);
 		modal.setPlaceholder("Search PDF for conversion…");
-		modal.onSelection = (file) => {
-			const pageModal = new PageSelectModal(this.app, file);
-			pageModal.onSelection = (pages) =>
-				void this.convert(file, pages);
-			pageModal.open();
-		};
+		modal.onSelection = (file) => this.selectPagesAndConvert(file);
 		modal.open();
+	}
+
+	private selectPagesAndConvert(file: TFile): void {
+		if (!this.checkConversionFree()) return;
+		const pageModal = new PageSelectModal(this.app, file);
+		pageModal.onSelection = (pages) => void this.convert(file, pages);
+		pageModal.open();
 	}
 
 	private checkConversionFree(): boolean {
@@ -400,6 +402,11 @@ export default class OcrPreviewPlugin extends Plugin {
 					.onClick(() => void this.revealView(file.name)),
 			);
 		} else if (file.extension === "pdf") {
+			menu.addItem((i) =>
+				i
+					.setTitle("OCR → Markdown")
+					.onClick(() => this.selectPagesAndConvert(file)),
+			);
 			const stem = `${file.basename}.md`;
 			if (this.inventory.entries.some((b) => b.name === stem)) {
 				menu.addItem((i) =>
