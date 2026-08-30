@@ -108,9 +108,9 @@ Sole interaction with the pipeline: `pdf2md.py` now writes page provenance into 
 
 ## Built Next: Conversion Command (v0.2)
 
-The initial Approach A building block is complete: command **"Convert PDF and open in OCR Review"**. Selects a PDF in vault via Suggest Modal, spawns `~/bin/pdf2md <pdf> --out <preview-folder>` via `child_process.spawn`, and opens Review View upon completion. Feedback delivered via Notice.
+The initial Approach A building block is complete: command **"Convert PDF and open in OCR Review"** and the PDF file-menu action **"OCR → Markdown"**. The command selects a PDF in the vault via Suggest Modal; the file-menu action uses the PDF that was clicked. Both allow an optional page selection, spawn `~/bin/pdf2md <pdf> --out <preview-folder>` via `child_process.spawn`, and open Review View upon completion. Feedback is delivered via Notice.
 
-Intentionally **omitted** (remaining pending, see "What is Missing"): Progress bar UI, cancel button, machine-readable progress output, preflight check, context menu entry on PDF files, and configurable pdf2md path.
+Intentionally **omitted** (remaining pending, see "What is Missing"): Configurable pdf2md path.
 
 ## Implementation Order
 
@@ -128,4 +128,3 @@ Intentionally **omitted** (remaining pending, see "What is Missing"): Progress b
 - No cloud OCR. Course materials remain local on machine.
 - No automatic overwriting of wiki pages. Plugin generates preview files; migration into wiki remains a deliberate human action.
 - No expectation of error-free output. Backlink to original PDF is a core architectural feature, not a fallback compromise.
-
