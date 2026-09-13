@@ -20,7 +20,7 @@ Die Wahrheit kommt wie im grossen Benchmark aus dem Textlayer derselben Seiten.
 import json, subprocess, sys
 from pathlib import Path
 
-from pfade import BENCH, PDF2MD_PY
+from paths import BENCH, PDF2MD_PY
 from bench_ocr import seiten_trennen, vergleiche
 
 # Seiten des Sammel-PDF aus bench-lauf/, die im 40-Seiten-Lauf entgleist sind.

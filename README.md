@@ -208,7 +208,9 @@ Brewfile     Systempakete für das Setup (brew bundle)
 
 Die Benchmark-**Seitenbilder** liegen bewusst nicht im Repo: sie sind Scans aus
 urheberrechtlich geschütztem Kursmaterial und mit `bench/build_bench.py` aus dem
-eigenen Bestand reproduzierbar. Siehe [bench/BENCHMARK-SET.md](bench/BENCHMARK-SET.md).
+eigenen Bestand reproduzierbar. Die unterstützten Befehle stehen in
+[bench/README.md](bench/README.md); die Seitenauswahl steht in
+[bench/BENCHMARK-SET.md](bench/BENCHMARK-SET.md).
 
 ## CI
 
