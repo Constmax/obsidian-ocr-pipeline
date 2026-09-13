@@ -1,609 +1,310 @@
 #!/usr/bin/env python3
-"""Path C, End-to-End: PDF → Markdown (CLI + page runner).
+"""Command-line adapter for the PDF-to-Markdown conversion runner."""
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/pdf2md.py <pdf> [--dpi 300]
-
-Renders each page, tiles on high text density, runs PaddleOCR-VL and
-assembles lines using their <|LOC|> coordinates into Markdown.
-
-Since Issue #8, this file contains only CLI and page runner: geometry
-(columns, boxes, diagrams) resides in layout.py, tiling and model in
-ocr.py, Markdown assembly in assembly.py. Assembly is the
-testable layer — pdf2md/test runs without MLX, fitz, and Vault assets.
-
-Writes to .ocr-bench/out-C/, leaves raw/ untouched.
-"""
 import argparse
 import json
 import os
-import re
 import sys
 import tempfile
-import time
-from datetime import date, datetime
 from pathlib import Path
 
 import cancellation
-import dictionary
-import assembly
-from assembly import (as_callout, build_document, clean_text, merge_fragments,
-                        build_frontmatter, page_marker, assemble_paragraphs)
-from layout import (image_ratio, detect_boxes, assign_boxes,
-                   detect_layout, split_columns, tables_markdown)
-from ocr import (OVERLAP, TOKEN_MAX, CHARACTERS_PER_INK, _ink_amount,
-               tile_lines, tile_vertically, tile_horizontally,
-               trim_overlap)
+from conversion import ConversionRequest, convert_document
+from ocr import TOKEN_MAX
 from page_range import PageRangeError, parse_page_range
 
 BENCH = Path(__file__).resolve().parent
 OUT = BENCH / "out-C"
-TMP = OUT
 MODEL = os.environ.get("MLX_OCR_MODEL", "mlx-community/PaddleOCR-VL-1.5-4bit")
 PROMPT = "Parse this document page to Markdown."
-TILE_THRESHOLD = 3000      # Characters in existing textlayer
+TILE_THRESHOLD = 3000
 KACHEL_AB = TILE_THRESHOLD
 EXIT_CHECK = 4
 
 
-def running_lines(doc, header_zone=0.09, footer_zone=0.93, min_pages=2):
-    """Texts appearing identically on multiple pages in header or footer zone."""
-    from collections import Counter
-    counter = Counter()
-    for i in range(doc.page_count):
-        p = doc[i]
-        H = p.rect.height or 1
-        seen = set()
-        for b in p.get_text("dict")["blocks"]:
-            if b.get("type") != 0:
-                continue
-            for ln in b["lines"]:
-                rel = ((ln["bbox"][1] + ln["bbox"][3]) / 2) / H
-                if not (rel <= header_zone or rel >= footer_zone):
-                    continue
-                t = re.sub(r"\s+", " ",
-                           "".join(s["text"] for s in ln["spans"])).strip()
-                if len(t) < 6 or re.fullmatch(r"[\d\s\-–—.]+", t):
-                    continue
-                seen.add(t)
-        counter.update(seen)
-    return {t for t, n in counter.items() if n >= min_pages}
-
-
-def textlayer_lines(page):
-    """Like parse_lines, but from existing textlayer."""
-    W = page.rect.width or 1
-    H = page.rect.height or 1
-    tables = tables_markdown(page)
-    frames = [t[2] for t in tables]
-
-    def in_table(bbox):
-        mx, my = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
-        return any(x0 <= mx <= x1 and y0 <= my <= y1
-                   for x0, y0, x1, y1 in frames)
-
-    lines, prose, rotated = [], [], []
-    for y, md, bbox in tables:
-        lines.append([md, (int(bbox[0] / W * 1000), int(bbox[1] / H * 1000),
-                            int(bbox[2] / W * 1000), int(bbox[3] / H * 1000)),
-                       "tabelle"])
-    for b in page.get_text("dict")["blocks"]:
-        if b.get("type") != 0:
-            continue
-        for ln in b["lines"]:
-            if in_table(ln["bbox"]):
-                continue
-            parts = []
-            for sp in ln["spans"]:
-                t = clean_text(sp["text"])
-                if not t.strip():
-                    parts.append(t)
-                    continue
-                if t.strip() in ("o", "O") and "courier" in sp.get("font", "").lower():
-                    parts.append("-")
-                    continue
-                bold = bool(sp.get("flags", 0) & 16) or "bold" in sp.get("font", "").lower()
-                before = t[:len(t) - len(t.lstrip())]
-                after = t[len(t.rstrip()):]
-                parts.append(f"{before}**{t.strip()}**{after}" if bold else t)
-            text = "".join(parts).strip()
-            if not text:
-                continue
-            (prose if tuple(ln.get("dir", (1, 0))) == (1, 0) else rotated) \
-                .append([text, tuple(ln["bbox"])])
-    for text, box in merge_fragments(prose, W) + rotated:
-        lines.append([text, (int(box[0] / W * 1000), int(box[1] / H * 1000),
-                              int(box[2] / W * 1000), int(box[3] / H * 1000))])
-    return lines
-
-
-def analyze_pages(pdf, dpi, ocr_only=False, selection=None):
-    """Decide for each page: textlayer sufficient, or run through model?"""
-    import fitz
-    doc = fitz.open(pdf)
-    for p in doc:
-        if p.rotation:
-            p.remove_rotation()
-    assembly.set_running(running_lines(doc))
-    pages = []
-    for i in range(doc.page_count):
-        if selection is not None and (i + 1) not in selection:
-            continue
-        p = doc[i]
-        chars = len(p.get_text("text").strip())
-        scan = image_ratio(p) >= 0.5 or chars < 100
-        table_frames = [] if scan else [t[2] for t in tables_markdown(p)]
-        boxes, diagram = detect_boxes(p, scan, table_frames)
-        if not scan and not ocr_only:
-            pages.append((i + 1, None, chars, "vektoriell", None,
-                          textlayer_lines(p), boxes, diagram))
-            continue
-        png = TMP / f"_seite{i+1:03d}.png"
-        p.get_pixmap(dpi=dpi).save(png)
-        layout_type, gutter = detect_layout(p)
-        pages.append((i + 1, png, chars, layout_type, gutter, None, boxes, diagram))
-    doc.close()
-    return pages
-
-
-def diagram_image(pdf, nr, image_dir, max_edge=1800):
-    """Save page as PNG and return Obsidian embed link."""
-    import fitz
-    image_dir.mkdir(parents=True, exist_ok=True)
-    name = f"{pdf.stem}-s{nr:03d}.png".replace(" ", "-")
-    doc = fitz.open(pdf)
-    page = doc[nr - 1]
-    long_side = max(page.rect.width, page.rect.height) or 1
-    z = min(max_edge / long_side, 4.0)
-    page.get_pixmap(matrix=fitz.Matrix(z, z)).save(image_dir / name)
-    doc.close()
-    return name, image_dir / name
-
-
-def _progress(event: dict):
-    """Write JSON-formatted progress to stderr."""
+def _progress(event):
     sys.stderr.write(json.dumps(event, ensure_ascii=False) + "\n")
     sys.stderr.flush()
 
 
-def _human_size(b):
-    """Bytes als lesbare Groesse (KB, MB, GB)."""
-    for einheit in ("B", "KB", "MB", "GB"):
-        if b < 1024 or einheit == "GB":
-            return f"{b:.1f} {einheit}"
-        b /= 1024
+def _human_size(size):
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.1f} {unit}"
+        size /= 1024
 
 
-def _hf_cache_pfad(repo_id):
-    """Pfad zum HuggingFace-Cache-Verzeichnis fuer ein Modell.
-
-    Respektiert $HF_HUB_CACHE, $HF_HOME/hub, Default ~/.cache/huggingface/hub.
-    """
+def _hf_cache_path(repo_id):
     cache = (os.environ.get("HF_HUB_CACHE")
              or (os.environ.get("HF_HOME", "~/.cache/huggingface") + "/hub"))
-    cache = os.path.expanduser(cache)
-    parts = repo_id.split("/", 1)
-    folder = f"models--{'--'.join(parts)}"
-    return Path(cache) / folder
+    return Path(os.path.expanduser(cache)) / f"models--{'--'.join(repo_id.split('/', 1))}"
 
 
 def preflight(out):
-    """Schneller Vorabcheck ohne Modelllauf und ohne Eingabedatei.
-
-    Liefert eine Liste von (name, ok, detail) und eine Liste von Warnungen.
-    """
-    checks = []
-    warnungen = []
-    # 1. Python-Version
-    pv = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    checks.append(("python", sys.version_info >= (3, 9), pv))
-    # 2. fitz (PyMuPDF)
+    """Run dependency and environment checks without loading the model."""
+    checks, warnings = [], []
+    version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    checks.append(("python", sys.version_info >= (3, 9), version))
     try:
         import pymupdf as fitz
         checks.append(("fitz", True, getattr(fitz, "__version__", "?")))
     except ImportError:
         checks.append(("fitz", False, "nicht installiert"))
-    # 3. mlx_vlm
     try:
         import mlx_vlm
-        checks.append(("mlx_vlm", True,
-                        getattr(mlx_vlm, "__version__", "?")))
+        checks.append(("mlx_vlm", True, getattr(mlx_vlm, "__version__", "?")))
     except ImportError:
         checks.append(("mlx_vlm", False, "nicht installiert"))
-    # 4. Modell im HuggingFace-Cache
-    modell_pfad = Path(MODEL)
-    if modell_pfad.is_dir():
-        checks.append(("modell", True, f"lokal: {modell_pfad}"))
+    model_path = Path(MODEL)
+    if model_path.is_dir():
+        checks.append(("modell", True, f"lokal: {model_path}"))
     else:
-        cache_pfad = _hf_cache_pfad(MODEL)
-        ok = cache_pfad.exists() and any(cache_pfad.iterdir())
-        detail = str(cache_pfad) if ok else f"nicht im Cache ({cache_pfad})"
+        cache_path = _hf_cache_path(MODEL)
+        ok = cache_path.exists() and any(cache_path.iterdir())
+        detail = str(cache_path) if ok else f"nicht im Cache ({cache_path})"
         if ok:
-            blobs = cache_pfad / "blobs"
-            if blobs.is_dir():
-                groesse = sum(f.stat().st_size for f in blobs.glob("*")
-                              if f.is_file())
-            else:
-                groesse = sum(f.stat().st_size for f in cache_pfad.rglob("*")
-                              if f.is_file() and not f.is_symlink())
-            detail += f" ({_human_size(groesse)})"
+            blobs = cache_path / "blobs"
+            files = blobs.glob("*") if blobs.is_dir() else cache_path.rglob("*")
+            size = sum(path.stat().st_size for path in files
+                       if path.is_file() and not path.is_symlink())
+            detail += f" ({_human_size(size)})"
         checks.append(("modell", ok, detail))
-    # 5. Schreibrecht auf Ausgabeordner
     try:
         out.mkdir(parents=True, exist_ok=True)
-        probes = out / ".check-probe"
-        probes.write_text("ok")
-    except OSError as e:
-        checks.append(("ausgabe", False, str(e)))
+        probe = out / ".check-probe"
+        probe.write_text("ok")
+    except OSError as error:
+        checks.append(("ausgabe", False, str(error)))
     else:
         try:
-            probes.unlink()
+            probe.unlink()
         except OSError:
             pass
         checks.append(("ausgabe", True, str(out)))
-    # 6. Verfuegbarer Arbeitsspeicher
     try:
         import subprocess
-        mem_bytes = int(subprocess.check_output(
-            ["sysctl", "-n", "hw.memsize"], text=True).strip())
-        mem_gb = mem_bytes / (1024 ** 3)
-        detail = f"{mem_gb:.1f} GiB"
-        if mem_gb < 8:
+        memory = int(subprocess.check_output(
+            ["sysctl", "-n", "hw.memsize"], text=True).strip()) / (1024 ** 3)
+        detail = f"{memory:.1f} GiB"
+        if memory < 8:
             detail += " (weniger als 8 GiB — Parallelbetrieb riskiert OOM)"
-            warnungen.append("speicher: " + detail)
+            warnings.append("speicher: " + detail)
         checks.append(("speicher", True, detail))
     except Exception:
         checks.append(("speicher", True, "nicht bestimmbar"))
-    return checks, warnungen
+    return checks, warnings
 
 
 def pdf_page_count(pdf):
-    """Number of pages in `pdf`."""
     import fitz
     with fitz.open(pdf) as doc:
         return doc.page_count
 
 
 def page_option(flag, text, page_count):
-    """Parse and range-check a page option; exit with a one-line error."""
     try:
         return parse_page_range(text, page_count)
-    except PageRangeError as e:
-        sys.exit(f"{flag}: {e}")
+    except PageRangeError as error:
+        sys.exit(f"{flag}: {error}")
+
+
+class LazyMlxOcrAdapter:
+    """Load the model only when the runner encounters its first OCR page."""
+
+    def __init__(self, model_name):
+        self.model_name = model_name
+        self._generate = None
+
+    def _load(self):
+        from mlx_vlm import generate, load
+        from mlx_vlm.prompt_utils import apply_chat_template
+        from mlx_vlm.utils import load_config
+        model, processor = load(self.model_name)
+        formatted = apply_chat_template(
+            processor, load_config(self.model_name), PROMPT, num_images=1)
+
+        def generate_text(image, max_tokens):
+            result = generate(
+                model, processor, formatted, image=[str(image)],
+                max_tokens=max_tokens, temperature=0.0, verbose=False)
+            return (result if isinstance(result, str)
+                    else getattr(result, "text", str(result)))
+        self._generate = generate_text
+
+    def __call__(self, image, max_tokens=TOKEN_MAX):
+        if self._generate is None:
+            self._load()
+        return self._generate(image, max_tokens)
+
+
+def _event_sink(progress):
+    """Create the console/progress formatter for structured runner events."""
+    def handle(event):
+        kind = event["type"]
+        if kind == "analysis_started":
+            selection = event["selection"]
+            suffix = f" (pages {sorted(selection)})" if selection else ""
+            print(f"Analyzing {event['file']} (scan pages @ {event['dpi']} dpi){suffix} ...")
+        elif kind == "analysis_complete":
+            print(f"   {event['pages']} pages — {event['pages_textlayer']} from textlayer, "
+                  f"{event['pages_ocr']} through model\n")
+        elif kind == "start" and progress:
+            _progress({"typ": "start", "datei": event["file"],
+                       "seiten": event["pages"], "dpi": event["dpi"]})
+        elif kind == "dictionary":
+            wordbook = event["wordbook"]
+            print("Dictionary: " + (wordbook.source if wordbook else
+                                     "none found — check skipped."))
+            if wordbook and not event["correct"]:
+                print("   only report — replace with --dictionary-correct\n")
+            elif wordbook:
+                print("   unambiguous cases will be replaced\n")
+        elif kind == "page":
+            page, image_path = event["page"], event["image_path"]
+            extra = (f" | → {image_path.name} ({image_path.stat().st_size // 1024} kB)"
+                     if image_path else "")
+            source = "DIAGRAM as image" if page.is_diagram else event["source_detail"]
+            print(f"→ p.{page.number}: {page.seconds:5.1f} s | "
+                  f"{page.text_characters:5d} chars textlayer → "
+                  f"{sum(len(text) for text in page.paragraphs):5d} chars | "
+                  f"{len(page.paragraphs):3d} paragraphs | {source}{extra}")
+            if page.discarded:
+                print(f"     discarded ({len(page.discarded)}): "
+                      + " ¦ ".join(text[:34] for text in page.discarded[:6])
+                      + (" …" if len(page.discarded) > 6 else ""))
+            findings = event["findings"]
+            if findings:
+                print(f"     ⌕ {len(findings)} words: " + " ¦ ".join(
+                    (f"{item.word} → {item.suggestion}" if item.suggestion
+                     else f"{item.word} ?") + (" ✓" if item.corrected else "")
+                    + ("" if item.count == 1 else f" ({item.count}x)")
+                    for item in findings[:6]) + (" …" if len(findings) > 6 else ""))
+            for warning in page.trace:
+                print(f"     ⚠ {warning}")
+            if progress:
+                origin = ("diagramm" if page.is_diagram else
+                          "textlayer" if page.source == "textlayer" else "ocr")
+                payload = {"typ": "seite", "nr": page.number,
+                           "von": event["total_pages"],
+                           "sekunden": round(page.seconds, 1),
+                           "herkunft": origin, "entgleist": bool(page.trace)}
+                if page.trace:
+                    payload["grund"] = page.trace[0]
+                _progress(payload)
+        elif kind == "complete":
+            result = event["result"]
+            if progress:
+                _progress({"typ": "fertig", "ziel": str(result.target),
+                           "sekunden": round(result.seconds, 1),
+                           "entgleist": result.pages_derailed})
+            print(f"\n{result.seconds:.1f} s total "
+                  f"({result.seconds / len(result.pages):.1f} s/page)\n→ {result.target}")
+        elif kind == "cancelled":
+            if event.get("target"):
+                print(f"\nCancellation: partial file written "
+                      f"({event['written']} of {event['total_pages']} pages) "
+                      f"→ {event['target']}")
+            else:
+                print("Cancellation before first page — no partial file written.")
+    return handle
+
+
+def _run_preflight(args, parser):
+    if args.pdf:
+        parser.error("--check does not require a PDF file (only runs preflight check)")
+    temporary = None
+    target = args.out
+    if args.out == OUT:
+        temporary = Path(tempfile.mkdtemp(prefix="pdf2md-preflight-"))
+        target = temporary
+    checks, warnings = preflight(target)
+    all_ok = all(ok for _, ok, _ in checks)
+    if args.progress:
+        print(json.dumps({"typ": "check", "ok": all_ok,
+                          "checks": [{"name": name, "ok": ok, "detail": detail}
+                                     for name, ok, detail in checks],
+                          "warnungen": warnings}, ensure_ascii=False, indent=1))
+    else:
+        for name, ok, detail in checks:
+            print(f"{'[ ok ]' if ok else '[fehlt]'} {name}: {detail}")
+        for warning in warnings:
+            print(f"[warn] {warning}")
+        print("—")
+        print("alle ok" if all_ok else "fehlgeschlagen")
+    if temporary is not None:
+        try:
+            os.rmdir(temporary)
+        except OSError:
+            pass
+    return 0 if all_ok else EXIT_CHECK
+
+
+def _parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("pdf", nargs="?", default=None, help="Input PDF file")
+    parser.add_argument("--dpi", type=int, default=150)
+    parser.add_argument("--tile-from", "--kachel-ab", dest="tile_from", type=int,
+                        default=TILE_THRESHOLD)
+    parser.add_argument("--no-bold", "--kein-fett", dest="no_bold", action="store_true")
+    parser.add_argument("--ocr-only", "--nur-ocr", dest="ocr_only", action="store_true")
+    parser.add_argument("--retries", "--neuversuche", dest="retries", type=int, default=1)
+    parser.add_argument("--lines-dump", "--zeilen-dump", dest="lines_dump", type=Path)
+    parser.add_argument("--no-dictionary", "--kein-woerterbuch",
+                        dest="no_dictionary", action="store_true")
+    parser.add_argument("--dictionary", "--woerterbuch", dest="dictionary",
+                        action="append", default=[], type=Path, metavar="FILE")
+    parser.add_argument("--dictionary-correct", "--woerterbuch-korrigieren",
+                        dest="dictionary_correct", action="store_true")
+    parser.add_argument("--dictionary-report", "--woerterbuch-bericht",
+                        dest="dictionary_report", type=Path, metavar="FILE")
+    parser.add_argument("--out", type=Path, default=OUT)
+    parser.add_argument("--image-dir", "--bild-dir", dest="image_dir", type=Path)
+    parser.add_argument("--image-max-edge", "--bild-max-kante",
+                        dest="image_max_edge", type=int, default=1800)
+    parser.add_argument("--diagram-pages", "--diagramm-seiten",
+                        dest="diagram_pages", default="")
+    parser.add_argument("--diagram-image-only", "--diagramm-nur-bild",
+                        dest="diagram_image_only", action="store_true")
+    parser.add_argument("--pages", "--seiten", dest="pages", default="")
+    parser.add_argument("--progress", "--fortschritt", dest="progress", action="store_true")
+    parser.add_argument("--check", action="store_true")
+    return parser
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("pdf", nargs="?", default=None, help="Input PDF file")
-    ap.add_argument("--dpi", type=int, default=150)
-    ap.add_argument("--tile-from", "--kachel-ab", dest="tile_from", type=int, default=TILE_THRESHOLD)
-    ap.add_argument("--no-bold", "--kein-fett", dest="no_bold", action="store_true",
-                    help="Disable bold detection via ink density")
-    ap.add_argument("--ocr-only", "--nur-ocr", dest="ocr_only", action="store_true",
-                    help="Ignore textlayer, run everything through model")
-    ap.add_argument("--retries", "--neuversuche", dest="retries", type=int, default=1,
-                    help="How often a derailed tile is recalculated finer")
-    ap.add_argument("--lines-dump", "--zeilen-dump", dest="lines_dump", type=Path, default=None,
-                    help="Save lines with boxes per page as JSON")
-    ap.add_argument("--no-dictionary", "--kein-woerterbuch", dest="no_dictionary", action="store_true",
-                    help="Disable dictionary check completely")
-    ap.add_argument("--dictionary", "--woerterbuch", dest="dictionary", action="append", default=[], type=Path,
-                    metavar="FILE",
-                    help="Additional wordlist or .dic")
-    ap.add_argument("--dictionary-correct", "--woerterbuch-korrigieren", dest="dictionary_correct", action="store_true",
-                    help="Replace unambiguous cases instead of only reporting")
-    ap.add_argument("--dictionary-report", "--woerterbuch-bericht", dest="dictionary_report", type=Path, default=None,
-                    metavar="FILE",
-                    help="Save all findings with page number as JSON")
-    ap.add_argument("--out", type=Path, default=OUT,
-                    help="Target folder for .md")
-    ap.add_argument("--image-dir", "--bild-dir", dest="image_dir", type=Path, default=None,
-                    help="Storage for diagram images")
-    ap.add_argument("--image-max-edge", "--bild-max-kante", dest="image_max_edge", type=int, default=1800,
-                    help="Longest pixel edge of diagram images")
-    ap.add_argument("--diagram-pages", "--diagramm-seiten", dest="diagram_pages", default="",
-                    help="Pages ALWAYS considered as diagrams")
-    ap.add_argument("--diagram-image-only", "--diagramm-nur-bild", dest="diagram_image_only", action="store_true",
-                    help="Diagram pages without text callout")
-    ap.add_argument("--pages", "--seiten", dest="pages", default="",
-                    help="Convert only these pages")
-    ap.add_argument("--progress", "--fortschritt", dest="progress", action="store_true",
-                    help="Output machine-readable progress as JSON lines on stderr")
-    ap.add_argument("--check", action="store_true",
-                    help="Preflight check without model run (exit 0 on success, 4 on error)")
-    a = ap.parse_args()
-
-    if a.check:
-        if a.pdf:
-            ap.error("--check does not require a PDF file (only runs preflight check)")
-        temp_dir = None
-        if a.out == OUT:
-            temp_dir = Path(tempfile.mkdtemp(prefix="pdf2md-preflight-"))
-            out_target = temp_dir
-        else:
-            out_target = a.out
-        checks, warnings = preflight(out_target)
-        all_ok = all(ok for _, ok, _ in checks)
-        if a.progress:
-            print(json.dumps({
-                "typ": "check",
-                "ok": all_ok,
-                "checks": [{"name": n, "ok": ok, "detail": d}
-                            for n, ok, d in checks],
-                "warnungen": warnings,
-            }, ensure_ascii=False, indent=1))
-        else:
-            for name, ok, detail in checks:
-                status = "[ ok ]" if ok else "[fehlt]"
-                print(f"{status} {name}: {detail}")
-            for w in warnings:
-                print(f"[warn] {w}")
-            print("—")
-            print("alle ok" if all_ok else "fehlgeschlagen")
-        if temp_dir is not None:
-            try:
-                os.rmdir(temp_dir)
-            except OSError:
-                pass
-        sys.exit(0 if all_ok else EXIT_CHECK)
-
-    pdf = Path(a.pdf) if a.pdf else None
-    if pdf is None:
-        ap.error("Requires a PDF file (or --check for preflight check)")
+    parser = _parser()
+    args = parser.parse_args()
+    if args.check:
+        sys.exit(_run_preflight(args, parser))
+    if not args.pdf:
+        parser.error("Requires a PDF file (or --check for preflight check)")
+    pdf = Path(args.pdf)
     if not pdf.exists():
         sys.exit(f"not found: {pdf}")
-    if a.image_dir is None:
-        a.image_dir = a.out / "assets"
     page_count = pdf_page_count(pdf)
-    selection = page_option("--pages/--seiten", a.pages, page_count)
-    forced = page_option("--diagram-pages/--diagramm-seiten", a.diagram_pages,
-                         page_count) or set()
+    selection = page_option("--pages/--seiten", args.pages, page_count)
+    forced = page_option("--diagram-pages/--diagramm-seiten",
+                         args.diagram_pages, page_count) or set()
+    cancellation.reset()
     cancellation.install()
-
-    global TMP
-    OUT.mkdir(parents=True, exist_ok=True)
-    tmp_dir = tempfile.TemporaryDirectory(prefix=f"_tmp-{pdf.stem}-", dir=OUT)
-    TMP = Path(tmp_dir.name)
-    try:
-        a.out.mkdir(parents=True, exist_ok=True)
-
-        selection_text = f" (pages {sorted(selection)})" if selection else ""
-        print(f"Analyzing {pdf.name} (scan pages @ {a.dpi} dpi){selection_text} ...")
-        pages = analyze_pages(pdf, a.dpi, a.ocr_only, selection)
-        if not pages:
-            sys.exit(f"no pages to convert: {pdf.name}")
-        n_ocr = sum(1 for s in pages if s[1] is not None)
-        print(f"   {len(pages)} pages — {len(pages)-n_ocr} from textlayer, "
-              f"{n_ocr} through model\n")
-
-        if a.progress:
-            _progress({"typ": "start", "datei": pdf.name, "seiten": len(pages), "dpi": a.dpi})
-
-        wb = None
-        if n_ocr and not a.no_dictionary:
-            wb = dictionary.load(a.dictionary)
-            print("Dictionary: " + (wb.source if wb else
-                  "none found — check skipped."))
-            if wb and not a.dictionary_correct:
-                print("   only report — replace with --dictionary-correct\n")
-            elif wb:
-                print("   unambiguous cases will be replaced\n")
-
-        ocr = None
-        if n_ocr:
-            from mlx_vlm import generate, load
-            from mlx_vlm.prompt_utils import apply_chat_template
-            from mlx_vlm.utils import load_config
-            model, processor = load(MODEL)
-            config = load_config(MODEL)
-            formatted = apply_chat_template(processor, config, PROMPT, num_images=1)
-
-            def ocr(img, max_tokens=TOKEN_MAX):
-                res = generate(model, processor, formatted, image=[str(img)],
-                               max_tokens=max_tokens, temperature=0.0,
-                               verbose=False)
-                return res if isinstance(res, str) else getattr(res, "text", str(res))
-
-        md, t_total, n_diag, n_derailed = [], time.perf_counter(), 0, 0
-        n_suspect, n_corrected, report = 0, 0, []
-        last_page = 0
-
-        def save_page(nr, paragraphs, diagram, dt, chars, source, discarded, trace=(),
-                      marker_extra=None, findings=()):
-            nonlocal n_diag, last_page
-            last_page = nr
-            if diagram:
-                marker_extra = "diagramm"
-            header = page_marker(nr, marker_extra)
-            extra_str = ""
-            if diagram:
-                n_diag += 1
-                name, path = diagram_image(pdf, nr, a.image_dir, a.image_max_edge)
-                parts = [f"![[{name}]]"]
-                if not a.diagram_image_only and paragraphs:
-                    parts.append(as_callout(
-                        paragraphs, "Text der Seite (Reihenfolge nicht verlässlich)"))
-                md.append(header + "\n\n".join(parts))
-                extra_str = f" | → {path.name} ({path.stat().st_size // 1024} kB)"
-            else:
-                md.append(header + "\n\n".join(paragraphs))
-            print(f"→ p.{nr}: {dt:5.1f} s | {chars:5d} chars textlayer → "
-                  f"{sum(len(p) for p in paragraphs):5d} chars | "
-                  f"{len(paragraphs):3d} paragraphs | "
-                  f"{'DIAGRAM as image' if diagram else source}{extra_str}")
-            if discarded:
-                print(f"     discarded ({len(discarded)}): "
-                      + " ¦ ".join(w[:34] for w in discarded[:6])
-                      + (" …" if len(discarded) > 6 else ""))
-            if findings:
-                print(f"     ⌕ {len(findings)} words: " + " ¦ ".join(
-                    (f"{b.word} → {b.suggestion}" if b.suggestion else f"{b.word} ?")
-                    + (" ✓" if b.corrected else "")
-                    + ("" if b.count == 1 else f" ({b.count}x)")
-                    for b in findings[:6]) + (" …" if len(findings) > 6 else ""))
-            for line in trace:
-                print(f"     ⚠ {line}")
-
-            if a.progress:
-                if diagram:
-                    origin = "diagramm"
-                elif marker_extra == "textlayer":
-                    origin = "textlayer"
-                else:
-                    origin = "ocr"
-                is_der = bool(trace)
-                if is_der:
-                    _progress({
-                        "typ": "seite",
-                        "nr": nr,
-                        "von": len(pages),
-                        "sekunden": round(dt, 1),
-                        "herkunft": origin,
-                        "entgleist": True,
-                        "grund": trace[0]
-                    })
-                else:
-                    _progress({
-                        "typ": "seite",
-                        "nr": nr,
-                        "von": len(pages),
-                        "sekunden": round(dt, 1),
-                        "herkunft": origin,
-                        "entgleist": False
-                    })
-
-        dump = []
-
-        for nr, png, chars, layout_type, gutter, textlayer, boxes, diagram in pages:
-            if cancellation.requested():
-                break
-            t = time.perf_counter()
-            diagram = diagram or nr in forced
-            if textlayer is not None:
-                lines = split_columns(assign_boxes(textlayer, boxes))
-                dump.append({"seite": nr, "quelle": "textlayer", "zeilen": lines})
-                paragraphs = assemble_paragraphs(lines)
-                save_page(nr, paragraphs, diagram, time.perf_counter() - t, chars,
-                          "Textlayer, without model",
-                          getattr(assemble_paragraphs, "discarded", []),
-                          marker_extra="textlayer")
-                continue
-
-            if diagram and a.diagram_image_only:
-                save_page(nr, [], True, time.perf_counter() - t, chars, "", [],
-                          marker_extra="ocr")
-                continue
-
-            if layout_type == "zweispaltig":
-                mode = f"senkrecht @{gutter:.0%}"
-                ov = int(OVERLAP * 1000)
-                g = int(gutter * 1000)
-                tiles = list(zip(tile_vertically(png, gutter),
-                                 [(0, min(g + ov, 1000)), (max(g - ov, 0), 1000)]))
-            elif chars >= a.tile_from:
-                mode = "waagerecht"
-                tiles = [(p, None) for p, _, _ in tile_horizontally(png)]
-            else:
-                mode = "ganz"
-                tiles = [(png, (0, 1000))]
-
-            ink = _ink_amount(png, a.dpi)
-            calibrated = chars >= 400 and ink > 0
-            factor = chars / ink if calibrated else CHARACTERS_PER_INK
-
-            lines, trace = [], []
-            for part, window in tiles:
-                parsed, s = tile_lines(part, ocr, not a.no_bold, factor,
-                                       a.dpi, calibrated,
-                                       max_depth=a.retries)
-                trace += s
-                if window:
-                    parsed = assign_boxes(parsed, boxes, window)
-                ordered = (split_columns(parsed) if len(tiles) == 1
-                           else sorted(parsed,
-                                       key=lambda z: z[1][1] if z[1] else 0))
-                lines += trim_overlap(lines, ordered)
-            if trace:
-                n_derailed += 1
-            dump.append({"seite": nr, "quelle": f"{layout_type}, {mode}", "zeilen": lines})
-            paragraphs = assemble_paragraphs(lines)
-            discarded = getattr(assemble_paragraphs, "discarded", [])
-            paragraphs, findings = dictionary.check(paragraphs, wb,
-                                                    a.dictionary_correct)
-            n_corrected += sum(b.count for b in findings if b.corrected)
-            n_suspect += sum(b.count for b in findings if not b.corrected)
-            report += [{"seite": nr, "wort": b.word, "anzahl": b.count,
-                        "vorschlag": b.suggestion, "korrigiert": b.corrected}
-                       for b in findings]
-            save_page(nr, paragraphs, diagram, time.perf_counter() - t, chars,
-                      f"{layout_type}, {mode}", discarded, trace, f"ocr | {layout_type}, {mode}",
-                      findings)
-
-        if cancellation.requested() and pages and last_page < pages[-1][0]:
-            written = [s for s in pages if s[0] <= last_page]
-            if not written:
-                print("Cancellation before first page — no partial file written.")
-                sys.exit(7)
-            header = build_frontmatter(
-                title=pdf.stem,
-                source_pdf_path=pdf,
-                pages=len(written),
-                pages_textlayer=sum(1 for s in written
-                                    if s[5] is not None),
-                pages_ocr=sum(1 for s in written if s[5] is None),
-                pages_diagram=n_diag,
-                pages_derailed=n_derailed,
-                words_suspect=n_suspect,
-                words_corrected=n_corrected,
-                ocr_model=MODEL if n_ocr else None,
-                ocr_date=date.today().isoformat(),
-                ocr_timestamp=datetime.now().isoformat(timespec="seconds"),
-                aborted=f"seite {last_page} von {len(pages)}",
-            )
-            source_link = f"Quelle: [[{pdf.as_posix()}]]\n"
-            target = a.out / f"{pdf.stem}.md"
-            target.write_text(build_document(header, source_link, md),
-                              encoding="utf-8")
-            print(f"\nCancellation: partial file written "
-                  f"({last_page} of {len(pages)} pages) → {target}")
-            sys.exit(6)
-
-        total_time = time.perf_counter() - t_total
-        header = build_frontmatter(
-            title=pdf.stem,
-            source_pdf_path=pdf,
-            pages=len(pages),
-            pages_textlayer=len(pages) - n_ocr,
-            pages_ocr=n_ocr,
-            pages_diagram=n_diag,
-            pages_derailed=n_derailed,
-            words_suspect=n_suspect,
-            words_corrected=n_corrected,
-            ocr_model=MODEL if n_ocr else None,
-            ocr_date=date.today().isoformat(),
-            ocr_timestamp=datetime.now().isoformat(timespec="seconds"),
-        )
-        source_link = f"Quelle: [[{pdf.as_posix()}]]\n"
-        target = a.out / f"{pdf.stem}.md"
-        target.write_text(build_document(header, source_link, md),
-                          encoding="utf-8")
-        if a.lines_dump:
-            a.lines_dump.write_text(json.dumps(dump, ensure_ascii=False),
-                                    encoding="utf-8")
-            print(f"→ {a.lines_dump} ({len(dump)} pages)")
-        if a.dictionary_report:
-            a.dictionary_report.write_text(
-                json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
-            print(f"→ {a.dictionary_report} ({len(report)} findings)")
-        if a.progress:
-            _progress({
-                "typ": "fertig",
-                "ziel": str(a.out / f"{pdf.stem}.md"),
-                "sekunden": round(total_time, 1),
-                "entgleist": n_derailed
-            })
-        print(f"\n{total_time:.1f} s total ({total_time/len(pages):.1f} s/page)\n→ {target}")
-    finally:
-        tmp_dir.cleanup()
+    request = ConversionRequest(
+        pdf=pdf, output_dir=args.out, dpi=args.dpi, tile_from=args.tile_from,
+        no_bold=args.no_bold, ocr_only=args.ocr_only, retries=args.retries,
+        lines_dump=args.lines_dump, no_dictionary=args.no_dictionary,
+        dictionaries=tuple(args.dictionary),
+        dictionary_correct=args.dictionary_correct,
+        dictionary_report=args.dictionary_report, image_dir=args.image_dir,
+        image_max_edge=args.image_max_edge,
+        forced_diagram_pages=frozenset(forced),
+        selected_pages=frozenset(selection) if selection is not None else None,
+        diagram_image_only=args.diagram_image_only, model_name=MODEL,
+        cancel_requested=cancellation.requested)
+    result = convert_document(
+        request, LazyMlxOcrAdapter(MODEL), _event_sink(args.progress))
+    if result.cancelled:
+        sys.exit(6 if result.pages else 7)
+    if not result.pages:
+        sys.exit(f"no pages to convert: {pdf.name}")
 
 
 if __name__ == "__main__":

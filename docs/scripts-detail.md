@@ -247,21 +247,32 @@ With automated MediaBox Fix, large scans remain RAM-safe:
 
 ## Stage 2: Module Structure (`pdf2md/`)
 
-`pdf2md.py` serves strictly as CLI driver and page execution controller; logic is divided across three modules with unidirectional import hierarchy:
+`pdf2md.py` is the CLI adapter. It translates arguments, console events, and
+exit codes, while the document conversion itself is exposed through a stable
+Python interface:
+
+`convert_document(request, ocr_adapter, event_sink) -> ConversionResult`
 
 ```
-pdf2md.py (CLI / Orchestration)
-   ├── layout.py       Geometry: columns, boxes, tables, diagrams
-   ├── ocr.py          Tiling, model invocation, derailment / repair
-   ├── zusammenbau.py  Markdown reassembly (pure functions) — testable
-   └── woerterbuch.py  Dictionary verification post-reassembly — testable
+pdf2md.py (argparse / console / exit translation)
+   └── conversion.py   Request-scoped document runner and result writing
+       ├── layout.py   Geometry: columns, boxes, tables, diagrams
+       ├── ocr.py      Tiling, model invocation, derailment / repair
+       ├── assembly.py Markdown reassembly (pure functions)
+       └── dictionary.py Dictionary verification post-reassembly
 ```
 
-Reassembly represents the isolated unit-testable layer: `python3 -m pytest pdf2md/test -q` executes without MLX, fitz, or vault dependencies (golden snapshot in `pdf2md/test/daten/snapshot.json`; `pytest` included in `pdf2md/requirements.txt`). Heavy imports (`fitz`, `numpy`, `PIL`, `mlx_vlm`) are loaded scoped within functions across modules to maintain clean import chains.
+`ConversionRequest`, `AnalyzedPage`, `AssemblyResult`, and `ConversionResult`
+replace positional runner state. Temporary files and repeated-header context are
+scoped to one request. Tests can provide a lightweight OCR adapter and collect
+structured events without invoking argparse or intercepting `sys.exit`.
 
-**Vault Copying**: `.ocr-bench/` in vault uses a flat structure (see `bench/pfade.py`, two-location convention) requiring **five** files: `pdf2md.py`, `layout.py`, `ocr.py`, `zusammenbau.py`, `woerterbuch.py`. Missing files trigger `ModuleNotFoundError`. For the same reason, legal term lists are embedded directly within modules rather than separate data files — a `daten/` directory would be lost during flat file copies.
+Run `python3 -m pytest pdf2md/test -q` for the conversion and pure-function
+tests. Heavy dependencies (`fitz`, `numpy`, `PIL`, `mlx_vlm`) remain loaded
+inside their runtime boundaries; importing the conversion interface does not
+load the ML model.
 
-## Stage 2: Dictionary Verification (`woerterbuch.py`)
+## Stage 2: Dictionary Verification (`dictionary.py`)
 
 Executes post-reassembly across **every OCR page** — skipping native textlayer pages whose text is exact and would produce false positives. Unrecognized terms are logged as `⌕` lines in execution output and added to `woerter-verdaechtig` in frontmatter.
 
@@ -373,4 +384,3 @@ pdf2md.py --check --out _ocr-preview
 - **1** — (wrapper) MLX venv does not exist
 
 The wrapper logic in `bin/pdf2md` skips its own fitz import check when `--check` is passed, delegating evaluation entirely to `pdf2md.py` for consistent exit codes.
-
