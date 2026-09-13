@@ -14,8 +14,7 @@ try:
 except ImportError:
     sys.exit("!! PyMuPDF fehlt:  python3 -m pip install pymupdf")
 
-BENCH = Path(__file__).resolve().parent
-VAULT = BENCH.parent
+from pfade import BENCH, WURZEL as VAULT
 
 # (Name, PDF relativ zum Vault, PDF-Seitennummer, warum diese Seite)
 SET = [
