@@ -25,6 +25,9 @@ const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
 /** `Source: [[raw/ZR/script.pdf]]` or `Quelle: [[…]]` — pdf2md.py main() source line. */
 const SOURCE_LINK = /^(?:Source|Quelle):\s*\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*$/i;
 
+/** Placeholder values emitted by old pdf2md runs for an absent marker suffix. */
+const EMPTY_EXTRAS: ReadonlySet<string> = new Set(["none", "null", "-", "—"]);
+
 /** Flat `key: value` from YAML frontmatter.
  *
  *  Intentionally not a full YAML parser: pdf2md.py main() frontmatter writes
@@ -68,7 +71,7 @@ function parseExtra(extra: string | undefined): {
 	const parts = extra
 		.split("|")
 		.map((t) => t.trim())
-		.filter((t) => t.length > 0);
+		.filter((t) => t.length > 0 && !EMPTY_EXTRAS.has(t.toLowerCase()));
 	const first = parts[0];
 	if (first === undefined) return {};
 	let origin: Origin | undefined;

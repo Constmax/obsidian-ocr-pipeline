@@ -1,6 +1,8 @@
 import { App, PluginSettingTab, Setting, TextComponent, normalizePath } from "obsidian";
 import type OcrPreviewPlugin from "./main.ts";
 
+export type OperationMode = "review-flow" | "workbench";
+
 export interface Settings {
 	/** Folder where pdf2md.py writes (--out). */
 	previewFolder: string;
@@ -8,6 +10,8 @@ export interface Settings {
 	rejectedFolder: string;
 	statusFile: string;
 	markdownView: "rendered" | "source";
+	/** Review flow prioritizes decisions; workbench also exposes editing tools. */
+	operationMode: OperationMode;
 	/** Column widths in percent: sidebar, PDF, Markdown. */
 	columnWidths: [number, number, number];
 	/** Upper limit for render factor. Memory limiter, not quality setting:
@@ -25,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	rejectedFolder: "_ocr-preview/_rejected",
 	statusFile: "_ocr-preview/review-status.json",
 	markdownView: "rendered",
+	operationMode: "review-flow",
 	columnWidths: [20, 40, 40],
 	pdfZoomMax: 2,
 	syncActive: true,
@@ -74,6 +79,26 @@ export class SettingsTab extends PluginSettingTab {
 			"statusFile",
 			true,
 		);
+
+		new Setting(containerEl)
+			.setName("Operating mode")
+			.setDesc(
+				"Review flow keeps the three column headers and emphasizes decisions. " +
+					"Workbench combines the controls in one toolbar and enables editing " +
+					"of generated Markdown. A new conversion overwrites manual edits.",
+			)
+			.addDropdown((d) =>
+				d
+					.addOption("review-flow", "Review flow")
+					.addOption("workbench", "Workbench")
+					.setValue(this.plugin.settings.operationMode)
+					.onChange(async (value) => {
+						this.plugin.settings.operationMode =
+							value === "workbench" ? "workbench" : "review-flow";
+						await this.plugin.saveSettings();
+						this.plugin.openView()?.applySettings();
+					}),
+			);
 
 		new Setting(containerEl)
 			.setName("Markdown column")

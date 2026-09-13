@@ -7,8 +7,8 @@
 // Never move a file to match the JSON — doing so would silently undo a conscious
 // manual move, destroying trust in a tool that moves files.
 //
-// Consequence: the manifest can be deleted at any time. Everything except `note`
-// and `checked-until` rebuilds from folder location and frontmatter.
+// Consequence: the manifest can be deleted at any time. Everything except `note`,
+// `checked-until`, and `manually-edited` rebuilds from folder location and frontmatter.
 //
 // Pure module: no imports from `obsidian`.
 
@@ -88,6 +88,8 @@ export function readManifest(text: string, now: string): StatusManifest {
 				decided: textOrNull(e["decided"] ?? e["entschieden"]),
 				"checked-until": numberOrNull(e["checked-until"] ?? e["geprueft-bis"]),
 				note: textOrNull(e["note"] ?? e["notiz"]),
+				"manually-edited":
+					e["manually-edited"] === true || e["handbearbeitet"] === true,
 				previous:
 					prevObj !== null
 						? {
@@ -137,6 +139,7 @@ function newEntry(
 		decided: null,
 		"checked-until": null,
 		note: null,
+		"manually-edited": false,
 		previous: null,
 	};
 }
@@ -252,6 +255,7 @@ export function reconcile(
 			// New version = new document: review position and note of OLD version belong to past.
 			entry["checked-until"] = null;
 			entry.note = null;
+			entry["manually-edited"] = false;
 			entry.previous = {
 				status: oldEntry.status,
 				decided: oldEntry.decided,
@@ -267,6 +271,7 @@ export function reconcile(
 			entry.status = "re-created";
 			entry["checked-until"] = null;
 			entry.note = null;
+			entry["manually-edited"] = false;
 			reCreated.push(name);
 			entries[name] = entry;
 			continue;

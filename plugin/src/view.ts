@@ -33,6 +33,11 @@ export const VIEW_TYPE = "ocr-preview-comparison";
 
 const COLUMN_MIN = 10;
 const CHECKED_UNTIL_MS = 800;
+const ORIGIN_LABEL = {
+	textlayer: "Text layer",
+	ocr: "OCR",
+	diagram: "Diagram",
+} as const;
 
 export class OcrComparisonView extends ItemView {
 	activeName: string | null = null;
@@ -44,7 +49,19 @@ export class OcrComparisonView extends ItemView {
 	private pdfColumn!: PdfColumn;
 	private mdColumn!: MarkdownColumn;
 	private coupling!: Coupling;
+	private shell!: HTMLElement;
 	private frame!: HTMLElement;
+	private toolbar!: HTMLElement;
+	private pdfHeader!: HTMLElement;
+	private pdfHeaderRow!: HTMLElement;
+	private mdHeader!: HTMLElement;
+	private mdHeaderRow!: HTMLElement;
+	private headerInfo!: HTMLElement;
+	private pdfTools!: HTMLElement;
+	private mdTools!: HTMLElement;
+	private actionBar!: HTMLElement;
+	private actionHint!: HTMLElement;
+	private statusBar!: HTMLElement;
 	private pdfHeaderTitle!: HTMLElement;
 	private pdfPagesDisplay!: HTMLElement;
 	private pdfErrorBanner!: HTMLElement;
@@ -52,6 +69,7 @@ export class OcrComparisonView extends ItemView {
 	private representationToggle!: HTMLElement;
 	private pdfFile: TFile | null = null;
 	private pdfPages = 0;
+	private currentPage = 1;
 	private openRun = 0;
 	private readonly openQueue = new LatestTaskQueue();
 	private requestedName: string | null = null;
@@ -97,7 +115,9 @@ export class OcrComparisonView extends ItemView {
 	private ensureUiBuilt(): void {
 		if (this.uiBuilt) return;
 
-		this.frame = this.contentEl.createDiv({ cls: "ocr-abgleich" });
+		this.shell = this.contentEl.createDiv({ cls: "ocr-huelle" });
+		this.toolbar = this.shell.createDiv({ cls: "ocr-werkzeugleiste" });
+		this.frame = this.shell.createDiv({ cls: "ocr-abgleich" });
 
 		// ── Left: Preview list ──────────────────────────────────────────────
 		const listCol = this.frame.createDiv({ cls: "ocr-spalte ocr-spalte-liste" });
@@ -115,19 +135,23 @@ export class OcrComparisonView extends ItemView {
 			attr: { "aria-label": "Adjust column width", title: "Adjust column width" },
 		});
 		const pdfCol = this.frame.createDiv({ cls: "ocr-spalte ocr-spalte-pdf" });
-		const pdfHeader = pdfCol.createDiv({ cls: "ocr-spaltenkopf" });
-		const pdfRow = pdfHeader.createDiv({ cls: "ocr-kopf-zeile" });
-		this.pdfHeaderTitle = pdfRow.createSpan({ cls: "ocr-kopf-titel", text: "Original PDF" });
-		this.pdfPagesDisplay = pdfRow.createSpan({ cls: "ocr-kopf-seiten" });
-		const pdfTools = pdfHeader.createDiv({ cls: "ocr-kopf-werkzeuge" });
-		this.smallButton(pdfTools, "−", "Zoom out", () => this.zoom(-0.25));
-		this.zoomDisplay = pdfTools.createSpan({ cls: "ocr-kopf-zoom", text: "100 %" });
-		this.smallButton(pdfTools, "+", "Zoom in", () => this.zoom(0.25));
-		const inViewer = this.smallButton(pdfTools, "Open in PDF viewer", "", () => {
+		this.pdfHeader = pdfCol.createDiv({ cls: "ocr-spaltenkopf" });
+		this.pdfHeaderRow = this.pdfHeader.createDiv({ cls: "ocr-kopf-zeile" });
+		this.headerInfo = this.pdfHeaderRow.createDiv({ cls: "ocr-kopf-info" });
+		this.pdfHeaderTitle = this.headerInfo.createSpan({
+			cls: "ocr-kopf-titel",
+			text: "Original PDF",
+		});
+		this.pdfPagesDisplay = this.headerInfo.createSpan({ cls: "ocr-kopf-seiten" });
+		this.pdfTools = this.pdfHeaderRow.createDiv({ cls: "ocr-kopf-werkzeuge" });
+		this.smallButton(this.pdfTools, "−", "Zoom out", () => this.zoom(-0.25));
+		this.zoomDisplay = this.pdfTools.createSpan({ cls: "ocr-kopf-zoom", text: "100 %" });
+		this.smallButton(this.pdfTools, "+", "Zoom in", () => this.zoom(0.25));
+		const inViewer = this.smallButton(this.pdfTools, "Open in PDF viewer", "", () => {
 			void this.openInPdfViewer();
 		});
 		inViewer.addClass("ocr-knopf-haupt");
-		this.pdfErrorBanner = pdfHeader.createDiv({ cls: "ocr-fehlbanner" });
+		this.pdfErrorBanner = pdfCol.createDiv({ cls: "ocr-fehlbanner" });
 		this.pdfErrorBanner.hide();
 
 		this.pdfColumn = new PdfColumn(this.app, pdfCol, () => this.plugin.settings.pdfZoomMax);
@@ -141,10 +165,11 @@ export class OcrComparisonView extends ItemView {
 			attr: { "aria-label": "Adjust column width", title: "Adjust column width" },
 		});
 		const mdCol = this.frame.createDiv({ cls: "ocr-spalte ocr-spalte-md" });
-		const mdHeader = mdCol.createDiv({ cls: "ocr-spaltenkopf" });
-		const mdRow = mdHeader.createDiv({ cls: "ocr-kopf-zeile" });
-		mdRow.createSpan({ cls: "ocr-kopf-titel", text: "Markdown" });
-		this.representationToggle = mdRow.createDiv({ cls: "ocr-umschalter" });
+		this.mdHeader = mdCol.createDiv({ cls: "ocr-spaltenkopf" });
+		this.mdHeaderRow = this.mdHeader.createDiv({ cls: "ocr-kopf-zeile" });
+		this.mdHeaderRow.createSpan({ cls: "ocr-kopf-titel", text: "Markdown" });
+		this.mdTools = this.mdHeaderRow.createDiv({ cls: "ocr-kopf-werkzeuge" });
+		this.representationToggle = this.mdTools.createDiv({ cls: "ocr-umschalter" });
 		const renderedBtn = this.representationToggle.createEl("button", {
 			cls: "ocr-umschalter-option",
 			text: "Rendered",
@@ -157,22 +182,12 @@ export class OcrComparisonView extends ItemView {
 		sourceBtn.dataset["darstellung"] = "source";
 		renderedBtn.addEventListener("click", () => this.setRepresentation("rendered"));
 		sourceBtn.addEventListener("click", () => this.setRepresentation("source"));
-		const mdTools = mdRow.createDiv({ cls: "ocr-kopf-werkzeuge" });
-		const acceptBtn = this.smallButton(mdTools, "Accept", "a — accept as correct", () => {
-			void this.decide("accepted");
-		});
-		acceptBtn.addClass("ocr-knopf-annehmen");
-		const rejectBtn = this.smallButton(mdTools, "Reject", "x — for revision", () => {
-			void this.decide("rejected");
-		});
-		rejectBtn.addClass("ocr-knopf-ablehnen");
-		this.smallButton(mdTools, "Open in Obsidian", "", () => void this.openInObsidian());
-		this.editButton = mdTools.createEl("button", {
+		this.editButton = this.mdTools.createEl("button", {
 			cls: "ocr-ikonknopf",
 		});
 		setIcon(this.editButton.createSpan({ cls: "ocr-ikon" }), "pencil");
 		this.editButton.addEventListener("click", () => this.toggleEdit());
-		const moreBtn = mdTools.createEl("button", {
+		const moreBtn = this.mdTools.createEl("button", {
 			cls: "ocr-ikonknopf",
 			attr: { "aria-label": "More", title: "More" },
 		});
@@ -191,6 +206,9 @@ export class OcrComparisonView extends ItemView {
 		this.highlightToggle(this.plugin.settings.markdownView);
 		this.updateEditButton();
 
+		this.buildActionBar();
+		this.statusBar = this.shell.createDiv({ cls: "ocr-statuszeile" });
+
 		// ── Coupling and Widths ──────────────────────────────────────────────
 		this.coupling = new Coupling({
 			pdf: { scrollEl: this.pdfColumn.scrollEl, elements: () => this.pdfColumn.elements() },
@@ -204,6 +222,43 @@ export class OcrComparisonView extends ItemView {
 
 		this.registerHotkeys();
 		this.uiBuilt = true;
+	}
+
+	private buildActionBar(): void {
+		this.actionBar = this.shell.createDiv({ cls: "ocr-aktionsleiste" });
+		const accept = this.actionButton("Accept", "a", "accept as correct", () => {
+			void this.decide("accepted");
+		});
+		accept.addClass("ocr-knopf-annehmen");
+		const reject = this.actionButton("Reject", "x", "send for revision", () => {
+			void this.decide("rejected");
+		});
+		reject.addClass("ocr-knopf-ablehnen");
+		this.actionButton("Note", "n", "add a note", () => this.openNote());
+		this.actionButton("Open in Obsidian", null, "", () => void this.openInObsidian());
+		this.actionHint = this.actionBar.createSpan({ cls: "ocr-aktion-hinweis" });
+	}
+
+	private actionButton(
+		text: string,
+		key: string | null,
+		description: string,
+		action: () => void,
+	): HTMLButtonElement {
+		const title =
+			key === null
+				? description
+				: description.length > 0
+					? `${key} — ${description}`
+					: key;
+		const button = this.actionBar.createEl("button", {
+			cls: "ocr-knopf ocr-leistenknopf",
+			...(title.length > 0 ? { attr: { "aria-label": title, title } } : {}),
+		});
+		button.createSpan({ text });
+		if (key !== null) button.createSpan({ cls: "ocr-taste", text: key });
+		button.addEventListener("click", () => action());
+		return button;
 	}
 
 	async onOpen(): Promise<void> {
@@ -316,6 +371,7 @@ export class OcrComparisonView extends ItemView {
 				this.safelyOpenPreview(first);
 			}
 		}
+		this.updateBars();
 	}
 
 	async openPreview(name: string): Promise<boolean> {
@@ -377,7 +433,9 @@ export class OcrComparisonView extends ItemView {
 			this.app.workspace.requestSaveLayout();
 			this.coupling.remeasure();
 			const until = item.entry["checked-until"];
+			this.currentPage = until !== null && until > 1 ? until : 1;
 			if (until !== null && until > 1) this.coupling.goToPage(until);
+			this.updateBars();
 		} catch (err) {
 			if (this.closed || run !== this.openRun) return;
 			console.error("OCR Preview: Preview failed to open", err);
@@ -538,13 +596,17 @@ export class OcrComparisonView extends ItemView {
 		this.pdfFile = null;
 		void this.pdfColumn.open(null);
 		this.pdfLoaded(null, 0);
+		this.currentPage = 1;
+		this.updateBars();
 		this.app.workspace.requestSaveLayout();
 	}
 
 	private pdfLoaded(name: string | null, pages: number): void {
 		this.pdfPages = pages;
+		this.currentPage = 1;
 		this.pdfHeaderTitle.setText(name === null ? "Original PDF" : name.replace(/\.pdf$/, ""));
 		this.pdfPagesDisplay.setText(pages > 0 ? `p. 1 / ${pages}` : "");
+		this.updateBars();
 	}
 
 	private showPdfError(error: string | null): void {
@@ -565,8 +627,10 @@ export class OcrComparisonView extends ItemView {
 	private showPage(p: number): void {
 		if (this.loadingName !== null || this.pdfFile === null || this.pdfPages === 0) return;
 		const nr = Math.min(Math.max(Math.floor(p), 1), this.pdfPages);
+		this.currentPage = nr;
 		this.pdfPagesDisplay.setText(`p. ${nr} / ${this.pdfPages}`);
 		this.updateCheckedUntil(nr);
+		this.updateBars();
 	}
 
 	private updateCheckedUntil(nr: number): void {
@@ -585,11 +649,19 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private triggerSaveChange(): void {
+		this.markManualEdit();
 		if (this.mdSaveTimer !== null) window.clearTimeout(this.mdSaveTimer);
 		this.mdSaveTimer = window.setTimeout(() => {
 			this.mdSaveTimer = null;
 			void this.saveChangeImmediately();
 		}, 500);
+	}
+
+	private markManualEdit(): void {
+		if (this.activeName === null) return;
+		const item = this.inventory.entries.find((entry) => entry.name === this.activeName);
+		if (item === undefined || item.entry["manually-edited"]) return;
+		void this.inventory.updateEntry(item.name, { "manually-edited": true });
 	}
 
 	private async saveChangeImmediately(): Promise<void> {
@@ -637,10 +709,26 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private toggleEdit(): void {
+		const currentlyEditable = this.mdColumn.isEditable();
+		if (!currentlyEditable && this.plugin.settings.operationMode !== "workbench") {
+			new Notice("Editing is available in workbench mode — Settings → Operating mode.");
+			return;
+		}
+		if (!currentlyEditable && this.activeName === null) return;
 		const result = this.editTracker.toggle(
 			this.mdColumn.currentRepresentation(),
-			this.mdColumn.isEditable(),
+			currentlyEditable,
 		);
+		if (result.editable && this.activeName !== null) {
+			const item = this.inventory.entries.find((entry) => entry.name === this.activeName);
+			if (item !== undefined && !item.entry["manually-edited"]) {
+				new Notice(
+					"This preview is generated output. A new pdf2md run overwrites manual edits. " +
+						"If you change it, this revision will be marked as manually edited.",
+					8000,
+				);
+			}
+		}
 		this.mdColumn.setEditable(result.editable);
 		if (result.representationToSet !== null) {
 			this.setRepresentation(result.representationToSet, false);
@@ -649,6 +737,7 @@ export class OcrComparisonView extends ItemView {
 			void this.saveChangeImmediately();
 		}
 		this.updateEditButton();
+		this.updateBars();
 	}
 
 	private updateEditButton(): void {
@@ -747,6 +836,12 @@ export class OcrComparisonView extends ItemView {
 		modal.open();
 	}
 
+	private openNote(): void {
+		if (this.activeName === null) return;
+		const item = this.inventory.entries.find((entry) => entry.name === this.activeName);
+		if (item !== undefined) this.noteDialog(item);
+	}
+
 	private registerHotkeys(): void {
 		const scope = this.scope;
 		if (scope === null) return;
@@ -767,6 +862,7 @@ export class OcrComparisonView extends ItemView {
 		});
 		key("a", () => void this.decide("accepted"));
 		key("x", () => void this.decide("rejected"));
+		key("n", () => this.openNote());
 		key("t", () =>
 			this.setRepresentation(
 				this.mdColumn.currentRepresentation() === "rendered" ? "source" : "rendered",
@@ -788,6 +884,7 @@ export class OcrComparisonView extends ItemView {
 		this.coupling.active = !this.coupling.active;
 		this.plugin.settings.syncActive = this.coupling.active;
 		void this.plugin.saveSettings();
+		this.updateBars();
 		new Notice(`Scroll sync ${this.coupling.active ? "on" : "off"}.`);
 	}
 
@@ -826,6 +923,80 @@ export class OcrComparisonView extends ItemView {
 	applySettings(): void {
 		this.coupling.active = this.plugin.settings.syncActive;
 		this.applyColumnWidths(this.plugin.settings.columnWidths);
+		this.applyOperationMode();
+	}
+
+	private applyOperationMode(): void {
+		const workbench = this.plugin.settings.operationMode === "workbench";
+		this.shell.toggleClass("ocr-modus-werkbank", workbench);
+		if (workbench) {
+			this.toolbar.appendChild(this.headerInfo);
+			this.toolbar.appendChild(this.pdfTools);
+			this.toolbar.appendChild(this.mdTools);
+			this.toolbar.show();
+			this.pdfHeader.hide();
+			this.mdHeader.hide();
+			this.editButton.show();
+		} else {
+			this.pdfHeaderRow.appendChild(this.headerInfo);
+			this.pdfHeaderRow.appendChild(this.pdfTools);
+			this.mdHeaderRow.appendChild(this.mdTools);
+			this.toolbar.hide();
+			this.pdfHeader.show();
+			this.mdHeader.show();
+			this.editButton.hide();
+			if (this.mdColumn.isEditable()) this.toggleEdit();
+		}
+		this.actionBar.toggleClass("ocr-aktionsleiste-schmal", workbench);
+		this.updateBars();
+	}
+
+	private updateBars(): void {
+		if (this.actionHint === undefined || this.statusBar === undefined) return;
+		this.actionHint.setText(this.actionHintText());
+		if (this.plugin.settings.operationMode !== "workbench") {
+			this.statusBar.hide();
+			return;
+		}
+		this.statusBar.show();
+		this.statusBar.empty();
+		const editing = this.mdColumn.isEditable();
+		this.statusBar.createSpan({
+			cls: "ocr-status-modus",
+			text: editing ? "EDITING" : "REVIEWING",
+		});
+		const page = this.pageStatusText();
+		if (page.length > 0) this.statusBar.createSpan({ text: page });
+		this.statusBar.createSpan({ text: `Sync ${this.coupling.active ? "on" : "off"}` });
+		this.statusBar.createSpan({
+			cls: "ocr-status-tasten",
+			text: editing
+				? "Changes save automatically · e finish editing"
+				: "a accept · x reject · n note · e edit · j/k file · space page",
+		});
+	}
+
+	private pageStatusText(): string {
+		const parts: string[] = [];
+		if (this.pdfPages > 0) parts.push(`p. ${this.currentPage}/${this.pdfPages}`);
+		const block = this.mdColumn
+			.currentPreview()
+			?.blocks.find((candidate) => candidate.pageNumber === this.currentPage);
+		if (block?.origin !== undefined) parts.push(ORIGIN_LABEL[block.origin]);
+		if (block?.layout !== undefined) parts.push(block.layout);
+		return parts.join(" · ");
+	}
+
+	private actionHintText(): string {
+		if (this.activeName === null) return "";
+		const remaining = this.inventory.entries.filter(
+			(item) => item.entry.status === "open" || item.entry.status === "re-created",
+		).length;
+		const next = this.sidebar.nextAfter(this.activeName);
+		const parts: string[] = [];
+		if (next !== null) parts.push(`next → ${next.replace(/\.md$/, "")}`);
+		parts.push(`${remaining} open`);
+		return parts.join(" · ");
 	}
 
 	private smallButton(

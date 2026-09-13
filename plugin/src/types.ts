@@ -57,6 +57,8 @@ export interface StatusEntry {
 	/** Last inspected page — so a 40-page review session can be resumed. */
 	"checked-until": number | null;
 	note: string | null;
+	/** Whether this generated revision has been edited manually in the workbench. */
+	"manually-edited": boolean;
 	/** For `re-created`: the previous decision so it does not disappear. */
 	previous: {
 		status: Status;

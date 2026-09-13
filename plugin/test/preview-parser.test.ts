@@ -53,6 +53,14 @@ test("marker without extra keeps origin undefined, NOT guessed", () => {
 	assert.equal(v.blocks[0]?.layout, undefined);
 });
 
+test("legacy placeholder marker extras are treated as absent", () => {
+	for (const placeholder of ["None", "null", "-", "—"]) {
+		const v = parsePreview(`%% p. 1 | ${placeholder} %%\n\nText\n`);
+		assert.equal(v.blocks[0]?.origin, undefined);
+		assert.equal(v.blocks[0]?.layout, undefined);
+	}
+});
+
 test("layout extra is passed through", () => {
 	const v = parsePreview(FIXTURE);
 	assert.equal(v.blocks[1]?.layout, "zweispaltig, senkrecht @48%");
