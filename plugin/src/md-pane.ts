@@ -1,374 +1,263 @@
 import { App, Component, MarkdownRenderer, TFile } from "obsidian";
 
-import type { Herkunft, Seitenblock, Vorschau } from "./typen.ts";
+import type { PageBlock, Preview } from "./types.ts";
 
-const BILDENDUNGEN = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif", "svg"]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif", "svg"]);
 
-/** Beschriftung der Herkunft — eine Stelle fuer Badge und Statuszeile. */
-export const HERKUNFT_LABEL: Record<Herkunft, string> = {
-	textlayer: "Textlayer",
-	ocr: "OCR",
-	diagramm: "Diagramm",
-};
-
-const HERKUNFT_ERKLAERUNG: Record<Herkunft, string> = {
-	textlayer: "Verlustfrei aus dem Textlayer übernommen",
-	ocr: "Durch das Modell gelesen — Wortfehler möglich",
-	diagramm: "Als Seitenbild eingebettet, Text im Callout",
-};
-
-export type Darstellung = "gerendert" | "quelltext";
+export type Representation = "rendered" | "source";
 
 /**
- * Rechte Spalte: das erzeugte Markdown, seitenweise.
+ * Right column: generated Markdown, page by page.
  *
- * Blockweise und nicht am Stueck, weil `%%…%%` Obsidians Kommentarsyntax ist und
- * in der Leseansicht unsichtbar bleibt — am Marker gibt es also keinen
- * DOM-Knoten, an dem die Scroll-Kopplung ankern koennte. Der Seiten-Container
- * ist der Anker, und er ist in beiden Darstellungen derselbe. Die Sync-Schicht
- * kennt den Umschalter dadurch gar nicht.
- *
- * Bewusst NICHT lazy: die Hoehen sind hier inhaltsgetrieben und vorab unbekannt.
- * Lazy hiesse raten und nachkorrigieren — also genau das Sprungproblem, das die
- * PDF-Spalte mit vorgemessenen Platzhaltern vermeidet, hier wieder einfuehren.
- * `MarkdownRenderer.render` auf einem ~2-kB-Block liegt im Millisekundenbereich.
+ * Blockwise and not all at once, because `%%…%%` is Obsidian's comment syntax and
+ * remains invisible in reading view. The page container is the anchor and is the same
+ * in both view modes. The sync layer is agnostic to representation toggles.
  */
-export class MarkdownSpalte {
+export class MarkdownColumn {
 	readonly scrollEl: HTMLElement;
 
 	private container: HTMLElement;
-	private bloecke = new Map<number, HTMLElement>();
-	private renderKind: Component | null = null;
-	private darstellung: Darstellung = "gerendert";
-	private vorschau: Vorschau | null = null;
-	private datei: TFile | null = null;
-	private lauf = 0;
-	private bearbeitet: number | null = null;
+	private blocks = new Map<number, HTMLElement>();
+	private renderChild: Component | null = null;
+	private representation: Representation = "rendered";
+	private editable = false;
+	private preview: Preview | null = null;
+	private file: TFile | null = null;
+	private run = 0;
 
-	/** Wird gerufen, wenn sich Hoehen geaendert haben koennen. */
-	beiVermessungNoetig: (() => void) | null = null;
-
-	/** Werkbank-Modus: den geaenderten Block in die Datei schreiben. Liefert
-	 *  `false`, wenn nicht geschrieben wurde — dann bleibt das Feld offen und
-	 *  der getippte Text ist nicht verloren. */
-	beiSpeichern: ((nr: number, text: string) => Promise<boolean>) | null = null;
-
-	/** Feld geoeffnet oder geschlossen — die Ansicht zieht ihre Statuszeile
-	 *  nach. Noetig, weil Speichern und Verwerfen auch ueber Tasten IM Feld
-	 *  laufen, an denen die Ansicht nicht beteiligt ist. */
-	beiBearbeitungswechsel: (() => void) | null = null;
+	/** Called when heights may have changed. */
+	onMeasurementNeeded: (() => void) | null = null;
+	/** Called when text in a block has been edited. */
+	onChange: ((block: PageBlock, newText: string) => void) | null = null;
+	/** Called when an editor field loses focus. */
+	onFocusLost: (() => void) | null = null;
 
 	constructor(
 		private app: App,
-		wurzel: HTMLElement,
-		private eltern: Component,
-		/** Getter statt Wert: eine Aenderung im Einstellungs-Tab wirkt sofort,
-		 *  ohne die Ansicht neu zu oeffnen. */
+		root: HTMLElement,
+		private parent: Component,
 		private readonly eagerLimit: () => number,
 	) {
-		this.scrollEl = wurzel.createDiv({ cls: "ocr-md-scroll" });
-		// `markdown-rendered` ist die Klasse, an der Obsidians Typographie-
-		// CSS haengt — ohne sie waeren Ueberschriften und Listen nackt.
+		this.scrollEl = root.createDiv({ cls: "ocr-md-scroll" });
 		this.container = this.scrollEl.createDiv({
 			cls: "ocr-md-inhalt markdown-rendered",
 		});
 	}
 
-	elemente(): Map<number, HTMLElement> {
-		return this.bloecke;
+	elements(): Map<number, HTMLElement> {
+		return this.blocks;
 	}
 
-	darstellungSetzen(wert: Darstellung): void {
-		if (this.darstellung === wert) return;
-		this.darstellung = wert;
-		void this.zeichnen();
+	currentPreview(): Preview | null {
+		return this.preview;
 	}
 
-	aktuelleDarstellung(): Darstellung {
-		return this.darstellung;
+	currentFile(): TFile | null {
+		return this.file;
 	}
 
-	async oeffnen(
-		datei: TFile,
-		vorschau: Vorschau,
-		darstellung: Darstellung,
-	): Promise<void> {
-		this.datei = datei;
-		this.vorschau = vorschau;
-		this.darstellung = darstellung;
-		await this.zeichnen();
+	setRepresentation(value: Representation): void {
+		if (this.representation === value) return;
+		this.representation = value;
+		void this.render();
 	}
 
-	leeren(leertext?: string): void {
-		this.lauf++;
-		this.renderKind?.unload();
-		this.renderKind = null;
-		this.bloecke.clear();
-		this.container.empty();
-		this.vorschau = null;
-		this.datei = null;
-		this.bearbeitet = null;
-		if (leertext !== undefined) {
-			this.container.createDiv({ cls: "ocr-leer", text: leertext });
+	currentRepresentation(): Representation {
+		return this.representation;
+	}
+
+	setEditable(value: boolean): void {
+		if (this.editable === value) return;
+		this.editable = value;
+		for (const ta of this.container.querySelectorAll<HTMLTextAreaElement>(
+			"textarea.ocr-md-quelltext-editor",
+		)) {
+			ta.readOnly = !value;
+			ta.toggleClass("ocr-md-quelltext-readonly", !value);
 		}
 	}
 
-	private async zeichnen(): Promise<void> {
-		const vorschau = this.vorschau;
-		const datei = this.datei;
-		if (vorschau === null || datei === null) return;
+	isEditable(): boolean {
+		return this.editable;
+	}
 
-		const lauf = ++this.lauf;
-		// Ein offenes Feld ueberlebt kein Neuzeichnen (Dateiwechsel, Umschalter):
-		// sein DOM-Knoten wird gleich weggeraeumt.
-		this.bearbeitet = null;
-		// Pro geoeffneter Datei eine eigene Kind-Komponente: ohne das leckt jeder
-		// Dateiwechsel die Render-Kinder von MarkdownRenderer.
-		this.renderKind?.unload();
-		const kind = new Component();
-		this.eltern.addChild(kind);
-		this.renderKind = kind;
+	async open(
+		file: TFile,
+		preview: Preview,
+		representation: Representation,
+	): Promise<void> {
+		this.file = file;
+		this.preview = preview;
+		this.representation = representation;
+		await this.render();
+	}
 
-		this.bloecke.clear();
+	clear(emptyText?: string): void {
+		this.run++;
+		this.renderChild?.unload();
+		this.renderChild = null;
+		this.blocks.clear();
+		this.container.empty();
+		this.preview = null;
+		this.file = null;
+		if (emptyText !== undefined) {
+			this.container.createDiv({ cls: "ocr-leer", text: emptyText });
+		}
+	}
+
+	private async render(): Promise<void> {
+		const preview = this.preview;
+		const file = this.file;
+		if (preview === null || file === null) return;
+
+		const run = ++this.run;
+		this.renderChild?.unload();
+		const child = new Component();
+		this.parent.addChild(child);
+		this.renderChild = child;
+
+		this.blocks.clear();
 		this.container.empty();
 
-		if (vorschau.bloecke.length === 0) {
+		if (preview.blocks.length === 0) {
 			this.container.createDiv({
 				cls: "ocr-leer",
 				text:
-					"Keine Seitenmarker gefunden. Stammt diese Datei aus pdf2md.py? " +
-					"Erwartet wird pro Seite eine Zeile „%% S. n %%“.",
+					"No page markers found. Was this file generated by pdf2md.py? " +
+					"Expected one line '%% p. n %%' (or '%% S. n %%') per page.",
 			});
 			return;
 		}
 
-		const eager = vorschau.bloecke.length <= this.eagerLimit();
-		// Der Nicht-Eager-Fall rendert bewusst NICHT nach — es gibt keinen
-		// Nachlader. Das muss dastehen: eine Spalte voller „…" sieht sonst aus
-		// wie ein haengendes Laden, nicht wie eine Entscheidung.
-		if (!eager && this.darstellung === "gerendert") {
+		const eager = preview.blocks.length <= this.eagerLimit();
+		if (!eager && this.representation === "rendered") {
 			this.container.createDiv({
 				cls: "ocr-leer ocr-md-hinweis",
 				text:
-					`${vorschau.bloecke.length} Seiten — über der Grenze von ${this.eagerLimit()}. ` +
-					"Die Seiten bleiben ungerendert; „Quelltext“ zeigt den Text vollständig.",
+					`${preview.blocks.length} pages — exceeding the limit of ${this.eagerLimit()}. ` +
+					"Pages remain unrendered; 'Source' displays full text.",
 			});
 		}
 
-		for (const block of vorschau.bloecke) {
+		for (const block of preview.blocks) {
 			const el = this.container.createDiv({ cls: "ocr-md-seite" });
-			el.dataset["seite"] = String(block.nr);
-			this.kopfBauen(el, block);
-			const koerper = el.createDiv({ cls: "ocr-md-koerper" });
-			this.bloecke.set(block.nr, el);
+			el.dataset["seite"] = String(block.pageNumber);
+			this.buildHeader(el, block);
+			const body = el.createDiv({ cls: "ocr-md-koerper" });
+			this.blocks.set(block.pageNumber, el);
 
-			await this.koerperFuellen(koerper, block, eager, kind, datei);
-			if (lauf !== this.lauf) return; // Datei wurde inzwischen gewechselt
-		}
+			if (this.representation === "source") {
+				const textarea = body.createEl("textarea", {
+					cls: "ocr-md-quelltext-editor",
+					attr: {
+						"aria-label": `Source code page ${block.pageNumber}`,
+						spellcheck: "false",
+					},
+				});
+				textarea.readOnly = !this.editable;
+				textarea.toggleClass("ocr-md-quelltext-readonly", !this.editable);
+				textarea.value = block.markdown;
+				this.adjustHeight(textarea);
 
-		this.beiVermessungNoetig?.();
-	}
+				textarea.addEventListener("input", () => {
+					if (!this.editable) return;
+					block.markdown = textarea.value;
+					this.adjustHeight(textarea);
+					this.onChange?.(block, textarea.value);
+					this.onMeasurementNeeded?.();
+				});
 
-	/** Der Inhalt eines Seitenblocks — beim Zeichnen und nach dem Bearbeiten
-	 *  derselbe Weg, damit ein gespeicherter Block genau so aussieht wie ein
-	 *  frisch geoeffneter. */
-	private async koerperFuellen(
-		koerper: HTMLElement,
-		block: Seitenblock,
-		eager: boolean,
-		kind: Component,
-		datei: TFile,
-	): Promise<void> {
-		koerper.empty();
-		if (this.darstellung === "quelltext") {
-			koerper.createEl("pre", { cls: "ocr-md-quelltext" }).createEl("code", {
-				text: block.markdown,
-			});
-			return;
-		}
-		if (!eager) {
-			koerper.createDiv({ cls: "ocr-md-platzhalter", text: "…" });
-			return;
-		}
-		await MarkdownRenderer.render(this.app, block.markdown, koerper, datei.path, kind);
-		this.einbettungenNachbessern(koerper, datei);
-	}
-
-	// ── Werkbank-Modus: eine Seite an Ort und Stelle korrigieren ──────────────
-	//
-	// Bearbeitet wird IMMER der Quelltext des Blocks, auch in der gerenderten
-	// Darstellung: die Vorschau ist Markdown, und ein WYSIWYG-Feld muesste
-	// zurueckuebersetzen — dabei geht genau das verloren (Fussnoten,
-	// `![[…]]`-Einbettungen), was hier haeufig vorkommt.
-
-	/** Der Block zu einer Seitennummer — fuer Kopf- und Statuszeile. */
-	blockZu(nr: number): Seitenblock | null {
-		return this.vorschau?.bloecke.find((b) => b.nr === nr) ?? null;
-	}
-
-	/** Seitennummer des offenen Bearbeitungsfeldes, sonst null. */
-	bearbeiteteSeite(): number | null {
-		return this.bearbeitet;
-	}
-
-	/** Oeffnet das Bearbeitungsfeld auf Seite `nr`. `false`, wenn es die Seite
-	 *  nicht gibt oder bereits ein Feld offen ist. */
-	bearbeitenStarten(nr: number): boolean {
-		if (this.bearbeitet !== null) return false;
-		const el = this.bloecke.get(nr);
-		const block = this.blockZu(nr);
-		if (el === undefined || block === null) return false;
-		const koerper = el.querySelector<HTMLElement>(".ocr-md-koerper");
-		if (koerper === null) return false;
-
-		koerper.empty();
-		el.addClass("ocr-md-seite-bearbeitet");
-		const feld = koerper.createEl("textarea", { cls: "ocr-md-editfeld" });
-		feld.value = block.markdown;
-		feld.spellcheck = false;
-		feld.addEventListener("input", () => this.feldHoeheAnpassen(feld));
-		feld.addEventListener("keydown", (e) => {
-			// Esc darf hier NICHT bis zur Ansicht durchlaufen: dort raeumt es die
-			// Auswahl ab und die halb getippte Korrektur waere weg.
-			if (e.key === "Escape") {
-				e.preventDefault();
-				e.stopPropagation();
-				this.bearbeitenAbbrechen();
-				return;
+				textarea.addEventListener("blur", () => {
+					this.onFocusLost?.();
+				});
+				continue;
 			}
-			if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-				e.preventDefault();
-				e.stopPropagation();
-				void this.bearbeitenSpeichern();
+			if (!eager) {
+				body.createDiv({ cls: "ocr-md-platzhalter", text: "…" });
+				continue;
 			}
-		});
-
-		const zeile = koerper.createDiv({ cls: "ocr-md-editzeile" });
-		const speichern = zeile.createEl("button", {
-			cls: "ocr-knopf ocr-knopf-klein ocr-knopf-haupt",
-			text: "Speichern (⌘↩)",
-		});
-		speichern.addEventListener("click", () => void this.bearbeitenSpeichern());
-		const abbrechen = zeile.createEl("button", {
-			cls: "ocr-knopf ocr-knopf-klein",
-			text: "Abbrechen (Esc)",
-		});
-		abbrechen.addEventListener("click", () => this.bearbeitenAbbrechen());
-
-		this.bearbeitet = nr;
-		this.feldHoeheAnpassen(feld);
-		feld.focus();
-		this.beiVermessungNoetig?.();
-		this.beiBearbeitungswechsel?.();
-		return true;
-	}
-
-	/** Verwirft die Aenderung und stellt die Darstellung wieder her. */
-	bearbeitenAbbrechen(): void {
-		const nr = this.bearbeitet;
-		if (nr === null) return;
-		this.bearbeitet = null;
-		void this.blockNeuZeichnen(nr);
-	}
-
-	/** Schreibt ueber `beiSpeichern` zurueck. `false` heisst: nichts geschrieben,
-	 *  das Feld bleibt offen. */
-	async bearbeitenSpeichern(): Promise<boolean> {
-		const nr = this.bearbeitet;
-		if (nr === null) return false;
-		const block = this.blockZu(nr);
-		const el = this.bloecke.get(nr);
-		const feld = el?.querySelector<HTMLTextAreaElement>(".ocr-md-editfeld");
-		if (block === null || feld === null || feld === undefined) return false;
-
-		const text = feld.value.trim();
-		if (text === block.markdown) {
-			// Nichts geaendert — kein Schreibvorgang, kein „handbearbeitet".
-			this.bearbeitet = null;
-			await this.blockNeuZeichnen(nr);
-			return true;
+			await MarkdownRenderer.render(
+				this.app,
+				block.markdown,
+				body,
+				file.path,
+				child,
+			);
+			if (run !== this.run) return;
+			this.fixEmbeds(body, file);
 		}
-		const ok = (await this.beiSpeichern?.(nr, text)) ?? false;
-		if (!ok) return false;
-		block.markdown = text;
-		this.bearbeitet = null;
-		await this.blockNeuZeichnen(nr);
-		return true;
-	}
 
-	private async blockNeuZeichnen(nr: number): Promise<void> {
-		const el = this.bloecke.get(nr);
-		const block = this.blockZu(nr);
-		const datei = this.datei;
-		const kind = this.renderKind;
-		this.beiBearbeitungswechsel?.();
-		if (el === undefined || block === null || datei === null || kind === null) return;
-		const koerper = el.querySelector<HTMLElement>(".ocr-md-koerper");
-		if (koerper === null) return;
-		el.removeClass("ocr-md-seite-bearbeitet");
-		const eager = (this.vorschau?.bloecke.length ?? 0) <= this.eagerLimit();
-		await this.koerperFuellen(koerper, block, eager, kind, datei);
-		this.beiVermessungNoetig?.();
-	}
-
-	/** Das Feld waechst mit dem Text: eine feste Hoehe hiesse, in einem
-	 *  Guckloch zu korrigieren, waehrend daneben die ganze Seite steht.
-	 *
-	 *  Ueber eine Custom Property statt `style.height`: dieselbe Bauart wie die
-	 *  Spaltenbreiten (`--ocr-spalte-basis`), und die Hoehenformel bleibt im
-	 *  Stylesheet. Erst `auto`, dann messen — das Lesen von `scrollHeight`
-	 *  erzwingt den Umbruch dazwischen. */
-	private feldHoeheAnpassen(feld: HTMLTextAreaElement): void {
-		feld.setCssProps({ "--ocr-feld-hoehe": "auto" });
-		feld.setCssProps({ "--ocr-feld-hoehe": `${feld.scrollHeight + 2}px` });
-	}
-
-	private kopfBauen(el: HTMLElement, block: Seitenblock): void {
-		const kopf = el.createDiv({ cls: "ocr-md-seitenkopf" });
-		kopf.createSpan({ cls: "ocr-md-seitenzahl", text: `S. ${block.nr}` });
-		if (block.herkunft !== undefined) {
-			const badge = kopf.createSpan({
-				cls: `ocr-badge ocr-badge-${block.herkunft}`,
-				text: HERKUNFT_LABEL[block.herkunft],
+		if (this.representation === "source") {
+			window.requestAnimationFrame(() => {
+				for (const ta of this.container.querySelectorAll<HTMLTextAreaElement>(
+					"textarea.ocr-md-quelltext-editor",
+				)) {
+					this.adjustHeight(ta);
+				}
+				this.onMeasurementNeeded?.();
 			});
-			badge.setAttribute("aria-label", HERKUNFT_ERKLAERUNG[block.herkunft]);
+		}
+
+		this.onMeasurementNeeded?.();
+	}
+
+	private adjustHeight(textarea: HTMLTextAreaElement): void {
+		const baseHeight = "auto";
+		textarea.style.setProperty("--ocr-editor-hoehe", baseHeight);
+		textarea.style.setProperty(
+			"--ocr-editor-hoehe",
+			`${Math.max(textarea.scrollHeight, 36)}px`,
+		);
+	}
+
+	private buildHeader(el: HTMLElement, block: PageBlock): void {
+		const header = el.createDiv({ cls: "ocr-md-seitenkopf" });
+		header.createSpan({ cls: "ocr-md-seitenzahl", text: `p. ${block.pageNumber}` });
+		if (block.origin !== undefined) {
+			const badge = header.createSpan({
+				cls: `ocr-badge ocr-badge-${block.origin}`,
+				text:
+					block.origin === "textlayer"
+						? "Textlayer"
+						: block.origin === "ocr"
+							? "OCR"
+							: "Diagram",
+			});
+			badge.setAttribute(
+				"aria-label",
+				block.origin === "textlayer"
+					? "Preserved losslessly from textlayer"
+					: block.origin === "ocr"
+						? "Read by model — word errors possible"
+						: "Embedded as page image, text in callout",
+			);
 		}
 		if (block.layout !== undefined) {
-			kopf.createSpan({ cls: "ocr-md-layout", text: block.layout });
+			header.createSpan({ cls: "ocr-md-layout", text: block.layout });
 		}
 	}
 
-	/**
-	 * `MarkdownRenderer.render` loest interne Einbettungen nicht auf — es setzt
-	 * nur einen `.internal-embed`-Platzhalter. In pdf2md-Ausgaben betrifft das
-	 * ausschliesslich die Diagrammbilder (`![[…png]]`, pdf2md.py,
-	 * diagramm_bild()).
-	 *
-	 * Sollte Obsidian Bild-Einbettungen doch selbst aufloesen, findet die
-	 * Schleife nichts und ist folgenlos — dann kann sie ersatzlos entfallen.
-	 */
-	private einbettungenNachbessern(wurzel: HTMLElement, quelle: TFile): void {
-		const platzhalter = wurzel.querySelectorAll<HTMLElement>(".internal-embed");
-		for (let i = 0; i < platzhalter.length; i++) {
-			const span = platzhalter[i];
+	private fixEmbeds(root: HTMLElement, source: TFile): void {
+		const placeholders = root.querySelectorAll<HTMLElement>(".internal-embed");
+		for (let i = 0; i < placeholders.length; i++) {
+			const span = placeholders[i];
 			if (span === undefined) continue;
 			if (span.hasClass("is-loaded") || span.querySelector("img") !== null) continue;
 			const src = span.getAttribute("src");
 			if (src === null || src.length === 0) continue;
-			const ziel = this.app.metadataCache.getFirstLinkpathDest(src, quelle.path);
-			if (ziel === null) {
+			const target = this.app.metadataCache.getFirstLinkpathDest(src, source.path);
+			if (target === null) {
 				span.addClass("ocr-embed-fehlt");
-				span.setText(`Bild nicht gefunden: ${src}`);
+				span.setText(`Image not found: ${src}`);
 				continue;
 			}
-			if (!BILDENDUNGEN.has(ziel.extension.toLowerCase())) continue;
+			if (!IMAGE_EXTENSIONS.has(target.extension.toLowerCase())) continue;
 			span.empty();
 			span.addClass("is-loaded");
 			const img = span.createEl("img", { cls: "ocr-embed-bild" });
-			img.src = this.app.vault.getResourcePath(ziel);
-			img.alt = ziel.name;
-			// Erst wenn das Bild da ist, stimmt die Hoehe — dann neu vermessen.
-			img.addEventListener("load", () => this.beiVermessungNoetig?.(), {
+			img.src = this.app.vault.getResourcePath(target);
+			img.alt = target.name;
+			img.addEventListener("load", () => this.onMeasurementNeeded?.(), {
 				once: true,
 			});
 		}

@@ -1,12 +1,12 @@
-// Flat-Config für ESLint 9 mit eslint-plugin-obsidianmd (offizielles
-// Regelwerk von Obsidian selbst). Fängt `innerHTML`, nicht abgemeldete
-// Listener, abgelöstes DOM und API-Nutzung jenseits der minAppVersion.
+// Flat config for ESLint 9 with eslint-plugin-obsidianmd (official
+// ruleset from Obsidian itself). Catches `innerHTML`, unregistered
+// listeners, detached DOM, and API usage beyond minAppVersion.
 import tsparser from "@typescript-eslint/parser";
 import { defineConfig } from "eslint/config";
 import obsidianmd from "eslint-plugin-obsidianmd";
 
 export default defineConfig([
-	// Generierte Artefakte und Laufzeitdaten sind kein Quellcode.
+	// Generated artifacts and runtime data are not source code.
 	{
 		ignores: ["main.js", "main.js.map", "data.json", "*.tsbuildinfo"],
 	},
@@ -15,36 +15,39 @@ export default defineConfig([
 		files: ["**/*.ts"],
 		languageOptions: {
 			parser: tsparser,
-			// Typbewusste Regeln (z.B. no-unsupported-api) brauchen das Projekt.
+			// Type-aware rules (e.g. no-unsupported-api) need the project.
 			parserOptions: { project: "./tsconfig.json" },
 		},
 		rules: {
-			// Die UI ist Deutsch; die englische Satzfall-Regel greift auf
-			// deutschen Strings regelmässig daneben.
 			"obsidianmd/ui/sentence-case": "off",
-			// getSettingDefinitions() braucht Obsidian 1.13+. minAppVersion ist
-			// 1.5.7 — dort ist display() die richtige API (und sogar Pflicht).
+			// getSettingDefinitions() requires Obsidian 1.13+. minAppVersion is
+			// 1.8.7 — display() is the correct API.
 			"obsidianmd/settings-tab/prefer-setting-definitions": "off",
-			// console.error/-warn sind Diagnose; console.log gehört nirgends hin.
+			// console.error/-warn are diagnostics; console.log belongs nowhere.
 			"no-console": ["error", { allow: ["error", "warn"] }],
 		},
 	},
 	{
-		// Build-Skript: console.log ist hier die Ausgabe, kein Störgeräusch.
+		// Child process conversion runs under Node.js / spawn where window timers do not exist.
+		files: ["src/conversion.ts"],
+		rules: {
+			"obsidianmd/prefer-window-timers": "off",
+		},
+	},
+	{
+		// Build script: console.log is output here, not noise.
 		files: ["esbuild.config.mjs"],
 		rules: { "obsidianmd/rule-custom-message": "off" },
 	},
 	{
-		// Die Testdateien laufen unter `node --test`, nicht in Obsidian.
+		// Test files run under `node --test`, not in Obsidian.
 		files: ["test/**/*.ts"],
 		rules: {
 			"obsidianmd/no-unsupported-api": "off",
 			"obsidianmd/platform": "off",
-			// node:test() liefert ein Promise, das auf Top-Level nicht
-			// abgewartet werden muss — die Registrierung ist der Effekt.
+			// node:test returns a Promise that doesn't need to be awaited at top level.
 			"@typescript-eslint/no-floating-promises": "off",
-			// sync.test.ts baut `window` als Laufzeit-Shim nach — node kennt
-			// das Global nicht, genau darum sind die Fensterregeln hier falsch.
+			// sync.test.ts mocks `window` as a runtime shim.
 			"obsidianmd/no-global-this": "off",
 			"obsidianmd/prefer-window-timers": "off",
 		},

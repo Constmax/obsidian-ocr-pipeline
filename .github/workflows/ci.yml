@@ -79,4 +79,6 @@ jobs:
       - name: pymupdf installieren
         run: pip install pymupdf
       - name: Tests (Nahtentdopplung, Randmarken, Schleifen, Golden-Snapshot)
-        run: python -m pytest pdf2md/test -q
+        run: python -m pytest pdf2md/test bin/test -q
+      - name: Benchmark entry point smoke test
+        run: python -m pytest bench/test_entrypoints.py -q

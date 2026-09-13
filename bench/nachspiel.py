@@ -13,7 +13,7 @@ Argumente sind Seitennummern im Sammel-PDF `bench-lauf/bench-seiten.pdf`.
 import json, subprocess, sys
 from pathlib import Path
 
-from pfade import BENCH, PDF2MD_PY
+from paths import BENCH, PDF2MD_PY
 from bench_ocr import seiten_trennen, vergleiche
 
 

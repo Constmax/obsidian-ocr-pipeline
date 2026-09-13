@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Regression der Randlabel-Regel: mit gegen ohne randlabel_vorziehen().
+"""Regression der Randlabel-Regel: mit gegen ohne promote_margin_labels().
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/regress_randlabel.py
+  source ~/.venvs/mlxocr/bin/activate && python bench/regress_randlabel.py
 
 Dieselbe Anlage wie regress_steg.py, aber mit Vorfilter. Der Unterschied ist
 der Punkt: die Regel kann sich nur auf Seiten auswirken, auf denen ueberhaupt
@@ -10,7 +10,7 @@ Dutzend Zeilen. Alle 1426 Seiten zweimal komplett aufzubauen hiesse, 24 Minuten
 in PyMuPDFs Tabellenerkennung zu stecken (~0,5 s je Seite und Aufbau), die mit
 der Frage nichts zu tun hat.
 
-Also erst billig scannen (nur textlayer_zeilen, keine Tabellensuche), dann nur
+Also erst billig scannen (nur textlayer_lines, keine Tabellensuche), dann nur
 die Treffer teuer nachrechnen.
 
 Erwartet wird, dass keine Seite einen einzigen Buchstaben verliert — die Regel
@@ -20,9 +20,9 @@ die Regel falsch und nicht der Bestand.
 import json, sys
 from pathlib import Path
 
-from pfade import BENCH, WURZEL as VAULT   # legt pdf2md/ auf sys.path
+from paths import BENCH, VAULT_ROOT as VAULT
 import pdf2md as M
-import zusammenbau as Z
+import assembly as A
 from regress_steg import buchstaben, seite_bauen, woerter
 
 
@@ -34,7 +34,7 @@ def main():
     for s in seiten:
         nach_datei.setdefault(s["file"], []).append(s["page"])
 
-    echt = Z.randlabel_vorziehen
+    echt = A.promote_margin_labels
     n, gleich, geaendert, verlust = 0, 0, [], []
     for datei in sorted(nach_datei):
         pfad = VAULT / datei
@@ -44,7 +44,7 @@ def main():
         for p in doc:
             if p.rotation:
                 p.remove_rotation()
-        Z.laufend_setzen(M.laufende_zeilen(doc))
+        A.set_running(M.running_lines(doc))
         for nr in sorted(nach_datei[datei]):
             if nr > doc.page_count:
                 continue
@@ -52,19 +52,19 @@ def main():
             n += 1
             # Vorfilter: ohne alleinstehende Randmarke kann die Regel nichts
             # tun. Bewusst direkt auf get_text() und nicht ueber
-            # textlayer_zeilen() — das ruft selbst schon die Tabellensuche auf,
+            # textlayer_lines() — das ruft selbst schon die Tabellensuche auf,
             # und genau die soll hier gespart werden.
-            if not any(Z.RANDLABEL.match(zeile.strip())
+            if not any(A.MARGIN_LABEL.match(zeile.strip())
                        for zeile in page.get_text("text").splitlines()):
                 gleich += 1
                 continue
             try:
-                Z.randlabel_vorziehen = lambda z, *r, **k: z
+                A.promote_margin_labels = lambda z, *r, **k: z
                 a = seite_bauen(page)
-                Z.randlabel_vorziehen = echt
+                A.promote_margin_labels = echt
                 b = seite_bauen(page)
             except Exception as e:
-                Z.randlabel_vorziehen = echt
+                A.promote_margin_labels = echt
                 print(f"  FEHLER {datei} S.{nr}: {e}")
                 continue
             if a == b:

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Erzeugt das Benchmark-Set aus raw/: 6 Seiten als PNG (300 dpi) plus die
-Baseline dessen, was die aktuelle Tesseract-Pipeline heute im Textlayer hat.
+"""Build the benchmark set from raw/: six PNG pages plus text baselines.
 
-Liest raw/ ausschliesslich lesend. Braucht nur PyMuPDF (im System-Python da).
+Source PDFs are read-only and remain outside the repository. Requires PyMuPDF.
 
-  python3 .ocr-bench/build_bench.py
+  VAULT_ROOT=/path/to/vault python3 bench/build_bench.py
 """
+import argparse
 import sys
 from pathlib import Path
 
@@ -14,8 +14,7 @@ try:
 except ImportError:
     sys.exit("!! PyMuPDF fehlt:  python3 -m pip install pymupdf")
 
-BENCH = Path(__file__).resolve().parent
-VAULT = BENCH.parent
+from paths import BENCH, VAULT_ROOT as VAULT
 
 # (Name, PDF relativ zum Vault, PDF-Seitennummer, warum diese Seite)
 SET = [
@@ -45,6 +44,7 @@ SET = [
 
 
 def main():
+    argparse.ArgumentParser(description=__doc__).parse_args()
     idx = ["# Benchmark-Set — OCR-Kandidatenvergleich", "",
            "Je Seite `<name>.png` (300 dpi, Input fuer die Kandidaten) und",
            "`<name>.baseline.txt` (was die Tesseract-Pipeline heute liefert).", ""]
@@ -73,8 +73,9 @@ def main():
                 f"- Testet: {why}",
                 f"- Baseline (Tesseract heute): {len(baseline)} Zeichen", ""]
 
-    (BENCH / "README.md").write_text("\n".join(idx), encoding="utf-8")
-    print(f"\n→ {BENCH}/README.md")
+    manifest = BENCH / "BENCHMARK-SET.md"
+    manifest.write_text("\n".join(idx), encoding="utf-8")
+    print(f"\n→ {manifest}")
     return 1 if missing else 0
 
 

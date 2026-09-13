@@ -13,7 +13,7 @@ Argument ist die Seitennummer im Sammel-PDF `bench-lauf/bench-seiten.pdf`.
 """
 import sys
 
-from pfade import BENCH                       # legt pdf2md/ auf sys.path
+from paths import BENCH
 import pdf2md as M
 import ocr as O
 
