@@ -65,8 +65,8 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   the vault) is deleted — history in git, Gate-1 measurements in
   `bench/ERGEBNIS.md`.
 - CI (`.github/workflows/ci.yml`, on every PR and push to `main`):
-  Job `plugin` (npm ci → check → lint → test → build → `main.js` is versioned *and* identical to `src/`), Job `shell` (shellcheck over all scripts) and Job `python` (`pytest pdf2md/test`).
-  Locally: plugin with lint → check → test → build; Stage-1 scripts with `shellcheck -x -P bin`; Python with `python3 -m pytest pdf2md/test`.
+  Job `plugin` (npm ci → check → lint → test → build → `main.js` is versioned *and* identical to `src/`), Job `shell` (shellcheck over all scripts) and Job `python` (`pytest pdf2md/test bin/test`).
+  Locally: plugin with lint → check → test → build; Stage-1 scripts with `shellcheck -x -P bin`; Python with `python3 -m pytest pdf2md/test bin/test` (`bin/test` holds Stage-1 behavioral tests with stubbed tools).
 
 ## Docs
 

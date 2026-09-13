@@ -140,7 +140,12 @@ process_group() {
 
     # Column split (if requested)
     if [ "$SPLIT_COLUMNS" = true ]; then
-        split_two_column_pdf "$pre_ocr" "$WORK_DIR/split.pdf"
+        # Explicit check: process_group runs in an `if`, where `set -e` is off.
+        if ! split_two_column_pdf "$pre_ocr" "$WORK_DIR/split.pdf"; then
+            echo "   ❌ Column split failed for '$base'"
+            rm -f "$WORK_DIR/merged.pdf" "$WORK_DIR/downscaled.pdf"
+            return 1
+        fi
         pre_ocr="$WORK_DIR/split.pdf"
     fi
 
@@ -175,10 +180,13 @@ process_group() {
         # ── Re-Merge after split-columns ──
         if [ "$SPLIT_COLUMNS" = true ] && [ "$KEEP_SPLIT" != true ]; then
             local merged="$WORK_DIR/merged_final.pdf"
-            merge_split_pdf "$output_file" "$merged"
-            if [ -f "$merged" ]; then
-                mv "$merged" "$output_file"
+            if ! merge_split_pdf "$output_file" "$merged"; then
+                # Handing off the unmerged halves would silently double the page count.
+                echo "   ❌ Re-merge failed for '$base' — no file written"
+                rm -f "$output_file" "$WORK_DIR/merged.pdf" "$WORK_DIR/downscaled.pdf" "$WORK_DIR/split.pdf"
+                return 1
             fi
+            mv "$merged" "$output_file"
         fi
 
         local size; size=$(du -h "$output_file" | cut -f1)

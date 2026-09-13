@@ -135,7 +135,11 @@ fi
 
 # ── Optional: Column split ──
 if [ "$SPLIT_COLUMNS" = true ]; then
-    split_two_column_pdf "$PRE_OCR_FILE" "$WORK_DIR/split.pdf"
+    if ! split_two_column_pdf "$PRE_OCR_FILE" "$WORK_DIR/split.pdf"; then
+        echo ""
+        echo "❌ Column split failed — no file written"
+        exit 1
+    fi
     PRE_OCR_FILE="$WORK_DIR/split.pdf"
 fi
 
@@ -178,10 +182,14 @@ fi
 if [ "$SPLIT_COLUMNS" = true ]; then
     echo ""
     echo "📐 Step 4.5/4: Re-merge (half-pages → original format)..."
-    merge_split_pdf "$OUTPUT_FILE" "$WORK_DIR/merged_final.pdf"
-    if [ -f "$WORK_DIR/merged_final.pdf" ]; then
-        mv "$WORK_DIR/merged_final.pdf" "$OUTPUT_FILE"
+    if ! merge_split_pdf "$OUTPUT_FILE" "$WORK_DIR/merged_final.pdf"; then
+        # Handing off the unmerged halves would silently double the page count.
+        rm -f "$OUTPUT_FILE"
+        echo ""
+        echo "❌ Re-merge failed — split result discarded, no file written"
+        exit 1
     fi
+    mv "$WORK_DIR/merged_final.pdf" "$OUTPUT_FILE"
 fi
 
 FINAL_SIZE=$(du -h "$OUTPUT_FILE" | cut -f1)
