@@ -30,8 +30,16 @@ for _p in (str(PDF2MD_PY.parent), str(BENCH)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import os
+
 # Wurzel, gegen die `pages.json` seine Pfade aufloest. Im Vault ist das das
 # Vault-Root mit `raw/` darunter; im Repo waere es dessen Elternverzeichnis, wo
 # es kein `raw/` gibt. Die Bestandsregressionen (regress_*.py) laufen deshalb
 # nur im Vault — im Repo liegen sie als Beleg und zum Nachvollziehen.
-WURZEL = BENCH.parent
+_vault_env = os.environ.get("VAULT_ROOT")
+if _vault_env:
+    WURZEL = Path(os.path.expanduser(_vault_env))
+elif (Path.home() / "JuraExamenVault").exists():
+    WURZEL = Path.home() / "JuraExamenVault"
+else:
+    WURZEL = BENCH.parent

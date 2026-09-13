@@ -70,7 +70,8 @@ def seiten_trennen(pfad):
 
 def stichprobe(n):
     """Je Datei hoechstens eine Seite, mittlere Textdichte, kein Diagramm."""
-    seiten = json.loads((BENCH / "pages.json").read_text())
+    pfad = BENCH / "pages.json" if (BENCH / "pages.json").exists() else VAULT / "pages.json"
+    seiten = json.loads(pfad.read_text())
     kandidaten = {}
     for s in seiten:
         if s["scanned"] or s.get("diagram") or not 1500 <= s["chars"] <= 6000:
