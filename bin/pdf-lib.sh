@@ -554,6 +554,7 @@ ocr_with_retry() {
         return 0
     fi
 
+    local saved_split_map=$SPLIT_MAP
     # ── Attempt 2: try --split-columns (if tesseract and not already split) ──
     if [ "$USE_APPLE" = false ] && [ "$SPLIT_COLUMNS" = false ] && [ "$no_split" != "true" ]; then
         echo "   🔄 Retry with --split-columns..."
@@ -594,6 +595,10 @@ ocr_with_retry() {
         fi
         rm -f "$split_pdf"
     fi
+    # A failed split retry must not leave its map behind: metric 1.5 in
+    # quality_check would verify the unsplit attempt-3 result against it
+    # and report a spurious page-count mismatch.
+    SPLIT_MAP=$saved_split_map
 
     # ── Attempt 3: switch engine ──
     if [ "$alt_engine" != "$ENGINE_DESC" ] && [ -n "$alt_engine" ]; then
