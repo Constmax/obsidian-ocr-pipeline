@@ -224,76 +224,44 @@ gs_downscale() {
 # untouched). Set SPLIT_ALL_PAGES=true (via --split-columns-all) to force
 # every page through the splitter, as an override if detection misfires.
 # Writes split_map.json to $SPLIT_MAP for later reassembly.
-# Falls back to legacy gs loop (always --all, no per-page detection) if
-# PYTHON_BIN is not available.
+# Returns 1 unless both the split PDF and its map were written. There is
+# deliberately no fallback: halves without a map cannot be merged back and
+# would silently double the page count (issue #47). lib_init already refuses
+# --split-columns without pikepdf; this guard covers the internal retry.
 split_two_column_pdf() {
     local input="$1" output="$2"
     SPLIT_MAP="${input%.pdf}_split_map.json"
 
-    if [ -n "$PYTHON_BIN" ] && [ -f "$SCRIPT_DIR/column_tools.py" ]; then
-        local mode_flag="--auto"
-        if [ "$SPLIT_ALL_PAGES" = true ]; then
-            mode_flag="--all"
-        fi
-        # Guarded: a failing split must not kill the script under `set -e` —
-        # otherwise the fallback to gs below is unreachable dead code.
-        if ! "$PYTHON_BIN" "$SCRIPT_DIR/column_tools.py" split "$input" "$output" \
-            --map "$SPLIT_MAP" "$mode_flag" 2>&1; then
-            echo "   ⚠️  column_tools.py split failed" >&2
-        fi
-        if [ -f "$output" ]; then
-            return 0
-        fi
-        echo "   ⚠️  column_tools.py split yielded no result, fallback to gs" >&2
+    if [ -z "$PYTHON_BIN" ] || [ ! -f "$SCRIPT_DIR/column_tools.py" ]; then
+        echo "   ❌ Column split requires pikepdf and column_tools.py" >&2
+        SPLIT_MAP=""
+        return 1
     fi
 
-    # ── Fallback: legacy Ghostscript loop ──
-    local total_pages tmpdir width height half_width page_num
-    total_pages=$(pdfinfo "$input" 2>/dev/null | awk '/^Pages:/ {print $2}')
-    if [ -z "$total_pages" ] || [ "$total_pages" -lt 1 ]; then
-        echo "   ⚠️  Column split: Cannot determine page count" >&2
-        cp "$input" "$output"; return 0
+    local mode_flag="--auto"
+    if [ "$SPLIT_ALL_PAGES" = true ]; then
+        mode_flag="--all"
     fi
-    read -r width height < <(pdfinfo "$input" 2>/dev/null | awk '/^Page size:/ {
-        gsub(/pts/, "", $3); gsub(/pts/, "", $5); print int($3), int($5)
-    }')
-    if [ -z "$width" ] || [ -z "$height" ]; then
-        echo "   ⚠️  Column split: Cannot determine page dimensions" >&2
-        cp "$input" "$output"; return 0
+    # A stale map from an earlier group must not pass for this split's map.
+    rm -f "$output" "$SPLIT_MAP"
+    # Guarded: report a failing split instead of dying silently under `set -e`.
+    if "$PYTHON_BIN" "$SCRIPT_DIR/column_tools.py" split "$input" "$output" \
+        --map "$SPLIT_MAP" "$mode_flag" 2>&1 \
+        && [ -f "$output" ] && [ -f "$SPLIT_MAP" ]; then
+        return 0
     fi
-    half_width=$((width / 2))
-    tmpdir=$(mktemp -d)
-    for ((page_num = 1; page_num <= total_pages; page_num++)); do
-        gs -sDEVICE=pdfwrite -dNOPAUSE -dQUIET -dBATCH \
-           -dFirstPage="$page_num" -dLastPage="$page_num" \
-           -sOutputFile="$tmpdir/p$(printf '%04d' "$page_num")_l.pdf" \
-           -c "[/CropBox [0 0 $half_width $height] /PAGE pdfmark" \
-           -f "$input" 2>/dev/null
-        gs -sDEVICE=pdfwrite -dNOPAUSE -dQUIET -dBATCH \
-           -dFirstPage="$page_num" -dLastPage="$page_num" \
-           -sOutputFile="$tmpdir/p$(printf '%04d' "$page_num")_r.pdf" \
-           -c "[/CropBox [$half_width 0 $width $height] /PAGE pdfmark" \
-           -f "$input" 2>/dev/null
-    done
-    local page_list=()
-    for ((page_num = 1; page_num <= total_pages; page_num++)); do
-        local pf
-        pf="p$(printf '%04d' "$page_num")"
-        page_list+=("$tmpdir/${pf}_l.pdf" "$tmpdir/${pf}_r.pdf")
-    done
-    qpdf --empty --pages "${page_list[@]}" -- "$output" 2>/dev/null
-    rm -rf "$tmpdir"
-    if [ ! -f "$output" ]; then
-        echo "   ⚠️  Column split failed, continuing with original"
-        cp "$input" "$output"
-    fi
-    SPLIT_MAP=""  # no map in fallback mode
+    echo "   ❌ column_tools.py split failed" >&2
+    rm -f "$output" "$SPLIT_MAP"
+    SPLIT_MAP=""
+    return 1
 }
 
 # merge_split_pdf <ocr.pdf> <output.pdf>
 # Reassembles half-page pairs back to original full-page format.
 # Uses the split_map.json from split_two_column_pdf.
-# No-op if no map exists or --keep-split is set.
+# With --keep-split the split version is copied through on purpose.
+# Otherwise returns 1 if the merge cannot run or fails — never falls back to
+# the split version, which would silently double the page count (issue #47).
 merge_split_pdf() {
     local input="$1" output="$2"
 
@@ -304,25 +272,23 @@ merge_split_pdf() {
     fi
 
     if [ -z "$SPLIT_MAP" ] || [ ! -f "$SPLIT_MAP" ]; then
-        [ "$input" != "$output" ] && cp "$input" "$output"
+        echo "   ❌ Re-merge impossible: split map missing" >&2
+        return 1
+    fi
+    if [ -z "$PYTHON_BIN" ] || [ ! -f "$SCRIPT_DIR/column_tools.py" ]; then
+        echo "   ❌ Re-merge requires pikepdf and column_tools.py" >&2
+        return 1
+    fi
+
+    # Guarded: a failing merge (corrupt map, unreadable input) must be
+    # reported to the caller, not kill it silently under `set -e`.
+    if "$PYTHON_BIN" "$SCRIPT_DIR/column_tools.py" merge "$input" "$output" \
+        --map "$SPLIT_MAP" 2>&1 && [ -f "$output" ]; then
         return 0
     fi
-
-    if [ -n "$PYTHON_BIN" ] && [ -f "$SCRIPT_DIR/column_tools.py" ]; then
-        # Guarded: a failing merge (corrupt map, unreadable input) must not
-        # kill the caller under `set -e` — fall through to the warning below.
-        if ! "$PYTHON_BIN" "$SCRIPT_DIR/column_tools.py" merge "$input" "$output" \
-            --map "$SPLIT_MAP" 2>&1; then
-            echo "   ⚠️  column_tools.py merge failed" >&2
-        fi
-        if [ -f "$output" ]; then
-            return 0
-        fi
-    fi
-
-    echo "   ⚠️  Merge not possible — keeping split version" >&2
-    [ "$input" != "$output" ] && cp "$input" "$output"
-    return 0
+    echo "   ❌ column_tools.py merge failed" >&2
+    rm -f "$output"
+    return 1
 }
 
 # ════════════════════════════════════════════════════════════
@@ -555,10 +521,13 @@ ocr_with_retry() {
     fi
 
     # ── Attempt 2: try --split-columns (if tesseract and not already split) ──
-    if [ "$USE_APPLE" = false ] && [ "$SPLIT_COLUMNS" = false ] && [ "$no_split" != "true" ]; then
+    # Needs pikepdf: halves without a split map cannot be merged back.
+    if [ "$USE_APPLE" = false ] && [ "$SPLIT_COLUMNS" = false ] && [ "$no_split" != "true" ] \
+        && [ -n "$PYTHON_BIN" ]; then
         echo "   🔄 Retry with --split-columns..."
         local split_pdf="$scratch_dir/ocr_retry_split.pdf"
-        split_two_column_pdf "$input" "$split_pdf"
+        local split_ok=true
+        split_two_column_pdf "$input" "$split_pdf" || split_ok=false
 
         # Strip --rotate-pages and --deskew from the caller's args for this sub-attempt
         # (unreliable per-half orientation detection would break the merge
@@ -573,7 +542,9 @@ ocr_with_retry() {
             split_args+=("$_orig_arg")
         done
 
-        if ! run_ocr "$split_pdf" "$ocr_tmp" split_args; then
+        if [ "$split_ok" = false ]; then
+            echo "   ❌ Column split failed"
+        elif ! run_ocr "$split_pdf" "$ocr_tmp" split_args; then
             echo "   ❌ Split OCR failed"
             rm -f "$ocr_tmp"
         elif quality_check "$ocr_tmp"; then
@@ -582,15 +553,14 @@ ocr_with_retry() {
             # auto-retry path silently doubles the page count, exactly
             # like the bug that corrupted several files in raw/.
             local merged_tmp="$scratch_dir/ocr_retry_merged.pdf"
-            merge_split_pdf "$ocr_tmp" "$merged_tmp"
-            if [ -f "$merged_tmp" ]; then
+            if merge_split_pdf "$ocr_tmp" "$merged_tmp"; then
                 mv "$merged_tmp" "$output"
-            else
-                mv "$ocr_tmp" "$output"
+                rm -f "$split_pdf"
+                [ "$own_scratch_dir" = true ] && rm -rf "$scratch_dir"
+                return 0
             fi
-            rm -f "$split_pdf"
-            [ "$own_scratch_dir" = true ] && rm -rf "$scratch_dir"
-            return 0
+            # Unmergeable halves are discarded, never handed off.
+            rm -f "$ocr_tmp"
         fi
         rm -f "$split_pdf"
     fi
@@ -686,7 +656,14 @@ lib_init() {
         fi
     done
     if [ -z "$PYTHON_BIN" ]; then
-        echo "   ⚠️  pikepdf not found — split/merge in fallback mode only"
+        # Fail before any processing: without pikepdf there is no split map,
+        # and an unmergeable split returns doubled half-pages (issue #47).
+        if [ "$SPLIT_COLUMNS" = true ]; then
+            echo "❌ pikepdf not found — required by --split-columns / --split-columns-all" >&2
+            echo "   Install: ./setup.sh (or pip install pikepdf into the ocrmypdf venv)" >&2
+            exit 1
+        fi
+        echo "   ⚠️  pikepdf not found — automatic column-split retry disabled"
     fi
 
     if ! resolve_engine "$engine"; then
