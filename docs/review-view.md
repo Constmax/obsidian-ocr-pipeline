@@ -27,6 +27,9 @@ rounding to page starts. Reading progress (`reviewed-up-to`) is recorded and res
 - Ribbon icon (column icon) or command palette: **"Open OCR Review View"**
 - File menu on a preview `.md` or on a PDF with a matching stem:
   "Open in OCR Review"
+- File menu on any PDF: **"OCR → Markdown"** opens the page-selection dialog
+  for that file and starts conversion. While another conversion is running, the
+  item remains visible but shows a notice instead of starting another one.
 - Second command: **"Jump to next preview entry"** (customizable shortcut)
 
 The view survives `Cmd+R`: the last opened file is restored.
@@ -126,4 +129,3 @@ Visible: Preview folder, Accepted folder, Rejected folder, status file (all clea
 9. Re-run `pdf2md.py` → Badge "Re-generated — previously accepted", "Replace old version" renames old file.
 10. Delete `review-status.json`, re-open view → everything lists correctly. ⇒ verifies manifest is cache-only.
 11. `Cmd+R` with open view → same file is restored.
-
