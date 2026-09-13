@@ -238,11 +238,14 @@ SEAM_DUPLICATE = [
 def cases(module_map):
     assembly, layout, ocr = module_map
 
-    def set_running_wrapper(values):
-        get_func("set_running", module_map)(values)
-
     def read_discarded(_):
-        return getattr(get_func("assemble_paragraphs", module_map), "discarded", [])
+        return get_func("assemble_paragraphs", module_map)(ASSEMBLE_FOOTNOTE).discarded
+
+    def running_boilerplate(text, y):
+        context_type = getattr(assembly, "AssemblyContext")
+        context = context_type(frozenset({"Fall 12 | Begleitskript",
+                                          "Strafrecht BT V"}))
+        return get_func("is_boilerplate", module_map)(text, y, context=context)
 
     z = lambda t: [t, (0, 0, 1000, 10)]
     M = lambda name: get_func(name, module_map)
@@ -258,8 +261,7 @@ def cases(module_map):
         ("ist_boilerplate_ohne_laufend", None,
          [[t, y] for t, y in BOILERPLATE_TEXTS], M("is_boilerplate")),
         ("ist_boilerplate_mit_laufend",
-         lambda: set_running_wrapper({"Fall 12 | Begleitskript", "Strafrecht BT V"}),
-         [[t, y] for t, y in RUNNING_TEXTS], M("is_boilerplate")),
+         None, [[t, y] for t, y in RUNNING_TEXTS], running_boilerplate),
         ("fett_ausgleichen", None, [[t] for t in BOLD_TEXTS],
          M("balance_bold")),
         ("kurze_zeilen", None, one([SHORT_LINES]), M("short_lines")),
@@ -304,6 +306,8 @@ def cases(module_map):
 
 
 def to_jsonable(x):
+    if hasattr(x, "paragraphs") and hasattr(x, "discarded"):
+        return to_jsonable(x.paragraphs)
     if isinstance(x, tuple):
         return [to_jsonable(e) for e in x]
     if isinstance(x, list):
