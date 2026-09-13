@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Wie gut ist der OCR-Pfad? Gemessen an Seiten, deren Wahrheit bekannt ist.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/bench_ocr.py [--seiten 40]
+  source ~/.venvs/mlxocr/bin/activate && python bench/bench_ocr.py [--seiten 40]
 
 Idee: vektorielle Seiten tragen ihren Text exakt im PDF. Dieselbe Seite laeuft
 zweimal durch dieselbe Pipeline — einmal ueber den Textlayer (= Wahrheit),
@@ -25,7 +25,7 @@ import argparse, difflib, json, re, subprocess, sys
 from collections import Counter
 from pathlib import Path
 
-from pfade import BENCH, PDF2MD_PY, WURZEL as VAULT
+from paths import BENCH, PDF2MD_PY, VAULT_ROOT as VAULT
 
 # Normzitat: "§ 823 I BGB", "§§ 946, 947 II BGB", "Art. 12 GG". Bewusst grob —
 # gemessen wird die Uebereinstimmung, nicht die Grammatik des Zitats.

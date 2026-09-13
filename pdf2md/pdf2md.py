@@ -8,7 +8,7 @@ assembles lines using their <|LOC|> coordinates into Markdown.
 
 Since Issue #8, this file contains only CLI and page runner: geometry
 (columns, boxes, diagrams) resides in layout.py, tiling and model in
-ocr.py, Markdown assembly in zusammenbau.py. Assembly is the
+ocr.py, Markdown assembly in assembly.py. Assembly is the
 testable layer — pdf2md/test runs without MLX, fitz, and Vault assets.
 
 Writes to .ocr-bench/out-C/, leaves raw/ untouched.
