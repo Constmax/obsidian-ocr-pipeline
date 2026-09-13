@@ -66,7 +66,7 @@ After every OCR run, the pipeline automatically validates:
 
 Threshold 0.40 instead of 0.30: Tolerates unavoidable OCR artifacts in older Hemmer scans (e.g., "eaglen" for "hemmer") while reliably catching structural failures.
 
-On failure: Auto-retry with column split (when using Tesseract, including re-merge to original format), followed by retry with alternative engine (apple ↔ tesseract).
+On failure: Auto-retry with column split (when using Tesseract and `pikepdf` is available, including re-merge to original format), followed by retry with alternative engine (apple ↔ tesseract).
 
 ### Multi-Part File Detection
 
@@ -221,6 +221,8 @@ Decision logic matches each left line to its **nearest right line of similar ver
 `--split-columns-all` skips layout detection and splits every page (fallback for non-standard layouts).
 
 Implemented via Ghostscript CropBox (split) and pikepdf `add_overlay` (merge); requires no dependencies beyond ocrmypdf venv (`pikepdf`, `PIL`).
+
+`pikepdf` is mandatory for splitting. Without it, `--split-columns` and `--split-columns-all` abort before any processing — a split without its page map cannot be merged back, so there is no fallback that could return half-pages. A split or re-merge that fails at runtime likewise fails the run and writes no file. Workflows without column splitting still run without `pikepdf`; only the automatic column-split retry is skipped.
 
 ### Reading Order Post-Merge (`pdftotext -raw`)
 
