@@ -298,7 +298,8 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
 ```
 
 - Page numbers are 1-based matching original PDF.
-- Out-of-bounds page numbers throw errors.
+- `--diagramm-seiten` uses the same grammar. Whitespace around entries is ignored.
+- Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
 - `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
 - Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`). Frontmatter `seiten` records count of selected pages.
 - Plugin queries selection via `SeitenAuswahlModal` (total page count rendered via pdf.js).
