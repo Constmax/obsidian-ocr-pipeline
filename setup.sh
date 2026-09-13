@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Einmal-Setup für einen neuen Laptop: installiert alles, was die
-# obsidian-ocr-pipeline braucht (Stufe 1, 2, 3 + Plugin).
-# Idempotent — mehrfaches Ausführen ist unschädlich (auch nach git pull).
+# One-time setup for a new laptop: installs everything required by the
+# obsidian-ocr-pipeline (Stage 1, 2, 3 + Plugin).
+# Idempotent — running multiple times is harmless (even after git pull).
 #
-# Aufruf:  ./setup.sh
-# Optional: VAULT_ROOT=<pfad> (Default: Repo-Parent — das Repo liegt im Vault)
+# Usage:  ./setup.sh
+# Optional: VAULT_ROOT=<path> (Default: repo parent — repo is inside vault)
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VAULT_ROOT="${VAULT_ROOT:-$(dirname "$REPO")}"
-# venv-Konvention: alle Pipeline-venvs liegen unter $VENV_ROOT (Default
-# ~/.venvs). Das ist die eine benannte Stelle — bin/pdf2md, bin/pdf-lib.sh
-# und bin/reprocess-raw.sh leiten ihre Kandidaten-Pfade daraus ab.
-# Überschreibbar: VENV_ROOT=<pfad> ./setup.sh
+# venv convention: all pipeline venvs live under $VENV_ROOT (Default
+# ~/.venvs). This is the single canonical location — bin/pdf2md, bin/pdf-lib.sh
+# and bin/reprocess-raw.sh derive candidate paths from it.
+# Overridable: VENV_ROOT=<path> ./setup.sh
 export VENV_ROOT="${VENV_ROOT:-$HOME/.venvs}"
 export PATH="$HOME/bin:$PATH"
 
@@ -23,81 +23,81 @@ warn() { printf '\033[33m   ⚠ %s\033[0m\n' "$*"; }
 
 # ─────────────────────────────────────────────────────── ① Preflight
 say "Preflight"
-[ "$(uname -s)" = "Darwin" ] || { echo "!! Nur macOS wird unterstützt"; exit 1; }
+[ "$(uname -s)" = "Darwin" ] || { echo "!! Only macOS is supported"; exit 1; }
 case "$(uname -m)" in
     arm64) ok "Apple Silicon ($(uname -m))" ;;
-    *) warn "Intel-Mac erkannt — Stufe 2 (MLX) funktioniert dort vermutlich nicht (bleibt offen)" ;;
+    *) warn "Intel Mac detected — Stage 2 (MLX) will likely not work there (remains open)" ;;
 esac
 
 if xcode-select -p >/dev/null 2>&1; then
     ok "Xcode Command Line Tools"
 else
-    echo "   Xcode CLT fehlen. Bitte ausführen und den macOS-Dialog bestätigen:"
+    echo "   Xcode CLT missing. Please run and confirm the macOS dialog:"
     echo "      xcode-select --install"
-    echo "   Danach ./setup.sh erneut starten."
+    echo "   Then re-run ./setup.sh."
     exit 1
 fi
 
 if command -v brew >/dev/null 2>&1; then
     ok "Homebrew ($(brew --version | head -1))"
 else
-    echo "   Homebrew fehlt — installiere (offizielles Installer-Skript) ..."
+    echo "   Homebrew missing — installing (official installer script) ..."
     NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     case "$(uname -m)" in
         arm64) eval "$(/opt/homebrew/bin/brew shellenv)" ;;
         *)     eval "$(/usr/local/bin/brew shellenv)" ;;
     esac
 fi
-command -v brew >/dev/null 2>&1 || { echo "!! brew nicht verfügbar"; exit 1; }
-# Der nicht-interaktive Homebrew-Installer schreibt nicht in ~/.zprofile — das
-# eval oben wirkt nur im laufenden Prozess. Sonst fehlen in neuen Terminals
-# gs, tesseract, qpdf, pdfinfo, und die Verifikation in ⑧ sieht sie nur,
-# weil sie im Prozess mit dem eval-PATH läuft.
+command -v brew >/dev/null 2>&1 || { echo "!! brew not available"; exit 1; }
+# The non-interactive Homebrew installer does not write to ~/.zprofile — the
+# eval above only takes effect in the current process. Otherwise new terminals
+# will lack gs, tesseract, qpdf, pdfinfo, and verification in ⑧ would only see
+# them because it runs in the process with eval-PATH.
 if grep -q 'brew shellenv' "$HOME/.zprofile" 2>/dev/null; then
-    ok "brew shellenv schon in ~/.zprofile"
+    ok "brew shellenv already in ~/.zprofile"
 else
+    # shellcheck disable=SC2016 # $(...) should stay literal shell command in ~/.zprofile
     printf '\n# obsidian-ocr-pipeline\neval "$(%s/bin/brew shellenv)"\n' "$(brew --prefix)" >> "$HOME/.zprofile"
-    echo "   brew shellenv ergänzt in ~/.zprofile (neues Terminal nötig)"
+    echo "   brew shellenv added to ~/.zprofile (new terminal required)"
 fi
 
 # ─────────────────────────────────────────────── ② brew bundle
-say "Systempakete (brew bundle)"
+say "System packages (brew bundle)"
 brew bundle --file="$REPO/Brewfile"
-ok "Brewfile-Pakete"
+ok "Brewfile packages"
 
-# ───────────────────────────────────── ③ Stufe-1-venv (ocrmypdf)
-say "Stufe 1 — ocrmypdf-venv"
-# Python 3.12 via uv (python-build-standalone): bundelt expat selbst mit.
-# Homebrew-Python-Bottles haben auf macOS ein kaputtes pyexpat
+# ───────────────────────────────────── ③ Stage-1-venv (ocrmypdf)
+say "Stage 1 — ocrmypdf-venv"
+# Python 3.12 via uv (python-build-standalone): bundles expat itself.
+# Homebrew Python bottles have broken pyexpat on macOS
 # (Symbol not found: _XML_SetAllocTrackerActivationThreshold).
 uv python install 3.12 >/dev/null 2>&1 || true
-# sort: feste Reihenfolge bei mehreren 3.12-Builds (find liefert Verzeichnis-
-# reihenfolge). '|| true': fehlt das uv-Verzeichnis, exitet find mit 1 und
-# 'set -e' würde hier abbrechen, statt den uv-Fallback unten zu erreichen.
+# sort: fixed order for multiple 3.12 builds (find returns directory order).
+# '|| true': if uv dir is missing, find exits with 1 and 'set -e' would abort here,
+# instead of reaching the uv fallback below.
 PY312="$(find "$HOME/.local/share/uv/python" -path '*/cpython-3.12*/bin/python3.12' 2>/dev/null | sort | head -1 || true)"
 [ -n "$PY312" ] || PY312="$(uv python find 3.12 2>/dev/null | head -1 || true)"
-[ -n "$PY312" ] || { echo "!! kein Python 3.12 gefunden (uv python install 3.12)"; exit 1; }
+[ -n "$PY312" ] || { echo "!! no Python 3.12 found (uv python install 3.12)"; exit 1; }
 if ! "$PY312" -c "import pyexpat" >/dev/null 2>&1; then
-    echo "!! Python $PY312 hat ein kaputtes pyexpat (libexpat-Problem auf macOS)."
-    echo "   Abhilfe: uv python uninstall 3.12 && uv python install --force 3.12"
+    echo "!! Python $PY312 has a broken pyexpat (libexpat issue on macOS)."
+    echo "   Workaround: uv python uninstall 3.12 && uv python install --force 3.12"
     exit 1
 fi
 
-mkvenv() { # $1 = venv-Pfad, $2 = Python-Interpreter
-    # Ein vorhandenes venv wird nur uebernommen, wenn es pip hat UND die
-    # erwartete Python-Version traegt: ein fremdes oder altes venv (z. B.
-    # mit Python 3.11 statt 3.12) wuerde sonst still benutzt und die
-    # pyexpat-Garantie aus Schritt ③ unterlaufen.
+mkvenv() { # $1 = venv path, $2 = Python interpreter
+    # An existing venv is only reused if it has pip AND carries the expected
+    # Python version: a foreign or old venv (e.g. with Python 3.11 instead of 3.12)
+    # would otherwise be silently used and bypass the pyexpat guarantee from step ③.
     local version venv_version
     version="$("$2" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "?")"
     if [ -d "$1" ]; then
         if [ ! -x "$1/bin/pip" ]; then
-            warn "$1 ohne pip — wird neu erstellt"
+            warn "$1 without pip — recreating"
             rm -rf "$1"
         else
             venv_version="$("$1/bin/python" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "?")"
             if [ "$venv_version" != "$version" ]; then
-                warn "$1 mit Python $venv_version statt $version — wird neu erstellt"
+                warn "$1 with Python $venv_version instead of $version — recreating"
                 rm -rf "$1"
             fi
         fi
@@ -106,49 +106,49 @@ mkvenv() { # $1 = venv-Pfad, $2 = Python-Interpreter
 }
 
 mkvenv "$VENV_ROOT/ocrmypdf" "$PY312"
-# ocrmypdf bewusst auf 17.8.0 gepinnt: die bin/-Skripte nutzen die 17.8-CLI
-# (--engine auto|apple|tesseract). Neuere Versionen (>=17.10) heißen das
-# Flag --ocr-engine und registrieren appleocr selbst als Plugin (entry point).
-# ocrmypdf-appleocr 0.3.4: ab 0.4.0 registriert sich das Paket per entry
-# point selbst und kollidiert mit dem --plugin-Check in install.sh.
-# Upgrade-Pfad: Skripte auf die neue CLI umstellen, dann Pin lösen.
+# ocrmypdf intentionally pinned to 17.8.0: bin/ scripts use 17.8 CLI
+# (--engine auto|apple|tesseract). Newer versions (>=17.10) rename the
+# flag to --ocr-engine and register appleocr themselves as plugin (entry point).
+# ocrmypdf-appleocr 0.3.4: from 0.4.0 onward the package registers itself via
+# entry point and collides with the --plugin check in install.sh.
+# Upgrade path: update scripts to new CLI, then unpin.
 "$VENV_ROOT/ocrmypdf/bin/pip" install -q -U pip "ocrmypdf==17.8.0" "ocrmypdf-appleocr==0.3.4"
 mkdir -p "$HOME/bin"
 ln -sfn "$VENV_ROOT/ocrmypdf/bin/ocrmypdf" "$HOME/bin/ocrmypdf"
-ok "ocrmypdf + Apple-Vision-Plugin"
+ok "ocrmypdf + Apple Vision plugin"
 
 # ─────────────────────────────────────────────── ④ PATH (~/bin)
 say "PATH (~/bin)"
 if grep -q 'HOME/bin' "$HOME/.zshrc" 2>/dev/null; then
-    ok "export PATH=\"\$HOME/bin:\$PATH\" schon in ~/.zshrc"
+    ok "export PATH=\"\$HOME/bin:\$PATH\" already in ~/.zshrc"
 else
     cat >> "$HOME/.zshrc" <<'ZEILEN'
 
 # obsidian-ocr-pipeline
 export PATH="$HOME/bin:$PATH"
 ZEILEN
-    echo "   ergänzt in ~/.zshrc (neues Terminal nötig; dieser Lauf nutzt es bereits)"
+    echo "   added to ~/.zshrc (new terminal required; this run already uses it)"
 fi
-# Abweichender VENV_ROOT muss ins Terminal-Profil, sonst finden bin/pdf2md,
-# bin/pdf-lib.sh und bin/reprocess-raw.sh das venv im nächsten Terminal nicht
-# mehr (sie fallen sonst still auf den Default $HOME/.venvs zurück).
+# Non-default VENV_ROOT must be in terminal profile, otherwise bin/pdf2md,
+# bin/pdf-lib.sh and bin/reprocess-raw.sh will not find the venv in next terminal
+# (they would silently fall back to default $HOME/.venvs).
 if [ "$VENV_ROOT" != "$HOME/.venvs" ]; then
     if grep -qF "VENV_ROOT=\"$VENV_ROOT\"" "$HOME/.zshrc" 2>/dev/null; then
-        ok "export VENV_ROOT=\"$VENV_ROOT\" schon in ~/.zshrc"
+        ok "export VENV_ROOT=\"$VENV_ROOT\" already in ~/.zshrc"
     else
         printf '\n# obsidian-ocr-pipeline\nexport VENV_ROOT="%s"\n' "$VENV_ROOT" >> "$HOME/.zshrc"
-        echo "   VENV_ROOT ergänzt in ~/.zshrc (neues Terminal nötig; dieser Lauf nutzt es bereits)"
+        echo "   VENV_ROOT added to ~/.zshrc (new terminal required; this run already uses it)"
     fi
 fi
 
-# ─────────────────────────────── ⑤ Stufe-1-Links + Verifikation
-say "Stufe 1 — CLI-Skripte"
-# Sicherung: bestehende ~/bin-Verknüpfungen, die woandershin zeigen,
-# vor dem Ersetzen protokollieren (Wiederherstellung per ln -sfn).
+# ─────────────────────────────── ⑤ Stage-1-Links + Verification
+say "Stage 1 — CLI scripts"
+# Backup: log existing ~/bin symlinks pointing elsewhere before replacing
+# (restore via ln -sfn).
 BACKUP="$REPO/.setup-bin-backup-$(date +%Y%m%d-%H%M%S).txt"
 FOUND=0
 for name in pdf-auto pdf-combine pdf-workflow reprocess-raw pdf2md; do
-    # Der pdf2md-Wrapper heisst ohne .sh; die Stufe-1-CLIs mit.
+    # pdf2md wrapper is named without .sh; Stage 1 CLIs with .sh.
     src="$REPO/bin/$name"
     [ "$name" = "pdf2md" ] || src="$src.sh"
     if [ -L "$HOME/bin/$name" ] && [ "$(readlink "$HOME/bin/$name")" != "$src" ]; then
@@ -157,14 +157,14 @@ for name in pdf-auto pdf-combine pdf-workflow reprocess-raw pdf2md; do
     fi
 done
 if [ "$FOUND" = 1 ]; then
-    echo "   alte Verknüpfungen gesichert: $BACKUP"
+    echo "   backed up old symlinks: $BACKUP"
 else
     rm -f "$BACKUP"
 fi
 bash "$REPO/install.sh"
 
-# ─────────────────────────────── ⑥ Stufe-2-venv + pdf2md-Wrapper
-say "Stufe 2 — MLX-venv (Status offen, wird bestmöglich versucht)"
+# ─────────────────────────────── ⑥ Stage-2-venv + pdf2md-Wrapper
+say "Stage 2 — MLX-venv (Status open, best-effort attempted)"
 MLX_OK=0
 if mkvenv "$VENV_ROOT/mlxocr" "$PY312"; then
     if "$VENV_ROOT/mlxocr/bin/pip" install -q -U pip -r "$REPO/pdf2md/requirements.txt"; then
@@ -172,14 +172,14 @@ if mkvenv "$VENV_ROOT/mlxocr" "$PY312"; then
         MLX_OK=1
         ok "mlx-vlm in $VENV_ROOT/mlxocr"
     else
-        warn "mlx-vlm-Installation fehlgeschlagen — Stufe 2 ohne Modell, Stufe 1 + Plugin funktionieren"
+        warn "mlx-vlm installation failed — Stage 2 without model, Stage 1 + plugin working"
     fi
 else
-    warn "venv-Erstellung fehlgeschlagen — Stufe 2 übersprungen"
+    warn "venv creation failed — Stage 2 skipped"
 fi
 
-# ─────────────────────────────────────────────── ⑦ Plugin (Stufe 3)
-say "Stufe 3 — Plugin"
+# ─────────────────────────────────────────────── ⑦ Plugin (Stage 3)
+say "Stage 3 — Plugin"
 if [ -d "$VAULT_ROOT/.obsidian" ]; then
     VAULT_ROOT="$VAULT_ROOT" bash "$REPO/plugin/install-plugin.sh"
     JSON="$VAULT_ROOT/.obsidian/community-plugins.json"
@@ -195,26 +195,26 @@ if "ocr-vorschau" not in d:
     d.append("ocr-vorschau")
     with open(p, "w") as f:
         json.dump(d, f, indent=2)
-    print("   aktiviert: ocr-vorschau")
+    print("   enabled: ocr-vorschau")
 else:
-    print("   schon aktiv: ocr-vorschau")
+    print("   already active: ocr-vorschau")
 PY
     if pgrep -x Obsidian >/dev/null 2>&1; then
-        warn "Obsidian läuft — einmal neu laden (Cmd+R)"
+        warn "Obsidian is running — reload once (Cmd+R)"
     fi
 else
-    warn "'$VAULT_ROOT' hat kein .obsidian/ — Plugin-Schritt übersprungen (Stufe 1+2 sind installiert)"
+    warn "'$VAULT_ROOT' has no .obsidian/ — plugin step skipped (Stage 1+2 installed)"
 fi
 
-# ─────────────────────────────────────────────── ⑧ Verifikation
-say "Verifikation"
+# ─────────────────────────────────────────────── ⑧ Verification
+say "Verification"
 FAIL=0
 WARN=0
 for cmd in pdf-auto pdf-combine pdf-workflow reprocess-raw ocrmypdf qpdf gs img2pdf tesseract pdfinfo pdftotext; do
     if command -v "$cmd" >/dev/null 2>&1; then
         ok "$cmd"
     else
-        echo "   FEHLT   $cmd"
+        echo "   MISSING $cmd"
         FAIL=1
     fi
 done
@@ -222,51 +222,52 @@ if [ "$MLX_OK" = 1 ]; then
     if command -v pdf2md >/dev/null 2>&1; then
         ok "pdf2md"
     else
-        echo "   FEHLT   pdf2md"
+        echo "   MISSING pdf2md"
         FAIL=1
     fi
 else
-    warn "pdf2md fehlt (Stufe 2 offen)"
+    warn "pdf2md missing (Stage 2 open)"
     WARN=1
 fi
 if ocrmypdf --plugin ocrmypdf_appleocr --help >/dev/null 2>&1; then
-    ok "Apple-Vision-Plugin"
+    ok "Apple Vision plugin"
 else
-    warn "Apple-Vision-Plugin nicht nutzbar"
+    warn "Apple Vision plugin not usable"
     WARN=1
 fi
 if tesseract --list-langs 2>/dev/null | grep -qx deu; then
-    ok "Tesseract-Sprachpaket 'deu'"
+    ok "Tesseract language package 'deu'"
 else
-    echo "   FEHLT   Tesseract 'deu'"
+    echo "   MISSING Tesseract 'deu'"
     FAIL=1
 fi
 if [ "$MLX_OK" = 1 ] && "$VENV_ROOT/mlxocr/bin/python" -c "import mlx_vlm" 2>/dev/null; then
-    ok "mlx-vlm importierbar"
+    ok "mlx-vlm importable"
 else
-    warn "mlx-vlm nicht importierbar (Stufe 2 offen)"
+    warn "mlx-vlm not importable (Stage 2 open)"
     WARN=1
 fi
 if [ -d "$VAULT_ROOT/.obsidian" ]; then
     if [ -f "$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/main.js" ]; then
         ok "Plugin in $VAULT_ROOT/.obsidian/plugins/ocr-vorschau/"
     else
-        echo "   FEHLT   Plugin-Dateien (Stufe 3)"
+        echo "   MISSING plugin files (Stage 3)"
         FAIL=1
     fi
 else
-    warn "kein .obsidian/ — Plugin-Schritt übersprungen (Stufe 1+2 sind installiert)"
+    warn "no .obsidian/ — plugin step skipped (Stage 1+2 installed)"
     WARN=1
 fi
 
 echo
 if [ "$FAIL" = 1 ]; then
-    echo "Fertig — mit Fehlern (siehe oben)."
+    echo "Done — with errors (see above)."
     exit 1
 fi
 if [ "$WARN" = 1 ]; then
-    echo "Fertig — mit offenen Punkten (siehe ⚠)."
+    echo "Done — with open items (see ⚠)."
 else
-    echo "Fertig. Obsidian neu laden (Cmd+R), dann ist alles einsatzbereit."
+    echo "Done. Reload Obsidian (Cmd+R), then everything is ready to use."
 fi
-echo "Hinweis: für neue Shells einmal ein neues Terminal öffnen (PATH-Änderung in ~/.zshrc)."
+echo "Note: open a new terminal window for new shells (PATH changes in ~/.zshrc)."
+

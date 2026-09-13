@@ -10,8 +10,6 @@
 	padding: 0;
 }
 
-/* Senkrechte Huelle: Werkzeugleiste (Werkbank) · Spalten · Entscheidungsleiste
-   · Statuszeile (Werkbank). Die Spalten sind das einzige, was waechst. */
 .ocr-huelle {
 	display: flex;
 	flex-direction: column;
@@ -97,8 +95,6 @@
 	text-align: center;
 }
 
-/* Sitzt neben dem Spaltenkopf, nicht darin: im Werkbank-Modus ist der Kopf
-   ausgeblendet, „PDF zuordnen…" muss trotzdem erreichbar bleiben. */
 .ocr-fehlbanner {
 	flex: none;
 	display: flex;
@@ -175,6 +171,16 @@
 	color: var(--text-normal);
 }
 
+.ocr-ikonknopf-aktiv {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.ocr-ikonknopf-aktiv:hover {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
 .ocr-ikon {
 	display: flex;
 	width: 14px;
@@ -186,10 +192,8 @@
 	height: 100%;
 }
 
-/* ── Werkzeugleiste (Werkbank) ──────────────────────────────────────────── */
+/* ── Workbench toolbar ─────────────────────────────────────────────────── */
 
-/* Ein Kopf statt drei. Die Elemente sind DIESELBEN wie in den Spaltenkoepfen
-   — sie haengen hier nur an einem anderen Ort (ansicht.ts, modusAnwenden). */
 .ocr-werkzeugleiste {
 	flex: none;
 	display: flex;
@@ -207,7 +211,7 @@
 	color: var(--text-muted);
 }
 
-/* ── Entscheidungsleiste ────────────────────────────────────────────────── */
+/* ── Decision bar ──────────────────────────────────────────────────────── */
 
 .ocr-aktionsleiste {
 	flex: none;
@@ -238,8 +242,6 @@
 	font-weight: var(--font-normal);
 }
 
-/* Tastenkappe. Die Belegung ist die eigentliche Bedienung — sie gehoert auf
-   den Knopf, nicht in die Doku. */
 .ocr-taste {
 	font-family: var(--font-monospace);
 	font-size: var(--font-ui-smaller);
@@ -260,7 +262,7 @@
 	white-space: nowrap;
 }
 
-/* ── Statuszeile (Werkbank) ─────────────────────────────────────────────── */
+/* ── Workbench status bar ──────────────────────────────────────────────── */
 
 .ocr-statuszeile {
 	flex: none;
@@ -336,8 +338,6 @@
 	font-size: var(--font-ui-small);
 }
 
-/* Der Stand, bevor die Filter kommen: „wie weit bin ich" ist die erste Frage,
-   „was zeige ich" die zweite. */
 .ocr-fortschritt {
 	flex: none;
 	padding: 8px 10px 2px;
@@ -428,7 +428,6 @@
 	display: none;
 }
 
-/* Gruppenueberschrift — erscheint nur, wenn die Liste mehrere Status zeigt. */
 .ocr-gruppe {
 	padding: 8px 8px 2px;
 	font-family: var(--font-monospace);
@@ -681,33 +680,40 @@
 	word-break: break-word;
 }
 
-/* ── Bearbeiten an Ort und Stelle (Werkbank) ────────────────────────────── */
-
-.ocr-md-seite-bearbeitet {
-	background: var(--background-modifier-hover);
-	border-radius: var(--radius-s);
-}
-
-.ocr-md-editfeld {
+.ocr-md-quelltext-editor {
 	width: 100%;
-	height: var(--ocr-feld-hoehe, auto);
-	min-height: 80px;
+	height: var(--ocr-editor-hoehe, auto);
+	margin: 0;
 	padding: 8px;
+	background: var(--background-secondary);
+	border: 1px solid transparent;
+	border-radius: var(--radius-s);
 	font-family: var(--font-monospace);
 	font-size: var(--font-ui-smaller);
-	line-height: 1.5;
-	background: var(--background-primary);
-	border: 1px solid var(--interactive-accent);
-	border-radius: var(--radius-s);
+	line-height: var(--line-height-normal);
 	color: var(--text-normal);
-	resize: vertical;
+	white-space: pre-wrap;
+	word-break: break-word;
+	resize: none;
 	overflow: hidden;
+	box-sizing: border-box;
+	display: block;
+	transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.ocr-md-editzeile {
-	display: flex;
-	gap: 6px;
-	margin-top: 6px;
+.ocr-md-quelltext-editor:focus {
+	border-color: var(--interactive-accent);
+	background: var(--background-primary);
+	outline: none;
+}
+
+.ocr-md-quelltext-editor.ocr-md-quelltext-readonly {
+	cursor: default;
+}
+
+.ocr-md-quelltext-editor.ocr-md-quelltext-readonly:focus {
+	border-color: transparent;
+	background: var(--background-secondary);
 }
 
 .ocr-md-platzhalter {
@@ -739,6 +745,21 @@
 }
 
 /* ── Dialoge und Einstellungen ──────────────────────────────────────────── */
+
+.ocr-notice-abbrechen {
+	margin-left: 8px;
+	padding: 2px 10px;
+	font-size: var(--font-ui-smaller);
+	border-radius: var(--radius-s);
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	cursor: pointer;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.ocr-notice-abbrechen:hover {
+	background: var(--interactive-hover);
+}
 
 .ocr-notiz-feld {
 	width: 100%;

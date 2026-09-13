@@ -76,13 +76,13 @@ Ergebnis der Engine-Auswahl, gemessen auf 6 repräsentativen Seiten:
 | Hochrechnung 2.922 Seiten | ~312 Tage | unbrauchbar | **~30 h** |
 
 Genauigkeit, gemessen auf 40 Seiten quer durch den Bestand gegen den Textlayer
-derselben Seiten (`bench/bench_ocr.py`):
+derselben Seiten (`bench/bench_ocr.py`, gemessen gegen Commit `ddf69e9`):
 
 | | Wortgenauigkeit | Zitattreue | Reihenfolge |
 |---|---|---|---|
-| alle 40 Seiten | **98,5 %** | **92,4 %** | **93,7 %** |
+| alle 40 Seiten (`ddf69e9`) | **98,2 %** | **92,0 %** | **98,1 %** |
 
-Vollständig mit Fehlerklassen und Vorher-Zahlen:
+Vollständig mit Fehlerklassen, Vorher-Zahlen und Historie:
 [bench/ERGEBNIS.md](bench/ERGEBNIS.md).
 
 Zum Schluss läuft ein **Wörterbuchabgleich** über die OCR-Seiten (nicht über
@@ -108,10 +108,8 @@ Markdown-Datei seitenweise neben das Original-PDF stellt — links die
 Vorschau-Liste, mittig die Originalseiten, rechts das Markdown, scrollgekoppelt,
 mit **Annehmen / Ablehnen** per Tastatur und Rückgängig. Der
 Begutachtungs-Durchgang, der heute aus zwei Fenstern nebeneinander besteht,
-bekommt damit eine Oberfläche. Zwei Bedienmodi: **Prüfstrecke** (Standard, auf
-Durchsatz gebaut) und **Werkbank** (eine Werkzeugleiste, Statuszeile,
-Korrigieren mit `e` direkt in der Vorschau-Datei). Zweck und Bedienung:
-[docs/review-ansicht.md](docs/review-ansicht.md).
+bekommt damit eine Oberfläche. Zweck und Bedienung:
+[docs/review-view.md](docs/review-view.md).
 
 ## Neuer Laptop — Einmal-Setup
 
@@ -210,7 +208,9 @@ Brewfile     Systempakete für das Setup (brew bundle)
 
 Die Benchmark-**Seitenbilder** liegen bewusst nicht im Repo: sie sind Scans aus
 urheberrechtlich geschütztem Kursmaterial und mit `bench/build_bench.py` aus dem
-eigenen Bestand reproduzierbar. Siehe [bench/BENCHMARK-SET.md](bench/BENCHMARK-SET.md).
+eigenen Bestand reproduzierbar. Die unterstützten Befehle stehen in
+[bench/README.md](bench/README.md); die Seitenauswahl steht in
+[bench/BENCHMARK-SET.md](bench/BENCHMARK-SET.md).
 
 ## CI
 
@@ -240,7 +240,7 @@ Stufe 1 läuft produktiv über ~1.500 Scanseiten. Stufe 2 ist entschieden und
 implementiert; die Markdown-Zusammenbau-Schicht ist die jüngste Komponente.
 
 Die Entgleisungen, die zuletzt 15 % der Seiten trafen und die Gesamtzahl auf
-93,3 % drückten, sind abgefangen: **98,5 % über alle 40 Benchmarkseiten**, keine
+93,3 % drückten, sind abgefangen: **98,2 % über alle 40 Benchmarkseiten** (gemessen gegen Commit `ddf69e9`), keine
 Seite unter dem Stand davor. Was bleibt, ist gewöhnliche OCR-Ungenauigkeit —
 und eine mehrspaltige Seite, deren Lesereihenfolge noch nicht sitzt.
 

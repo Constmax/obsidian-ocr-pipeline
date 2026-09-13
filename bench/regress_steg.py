@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regression der Spaltenerkennung: alte gegen neue _steg-Auswahl.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/regress_steg.py
+  source ~/.venvs/mlxocr/bin/activate && python bench/regress_steg.py
 
 Laeuft ueber ALLE vektoriellen Seiten des Bestands — dort ist der Textlayer
 die Wahrheit, es braucht keine Inferenz, und genau dort greift die Aenderung.
@@ -16,10 +16,10 @@ import json, re, sys
 from collections import Counter
 from pathlib import Path
 
-from pfade import BENCH, WURZEL as VAULT   # legt pdf2md/ auf sys.path
+from paths import BENCH, VAULT_ROOT as VAULT
 import pdf2md as M
 import layout as L
-import zusammenbau as Z
+import assembly as A
 
 
 def alt_steg(mit_box):
@@ -27,7 +27,7 @@ def alt_steg(mit_box):
     if len(mit_box) < 8:
         return None
     satz = [z for z in mit_box
-            if not Z.ist_boilerplate(z[0], z[1][1])] or mit_box
+            if not A.is_boilerplate(z[0], z[1][1])] or mit_box
     starts = sorted(z[1][0] for z in satz)
     luecke, pos = 0, None
     for a, b in zip(starts, starts[1:]):
@@ -70,11 +70,10 @@ def buchstaben(absaetze):
 
 
 def seite_bauen(page):
-    kaesten, _ = L.kaesten_erkennen(page, False,
-                                    [t[2] for t in L.tabellen_markdown(page)])
-    zeilen = M.textlayer_zeilen(page)
-    return Z.zusammenfuegen(L.spalten_trennen(L.kaesten_zuordnen(zeilen,
-                                                                 kaesten)))
+    boxes, _ = L.detect_boxes(page, False,
+                              [t[2] for t in L.tables_markdown(page)])
+    lines = M.textlayer_lines(page)
+    return A.assemble_paragraphs(L.split_columns(L.assign_boxes(lines, boxes)))
 
 
 def main():
@@ -94,20 +93,20 @@ def main():
         for p in doc:
             if p.rotation:
                 p.remove_rotation()
-        Z.laufend_setzen(M.laufende_zeilen(doc))
+        A.set_running(M.running_lines(doc))
         for nr in sorted(nach_datei[datei]):
             if nr > doc.page_count:
                 continue
             page = doc[nr - 1]
             n += 1
-            neu_f = L._steg
+            neu_f = L._column_gap
             try:
-                L._steg = alt_steg
+                L._column_gap = alt_steg
                 a = seite_bauen(page)
-                L._steg = neu_f
+                L._column_gap = neu_f
                 b = seite_bauen(page)
             except Exception as e:                      # Seite ueberspringen
-                L._steg = neu_f
+                L._column_gap = neu_f
                 print(f"  FEHLER {datei} S.{nr}: {e}")
                 continue
             if a == b:

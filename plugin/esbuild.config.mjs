@@ -4,12 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { builtinModules } from "node:module";
 
-const produktion = process.argv[2] === "production";
+const production = process.argv[2] === "production";
 
-// Obsidian laedt main.js per require() aus dem Plugin-Ordner. Alles, was die
-// App selbst mitbringt, muss extern bleiben — sonst liegt eine zweite Kopie von
-// CodeMirror im Bundle und die Editor-Instanzen sprechen nicht mehr miteinander.
-const EXTERN = [
+// Obsidian loads main.js via require() from the plugin folder. Anything supplied
+// by the app itself must remain external — otherwise a second copy of CodeMirror
+// enters the bundle and editor instances cannot interact.
+const EXTERNAL = [
 	"obsidian",
 	"electron",
 	"@codemirror/autocomplete",
@@ -26,44 +26,42 @@ const EXTERN = [
 	...builtinModules,
 ];
 
-// Dev-Schleife: liegt OBSIDIAN_PLUGIN_DIR an, werden die drei Artefakte nach
-// jedem Rebuild dorthin kopiert. Kein Symlink der Quellen in den Vault — siehe
-// die Begruendung in install-plugin.sh.
-const ZIEL = process.env.OBSIDIAN_PLUGIN_DIR;
+// Dev loop: if OBSIDIAN_PLUGIN_DIR is set, copy artifacts there after each rebuild.
+const TARGET = process.env.OBSIDIAN_PLUGIN_DIR;
 
-const kopierPlugin = {
-	name: "in-vault-kopieren",
+const copyPlugin = {
+	name: "copy-to-vault",
 	setup(build) {
-		build.onEnd((ergebnis) => {
-			if (!ZIEL || ergebnis.errors.length) return;
-			fs.mkdirSync(ZIEL, { recursive: true });
-			for (const datei of ["main.js", "manifest.json", "styles.css"]) {
-				if (fs.existsSync(datei)) {
-					fs.copyFileSync(datei, path.join(ZIEL, datei));
+		build.onEnd((result) => {
+			if (!TARGET || result.errors.length) return;
+			fs.mkdirSync(TARGET, { recursive: true });
+			for (const file of ["main.js", "manifest.json", "styles.css"]) {
+				if (fs.existsSync(file)) {
+					fs.copyFileSync(file, path.join(TARGET, file));
 				}
 			}
-			console.log(`   → kopiert nach ${ZIEL}`);
+			console.log(`   → copied to ${TARGET}`);
 		});
 	},
 };
 
-const kontext = await esbuild.context({
+const context = await esbuild.context({
 	entryPoints: ["src/main.ts"],
 	bundle: true,
-	external: EXTERN,
+	external: EXTERNAL,
 	format: "cjs",
 	target: "es2021",
 	logLevel: "info",
-	sourcemap: produktion ? false : "inline",
+	sourcemap: production ? false : "inline",
 	treeShaking: true,
-	minify: produktion,
+	minify: production,
 	outfile: "main.js",
-	plugins: [kopierPlugin],
+	plugins: [copyPlugin],
 });
 
-if (produktion) {
-	await kontext.rebuild();
-	await kontext.dispose();
+if (production) {
+	await context.rebuild();
+	await context.dispose();
 } else {
-	await kontext.watch();
+	await context.watch();
 }

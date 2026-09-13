@@ -1,8 +1,7 @@
 # AGENTS.md
 
 OCR-Pipeline for scanned legal study materials. Three independent stages in one
-repo. All code identifiers, comments, docs and commit messages are German
-(commits use ASCII transliteration: `fuer`, `ergaenzen`). Match that style.
+repo. All code identifiers, comments, docs and commit messages are in English. Match that style.
 
 ## Layout
 
@@ -10,9 +9,9 @@ repo. All code identifiers, comments, docs and commit messages are German
   four CLIs (`pdf-auto`, `pdf-combine`, `pdf-workflow`, `reprocess-raw`) +
   Python helper `column_tools.py` (column split/merge, needs pikepdf).
 - `pdf2md/` — Stage 2: `pdf2md.py` (MLX/PaddleOCR-VL) PDF → Markdown.
-  Apple-Silicon-only, ~15–60 s/page; needs `pymupdf`. `woerterbuch.py` runs a
+  Apple-Silicon-only, ~15–60 s/page; needs `pymupdf`. `dictionary.py` (formerly `woerterbuch.py`) runs a
   dictionary pass over OCR pages afterwards (reports by default, corrects only
-  unambiguous cases with `--woerterbuch-korrigieren`).
+  unambiguous cases with `--dictionary-correct`).
 - `plugin/` — Stage 3: Obsidian review view (TypeScript, esbuild, no React).
 - `bench/` — benchmark harness; page images are copyrighted scans, NOT in the
   repo, reproducible via `bench/build_bench.py` from the user's vault.
@@ -44,8 +43,13 @@ repo. All code identifiers, comments, docs and commit messages are German
   committed build against `src/` (`.github/workflows/ci.yml`).
 - Install into a vault: `VAULT_ROOT=<path> plugin/install-plugin.sh` (default
   copies, no build; `--build` to build, `--symlink` only outside iCloud).
-- ESLint: `eslint-plugin-obsidianmd`; `sentence-case` rule is disabled because
-  the UI is German; `no-console` allows only `error`/`warn`.
+- ESLint: `eslint-plugin-obsidianmd`; `sentence-case` rule is enabled for English UI; `no-console` allows only `error`/`warn`.
+- **Obsidian API Invariants & Quirks**:
+  - **No `open()` on Views**: Never define a custom method named `open()` on classes extending `ItemView` / `View` (collides with Obsidian's internal `View.prototype.open(containerEl)` lifecycle). Use `openPreview()`.
+  - **`loadPdfJs()` caching**: Obsidian's `loadPdfJs()` returns `Promise<any>` and may not attach to `window.pdfjsLib` automatically. Always use `const pdfjs = window.pdfjsLib ?? await loadPdfJs(); (window as any).pdfjsLib = pdfjs;`.
+  - **Idempotent UI Initialization**: Initialize view panes via `ensureUiBuilt()` before any `openPreview()`, `update()`, `setState()`, or `onOpen()` calls so that leaf restorations and conversions never encounter uninitialized subcomponents.
+  - **Startup Indexing**: Reconcile cache and open initial previews within `app.workspace.onLayoutReady(...)` to avoid reading incomplete vault metadata on startup.
+  - **Bug Fixes**: Always follow the systematic debugging workflow (`systematic-debugging` skill) to trace root causes before modifying code.
 
 ## Setup / environments
 
@@ -60,17 +64,12 @@ repo. All code identifiers, comments, docs and commit messages are German
   vault-local `pdf2md/setup.sh` (venvs `.venv-mlxocr` / `.venv-paddleocr` in
   the vault) is deleted — history in git, Gate-1 measurements in
   `bench/ERGEBNIS.md`.
-- CI (`.github/workflows/ci.yml`, bei jedem PR und bei Push auf `main` —
-  Feature-Branches laufen über ihren PR, sonst startet jeder Job doppelt):
-  Job `plugin` (npm ci → check → lint → test → build → `main.js` ist
-  versioniert *und* deckungsgleich mit `src/`), Job `shell` (shellcheck über
-  alle neun Skripte, shellcheck-Version gepinnt) und Job `python` (`pytest
-  pdf2md/test`: Nahtentdopplung, Randmarken, Schleifen, Golden-Snapshot).
-  Lokal: plugin mit lint → check → test → build; Stage-1-Skripte mit
-  `shellcheck -x -P bin`; Python mit `python3 -m pytest pdf2md/test`.
+- CI (`.github/workflows/ci.yml`, on every PR and push to `main`):
+  Job `plugin` (npm ci → check → lint → test → build → `main.js` is versioned *and* identical to `src/`), Job `shell` (shellcheck over all scripts) and Job `python` (`pytest pdf2md/test bin/test`).
+  Locally: plugin with lint → check → test → build; Stage-1 scripts with `shellcheck -x -P bin`; Python with `python3 -m pytest pdf2md/test bin/test` (`bin/test` holds Stage-1 behavioral tests with stubbed tools).
 
 ## Docs
 
-`docs/` is German: `scripts-detail.md` (flag reference), `installation.md`,
-`review-ansicht.md`, `plugin-roadmap.md` (architecture decision: the plugin
+`docs/` is English: `scripts-detail.md` (flag reference), `installation.md`,
+`review-view.md`, `plugin-roadmap.md` (architecture decision: the plugin
 spawns the installed CLIs as a thin client — pipeline code is not bundled).

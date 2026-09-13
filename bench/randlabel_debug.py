@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Zeigt die Zeilengeometrie um eine Randmarke — warum zieht die Regel nicht?
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/randlabel_debug.py \
+  source ~/.venvs/mlxocr/bin/activate && python bench/randlabel_debug.py \
       "raw/StR/Strafrecht-AT/Strafrecht AT VI - Fahrlaessigkeit.pdf" 3
 
 Gedruckt wird je Zeile x0, y0 und der Anfang des Textes, dazu der Rumpfeinzug,
-den `randlabel_vorziehen` als Median der Nachbarschaft bildet. Damit ist auf
+den `promote_margin_labels` als Median der Nachbarschaft bildet. Damit ist auf
 einen Blick zu sehen, ob die Marke geometrisch ueberhaupt im Rand steht.
 """
 import sys
 from pathlib import Path
 
-from pfade import BENCH                       # legt pdf2md/ auf sys.path
+from paths import BENCH
 import pdf2md as M
 import ocr as O
-import zusammenbau as Z
+import assembly as A
 
 
 def main():
@@ -43,18 +43,18 @@ def main():
                    max_tokens=O.TOKEN_MAX, temperature=0.0, verbose=False)
     roh = roh if isinstance(roh, str) else getattr(roh, "text", str(roh))
 
-    zeilen = O.fett_markieren(Z.parse_zeilen(roh), png)
+    zeilen = O.detect_bold(A.parse_lines(roh), png)
     print(f"{len(zeilen)} Zeilen\n")
     print(f"{'#':>3s} {'x0':>5s} {'y0':>5s} {'x1':>5s}  Text")
     for i, z in enumerate(zeilen):
         b = z[1]
-        marke = " ←RANDLABEL" if Z.RANDLABEL.match(z[0].strip()) else ""
+        marke = " ←RANDLABEL" if A.MARGIN_LABEL.match(z[0].strip()) else ""
         print(f"{i:3d} {b[0] if b else -1:5d} {b[1] if b else -1:5d} "
               f"{b[2] if b else -1:5d}  {z[0][:70]!r}{marke}")
 
     import statistics
     for i, z in enumerate(zeilen):
-        if not (z[1] and Z.RANDLABEL.match(z[0].strip())):
+        if not (z[1] and A.MARGIN_LABEL.match(z[0].strip())):
             continue
         nah = [x for x in zeilen[max(0, i - 8):i + 9] if x[1] and x is not z]
         rumpf = statistics.median([x[1][0] for x in nah]) if nah else None

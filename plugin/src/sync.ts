@@ -1,202 +1,183 @@
-// Scroll-Kopplung zwischen PDF- und Markdown-Spalte.
+// Scroll coupling between PDF and Markdown columns.
 //
-// Die Abbildung ist BRUCHTEILSWEISE, nicht auf ganze Seiten gerundet: eine
-// PDF-Seite und ihr Markdown-Block haben im Normalfall sehr verschiedene Hoehen,
-// und ein Sprung auf Seitenanfaenge fuehlt sich dann falsch an.
+// Mapping is FRACTIONAL, not rounded to whole pages: a PDF page and its
+// Markdown block typically have very different heights, and jumping to page top feels wrong.
 //
-//   Treiber:  Block am Viewport-Oberrand suchen
-//             p = nr + (scrollTop - blockTop) / blockHoehe        // reelle Zahl
-//   Folger:   ziel = block(floor(p)).top + (p - floor(p)) * hoehe
+//   Driver:  Find block at viewport top edge
+//            p = pageNum + (scrollTop - blockTop) / blockHeight      // real number
+//   Follower: target = block(floor(p)).top + (p - floor(p)) * height
 //
-// Die Rueckkopplung — das programmatische Setzen von `scrollTop` loest im
-// Folger selbst ein `scroll`-Ereignis aus — wird dreifach abgesichert:
-//
-//   1. Besitzer-Token mit nachgetriggertem Timeout. Der Lock loest 120 ms nach
-//      dem LETZTEN Ereignis des Treibers, nicht 120 ms nach dem ersten.
-//   2. Kein `scrollIntoView({behavior:'smooth'})`. Sanftes Scrollen erzeugt
-//      einen langen Ereignisschweif, der den Lock ueberlebt und die Schleife
-//      zuverlaessig zurueckbringt. Direkt `scrollTop` schreiben, gebuendelt auf
-//      einen Schreibvorgang pro Frame.
-//   3. Epsilon von 2 px gegen Restzittern aus Subpixel-Rundung.
+// Feedback loop protection — programmatically setting `scrollTop` fires `scroll` event in follower — is triple guarded:
+//   1. Owner token with re-triggered timeout. Lock releases 120 ms after LAST event of driver.
+//   2. No `scrollIntoView({behavior:'smooth'})`. Direct `scrollTop` writing, bundled to one write per frame.
+//   3. Epsilon of 2 px against subpixel rounding jitter.
 
-export type Spalte = "pdf" | "md";
+export type Column = "pdf" | "md";
 
-export interface SyncQuelle {
+export interface SyncSource {
 	scrollEl: HTMLElement;
-	/** Seitennummer → verankerndes Element. Luecken sind normal (z.B. bei
-	 *  `--nur-ocr`), es wird auf den naechstgelegenen Schluessel geklemmt. */
-	elemente(): Map<number, HTMLElement>;
+	/** Page number → anchoring element. Gaps are normal (e.g. `--nur-ocr`), clamped to nearest key. */
+	elements(): Map<number, HTMLElement>;
 }
 
-interface Vermessung {
-	nummern: number[];
+interface Measurement {
+	numbers: number[];
 	top: Map<number, number>;
-	hoehe: Map<number, number>;
+	height: Map<number, number>;
 }
 
 const LOCK_MS = 120;
 const EPSILON = 2;
 
-function vermessen(quelle: SyncQuelle): Vermessung {
-	const elemente = quelle.elemente();
-	const basis = quelle.scrollEl.getBoundingClientRect().top;
-	const scrollTop = quelle.scrollEl.scrollTop;
+function measure(source: SyncSource): Measurement {
+	const elements = source.elements();
+	const base = source.scrollEl.getBoundingClientRect().top;
+	const scrollTop = source.scrollEl.scrollTop;
 	const top = new Map<number, number>();
-	const hoehe = new Map<number, number>();
-	for (const [nr, el] of elemente) {
+	const height = new Map<number, number>();
+	for (const [num, el] of elements) {
 		const rect = el.getBoundingClientRect();
-		top.set(nr, rect.top - basis + scrollTop);
-		hoehe.set(nr, Math.max(rect.height, 1));
+		top.set(num, rect.top - base + scrollTop);
+		height.set(num, Math.max(rect.height, 1));
 	}
 	return {
-		nummern: [...elemente.keys()].sort((a, b) => a - b),
+		numbers: [...elements.keys()].sort((a, b) => a - b),
 		top,
-		hoehe,
+		height,
 	};
 }
 
-/** Groesster Schluessel <= nr, sonst der kleinste vorhandene. */
-function naechsteNummer(nummern: number[], nr: number): number | null {
-	if (nummern.length === 0) return null;
-	let treffer: number | null = null;
-	for (const kandidat of nummern) {
-		if (kandidat <= nr) treffer = kandidat;
+/** Largest key <= num, otherwise smallest existing. */
+function nextNumber(numbers: number[], num: number): number | null {
+	if (numbers.length === 0) return null;
+	let match: number | null = null;
+	for (const candidate of numbers) {
+		if (candidate <= num) match = candidate;
 		else break;
 	}
-	return treffer ?? nummern[0] ?? null;
+	return match ?? numbers[0] ?? null;
 }
 
-export class Kopplung {
-	aktiv = true;
-	/** Wird bei jeder Positionsaenderung mit der aktuellen Bruchteilsseite
-	 *  gerufen — die Spaltenkoepfe zeigen daraus „S. n / m". */
-	beiSeite: ((seite: number) => void) | null = null;
+export class Coupling {
+	active = true;
+	/** Called on position change with current fractional page — column headers use it for "p. n / m". */
+	onPage: ((page: number) => void) | null = null;
 
-	private messungen = new Map<Spalte, Vermessung>();
-	private treiber: Spalte | null = null;
+	private measurements = new Map<Column, Measurement>();
+	private driver: Column | null = null;
 	private lockTimer: number | null = null;
 	private rafId: number | null = null;
-	private ausstehend: Array<[Spalte, number]> = [];
-	private abmelden: Array<() => void> = [];
-	private quellen: Record<Spalte, SyncQuelle>;
+	private pending: Array<[Column, number]> = [];
+	private unbind: Array<() => void> = [];
+	private sources: Record<Column, SyncSource>;
 
-	constructor(quellen: Record<Spalte, SyncQuelle>) {
-		this.quellen = quellen;
-		for (const spalte of ["pdf", "md"] as const) {
-			const quelle = quellen[spalte];
-			const handler = () => this.beiScroll(spalte);
-			quelle.scrollEl.addEventListener("scroll", handler, { passive: true });
-			this.abmelden.push(() =>
-				quelle.scrollEl.removeEventListener("scroll", handler),
+	constructor(sources: Record<Column, SyncSource>) {
+		this.sources = sources;
+		for (const col of ["pdf", "md"] as const) {
+			const source = sources[col];
+			const handler = () => this.onScroll(col);
+			source.scrollEl.addEventListener("scroll", handler, { passive: true });
+			this.unbind.push(() =>
+				source.scrollEl.removeEventListener("scroll", handler),
 			);
 		}
 	}
 
-	zerstoeren(): void {
-		for (const ab of this.abmelden) ab();
-		this.abmelden = [];
+	destroy(): void {
+		for (const un of this.unbind) un();
+		this.unbind = [];
 		if (this.lockTimer !== null) window.clearTimeout(this.lockTimer);
 		if (this.rafId !== null) window.cancelAnimationFrame(this.rafId);
 	}
 
-	/** Nach jedem Ereignis rufen, das Hoehen aendert: Block fertig gerendert,
-	 *  ResizeObserver, Canvas eingewechselt, Gerendert/Quelltext umgeschaltet. */
-	neuVermessen(): void {
-		for (const spalte of ["pdf", "md"] as const) {
-			this.messungen.set(spalte, vermessen(this.quellen[spalte]));
+	/** Call after events that change heights: block rendered, ResizeObserver, Canvas swapped, view mode toggled. */
+	remeasure(): void {
+		for (const col of ["pdf", "md"] as const) {
+			this.measurements.set(col, measure(this.sources[col]));
 		}
 	}
 
-	/** Aktuelle Bruchteilsseite einer Spalte. */
-	position(spalte: Spalte): number | null {
-		const messung = this.messungen.get(spalte);
-		if (messung === undefined || messung.nummern.length === 0) return null;
-		const scrollTop = this.quellen[spalte].scrollEl.scrollTop;
-		let treffer = messung.nummern[0] as number;
-		for (const nr of messung.nummern) {
-			const top = messung.top.get(nr);
+	/** Current fractional page of a column. */
+	position(column: Column): number | null {
+		const m = this.measurements.get(column);
+		if (m === undefined || m.numbers.length === 0) return null;
+		const scrollTop = this.sources[column].scrollEl.scrollTop;
+		let match = m.numbers[0] as number;
+		for (const num of m.numbers) {
+			const top = m.top.get(num);
 			if (top === undefined) continue;
-			if (top <= scrollTop + 1) treffer = nr;
+			if (top <= scrollTop + 1) match = num;
 			else break;
 		}
-		const top = messung.top.get(treffer) ?? 0;
-		const hoehe = messung.hoehe.get(treffer) ?? 1;
-		const anteil = Math.min(Math.max((scrollTop - top) / hoehe, 0), 0.999);
-		return treffer + anteil;
+		const top = m.top.get(match) ?? 0;
+		const height = m.height.get(match) ?? 1;
+		const fraction = Math.min(Math.max((scrollTop - top) / height, 0), 0.999);
+		return match + fraction;
 	}
 
-	/** Beide Spalten auf eine Seite setzen — fuer „Gehe zu Seite" und die
-	 *  Seitenleiste. Setzt den Treiber fuer einen Frame, damit die daraus
-	 *  entstehenden Scroll-Ereignisse nichts zurueckspielen. */
-	zuSeite(nr: number): void {
-		this.treiber = "pdf";
-		this.lockNachtriggern();
-		for (const spalte of ["pdf", "md"] as const) {
-			const messung = this.messungen.get(spalte);
-			if (messung === undefined) continue;
-			const ziel = naechsteNummer(messung.nummern, nr);
-			if (ziel === null) continue;
-			this.schreiben(spalte, messung.top.get(ziel) ?? 0);
+	/** Set both columns to a page — for "Go to page" and sidebar. */
+	goToPage(num: number): void {
+		this.driver = "pdf";
+		this.retriggerLock();
+		for (const col of ["pdf", "md"] as const) {
+			const m = this.measurements.get(col);
+			if (m === undefined) continue;
+			const target = nextNumber(m.numbers, num);
+			if (target === null) continue;
+			this.write(col, m.top.get(target) ?? 0);
 		}
-		this.beiSeite?.(nr);
+		this.onPage?.(num);
 	}
 
-	private lockNachtriggern(): void {
+	private retriggerLock(): void {
 		if (this.lockTimer !== null) window.clearTimeout(this.lockTimer);
 		this.lockTimer = window.setTimeout(() => {
-			this.treiber = null;
+			this.driver = null;
 			this.lockTimer = null;
 		}, LOCK_MS);
 	}
 
-	private beiScroll(spalte: Spalte): void {
-		// Sicherung 1: solange eine andere Spalte treibt, ist dieses Ereignis
-		// die Folge unseres eigenen Schreibvorgangs.
-		if (this.treiber !== null && this.treiber !== spalte) return;
-		this.treiber = spalte;
-		this.lockNachtriggern();
+	private onScroll(column: Column): void {
+		if (this.driver !== null && this.driver !== column) return;
+		this.driver = column;
+		this.retriggerLock();
 
-		const p = this.position(spalte);
+		const p = this.position(column);
 		if (p === null) return;
-		this.beiSeite?.(p);
-		if (!this.aktiv) return;
+		this.onPage?.(p);
+		if (!this.active) return;
 
-		const folger: Spalte = spalte === "pdf" ? "md" : "pdf";
-		const messung = this.messungen.get(folger);
-		if (messung === undefined || messung.nummern.length === 0) return;
-		const ganz = Math.floor(p);
-		const ziel = naechsteNummer(messung.nummern, ganz);
-		if (ziel === null) return;
-		const top = messung.top.get(ziel) ?? 0;
-		const hoehe = messung.hoehe.get(ziel) ?? 1;
-		// Der Bruchteil gilt nur, wenn wirklich dieselbe Seite getroffen wurde;
-		// beim Klemmen auf einen Nachbarn waere er sinnlos.
-		const anteil = ziel === ganz ? p - ganz : 0;
-		this.planen(folger, top + anteil * hoehe);
+		const follower: Column = column === "pdf" ? "md" : "pdf";
+		const m = this.measurements.get(follower);
+		if (m === undefined || m.numbers.length === 0) return;
+		const whole = Math.floor(p);
+		const target = nextNumber(m.numbers, whole);
+		if (target === null) return;
+		const top = m.top.get(target) ?? 0;
+		const height = m.height.get(target) ?? 1;
+		const fraction = target === whole ? p - whole : 0;
+		this.schedule(follower, top + fraction * height);
 	}
 
-	/** Sicherung 2: mehrere Scroll-Ereignisse werden zu einem Schreibvorgang je
-	 *  Frame gebuendelt, und geschrieben wird direkt — nie `smooth`. */
-	private planen(spalte: Spalte, ziel: number): void {
-		this.ausstehend = this.ausstehend.filter(([s]) => s !== spalte);
-		this.ausstehend.push([spalte, ziel]);
+	private schedule(column: Column, target: number): void {
+		this.pending = this.pending.filter(([s]) => s !== column);
+		this.pending.push([column, target]);
 		if (this.rafId !== null) return;
 		this.rafId = window.requestAnimationFrame(() => {
 			this.rafId = null;
-			const arbeit = this.ausstehend;
-			this.ausstehend = [];
-			for (const [s, z] of arbeit) this.schreiben(s, z);
+			const work = this.pending;
+			this.pending = [];
+			for (const [col, t] of work) this.write(col, t);
 		});
 	}
 
-	private schreiben(spalte: Spalte, ziel: number): void {
-		const el = this.quellen[spalte].scrollEl;
-		const begrenzt = Math.min(
-			Math.max(ziel, 0),
+	private write(column: Column, target: number): void {
+		const el = this.sources[column].scrollEl;
+		const clamped = Math.min(
+			Math.max(target, 0),
 			Math.max(el.scrollHeight - el.clientHeight, 0),
 		);
-		// Sicherung 3: Restzittern aus Subpixel-Rundung nicht weitertragen.
-		if (Math.abs(begrenzt - el.scrollTop) < EPSILON) return;
-		el.scrollTop = begrenzt;
+		if (Math.abs(clamped - el.scrollTop) < EPSILON) return;
+		el.scrollTop = clamped;
 	}
 }

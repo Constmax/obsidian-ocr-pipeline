@@ -37,7 +37,7 @@ import json
 import random
 import time
 
-from pfade import BENCH, WURZEL as VAULT     # legt pdf2md/ auf sys.path
+from paths import BENCH, VAULT_ROOT as VAULT
 import layout as L
 
 MODELL = "PaddlePaddle/PP-DocLayoutV3_safetensors"
@@ -115,7 +115,7 @@ def regionen(bild, modell, prozessor, id2label, schwelle=0.5):
 
     `post_process_object_detection` liefert die Treffer bereits nach
     `order_seq` sortiert — das Modell sagt die Leseordnung im selben
-    Forward-Pass voraus. Genau das rekonstruiert `spalten_trennen()` heute
+    Forward-Pass voraus. Genau das rekonstruiert `split_columns()` heute
     aus Geometrie.
     """
     import torch

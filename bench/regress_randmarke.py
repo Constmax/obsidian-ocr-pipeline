@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Regression der Randmarken-Ausnahme in `ist_ueberschrift`.
+"""Regression der Randmarken-Ausnahme in `is_heading`.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/regress_randmarke.py
+  source ~/.venvs/mlxocr/bin/activate && python bench/regress_randmarke.py
 
 Geprueft wird gegen die Fassung ohne Ausnahme: eine kurze, ganz fette Zeile war
 dort IMMER eine Ueberschrift, auch wenn nur "**Beispiel:**" darauf steht.
@@ -16,9 +16,9 @@ zusammen, sie loescht nichts. Zeichenverlust hiesse, die Regel ist falsch.
 import json, sys
 from pathlib import Path
 
-from pfade import BENCH, WURZEL as VAULT   # legt pdf2md/ auf sys.path
+from paths import BENCH, VAULT_ROOT as VAULT
 import pdf2md as M
-import zusammenbau as Z
+import assembly as A
 from regress_steg import buchstaben, seite_bauen
 
 
@@ -36,7 +36,7 @@ def main():
     for s in seiten:
         nach_datei.setdefault(s["file"], []).append(s["page"])
 
-    echt = Z.ist_ueberschrift
+    echt = A.is_heading
     n, gleich, geaendert, verlust = 0, 0, [], []
     for datei in sorted(nach_datei):
         pfad = VAULT / datei
@@ -46,23 +46,23 @@ def main():
         for p in doc:
             if p.rotation:
                 p.remove_rotation()
-        Z.laufend_setzen(M.laufende_zeilen(doc))
+        A.set_running(M.running_lines(doc))
         for nr in sorted(nach_datei[datei]):
             if nr > doc.page_count:
                 continue
             page = doc[nr - 1]
             n += 1
-            if not any(Z.RANDLABEL.match(zeile.strip())
+            if not any(A.MARGIN_LABEL.match(zeile.strip())
                        for zeile in page.get_text("text").splitlines()):
                 gleich += 1
                 continue
             try:
-                Z.ist_ueberschrift = alt_ueberschrift
+                A.is_heading = alt_ueberschrift
                 a = seite_bauen(page)
-                Z.ist_ueberschrift = echt
+                A.is_heading = echt
                 b = seite_bauen(page)
             except Exception as e:
-                Z.ist_ueberschrift = echt
+                A.is_heading = echt
                 print(f"  FEHLER {datei} S.{nr}: {e}")
                 continue
             if a == b:
