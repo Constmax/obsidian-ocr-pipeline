@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 import fitz  # PyMuPDF
+import pytest
 
 
 def _make_vector_pdf(path: Path, pages: int = 4) -> None:
@@ -134,3 +135,45 @@ def test_pages_progress_selection_only():
         page_lines = [l for l in stderr_lines if '"typ": "seite"' in l]
         page_nrs = {json.loads(l)["nr"] for l in page_lines}
         assert page_nrs == {2, 4}, f"Expected pages 2,4 in progress, got: {page_nrs}"
+
+
+@pytest.mark.parametrize("flag", ["--seiten", "--diagramm-seiten"])
+@pytest.mark.parametrize("spec, message", [
+    (",", "empty entry"),
+    ("1,,2", "empty entry"),
+    ("x", "invalid page specification"),
+    ("0", "start at 1"),
+    ("3-1", "descending range"),
+    ("9", "does not exist"),
+])
+def test_invalid_page_option_fails_cleanly(flag, spec, message):
+    """Both page options share one grammar and fail with one line, no traceback."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pdf_path = Path(tmpdir) / "test.pdf"
+        _make_vector_pdf(pdf_path, pages=4)
+        out_dir = Path(tmpdir) / "out"
+        out_dir.mkdir()
+
+        result = _run_pdf2md(pdf_path, out_dir, [flag, spec])
+        assert result.returncode == 1, result.stderr
+        assert "Traceback" not in result.stderr, result.stderr
+        assert message in result.stderr.strip().splitlines()[-1], result.stderr
+        assert not (out_dir / "test.md").exists()
+
+
+def test_diagram_pages_accept_page_grammar():
+    """--diagram-pages takes the same list/range syntax as --pages."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pdf_path = Path(tmpdir) / "test.pdf"
+        _make_vector_pdf(pdf_path, pages=4)
+        out_dir = Path(tmpdir) / "out"
+        out_dir.mkdir()
+
+        result = _run_pdf2md(pdf_path, out_dir,
+                             ["--seiten", "1-2", "--diagramm-seiten", " 2 , 4 "])
+        assert result.returncode == 0, (
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        md = (out_dir / "test.md").read_text()
+        assert "%% S. 2 " in md
+        assert "%% S. 4 " not in md
