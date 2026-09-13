@@ -39,6 +39,9 @@ def sandbox(tmp_path):
         _stub(stubs, tool, f'echo "{tool} $*" >> "{log}"\nexit 1\n')
     # python3 without pikepdf: `python3 -c "import pikepdf"` fails.
     _stub(stubs, "python3", "exit 1\n")
+    # `sysctl -n hw.memsize` exists only on macOS; on Linux CI it fails and
+    # detect_safe_jobs aborts the script under `set -e -o pipefail`. 8 GB.
+    _stub(stubs, "sysctl", "echo 8589934592\n")
 
     work = tmp_path / "work"
     work.mkdir()
