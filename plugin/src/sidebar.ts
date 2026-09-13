@@ -30,6 +30,26 @@ function matchesFilter(status: Status, filter: StatusFilter): boolean {
 	return status === filter;
 }
 
+const PROGRESS_THRESHOLD = 5;
+
+const STATUS_GROUPS: ReadonlyArray<{ status: Status; label: string }> = [
+	{ status: "re-created", label: "Re-created" },
+	{ status: "open", label: "Open" },
+	{ status: "accepted", label: "Accepted" },
+	{ status: "rejected", label: "Rejected" },
+	{ status: "adopted", label: "Adopted" },
+];
+
+function groupRank(status: Status): number {
+	const index = STATUS_GROUPS.findIndex((group) => group.status === status);
+	return index < 0 ? STATUS_GROUPS.length : index;
+}
+
+function hasMixedStatuses(entries: readonly InventoryEntry[]): boolean {
+	const first = entries[0];
+	return first !== undefined && entries.some((item) => item.entry.status !== first.entry.status);
+}
+
 export class Sidebar {
 	onSelect: ((name: string) => void) | null = null;
 	onRefresh: (() => void) | null = null;
@@ -41,6 +61,9 @@ export class Sidebar {
 	private folderMissing = false;
 	private selected: string | null = null;
 	private header: HTMLElement;
+	private progressEl: HTMLElement;
+	private progressText: HTMLElement;
+	private progressBar: HTMLElement;
 	private filterRow: HTMLElement;
 	private searchInput: HTMLInputElement;
 	private listEl: HTMLElement;
@@ -58,6 +81,13 @@ export class Sidebar {
 		});
 		setIcon(refreshBtn.createSpan({ cls: "ocr-ikon" }), "refresh-cw");
 		refreshBtn.addEventListener("click", () => this.onRefresh?.());
+
+		this.progressEl = root.createDiv({ cls: "ocr-fortschritt" });
+		this.progressText = this.progressEl.createDiv({ cls: "ocr-fortschritt-text" });
+		this.progressBar = this.progressEl
+			.createDiv({ cls: "ocr-fortschritt-balken" })
+			.createDiv({ cls: "ocr-fortschritt-fuellung" });
+		this.progressEl.hide();
 
 		this.filterRow = root.createDiv({ cls: "ocr-filterzeile" });
 		for (const opt of FILTERS) {
@@ -110,10 +140,14 @@ export class Sidebar {
 	private filtered(): InventoryEntry[] {
 		const filter = this.filter;
 		const text = this.textFilter;
-		return this.inventory.filter(
+		const entries = this.inventory.filter(
 			(b) =>
 				matchesFilter(b.entry.status, filter) &&
 				(text.length === 0 || b.name.toLowerCase().includes(text)),
+		);
+		if (!hasMixedStatuses(entries)) return entries;
+		return [...entries].sort(
+			(a, b) => groupRank(a.entry.status) - groupRank(b.entry.status),
 		);
 	}
 
@@ -140,6 +174,7 @@ export class Sidebar {
 
 	private render(): void {
 		this.updateChips();
+		this.updateProgress();
 		const filteredList = this.filtered();
 		const isEmpty =
 			this.folderMissing || this.inventory.length === 0 || filteredList.length === 0;
@@ -183,7 +218,45 @@ export class Sidebar {
 			return;
 		}
 
-		for (const item of filteredList) this.buildRow(item);
+		const grouped = hasMixedStatuses(filteredList);
+		let lastRank = -1;
+		for (const item of filteredList) {
+			if (grouped) {
+				const rank = groupRank(item.entry.status);
+				if (rank !== lastRank) {
+					lastRank = rank;
+					const count = filteredList.filter(
+						(candidate) => candidate.entry.status === item.entry.status,
+					).length;
+					this.listEl.createDiv({
+						cls: "ocr-gruppe",
+						text: `${STATUS_GROUPS[rank]?.label ?? item.entry.status} · ${count}`,
+					});
+				}
+			}
+			this.buildRow(item);
+		}
+	}
+
+	private updateProgress(): void {
+		const total = this.inventory.length;
+		if (total < PROGRESS_THRESHOLD) {
+			this.progressEl.hide();
+			return;
+		}
+		const reviewed = this.inventory.filter(
+			(item) => item.entry.status === "accepted" || item.entry.status === "rejected",
+		).length;
+		this.progressEl.show();
+		this.progressText.empty();
+		this.progressText.createSpan({
+			cls: "ocr-fortschritt-zahl",
+			text: String(reviewed),
+		});
+		this.progressText.createSpan({ text: `of ${total} reviewed` });
+		this.progressBar.setCssProps({
+			"--ocr-fortschritt": `${Math.round((reviewed / total) * 100)}%`,
+		});
 	}
 
 	private buildRow(b: InventoryEntry): void {

@@ -2,7 +2,7 @@
 
 Three-column Obsidian view for inspecting OCR preview files from
 Stage 2: Original PDF and generated Markdown file coupled page by page, with
-**Accept / Reject** and Undo. The plugin is named `ocr-vorschau` and
+**Accept / Reject**, notes, editing, and Undo. The plugin is named `ocr-vorschau` and
 is located in `plugin/`.
 
 What this is about: 15% of pages derail (repetition loops or aborts)
@@ -14,13 +14,23 @@ reviewing before anything moves into the wiki.
 
 | Column | Content |
 |---|---|
-| **Previews** | File list with status filter (Open · Accepted · Rejected · All), text filter, refresh. Below each line `14 p. · 9 OCR · 2 Diagram`, colored side marking by status, yellow dot on OCR pages. Three separate empty states: Folder missing (→ Settings), Folder empty (→ copyable pdf2md command), Filter empty. |
+| **Previews** | File list with status filter (Open · Accepted · Rejected · All), text filter, refresh, and progress for lists of at least five entries. Mixed-status lists are grouped in the same order used by `j`/`k`. Below each line: `14 p. · 9 OCR · 2 Diagram`, colored side marking by status, yellow dot on OCR pages. Three separate empty states: Folder missing (→ Settings), Folder empty (→ copyable pdf2md command), Filter empty. |
 | **Original PDF** | Pages of the original PDF, lazy-rendered. Header with filename, `p. n / m`, zoom −/+, "Open in PDF viewer". |
-| **Markdown** | The generated `.md`, page by page, with provenance badge (`Textlayer` / `OCR` / `Diagram`) and layout info. Toggle **Rendered \| Source**. Action buttons at top. |
+| **Markdown** | The generated `.md`, page by page, with provenance badge (`Text layer` / `OCR` / `Diagram`) and layout info. Toggle **Rendered \| Source**. |
 
 Clicking a list entry opens both panes. Scrolling is linked:
 scrolling the PDF causes the Markdown to follow (and vice versa), fractionally instead of
-rounding to page starts. Reading progress (`reviewed-up-to`) is recorded and restored upon re-opening.
+rounding to page starts. Reading progress (`checked-until`) is recorded and restored upon re-opening.
+
+The decision bar spans the bottom of the view and shows the next file and the
+number of open entries. Two operating modes share the same controls:
+
+- **Review flow** (default) keeps the three column headers and uses a larger
+  decision bar for rapid accept/reject passes.
+- **Workbench** moves the PDF and Markdown controls into one toolbar, adds a
+  compact status bar, and exposes editing. Changes are saved automatically;
+  the manifest records that the current generated revision was edited and the
+  flag resets when a new conversion is detected.
 
 ## Opening
 
@@ -41,9 +51,11 @@ Applies only when the view has focus:
 | Key | Action |
 |---|---|
 | `j` / `k` | Next / previous list entry |
-| `a` | **Accept** (move to `_akzeptiert/`) |
-| `x` | **Reject** (move to `_abgelehnt/`) |
+| `a` | **Accept** (move to `_ocr-preview/_accepted/`) |
+| `x` | **Reject** (move to `_ocr-preview/_rejected/`) |
+| `n` | Open the note dialog |
 | `t` | Rendered ⇄ Source |
+| `e` | Toggle editing in Workbench mode |
 | `Space` | Advance both columns by one page |
 | `g` | Go to page |
 | `s` | Toggle scroll synchronization |
@@ -51,20 +63,21 @@ Applies only when the view has focus:
 
 ## Buttons
 
-- **Accept** (green) / **Reject** (red): Move the file, update
+- The bottom bar contains **Accept** (green), **Reject** (red), **Note**, and
+  **Open in Obsidian**, with their keyboard shortcuts shown on the buttons.
+- **Accept** / **Reject** move the file, update
   the manifest, show a **6-second Notice with Undo**, and automatically jump
   to the next matching entry.
-- **Open in Obsidian**: Opens the `.md` in the normal editor.
 - **⋯**: Note… · Replace old version (only when `re-generated`) · Reset status · Copy path.
 - **Assign PDF…**: Appears in error banner if no original was found;
   opens a suggestion list of all vault PDFs. The assignment lands
-  in the manifest (`quelle-pdf-manuell`), never in frontmatter — the `.md` is
+  in the manifest (`manual-source-pdf`), never in frontmatter — the `.md` is
   generated output.
 
 ## Folder & Manifest Model
 
-The state is defined by the three folders (`_ocr-vorschau/`, `_akzeptiert/`,
-`_abgelehnt/`); `review-status.json` is a cache with notes and can be
+The state is defined by the three folders (`_ocr-preview/`, `_accepted/`,
+`_rejected/`); `review-status.json` is a cache with notes and can be
 deleted. The rule is: **the filesystem wins, always.** The plugin never moves
 a file to match JSON — doing so would silently undo a deliberate manual move.
 
@@ -72,20 +85,20 @@ Six reconciliation rules (triggered on open, settings change, and debounced vaul
 
 1. **Exact `parent.path` comparison** during listing — no `startsWith`:
    `_akzeptiert` lives *inside* `_ocr-vorschau`; a prefix test would list accepted files as open.
-2. **Folder location ≠ Status → folder location wins.** `notiz` and
-   `geprüft-bis` are kept; "Status adopted from folder location" is logged once.
+2. **Folder location ≠ Status → folder location wins.** `note`,
+   `checked-until`, and `manually-edited` are kept; "Status adopted from folder location" is logged once.
 3. **File without entry** → Create entry; metadata from metadata cache (frontmatter).
 4. **Entry without file** → If the saved path lives elsewhere in vault,
-   the entry is set to `uebernommen` (retained in memory, no longer listed);
+   the entry is set to `adopted` (retained in memory, no longer listed);
    otherwise the cache row is dropped. Files are never deleted.
 5. **Identical basename in two folders** → Rule 6.
 6. **Re-conversion of an already decided file.** `pdf2md.py`
    always writes to `<out>/<stem>.md` and is unaware of subfolders —
-   so a re-run creates a second file with the same name. Two signals, each sufficient on its own: the same file exists simultaneously open *and* decided, or the `ocr-datum` of the open version differs from the logged one. Result: Status `neu-erzeugt` (re-generated), old decision moves to `vorher` (previous), line displays badge "Re-generated".
+   so a re-run creates a second file with the same name. Two signals, each sufficient on its own: the same file exists simultaneously open *and* decided, or the `ocr-date` of the open version differs from the logged one. Result: status `re-created`, old decision moves to `previous`, and the line displays a "Re-created" badge.
    **"Replace old version"** (⋯ menu) renames the old version to
-   `_abgelehnt/<stem>-<old-ocr-date>.md` — nothing is lost; the old version receives its own entry via reconciliation.
+   `_rejected/<stem>-<old-ocr-date>.md` — nothing is lost; the old version receives its own entry via reconciliation.
 
-File movement runs exclusively via `fileManager.renameFile` (updates links in vault), never via `vault.rename`. Therefore, diagram images (`![[…png]]`, stored shared in `_ocr-vorschau/assets/`) continue working after moving. Target folders are checked via `getFolderByPath` beforehand and created if needed. Writes to manifest are debounced (500 ms) and serialized via a Promise chain; unreadable JSON is renamed to `review-status.json.kaputt` and rebuilt from folder structure.
+File movement runs exclusively via `fileManager.renameFile` (updates links in vault), never via `vault.rename`. Therefore, diagram images (`![[…png]]`, stored shared in `_ocr-preview/assets/`) continue working after moving. Target folders are checked via `getFolderByPath` beforehand and created if needed. Writes to manifest are debounced (500 ms) and serialized via a Promise chain; unreadable JSON is renamed to `review-status.json.corrupted` and rebuilt from folder structure.
 
 ## How the PDF Pane Works
 
@@ -110,11 +123,16 @@ Documented reserve: Bundle `pdfjs-dist` and inline the worker as a Blob URL via 
 
 ## Settings
 
-Visible: Preview folder, Accepted folder, Rejected folder, status file (all cleaned via `normalizePath()`, with live indicator if folder is missing), and Markdown column default mode. Persisted internally: Column widths (default 20/40/40, adjustable via split drag handles), `pdfZoomMax` (2.0), `syncAktiv`, `mdEagerLimit` (200 pages). Any settings modification triggers reconciliation.
+Visible: Operating mode, Preview folder, Accepted folder, Rejected folder,
+status file (all cleaned via `normalizePath()`, with a live indicator if a
+folder is missing), Markdown column default, scroll sync, PDF render factor,
+Markdown eager limit, and column widths.
 
 ## Testing
 
-`cd plugin` — `npm run check` (tsc), `npm run lint` (eslint with `eslint-plugin-obsidianmd`), `npm test` (33 unit tests for parser and reconciliation, running under `node --test` without Obsidian), `npm run build`.
+`cd plugin` — `npm run check` (tsc), `npm run lint` (eslint with
+`eslint-plugin-obsidianmd`), `npm test` (plain `node --test`, without
+Obsidian), `npm run build`.
 
 ### Vault Smoke Test
 
@@ -124,8 +142,15 @@ Visible: Preview folder, Accepted folder, Rejected folder, status file (all clea
 4. **Scroll rapidly to page 20** → placeholder, then content, **no layout jumps**. ⇒ verifies pre-measured heights.
 5. Scroll both directions, then stop → **no oscillation, no jitter**. ⇒ verifies the three sync guards.
 6. Toggle `Rendered`/`Source` → diagram image visible vs raw `![[…]]`. ⇒ verifies embed post-processing.
-7. Press `a` → file moves to `_akzeptiert/`, **image continues rendering there**, manifest entry updated, view advances to next file. ⇒ verifies `renameFile`.
+7. Press `a` → file moves to `_accepted/`, **image continues rendering there**, manifest entry updated, view advances to next file. ⇒ verifies `renameFile`.
 8. Close Obsidian, move file back **in Finder**, restart → file listed under "Open" again, manifest auto-corrects, **nothing is moved back**. ⇒ verifies "filesystem wins".
-9. Re-run `pdf2md.py` → Badge "Re-generated — previously accepted", "Replace old version" renames old file.
+9. Re-run `pdf2md.py` → Badge "Re-created — previously accepted", "Replace old version" renames old file.
 10. Delete `review-status.json`, re-open view → everything lists correctly. ⇒ verifies manifest is cache-only.
 11. `Cmd+R` with open view → same file is restored.
+12. Select **All** with several statuses → group headings appear and `j`/`k`
+    follow their visible order.
+13. Switch between Review flow and Workbench while the view is open → controls
+    move without duplicate buttons or losing state.
+14. In Workbench, press `e`, edit Markdown, then press `e` again → the file is
+    saved, the one-time overwrite warning appears only for the current revision,
+    and Review flow does not expose editing.

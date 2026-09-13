@@ -47,6 +47,7 @@ function withEntry(
 		decided: null,
 		"checked-until": null,
 		note: null,
+		"manually-edited": false,
 		previous: null,
 		...partial,
 	};
@@ -143,6 +144,7 @@ test("Rule 6: two versions at the same time -> re-created, old decision retained
 		path: "_ocr-preview/_accepted/Case 8.md",
 		decided: "2026-08-01T10:00:00+02:00",
 		"ocr-date": "2026-07-30",
+		"manually-edited": true,
 	});
 	const res = reconcile(
 		[
@@ -158,7 +160,21 @@ test("Rule 6: two versions at the same time -> re-created, old decision retained
 	assert.equal(entry?.previous?.status, "accepted");
 	assert.equal(entry?.previous?.["ocr-date"], "2026-07-30");
 	assert.equal(entry?.previous?.decided, "2026-08-01T10:00:00+02:00");
+	assert.equal(entry?.["manually-edited"], false, "new revision has no manual edits");
 	assert.deepEqual(res.reCreated, ["Case 8.md"]);
+});
+
+test("legacy handbearbeitet is migrated to manually-edited", () => {
+	const parsed = readManifest(
+		JSON.stringify({
+			version: 1,
+			eintraege: {
+				"Case 8.md": { status: "offen", handbearbeitet: true },
+			},
+		}),
+		NOW,
+	);
+	assert.equal(parsed.entries["Case 8.md"]?.["manually-edited"], true);
 });
 
 test("Rule 6: only one version, but different ocr-date -> also re-created", () => {

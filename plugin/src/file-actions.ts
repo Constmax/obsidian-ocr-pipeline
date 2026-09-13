@@ -279,7 +279,12 @@ export class Inventory {
 
 	async updateEntry(
 		name: string,
-		change: Partial<Pick<StatusEntry, "note" | "checked-until" | "manual-source-pdf">>,
+		change: Partial<
+			Pick<
+				StatusEntry,
+				"note" | "checked-until" | "manual-source-pdf" | "manually-edited"
+			>
+		>,
 	): Promise<void> {
 		const oldEntry = this.manifest.entries[name];
 		if (oldEntry === undefined) return;

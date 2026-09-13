@@ -154,6 +154,14 @@ export default class OcrPreviewPlugin extends Plugin {
 			if (saved["markdownView"]) migrated.markdownView = saved["markdownView"] as "rendered" | "source";
 			else if (saved["markdownAnsicht"]) migrated.markdownView = saved["markdownAnsicht"] === "quelltext" ? "source" : "rendered";
 
+			const operationMode = str("operationMode") ?? str("bedienmodus");
+			if (operationMode) {
+				migrated.operationMode =
+					operationMode === "workbench" || operationMode === "werkbank"
+						? "workbench"
+						: "review-flow";
+			}
+
 			if (saved["columnWidths"]) migrated.columnWidths = saved["columnWidths"] as [number, number, number];
 			else if (saved["spaltenbreiten"]) migrated.columnWidths = saved["spaltenbreiten"] as [number, number, number];
 
