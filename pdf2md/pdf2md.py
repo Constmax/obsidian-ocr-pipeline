@@ -33,6 +33,7 @@ from layout import (image_ratio, detect_boxes, assign_boxes,
 from ocr import (OVERLAP, TOKEN_MAX, CHARACTERS_PER_INK, _ink_amount,
                tile_lines, tile_vertically, tile_horizontally,
                trim_overlap)
+from page_range import PageRangeError, parse_page_range
 
 BENCH = Path(__file__).resolve().parent
 OUT = BENCH / "out-C"
@@ -42,40 +43,6 @@ PROMPT = "Parse this document page to Markdown."
 TILE_THRESHOLD = 3000      # Characters in existing textlayer
 KACHEL_AB = TILE_THRESHOLD
 EXIT_CHECK = 4
-
-
-def parse_pages(s):
-    """Convert '1,3-5,8' into a set of int (1-based).
-
-    Empty string yields None (all pages). Invalid inputs or
-    page numbers outside valid range result in an error on stderr and exit code 1.
-    """
-    s = s.strip() if s else ""
-    if not s:
-        return None
-    selection = set()
-    for part in s.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        if "-" in part:
-            lo, hi = part.split("-", 1)
-            try:
-                lo, hi = int(lo), int(hi)
-            except ValueError:
-                sys.exit(f"invalid page specification: {part!r}")
-            if lo < 1 or hi < 1 or lo > hi:
-                sys.exit(f"invalid page number: {part}")
-            selection.update(range(lo, hi + 1))
-        else:
-            try:
-                n = int(part)
-            except ValueError:
-                sys.exit(f"invalid page specification: {part!r}")
-            if n < 1:
-                sys.exit(f"invalid page number: {n}")
-            selection.add(n)
-    return selection
 
 
 def running_lines(doc, header_zone=0.09, footer_zone=0.93, min_pages=2):
@@ -156,12 +123,6 @@ def analyze_pages(pdf, dpi, ocr_only=False, selection=None):
     for p in doc:
         if p.rotation:
             p.remove_rotation()
-    if selection:
-        invalid = [n for n in selection if n < 1 or n > doc.page_count]
-        if invalid:
-            sys.exit(f"page numbers {sorted(invalid)} do not exist "
-                     f"(PDF has {doc.page_count} pages)")
-        selection = {n for n in selection if 1 <= n <= doc.page_count}
     assembly.set_running(running_lines(doc))
     pages = []
     for i in range(doc.page_count):
@@ -295,6 +256,21 @@ def preflight(out):
     return checks, warnungen
 
 
+def pdf_page_count(pdf):
+    """Number of pages in `pdf`."""
+    import fitz
+    with fitz.open(pdf) as doc:
+        return doc.page_count
+
+
+def page_option(flag, text, page_count):
+    """Parse and range-check a page option; exit with a one-line error."""
+    try:
+        return parse_page_range(text, page_count)
+    except PageRangeError as e:
+        sys.exit(f"{flag}: {e}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf", nargs="?", default=None, help="Input PDF file")
@@ -377,14 +353,10 @@ def main():
         sys.exit(f"not found: {pdf}")
     if a.image_dir is None:
         a.image_dir = a.out / "assets"
-    forced = set()
-    for part in filter(None, (x.strip() for x in a.diagram_pages.split(","))):
-        if "-" in part:
-            from_page, to_page = (int(x) for x in part.split("-", 1))
-            forced.update(range(from_page, to_page + 1))
-        else:
-            forced.add(int(part))
-    selection = parse_pages(a.pages)
+    page_count = pdf_page_count(pdf)
+    selection = page_option("--pages/--seiten", a.pages, page_count)
+    forced = page_option("--diagram-pages/--diagramm-seiten", a.diagram_pages,
+                         page_count) or set()
     cancellation.install()
 
     global TMP
@@ -397,6 +369,8 @@ def main():
         selection_text = f" (pages {sorted(selection)})" if selection else ""
         print(f"Analyzing {pdf.name} (scan pages @ {a.dpi} dpi){selection_text} ...")
         pages = analyze_pages(pdf, a.dpi, a.ocr_only, selection)
+        if not pages:
+            sys.exit(f"no pages to convert: {pdf.name}")
         n_ocr = sum(1 for s in pages if s[1] is not None)
         print(f"   {len(pages)} pages — {len(pages)-n_ocr} from textlayer, "
               f"{n_ocr} through model\n")
