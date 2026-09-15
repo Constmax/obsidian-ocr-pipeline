@@ -1559,3 +1559,143 @@ Der minimale Unterschied in Wortgenauigkeit (−0,3 %) und Zitattreue (−0,4 %)
 | `Klausur_2130_Zivilrecht_Loesung.pdf` | 8 | 98,5 % | 98,2 % | 100 % |
 
 Normzitate, die der OCR-Pfad auf `ddf69e9` nicht wiedergibt: 18 in 12 Formen (`§ 244 I Nr. 3 StGB` 3×, `Art. 3` 2×, `§ 123 I StGB` 2×, `§ 243 I S. 2 Nr. 1 StGB` 2×, `§ 11 II SPolG` 2×, `Art. 20` 1×, `§ 13 I` 1×, `§ 39 I` 1×, `§ 48 HVwVfG` 1×, `§ 48 I HVwVfG` 1×, `§ 370 AO` 1×, `Art. 21 I` 1×).
+
+## Nachtrag 2026-09-15 (18): PP-OCRv5 über ONNX Runtime (RapidOCR) — Laufzeit-Spike für #62
+
+Schritt 1 aus `docs/paddle-textlayer.md`: Kann PaddleOCR auf dem Zielrechner (Apple M1, 8 GB, macOS 26.2) als Stage-1-Engine laufen? Gemessen gegen Repo-Stand `e18691c`.
+
+### Warum nicht PaddlePaddle
+
+PaddleOCR 3.x mit `paddlepaddle` auf der CPU hat die PP-OCRv5-Modelle geladen (`PP-OCRv5_server_det`, `latin_PP-OCRv5_mobile_rec`, dazu `UVDoc` und zwei `PP-LCNet`-Orientierungsmodelle) und ist danach mit **SIGSEGV in `libpaddle.so`** abgestürzt (Absturzbericht: Paddles Thread-Pool, `ThreadPoolTempl::WorkerLoop`; Python 3.12.4). Schon Pfad A des ersten Benchmarks war mit PaddlePaddle auf der CPU unbrauchbar (9.226 s pro Seite, durchgehend im Swap). Das Abbruchkriterium „no usable package“ gilt für `paddlepaddle` damit als erfüllt.
+
+Der Spike läuft deshalb auf **denselben PP-OCRv5-Modellen im ONNX-Format über ONNX Runtime** (RapidOCR). `paddlepaddle` und `paddleocr` werden nicht installiert.
+
+### Aufbau
+
+```bash
+python3.12 -m venv <tmp>/venv
+<tmp>/venv/bin/pip install "rapidocr==3.9.2" "onnxruntime==1.26.0"
+```
+
+31 s Installation, 303 MB venv. RapidOCR zieht `opencv-python 5.0.0.93`, `numpy 2.5.3`, `shapely 2.1.2`, `pyclipper 1.4.0`, `omegaconf 2.3.1` u. a. nach. ONNX Runtime bietet `CoreMLExecutionProvider` und `CPUExecutionProvider`; gemessen wurde nur die CPU.
+
+Modelle (von RapidOCR beim ersten Start aus seinem ModelScope-Repo `RapidAI/RapidOCR`, Tag `v3.9.2`, geladen; Download und Initialisierung zusammen 14,1 s):
+
+| Datei | Größe | SHA-256 |
+|---|---:|---|
+| `ch_PP-OCRv5_det_mobile.onnx` | 4,8 MB | `4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae` |
+| `ch_PP-OCRv5_det_server.onnx` | 88,1 MB | `0f8846b1d4bba223a2a2f9d9b44022fbc22cc019051a602b41a7fda9667e4cad` |
+| `latin_PP-OCRv5_rec_mobile.onnx` | 7,9 MB | `b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a` |
+| `ch_ppocr_mobile_v2.0_cls_mobile.onnx` | 0,6 MB | `e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c` |
+
+Das Detektionsmodell heißt bei RapidOCR `ch_…`, ist aber das eine mehrsprachige PP-OCRv5-Detektionsmodell. Deutsch erkennt das lateinische Erkennungsmodell; einen eigenen `de`-Schalter gibt es nicht. Cache-Pfad: `Global.model_root_dir` (im Spike ein eigenes `models/`).
+
+Messskript: `bench/spike_rapidocr.py` (ein Prozess je Konfiguration, damit Peak-RSS eindeutig zuordenbar ist).
+
+### Testseiten
+
+Alle als PNG in A4-Breite 2480 px (300 dpi):
+
+| Seite | Quelle | Was sie prüft |
+|---|---|---|
+| 01-zweispalter-handschrift | Benchmark-Set | Zweispalter, Kleindruck, Fußnoten, Marginalie, leichte Schräglage |
+| 02-zweispalter-dicht | Benchmark-Set | Zweispalter dicht, Gliederung, Zitatblöcke |
+| 07-zweispalter-vpr-s11 | `raw/OeR/Verwaltungsrecht-AT/Verwaltungsprozessrecht.pdf` S. 11 | Zweispalter-Scan, Handschrift am Rand, §§ |
+| 08-zweispalter-avr-s16 | `raw/OeR/Verwaltungsrecht-AT/Allgemeines-Verwaltungsrecht-Skript.pdf` S. 16 | Zweispalter-Scan, schief, Fundstellen |
+| 04-einspaltig-sauber | Benchmark-Set | einspaltig, Blocksatz, Urteilszitate |
+| 09-einspaltig-gedreht-4grad | Seite 04 um 4° gedreht | Schräglage |
+
+Referenzen sind **keine Ground Truth**: für 01/02/04 die Tesseract-Baseline des Benchmark-Sets, für 07/08 der vorhandene Textlayer der PDF. Sie taugen nur als Plausibilitätsprüfung (Zeichenzahl, Umlaute, ß, §). Die Genauigkeit misst Schritt 5.
+
+### Messwerte
+
+Je Konfiguration ein Prozess: sechs Seiten nacheinander (die erste inklusive ONNX-Aufwärmen), danach Seite 02 fünfmal. „volle Auflösung“ heißt `Global.max_side_len 4000`, also keine Verkleinerung; RapidOCRs Standard 2000 verkleinert A4 auf etwa 170 dpi. Ohne Textzeilen-Orientierungsklassifikator (`use_cls` aus; Drehung macht OCRmyPDF). Nur CPU.
+
+| Konfiguration | Kaltstart bis bereit | 1. Seite | warm Median | warm Max | Zweispalter Median | Peak-RSS | Swap-outs | 5× gleich |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `v5-mobile-2000-t1` | 0,57 s | 12,1 s | 11,9 s | 15,2 s | 12,0 s | 1230 MB | 0 MB | ja |
+| `v5-mobile-full-t1` | 0,85 s | 15,1 s | 14,4 s | 16,2 s | 14,7 s | 1918 MB | 0 MB | ja |
+| `v5-mobile-full-t4` | 1,00 s | 7,9 s | 8,5 s | 10,5 s | 8,8 s | 2458 MB | 0 MB | ja |
+| `v5-server-2000-t1` | 0,87 s | 32,3 s | 30,8 s | 33,4 s | 31,0 s | 1664 MB | 425 MB | ja |
+| `v5-server-2000-t4` | 0,66 s | 14,7 s | 15,7 s | 17,5 s | 15,9 s | 2246 MB | 0 MB | ja |
+| `v6-small-full-t1` | 0,80 s | 18,9 s | 18,5 s | 21,1 s | 18,5 s | 1692 MB | 0 MB | ja |
+
+Weitere Einzelmessung: PP-OCRv5 **Server**-Detektion in voller Auflösung, 1 Thread, Seite 04: **69,9 s**, 2.198 MB, und die Seite zerfällt in 134 Bruchstücke statt 41 Zeilen.
+
+Der Rechner hatte vor jedem Lauf schon 2,6–3,5 GB Swap belegt (Obsidian und andere Programme offen). „Swap-outs“ ist der Zuwachs während des Laufs.
+
+### Erkennung: Plausibilität gegen die Referenzen
+
+Zeichen / ä-ö-ü / ß / § je Seite, in Klammern die Sekunden:
+
+| Seite | Referenz Zeichen / ä-ö-ü / ß / § | `v5-mobile-2000-t1` | `v5-mobile-full-t1` | `v5-mobile-full-t4` | `v5-server-2000-t1` | `v5-server-2000-t4` | `v6-small-full-t1` |
+|---|---|---|---|---|---|---|---|
+| 01-zweispalter-handschrift | 8591 / 86 / 6 / 27 | 8432 / 86 / 6 / 27 (13,8 s) | 8427 / 86 / 6 / 27 (16,2 s) | 8427 / 86 / 6 / 27 (9,0 s) | 8424 / 86 / 6 / 27 (33,4 s) | 8424 / 86 / 6 / 27 (15,9 s) | 8417 / 86 / 6 / 27 (21,1 s) |
+| 02-zweispalter-dicht | 7041 / 121 / 12 / 24 | 6934 / 123 / 12 / 25 (12,1 s) | 6940 / 123 / 12 / 25 (15,1 s) | 6940 / 123 / 12 / 25 (7,9 s) | 6936 / 123 / 13 / 25 (32,3 s) | 6936 / 123 / 13 / 25 (14,7 s) | 6916 / 123 / 13 / 25 (18,9 s) |
+| 04-einspaltig-sauber | 2709 / 38 / 5 / 1 | 2605 / 38 / 5 / 1 (5,9 s) | 2604 / 38 / 5 / 1 (7,2 s) | 2604 / 38 / 5 / 1 (4,3 s) | 2602 / 38 / 5 / 1 (24,0 s) | 2602 / 38 / 5 / 1 (11,3 s) | 2605 / 38 / 5 / 1 (9,7 s) |
+| 07-zweispalter-vpr-s11 | 5687 / 76 / 4 / 0 | 5908 / 78 / 4 / 45 (10,6 s) | 5906 / 78 / 4 / 45 (13,3 s) | 5906 / 78 / 4 / 45 (7,0 s) | 5908 / 78 / 4 / 45 (31,1 s) | 5908 / 78 / 4 / 45 (17,5 s) | 5886 / 78 / 4 / 45 (16,7 s) |
+| 08-zweispalter-avr-s16 | 7324 / 100 / 21 / 0 | 7147 / 98 / 22 / 9 (15,2 s) | 7149 / 98 / 22 / 9 (15,0 s) | 7149 / 98 / 22 / 9 (8,5 s) | 7140 / 98 / 22 / 9 (32,4 s) | 7140 / 98 / 22 / 9 (15,9 s) | 7120 / 98 / 22 / 9 (18,6 s) |
+| 09-einspaltig-gedreht-4grad | 2709 / 38 / 5 / 1 | 2603 / 38 / 5 / 1 (6,0 s) | 2606 / 38 / 5 / 1 (7,8 s) | 2606 / 38 / 5 / 1 (4,5 s) | 2604 / 38 / 5 / 1 (24,7 s) | 2604 / 38 / 5 / 1 (11,0 s) | 2603 / 38 / 5 / 1 (10,4 s) |
+
+- Alle PP-OCRv5-Varianten treffen Umlaute, ß und § praktisch wie die Referenz. Auf 07 und 08 findet RapidOCR 45 bzw. 9 Paragraphenzeichen, die im alten Textlayer ganz fehlen.
+- Die um 4° gedrehte Seite 09 liefert dasselbe wie die gerade Seite 04.
+- Server- und Mobile-Detektion unterscheiden sich im Text kaum; Server ist mit 1 Thread etwa zweieinhalbmal langsamer und liegt auch mit 4 Threads über 15 s. PP-OCRv6 `small` (in RapidOCR mitgeliefert) bringt nichts Messbares und ist langsamer.
+- Die Boxen sind Vierecke je Zeile und folgen auf dem schiefen Scan 08 sichtbar den gekippten Zeilen (Overlay geprüft). Wortboxen gibt es mit `Global.return_word_box` ohne messbaren Zeitaufschlag (Seite 04: 7,4 s statt 7,2 s).
+- RapidOCR liefert die Zeilen nach y sortiert; bei Zweispaltern wechseln sich linke und rechte Spalte ab. Die Lesereihenfolge bleibt Aufgabe von `order_lines()` (#69).
+
+### Wiederholbarkeit, Offline, Speicher
+
+- **Deterministisch:** In jeder Konfiguration ergeben die fünf Läufe von Seite 02 denselben Hash für Text und für Text plus Boxen. Mobile mit 1 und mit 4 Threads liefert sogar byte-gleiche Ergebnisse auf allen sechs Seiten.
+- **Offline:** Ein warmer Lauf mit auf einen toten Port gesetztem `HTTP(S)_PROXY` läuft durch. RapidOCR lädt nur, wenn eine Modelldatei fehlt oder ihr SHA-256 nicht zu seiner Modellliste passt.
+- **Kaltstart:** Import plus Initialisierung unter 1 s. Die erste Seite ist höchstens eine halbe Sekunde langsamer als ein warmer Lauf derselben Seite.
+- **Speicher:** Peak-RSS 1,2–2,5 GB, also unter der Hälfte von 8 GB. Nur die Server-Detektion hat im Lauf Swap nach sich gezogen.
+
+### Geteilte Umgebung
+
+Klon der gepinnten OCRmyPDF-Umgebung (`pip freeze` von `ocrmypdf==17.8.0` + `ocrmypdf-appleocr==0.3.4` in ein frisches venv), danach `rapidocr==3.9.2` und `onnxruntime==1.26.0` dazu:
+
+- `pip check` vorher und nachher: „No broken requirements found.“
+- Keine vorhandene Version wurde geändert; RapidOCR fügt nur 17 Pakete hinzu.
+- `import ocrmypdf, ocrmypdf_appleocr, rapidocr, onnxruntime` gemeinsam: ok.
+- Smoke-Test Seite 04 mit `-l deu --output-type pdf --rasterizer pypdfium`: Tesseract 5 s, 2725 Zeichen, 38 Umlaute; Apple (`--plugin ocrmypdf_appleocr`) 3 s, 2699 Zeichen, 38 Umlaute.
+
+### Nebenprobe: PaddleOCR-VL „Spotting:“ über MLX
+
+Frage: Kann das Modell, das Stage 2 schon nutzt, Zeilen samt Position liefern und damit Paddle-Qualität ohne CPU-Laufzeit bringen? `mlx-vlm 0.6.10`, Prompt `Spotting:`, `max_pixels` auf 1.605.632 angehoben (Standard in `mlx_vlm`: 1.003.520), `max_tokens` 8192. Keine Gate-Messung.
+
+| Lauf | Seite | Zeit | Ergebnis |
+|---|---|---:|---|
+| `PaddleOCR-VL-1.6-4bit`, Spotting | 04 | 42 s | Boxen sitzen genau auf den Zeilen (Overlay geprüft), aber 3 statt 38 Umlaute, ß → `B`, § → `$` |
+| `PaddleOCR-VL-1.6-4bit`, `OCR:` | 04 | 129 s | Wiederholungsschleife („-Vorstrafen“), Token-Budget erschöpft |
+| `PaddleOCR-VL-1.5-4bit`, Spotting | 04 | 36 s | 38 Zeilen, 37 von 38 Umlauten, 5 ß, 1 §, Boxen passend |
+| `PaddleOCR-VL-1.5-4bit`, Spotting | 02 (dicht) | 123 s | Token-Budget nach 90 Zeilen erschöpft, erst bei etwa 62 % der Seitenhöhe |
+
+Das 4-Bit-Modell 1.6 ist in `mlx_vlm` für deutschen Text nicht brauchbar. 1.5 liefert auf einer lockeren Seite Text und Boxen in guter Qualität, braucht auf einer dichten Seite aber mehr als 8192 Tokens und hochgerechnet über 200 s. Kacheln gibt es für Spotting nicht. Als Stage-1-Engine scheidet Spotting damit aus; RapidOCR ist auf derselben dichten Seite etwa 15-mal schneller.
+
+### Entscheidung
+
+**Go** für PP-OCRv5 über RapidOCR mit dieser Konfiguration:
+
+- Detektion `ch_PP-OCRv5_det_mobile`, Erkennung `latin_PP-OCRv5_rec_mobile`;
+- volle Auflösung (`Global.max_side_len` nicht unter der Seitenlänge in Pixeln);
+- 4 ONNX-Runtime-Threads (intra- und inter-op), OCRmyPDF mit einem Job.
+
+| Abbruchkriterium | Befund |
+|---|---|
+| kein nutzbares Paket für Python 3.12 arm64 | `rapidocr 3.9.2` und `onnxruntime 1.26.0` installieren sauber |
+| warm über 15 s pro Seite | höchstens 10,5 s, Median 8,5 s |
+| mehr als die Hälfte des RAM oder Swap-Druck | Peak-RSS 2.458 MB von 8 GB, keine Swap-outs |
+| wesentlich nichtdeterministisch | fünf identische Hashes; 1 und 4 Threads byte-gleich |
+| Konflikt in der geteilten Umgebung | `pip check` sauber, Apple und Tesseract laufen |
+
+Verworfen: 1 Thread (dichte Zweispalter bis 16,2 s), Server-Detektion (auch mit 4 Threads bis 17,5 s; in voller Auflösung 69,9 s und zerstückelte Zeilen), PP-OCRv6 `small` (langsamer, kein Gewinn).
+
+### Durchgang durch OCRmyPDF (Prototyp)
+
+Zur Ansicht lief ein Wegwerf-Plugin (nicht #68) mit dieser Konfiguration durch OCRmyPDF 17.8.0 in der geklonten Umgebung: fünf Zweispalter-Scanseiten aus `Verwaltungsprozessrecht.pdf` (S. 10–14, als 300-dpi-JPEG), `-l deu -j 1 --output-type pdf --rasterizer pypdfium`. Gesamt 49 s, davon Erkennung 6,7–9,8 s je Seite. Suche und Markieren funktionieren; „§ 55a VwGO“ steht korrekt im Textlayer, Tesseract macht auf derselben Seite `$ 55a` daraus.
+
+Befunde für #68 und #71:
+
+- **Wortboxen verwenden.** Werden Wörter nur proportional in der Zeilenbox verteilt, klebt `pdftotext -raw` auf schrägen Zeilen ganze Zeilen zusammen. Mit den Wortboxen aus `Global.return_word_box` wird es deutlich besser, aber einzelne Wörter auf schrägen Zeilen klebt `pdftotext -raw` weiterhin zusammen („Geschiehtdies dennoch“), während PyMuPDF denselben Textlayer sauber mit Leerzeichen liefert. Die Wortgenauigkeit in Schritt 5 darf deshalb nicht allein an `pdftotext -raw` hängen.
+- **Auflösung selbst begrenzen.** Mit `--redo-ocr` hat OCRmyPDF die Originalseiten (2.906 × 4.109 pt, Bild mit 72 dpi) auf 16.144 × 22.828 px gerastert, 368 MP; RapidOCR hat das auf 4.000 px verkleinert. Das Plugin muss die Bildgröße explizit prüfen und begrenzen.
+- **Reihenfolge.** RapidOCR sortiert Zeilen nach y; die Spalten wechseln sich ab. Das bleibt #69.

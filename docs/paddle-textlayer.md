@@ -42,8 +42,8 @@ This plan does not:
 - OCRmyPDF renders hOCR through fpdf2. The order of hOCR words and lines affects
   the PDF content stream and therefore `pdftotext -raw`, copy/paste, and screen
   readers. Geometry does not make multi-column order free.
-- OCRmyPDF 17.8.0 uses threads by default. A shared recognition pipeline must
-  not be called concurrently unless the pinned runtime is proven thread-safe.
+- OCRmyPDF 17.8.0 uses threads by default. A shared Paddle pipeline must not be
+  called concurrently unless the pinned runtime is proven thread-safe.
 - Sandwich mode is not a supported shortcut. The engine must emit a text layer
   compatible with the existing Stage-1 pipeline.
 - The adapter owns recognition, language mapping, concurrency policy, explicit
@@ -128,8 +128,9 @@ onnxruntime==1.26.0
 ```
 
 Instantiate PP-OCRv5 text detection (server and mobile variants) with the Latin
-recognition model `latin_PP-OCRv5_rec_mobile`, which covers German, and
-configure one ONNX Runtime thread for both intra- and inter-op parallelism.
+recognition model `latin_PP-OCRv5_rec_mobile`, which covers German. Measure
+one and four ONNX Runtime threads (intra- and inter-op); OCRmyPDF still runs
+one job, so recognition calls stay sequential either way.
 Record the SHA-256 of every model file. RapidOCR downsizes each page to 2000 px
 on its long side by default (about 170 dpi for an A4 page rendered at 300 dpi);
 measure that default against full resolution.
@@ -174,6 +175,12 @@ require a persistent worker and a new benchmark.
 **Complete when:** exact commands, versions, model identifiers, measurements,
 and a go/no-go decision are recorded in `bench/ERGEBNIS.md`.
 
+**Result (2026-09-15, `bench/ERGEBNIS.md`, Nachtrag 18):** go. PP-OCRv5 mobile
+detection with `latin_PP-OCRv5_rec_mobile` at full resolution and four ONNX
+Runtime threads stays at or below 10.5 seconds per page with a 2.5 GB peak and
+deterministic output. One thread, server detection, and PP-OCRv6 `small`
+exceeded the time limit.
+
 ### 2. Implement the OCRmyPDF adapter conservatively
 
 Implement the complete `OcrEngine` contract and required hooks against the
@@ -184,7 +191,7 @@ Initial policy:
 - expose `deu` to OCRmyPDF and map it to the Latin PP-OCRv5 recognition model;
 - force OCRmyPDF to one job from the plugin's option check, with a visible
   warning if a higher value was requested;
-- also configure ONNX Runtime for one thread;
+- configure ONNX Runtime with the thread count accepted in step 1;
 - construct the RapidOCR pipeline lazily and reuse it within the process;
 - reject sandwich mode with a precise error;
 - leave unreachable PDF-generation paths explicit with `NotImplementedError`;
