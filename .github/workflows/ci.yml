@@ -105,3 +105,9 @@ jobs:
           # Fehlende Voraussetzungen sind in diesem Job ein Fehler, kein Skip.
           REQUIRE_OCRMYPDF: "1"
         run: python -m pytest bin/test/test_hocr_text_layer_order.py -q
+      - name: PaddleOCR-Engine-Plugin (ohne RapidOCR und Modelle)
+        # Das Paket importiert ocrmypdf und laeuft deshalb hier, nicht im
+        # Job python. Die Erkennung ist in den Tests ersetzt.
+        env:
+          REQUIRE_OCRMYPDF: "1"
+        run: python -m pytest ocrmypdf_paddle/test -q
