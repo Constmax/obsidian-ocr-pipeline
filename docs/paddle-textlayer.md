@@ -42,8 +42,8 @@ This plan does not:
 - OCRmyPDF renders hOCR through fpdf2. The order of hOCR words and lines affects
   the PDF content stream and therefore `pdftotext -raw`, copy/paste, and screen
   readers. Geometry does not make multi-column order free.
-- OCRmyPDF 17.8.0 uses threads by default. A shared Paddle pipeline must not be
-  called concurrently unless the pinned runtime is proven thread-safe.
+- OCRmyPDF 17.8.0 uses threads by default. A shared recognition pipeline must
+  not be called concurrently unless the pinned runtime is proven thread-safe.
 - Sandwich mode is not a supported shortcut. The engine must emit a text layer
   compatible with the existing Stage-1 pipeline.
 - The adapter owns recognition, language mapping, concurrency policy, explicit
@@ -60,13 +60,14 @@ ocrmypdf_paddle/
   pyproject.toml
   src/ocrmypdf_paddle/
     __init__.py       # OCRmyPDF hooks and engine adapter
-    runtime.py        # lazy Paddle construction and language mapping
+    runtime.py        # lazy RapidOCR construction and language mapping
     ordering.py       # explicit reading-order policy
     hocr.py           # polygon-to-hOCR conversion
   test/
 ```
 
-The deep interface inside the module is intentionally independent of Paddle:
+The deep interface inside the module is intentionally independent of the
+recognition runtime:
 
 ```python
 @dataclass(frozen=True)
@@ -84,8 +85,8 @@ def build_hocr(
 ) -> str: ...
 ```
 
-Paddle imports remain lazy so ordering and hOCR tests run in CI without the ML
-runtime or model weights.
+RapidOCR and ONNX Runtime imports remain lazy so ordering and hOCR tests run in
+CI without the ML runtime or model weights.
 
 ## Execution plan
 
@@ -114,20 +115,24 @@ without PaddleOCR, and this document records the observed behavior.
 Time-box this step to two hours. Use a disposable Python 3.12 arm64 virtual
 environment before touching `setup.sh`.
 
-Start with these candidate pins and change them only if the spike records why:
+The runtime is ONNX Runtime via RapidOCR, not `paddlepaddle`. On the target
+machine PaddleOCR 3.x downloaded the PP-OCRv5 models and then died with
+SIGSEGV inside `libpaddle.so` (Paddle's thread pool; Python 3.12.4, macOS 26.2,
+Apple M1). RapidOCR runs the same PP-OCRv5 models, converted to ONNX, without
+the Paddle framework. Start with these candidate pins and change them only if
+the spike records why:
 
 ```text
-paddlepaddle==3.3.1
-paddleocr==3.7.0
+rapidocr==3.9.2
+onnxruntime==1.26.0
 ```
 
-These pins are unverified candidates. Confirm that both versions exist for
-Python 3.12 on macOS arm64 before the spike treats them as its baseline.
-
-Instantiate PP-OCRv5 explicitly on CPU, configure one Paddle CPU thread, and
-use Paddle's pinned German language identifier (`de` for the candidate
-versions; verify this against the installed runtime rather than relying on an
-unversioned example).
+Instantiate PP-OCRv5 text detection (server and mobile variants) with the Latin
+recognition model `latin_PP-OCRv5_rec_mobile`, which covers German, and
+configure one ONNX Runtime thread for both intra- and inter-op parallelism.
+Record the SHA-256 of every model file. RapidOCR downsizes each page to 2000 px
+on its long side by default (about 170 dpi for an A4 page rendered at 300 dpi);
+measure that default against full resolution.
 
 Exercise:
 
@@ -154,7 +159,7 @@ the existing Apple and Tesseract engines.
 
 Abort the Paddle plan if any of these hold:
 
-- no usable Python 3.12 arm64 package exists;
+- no usable Python 3.12 arm64 package exists for the chosen runtime;
 - warm recognition exceeds 15 seconds per page on the target machine;
 - one job consumes more than half of physical RAM or causes swap pressure;
 - repeated runs are materially nondeterministic; or
@@ -162,9 +167,9 @@ Abort the Paddle plan if any of these hold:
   engine.
 
 A shared-environment conflict triggers a redesign decision. Do not hide it by
-shelling out to a fresh Paddle process per page; that would reload the model and
-invalidate the performance design. A separate environment would require a
-persistent worker and a new benchmark.
+shelling out to a fresh recognition process per page; that would reload the
+model and invalidate the performance design. A separate environment would
+require a persistent worker and a new benchmark.
 
 **Complete when:** exact commands, versions, model identifiers, measurements,
 and a go/no-go decision are recorded in `bench/ERGEBNIS.md`.
@@ -176,16 +181,16 @@ pinned OCRmyPDF version.
 
 Initial policy:
 
-- expose `deu` to OCRmyPDF and map it to Paddle's pinned German identifier;
+- expose `deu` to OCRmyPDF and map it to the Latin PP-OCRv5 recognition model;
 - force OCRmyPDF to one job from the plugin's option check, with a visible
   warning if a higher value was requested;
-- also configure Paddle for one CPU thread;
-- construct the Paddle pipeline lazily and reuse it within the process;
+- also configure ONNX Runtime for one thread;
+- construct the RapidOCR pipeline lazily and reuse it within the process;
 - reject sandwich mode with a precise error;
 - leave unreachable PDF-generation paths explicit with `NotImplementedError`;
 - generate hOCR and plain text from the same ordered line sequence;
-- retain all recognized lines initially and map Paddle confidence to hOCR's
-  0–100 `x_wconf` range; add filtering only after calibration;
+- retain all recognized lines initially and map recognition confidence to
+  hOCR's 0–100 `x_wconf` range; add filtering only after calibration;
 - clamp quadrilaterals to the rendered image, reject degenerate polygons, and
   derive a bounding box plus baseline or angle information; and
 - add an optional alignment-debug artifact for upright and skewed fixtures.
@@ -198,7 +203,7 @@ sufficient.
 **Complete when:** pure unit tests cover language mapping, confidence mapping,
 polygon conversion, and malformed results; the pinned hOCR rendering test
 passes; a local searchable PDF has aligned selection on upright and skewed
-pages; and no direct Paddle call can run concurrently.
+pages; and no direct recognition call can run concurrently.
 
 ### 3. Make reading order an explicit algorithm
 
@@ -398,10 +403,10 @@ half-supported public engine.
 
 ## External references to verify during implementation
 
-- Official PaddleOCR installation, PP-OCRv5, language, and CPU documentation
-  for the pinned versions.
+- RapidOCR's documentation and model list, and ONNX Runtime's threading
+  documentation, for the pinned versions.
 - PaddleOCR discussions or issues covering multi-column reading order.
-- PaddleOCR's current thread-safety issue and any resolution in the pinned
+- Whether concurrent calls into one RapidOCR pipeline are safe in the pinned
   runtime.
 
 Record exact links and retrieval dates with the spike results; do not let
