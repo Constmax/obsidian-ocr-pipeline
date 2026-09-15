@@ -13,6 +13,10 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   dictionary pass over OCR pages afterwards (reports by default, corrects only
   unambiguous cases with `--dictionary-correct`).
 - `plugin/` — Stage 3: Obsidian review view (TypeScript, esbuild, no React).
+- `ocrmypdf_paddle/` — OCRmyPDF engine plugin running PaddleOCR PP-OCRv5
+  through RapidOCR (plan `docs/paddle-textlayer.md`). Not installed by
+  `setup.sh` until the benchmark retains it; tests need the pinned ocrmypdf
+  but no RapidOCR or models (`python3 -m pytest ocrmypdf_paddle/test`).
 - `bench/` — benchmark harness; page images are copyrighted scans, NOT in the
   repo, reproducible via `bench/build_bench.py` from the user's vault.
 - `skill/SKILL.md` — Claude skill for vault usage; contains hard-earned
