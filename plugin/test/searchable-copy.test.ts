@@ -7,18 +7,29 @@ import {
 	type PdfSource,
 	type SearchableCopyRequest,
 } from "../src/conversion-controller.ts";
-import type { ConversionResult } from "../src/conversion.ts";
+import type { SearchableCopyResult } from "../src/conversion.ts";
 import { DESKTOP_ONLY_MESSAGE, type OcrSettings } from "../src/ocr-settings.ts";
 import {
+	mergePageLists,
+	normalizePageList,
 	runSearchableCopy,
 	searchableCopyPath,
+	type ExemptionOffer,
 	type SearchableCopyHost,
 } from "../src/searchable-copy.ts";
 
 const SOURCE: PdfSource = { path: "raw/a/case-01.pdf", basename: "case-01" };
 
-function result(overrides: Partial<ConversionResult> = {}): ConversionResult {
-	return { code: 0, signal: null, timeout: false, stdoutLast: [], stderrLast: [], ...overrides };
+function result(overrides: Partial<SearchableCopyResult> = {}): SearchableCopyResult {
+	return {
+		code: 0,
+		signal: null,
+		timeout: false,
+		stdoutLast: [],
+		stderrLast: [],
+		shortPages: [],
+		...overrides,
+	};
 }
 
 class FakeHost implements SearchableCopyHost {
@@ -31,6 +42,7 @@ class FakeHost implements SearchableCopyHost {
 	indexedAfterAttempts = 1;
 	openAttempts: string[] = [];
 	waits: number[] = [];
+	offers: ExemptionOffer[] = [];
 
 	notify(message: string): void {
 		this.notices.push(message);
@@ -49,19 +61,24 @@ class FakeHost implements SearchableCopyHost {
 	async wait(ms: number): Promise<void> {
 		this.waits.push(ms);
 	}
+	offerExemptions(offer: ExemptionOffer): void {
+		this.offers.push(offer);
+	}
 }
 
 class FakeController {
 	idle = true;
 	requests: SearchableCopyRequest[] = [];
-	answer: ConversionResult | null = result();
+	/** Answers in order; afterwards `answer` repeats. */
+	queue: Array<SearchableCopyResult | null> = [];
+	answer: SearchableCopyResult | null = result();
 
 	ensureIdle(): boolean {
 		return this.idle;
 	}
-	async runOcr(request: SearchableCopyRequest): Promise<ConversionResult | null> {
+	async runOcr(request: SearchableCopyRequest): Promise<SearchableCopyResult | null> {
 		this.requests.push(request);
-		return this.answer;
+		return this.queue.length > 0 ? (this.queue.shift() ?? null) : this.answer;
 	}
 }
 
@@ -132,7 +149,7 @@ test("duplicate basenames in different folders each use their own folder", async
 	assert.deepEqual(host.openAttempts, ["raw/b/case-01-ocr.pdf"]);
 });
 
-test("failure, cancellation, or a refused run opens nothing and adds no notice", async () => {
+test("failure without short pages, cancellation, or a refused run offers and opens nothing", async () => {
 	for (const answer of [result({ code: 1 }), result({ code: null, signal: "SIGTERM" }), null]) {
 		const host = new FakeHost();
 		const controller = new FakeController();
@@ -141,6 +158,7 @@ test("failure, cancellation, or a refused run opens nothing and adds no notice",
 
 		assert.equal(controller.requests.length, 1);
 		assert.deepEqual(host.openAttempts, [], JSON.stringify(answer));
+		assert.deepEqual(host.offers, [], JSON.stringify(answer));
 		assert.deepEqual(host.notices, [], JSON.stringify(answer));
 	}
 });
@@ -181,4 +199,88 @@ test("waits for the vault index before opening, bounded", async () => {
 	assert.deepEqual(never.notices, [
 		"OCR Preview: Searchable copy created at raw/a/case-01-ocr.pdf, but Obsidian has not listed it yet.",
 	]);
+});
+
+// ── Page exemptions ────────────────────────────────────────────────────────
+
+test("B5 failure offers the short pages and reruns only after confirmation", async () => {
+	const host = new FakeHost();
+	const controller = new FakeController();
+	controller.queue = [result({ code: 1, shortPages: [1, 5] }), result()];
+	await runSearchableCopy(SOURCE, controller, host);
+
+	assert.equal(controller.requests.length, 1);
+	assert.deepEqual(host.openAttempts, []);
+	assert.deepEqual(host.notices, []);
+	assert.equal(host.offers.length, 1);
+	const offer = host.offers[0]!;
+	assert.deepEqual(offer.source, SOURCE);
+	assert.deepEqual(offer.shortPages, [1, 5]);
+	assert.equal(offer.prefill, "1,5");
+	assert.equal(
+		offer.message,
+		'OCR Preview: No searchable copy of "case-01" — pages 1, 5 have fewer than 50 characters of text. Nothing was written.',
+	);
+
+	await offer.confirm(" 1 ");
+
+	assert.equal(controller.requests.length, 2);
+	assert.equal(controller.requests[1]!.allowPages, "1");
+	assert.equal(controller.requests[1]!.destination, "raw/a/case-01-ocr.pdf");
+	assert.deepEqual(host.openAttempts, ["raw/a/case-01-ocr.pdf"]);
+	assert.deepEqual(host.notices, ["OCR Preview: Searchable copy created — raw/a/case-01-ocr.pdf."]);
+});
+
+test("exemptions do not hide failures on other pages", async () => {
+	const host = new FakeHost();
+	const controller = new FakeController();
+	controller.queue = [
+		result({ code: 1, shortPages: [1, 3] }),
+		result({ code: 1, shortPages: [3] }),
+		result(),
+	];
+	await runSearchableCopy(SOURCE, controller, host);
+	await host.offers[0]!.confirm("1");
+
+	assert.equal(host.offers.length, 2);
+	const second = host.offers[1]!;
+	assert.deepEqual(second.shortPages, [3]);
+	assert.equal(second.prefill, "1,3");
+	assert.equal(
+		second.message,
+		'OCR Preview: No searchable copy of "case-01" — page 3 has fewer than 50 characters of text. Nothing was written.',
+	);
+	assert.deepEqual(host.openAttempts, []);
+
+	await second.confirm(second.prefill);
+	assert.deepEqual(
+		controller.requests.map((r) => r.allowPages),
+		[undefined, "1", "1,3"],
+	);
+	assert.deepEqual(host.openAttempts, ["raw/a/case-01-ocr.pdf"]);
+});
+
+test("a malformed confirmation reruns nothing", async () => {
+	const host = new FakeHost();
+	const controller = new FakeController();
+	controller.queue = [result({ code: 1, shortPages: [2] })];
+	await runSearchableCopy(SOURCE, controller, host);
+
+	for (const input of ["", "abc", "0", "3-1"]) await host.offers[0]!.confirm(input);
+	assert.equal(controller.requests.length, 1);
+});
+
+test("normalizePageList accepts explicit pages and ranges only", () => {
+	assert.equal(normalizePageList("1"), "1");
+	assert.equal(normalizePageList(" 1, 5-7 ,9 "), "1,5-7,9");
+	assert.equal(normalizePageList("4-4"), "4-4");
+	for (const bad of ["", "   ", "0", "5-3", "1,,2", "a", "1-", "-2", "1;2", "1-2-3"]) {
+		assert.equal(normalizePageList(bad), null, JSON.stringify(bad));
+	}
+});
+
+test("mergePageLists keeps earlier exemptions and adds uncovered short pages", () => {
+	assert.equal(mergePageLists(undefined, [5, 1, 5]), "1,5");
+	assert.equal(mergePageLists("1,4-6", [5, 7, 1]), "1,4-6,7");
+	assert.equal(mergePageLists("2", []), "2");
 });

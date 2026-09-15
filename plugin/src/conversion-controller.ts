@@ -18,6 +18,7 @@ import {
 	type ConversionResult,
 	type OcrEngine,
 	type SearchableCopyOptions,
+	type SearchableCopyResult,
 	type SpawnFunction,
 } from "./conversion.ts";
 
@@ -70,7 +71,7 @@ export type SearchableCopyFunction = (
 	cwd: string,
 	spawnFn?: SpawnFunction,
 	options?: SearchableCopyOptions,
-) => Promise<ConversionResult>;
+) => Promise<SearchableCopyResult>;
 
 export interface ControllerDependencies {
 	convert?: ConvertFunction;
@@ -319,11 +320,12 @@ export class ConversionController {
 
 	/**
 	 * Stage 1: writes a searchable copy of the source to `request.destination`
-	 * with `reprocess-raw --output`. Progress is indeterminate. Failures and
-	 * cancellation are reported here; success is left to the caller, which
-	 * opens the new PDF. Resolves with the CLI result, or null if nothing ran.
+	 * with `reprocess-raw --output`. Progress is indeterminate. Cancellation and
+	 * failures are reported here, except a B5 failure with short pages: that one
+	 * and success are left to the caller, which offers page exemptions or opens
+	 * the new PDF. Resolves with the CLI result, or null if nothing ran.
 	 */
-	async runOcr(request: SearchableCopyRequest): Promise<ConversionResult | null> {
+	async runOcr(request: SearchableCopyRequest): Promise<SearchableCopyResult | null> {
 		if (!this.ensureIdle()) return null;
 		const name = request.source.basename;
 		this.begin(name, this.abortGroup);
@@ -359,11 +361,14 @@ export class ConversionController {
 			progress.hide();
 			this.progress = null;
 			if (result.code !== 0) {
-				this.host.notify(
-					this.cancelRequested
-						? `OCR Preview: Searchable copy of "${name}" cancelled — no file written.`
-						: classifyOcrFailure(result).message,
-				);
+				if (this.cancelRequested) {
+					this.host.notify(`OCR Preview: Searchable copy of "${name}" cancelled — no file written.`);
+					// A cancelled run never leads to page exemptions.
+					return { ...result, shortPages: [] };
+				}
+				if (result.shortPages.length === 0) {
+					this.host.notify(classifyOcrFailure(result).message);
+				}
 			}
 			return result;
 		} catch (err) {

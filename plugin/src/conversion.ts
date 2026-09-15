@@ -367,7 +367,7 @@ export function createSearchableCopy(
 	cwd: string,
 	spawnFn: SpawnFunction = spawn,
 	options: SearchableCopyOptions = {},
-): Promise<ConversionResult> {
+): Promise<SearchableCopyResult> {
 	const args = [source, "--output", destination];
 	if (options.engine !== undefined) args.push("--engine", options.engine);
 	if (options.splitColumns) args.push("--split-columns");
@@ -380,7 +380,23 @@ export function createSearchableCopy(
 		detached: true,
 		env: { ...process.env, PATH: stage1Path(process.env.PATH ?? "") },
 	};
+	const shortPages = new Set<number>();
 	return runProcess(cli, args, spawnOptions, spawnFn, {
 		...(options.onChild ? { onChild: options.onChild } : {}),
-	});
+		// Every B5 line counts, not only the last few kept in stderrLast.
+		onStderrLine: (line) => {
+			const match = SHORT_PAGE_LINE.exec(line);
+			if (match) shortPages.add(Number(match[1]));
+			return true;
+		},
+	}).then((result) => ({ ...result, shortPages: [...shortPages].sort((a, b) => a - b) }));
 }
+
+/** A Stage-1 result with the pages the B5 gate reported as too short. */
+export interface SearchableCopyResult extends ConversionResult {
+	/** Ascending page numbers; empty unless the B5 gate failed. */
+	shortPages: number[];
+}
+
+/** column_tools.py verify-pages: "🗑️  Page 3: only 5 characters (min: 50)". */
+const SHORT_PAGE_LINE = /\bPage (\d+): only \d+ characters\b/;
