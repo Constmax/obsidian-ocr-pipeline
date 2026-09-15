@@ -14,9 +14,11 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   unambiguous cases with `--dictionary-correct`).
 - `plugin/` — Stage 3: Obsidian review view (TypeScript, esbuild, no React).
 - `ocrmypdf_paddle/` — OCRmyPDF engine plugin running PaddleOCR PP-OCRv5
-  through RapidOCR (plan `docs/paddle-textlayer.md`). Not installed by
-  `setup.sh` until the benchmark retains it; tests need the pinned ocrmypdf
-  but no RapidOCR or models (`python3 -m pytest ocrmypdf_paddle/test`).
+  through RapidOCR (plan `docs/paddle-textlayer.md`). Reading order comes
+  from line geometry in `ordering.py`, measured against the hand-checked
+  truth set of `bench/reading_order.py`. Not installed by `setup.sh` until
+  the benchmark retains it; tests need the pinned ocrmypdf but no RapidOCR or
+  models (`python3 -m pytest ocrmypdf_paddle/test`).
 - `bench/` — benchmark harness; page images are copyrighted scans, NOT in the
   repo, reproducible via `bench/build_bench.py` from the user's vault.
 - `skill/SKILL.md` — Claude skill for vault usage; contains hard-earned

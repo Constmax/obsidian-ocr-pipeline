@@ -80,8 +80,8 @@ jobs:
         run: pip install pymupdf
       - name: Tests (Nahtentdopplung, Randmarken, Schleifen, Golden-Snapshot)
         run: python -m pytest pdf2md/test bin/test -q
-      - name: Benchmark entry point smoke test
-        run: python -m pytest bench/test_entrypoints.py -q
+      - name: Benchmark entry point smoke test und Lesereihenfolge-Metrik
+        run: python -m pytest bench/test_entrypoints.py bench/test_reading_order.py -q
 
   ocrmypdf:
     name: OCRmyPDF-Textlayer (gepinnt 17.8.0)

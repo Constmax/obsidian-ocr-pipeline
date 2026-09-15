@@ -2,9 +2,10 @@
 
     ocrmypdf --plugin ocrmypdf_paddle -l deu input.pdf output.pdf
 
-Plan: docs/paddle-textlayer.md, step 2 (#68). Lines keep RapidOCR's
-top-to-bottom order until the reading-order step (#69); multi-column pages
-need split-column processing until then.
+Plan: docs/paddle-textlayer.md, steps 2 (#68) and 3 (#69). Lines are put in
+reading order by ordering.order_lines() before the hOCR is written; whether
+multi-column pages still need split-column processing is decided by the
+truth-set comparison in bench/ERGEBNIS.md.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from ocrmypdf.exceptions import BadArgsError, MissingDependencyError
 
 from ocrmypdf_paddle import runtime
 from ocrmypdf_paddle.hocr import render_page
+from ocrmypdf_paddle.ordering import order_lines
 
 __version__ = "0.1.0"
 
@@ -113,10 +115,11 @@ class PaddleOcrEngine(OcrEngine):
     def generate_hocr(input_file, output_hocr, output_text, options):
         input_file = Path(input_file)
         page = _recognizer.recognize(input_file)
-        hocr, text = render_page(page.lines, page.width, page.height)
+        ordered = order_lines(page.lines, page.width, page.height)
+        hocr, text = render_page(ordered, page.width, page.height)
         Path(output_hocr).write_text(hocr, encoding="utf-8")
         Path(output_text).write_text(text, encoding="utf-8")
-        _write_debug(input_file, page)
+        _write_debug(input_file, page, ordered)
 
     @staticmethod
     def generate_pdf(input_file, output_pdf, output_text, options):
@@ -126,17 +129,20 @@ class PaddleOcrEngine(OcrEngine):
         )
 
 
-def _write_debug(input_file: Path, page: runtime.RecognizedPage) -> None:
+def _write_debug(input_file: Path, page: runtime.RecognizedPage, ordered: list) -> None:
     directory = os.environ.get(DEBUG_DIR_ENV)
     if not directory:
         return
     target = Path(directory)
     target.mkdir(parents=True, exist_ok=True)
+    position = {id(line): i for i, line in enumerate(page.lines)}
     record = {
         "image": input_file.name,
         "width": page.width,
         "height": page.height,
+        # Recognizer order; "order" lists their indices in reading order.
         "lines": [asdict(line) for line in page.lines],
+        "order": [position[id(line)] for line in ordered],
     }
     (target / f"{input_file.stem}.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8"
