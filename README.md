@@ -34,6 +34,7 @@ Bilder (jpg/png/tiff) + evtl. PDFs    → pdf-workflow    → 1 PDF
 Mehrere PDFs zu einem zusammenfassen  → pdf-combine     → 1 PDF
 Ordner voller PDFs, Batch             → pdf-auto        → n PDFs
 Bestehende Datei neu verarbeiten      → reprocess-raw   → dieselbe Datei
+                                        (--output X)    → neue Datei X
 ```
 
 Was die Pipeline über nacktes `ocrmypdf` hinaus tut:
@@ -51,6 +52,9 @@ Was die Pipeline über nacktes `ocrmypdf` hinaus tut:
 - **B5-Gate** in `reprocess-raw` — überschreibt das Original nur, wenn
   Seitenzahl exakt erhalten ist *und* jede einzelne Seite Text hat. Ein
   dokumentweiter Durchschnitt versteckt sonst eine komplett leere Seite.
+  Mit `--output X` bleibt das Original unangetastet: `X` erscheint erst nach
+  bestandenem Gate, wird nie überschrieben und fehlt bei Fehler oder Abbruch
+  ganz.
 
 Warum das B5-Gate existiert: [docs/BUGREPORT-2026-07-06-split-merge.md](docs/BUGREPORT-2026-07-06-split-merge.md).
 

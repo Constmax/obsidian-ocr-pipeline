@@ -52,10 +52,13 @@ users. The new mode has these semantics:
    OCR must not be overwritten. Use a same-filesystem exclusive primitive and
    fail cleanly if the final name appeared after the initial check.
    In Bash that primitive is effectively `ln` (fails if the target exists)
-   followed by removing the temporary name. iCloud Drive handles links
-   poorly, so verify `ln` inside the real vault path first; if it fails there,
-   fall back to a same-directory `mv` after the existence check and document
-   the remaining race window.
+   followed by removing the temporary name.
+   *Resolved in #63:* `ln` works and refuses existing targets inside both
+   iCloud Drive vault locations (`~/Documents` and the Obsidian iCloud
+   container), so there is no `mv` fallback. BSD `ln` links *into* a folder
+   that appears under the destination name, so the script confirms the new
+   link is the destination itself. Details in
+   [`scripts-detail.md`](scripts-detail.md#source-preserving-mode---output-file).
 6. On failure or cancellation, clean up all temporary output. `_FAILED_`
    artifacts remain available only to the legacy in-place shell workflow.
 
