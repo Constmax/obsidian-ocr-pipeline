@@ -239,6 +239,63 @@ polygon conversion, and malformed results; the pinned hOCR rendering test
 passes; a local searchable PDF has aligned selection on upright and skewed
 pages; and no direct recognition call can run concurrently.
 
+*Implemented in #68* as `ocrmypdf_paddle/` (load with
+`--plugin ocrmypdf_paddle`). Decisions beyond the list above:
+
+- **Threads:** four ONNX Runtime threads, as accepted in step 1. One thread
+  failed the time limit there, so the issue text's single thread was not
+  used.
+- **Selection:** OCRmyPDF 17.8.0 offers only `auto`, `tesseract` and `none`
+  for `--ocr-engine`. Loading the plugin makes it the engine behind `auto`,
+  like the Apple plugin. An explicit `tesseract` or `none` leaves it inactive.
+- **Concurrency:** the plugin forces `jobs` to 1 and warns only when more
+  jobs were requested. A process-wide lock around pipeline construction and
+  every recognition call also covers bypassed job settings.
+- **No hidden downloads:** RapidOCR downloads a missing or mismatching model
+  on its own. Before any page, the plugin checks the pinned `rapidocr`/
+  `onnxruntime` versions and the SHA-256 of the three model files. The
+  detector, recognizer and classifier are all required, because RapidOCR
+  loads the classifier even with `use_cls` off. The model directory is
+  `OCRMYPDF_PADDLE_MODEL_DIR` (default `~/.cache/ocrmypdf-paddle/models`);
+  step 6 fills it during setup.
+- **Everything kept:** `Global.text_score` is 0, so RapidOCR drops no line
+  before calibration. Pages with a long side over 4000 px are downscaled
+  first, and their coordinates are mapped back.
+- **Word boxes:** words use RapidOCR's word boxes, with character pieces
+  merged per word, when the pieces spell the line's words exactly.
+  Otherwise the words are spread across the line box. RapidOCR 3.9.2 drops
+  the word group of a line without word boxes and then indexes the groups
+  per line. The plugin therefore attaches groups only when each line has
+  exactly one, and retries a page without word boxes if RapidOCR raises
+  `IndexError` there.
+- **Malformed results:** boxes, texts and scores of different lengths reject
+  the page. Individual unusable polygons or empty texts drop that line from
+  both hOCR and sidecar.
+- **Deskew:** delegated to Tesseract, like orientation.
+- **Debug artifact:** `OCRMYPDF_PADDLE_DEBUG_DIR` writes one JSON file per
+  page with the recognized lines and polygons.
+
+**Observed** with the spike environment (OCRmyPDF 17.8.0, RapidOCR 3.9.2,
+ONNX Runtime 1.26.0, network blocked). Pages were converted to 300-dpi PDFs.
+A PDF word counts as aligned when the centre of its `pdftotext -bbox` box lies
+inside the polygon of the recognized line that contains it:
+
+| Page | Time | PDF words | On their own line |
+| --- | ---: | ---: | ---: |
+| 04 upright | 11 s | 341 | 100 % |
+| 09 turned 4°, no `--deskew` | 10 s | 442 | 100 % |
+| 09 turned 4°, `--deskew` | 12 s | 341 | 100 % |
+| 08 skewed two-column scan | 17 s | 1023 | 100 % |
+
+- **Deskew:** Tesseract measured 3.896° on the 4° page. After deskewing,
+  every `pdftotext` word matched a recognized word.
+- **Without deskew:** selection still follows the tilted lines, but
+  `pdftotext -bbox` splits words on rotated baselines into pieces (442
+  instead of 341). The skewed scan shows the same effect (59 pieces), so
+  word-level text metrics in step 5 should not rely on `pdftotext` alone.
+- **Text:** on page 04, `pdftotext -raw` has 38 umlauts, 5 ß and 1 §, the
+  same counts as in the spike.
+
 ### 3. Make reading order an explicit algorithm
 
 `order_lines()` must handle at least:
