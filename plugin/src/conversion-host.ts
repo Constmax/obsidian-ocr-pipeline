@@ -1,11 +1,31 @@
-// Obsidian side of the ConversionController: Notices, vault paths, the
-// inventory, and the comparison view.
+// Obsidian side of the ConversionController and the searchable-copy action:
+// Notices, vault paths, the inventory, the comparison view, and opening files.
 
-import { FileSystemAdapter, Notice, normalizePath, type App } from "obsidian";
+import { FileSystemAdapter, Notice, Platform, normalizePath, type App } from "obsidian";
 
 import type { ConversionHost } from "./conversion-controller.ts";
 import type { Inventory } from "./file-actions.ts";
+import type { SearchableCopyHost } from "./searchable-copy.ts";
 import type { Settings } from "./settings.ts";
+
+export function createSearchableCopyHost(app: App, settings: () => Settings): SearchableCopyHost {
+	return {
+		isDesktop: Platform.isDesktopApp,
+		notify(message) {
+			new Notice(message);
+		},
+		// The adapter checks the disk, so an unindexed or hidden file counts too.
+		exists: (path) => app.vault.adapter.exists(normalizePath(path)),
+		settings: () => settings(),
+		async openPdf(path) {
+			const file = app.vault.getFileByPath(normalizePath(path));
+			if (file === null) return false;
+			await app.workspace.getLeaf("tab").openFile(file);
+			return true;
+		},
+		wait: (ms) => new Promise((done) => window.setTimeout(done, ms)),
+	};
+}
 
 export function createConversionHost(
 	app: App,
