@@ -17,6 +17,7 @@ SUPPORTED_ENTRYPOINTS = (
     "regress_randlabel.py",
     "regress_randmarke.py",
     "randlabel_debug.py",
+    "reading_order.py",
 )
 
 

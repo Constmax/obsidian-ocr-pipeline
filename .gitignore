@@ -20,8 +20,10 @@ bench/pages.json
 
 # Arbeitsverzeichnisse der Mess- und Diagnoseskripte. Enthalten Seitenbilder
 # und Modellausgaben aus demselben geschützten Kursmaterial; erzeugt von
-# bench_ocr.py, bench_defekt.py, nachspiel.py und den *_debug.py-Skripten.
+# bench_ocr.py, bench_defekt.py, nachspiel.py, reading_order.py und den
+# *_debug.py-Skripten.
 bench/bench-lauf/
+bench/reading-order-lauf/
 bench/defekt-lauf/
 bench/nachspiel-lauf/
 bench/kachel-debug/

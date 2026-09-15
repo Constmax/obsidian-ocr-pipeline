@@ -1699,3 +1699,149 @@ Befunde für #68 und #71:
 - **Wortboxen verwenden.** Werden Wörter nur proportional in der Zeilenbox verteilt, klebt `pdftotext -raw` auf schrägen Zeilen ganze Zeilen zusammen. Mit den Wortboxen aus `Global.return_word_box` wird es deutlich besser, aber einzelne Wörter auf schrägen Zeilen klebt `pdftotext -raw` weiterhin zusammen („Geschiehtdies dennoch“), während PyMuPDF denselben Textlayer sauber mit Leerzeichen liefert. Die Wortgenauigkeit in Schritt 5 darf deshalb nicht allein an `pdftotext -raw` hängen.
 - **Auflösung selbst begrenzen.** Mit `--redo-ocr` hat OCRmyPDF die Originalseiten (2.906 × 4.109 pt, Bild mit 72 dpi) auf 16.144 × 22.828 px gerastert, 368 MP; RapidOCR hat das auf 4.000 px verkleinert. Das Plugin muss die Bildgröße explizit prüfen und begrenzen.
 - **Reihenfolge.** RapidOCR sortiert Zeilen nach y; die Spalten wechseln sich ab. Das bleibt #69.
+
+## Nachtrag 2026-09-15 (19): Lesereihenfolge — Wahrheitsset und Split-Entscheidung für #69
+
+**Ergebnis: keep split mode.** `--engine paddle --split-columns` bleibt der unterstützte Befehl.
+
+Ungeteiltes PaddleOCR mit `order_lines()` hat im Median eine höhere Präzedenzgenauigkeit als beide Split-Baselines (99,7 % gegen 96,5 %). Es verletzt aber zwei Gate-Kriterien:
+- 18 Vollbreite-Zeilen stehen falsch.
+- Auf einer Seite sind die Fußnoten beider Spalten verschränkt.
+
+Plan: `docs/paddle-textlayer.md`, Schritt 3.
+
+### Aufbau
+
+**Wahrheitsset:** `bench/reading_order_truth.json` mit 16 Vault-Seiten.
+- **Zweispalter (10):** Repetitoriums-Skripte und -Fälle, Verwaltungsrecht, ein 150-dpi-Scan, ein schief fotografierter Scan.
+- **Einspalter (6):** Handschrift am Rand, Schräglage, Kopf- und Fußzeilen.
+
+**Seiten:** `prepare` rastert mit `pdftoppm -gray -scale-to 3508` und baut mit `img2pdf` 300-dpi-PDFs.
+
+**Wahrheit:**
+- Die Wahrheitszeilen sind die PP-OCRv5-Zeilen des Seitenbilds (`recognize`).
+- Die Rollenregionen (Kopf, Überschrift, Text, Fußnote, Randnotiz, Fuß) sind auf Rasterbildern gezeichnet, bevor eine Ordnungsausgabe dieser Seiten angesehen wurde.
+- Jede Zeile gehört zur kleinsten Region, die ihren Mittelpunkt enthält, und wird darin zeilenweise gelesen.
+- Die Overlays (`overlay`) sind von Hand geprüft. Keine erkannte Zeile liegt außerhalb aller Regionen.
+
+**Konvention:**
+- Kopf zuerst.
+- Je Abschnitt die linke Spalte (Text, Fußnoten, Randnotizen), dann die rechte.
+- Vollbreite-Überschriften an ihrem Platz, Fußzeile zuletzt.
+- Handschrift im Textbereich wird in ihrer Zeile gelesen.
+
+**Metrik (`score`):**
+- **Zuordnung:** Jede Wahrheitszeile ab 10 normalisierten Zeichen (NFKC, klein, nur Buchstaben, Ziffern und §) wird per 4-Gramm-Abstimmung in `pdftotext -raw` gesucht. Längere Zeilen belegen ihre Textstelle zuerst.
+- **Wert:** paarweise Präzedenzgenauigkeit über die gefundenen Zeilen.
+- **Getrennt ausgewiesen:**
+  - nicht gefundene und doppelte Zeilen;
+  - Vollbreite-Zeilen, die mit einer Spaltenzeile vertauscht sind;
+  - Abschnitte mit verschränkten Textspalten;
+  - Seitenzahl 1 und B5 (`column_tools.py verify-pages --min-chars 50`);
+  - Ausgabegröße.
+- **Größe:** In den Stage-1-Scripts gibt es keine Größenschwelle. Die Größe wird deshalb nur berichtet.
+
+### Workflows und Befehle
+
+| Workflow | Lauf |
+|---|---|
+| `split-apple`, `split-tesseract` | `bin/pdf-auto.sh --engine apple` bzw. `tesseract` mit `--split-columns`, Qualitätsgate an |
+| `unsplit-apple`, `unsplit-tesseract` | `bin/pdf-auto.sh --engine apple` bzw. `tesseract` mit `--no-quality-gate` |
+| `split-paddle` | `column_tools.py split --auto`, dann `ocrmypdf --plugin ocrmypdf_paddle -l deu --skip-text --optimize 3 --jobs 1 --max-image-mpixels 400`, dann `column_tools.py merge` |
+| `unsplit-paddle` | derselbe OCRmyPDF-Aufruf ohne Split, mit `--rotate-pages --deskew` |
+| `rapidocr-order`, `order_lines` | kein PDF: die Wahrheitszeilen in RapidOCRs Reihenfolge bzw. von `order_lines()` geordnet; misst die Ordnung ohne Erkennungs- und PDF-Einfluss |
+
+```text
+python bench/reading_order.py prepare
+python bench/reading_order.py recognize
+python bench/reading_order.py overlay
+python bench/reading_order.py run --optimize 3
+python bench/reading_order.py --python <OCRmyPDF-Python> score
+```
+
+**Umgebung:**
+- **Stand und Variablen:** Repo-Stand `8b957ab` plus diese Änderung, `VAULT_ROOT` auf den Vault, `OCRMYPDF_PADDLE_MODEL_DIR` auf die Modelle aus Nachtrag 18.
+- **Shell-Workflows:** laufen in `~/.venvs/ocrmypdf`; `pdf-auto.sh` meldet `--optimize 3` und `--jobs 1`.
+- **Paddle-Workflows und `recognize`:** laufen in der geklonten OCRmyPDF-Umgebung mit RapidOCR, das Netz ist über einen toten Proxy-Port gesperrt.
+- **Versionen:**
+
+| Paket bzw. Werkzeug | Version |
+|---|---|
+| ocrmypdf | 17.8.0 |
+| ocrmypdf-appleocr | 0.3.4 |
+| Tesseract | 5.5.2 |
+| Ghostscript | 10.07.1 |
+| Poppler `pdftotext` | 26.08.0 |
+| pikepdf | 10.9.1 |
+| img2pdf | 0.6.3 |
+| rapidocr | 3.9.2 |
+| onnxruntime | 1.26.0 |
+
+- **Fallbacks und Paddle-Laufzeit:** Kein Lauf zeigt einen Engine-Fallback. Die Paddle-Laufzeit beträgt 382 s (Split) bzw. 315 s (ungeteilt) für 16 Seiten; das ist nur ein Richtwert, gemessen wird in Schritt 5.
+
+### Messwerte
+
+| Workflow | Seiten | Median | Mittel | Min | Median (gemeinsame Zeilen) | verschränkte Seiten | Vollbreite falsch / doppelt / fehlt (von 77) | nicht gefunden (von 1348) | doppelt | Seitenprüfung fehlgeschlagen | Größe |
+|---|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| `split-apple` | 16 | 96,0 % | 96,9 % | 91,4 % | 96,4 % | 1 | 53 / 0 / 8 | 28 | 9 | 0 | 10,6 MB |
+| `split-tesseract` | 16 | 96,5 % | 97,0 % | 92,5 % | 96,7 % | 0 | 52 / 0 / 12 | 50 | 7 | 0 | 10,6 MB |
+| `unsplit-apple` | 16 | 99,5 % | 98,2 % | 93,0 % | 100,0 % | 5 | 17 / 0 / 5 | 21 | 9 | 0 | 8,9 MB |
+| `unsplit-tesseract` | 16 | 99,8 % | 93,0 % | 74,6 % | 99,8 % | 6 | 8 / 0 / 7 | 79 | 7 | 0 | 9,0 MB |
+| `split-paddle` | 16 | 96,1 % | 96,9 % | 91,1 % | 96,7 % | 0 | 55 / 0 / 6 | 12 | 7 | 0 | 10,6 MB |
+| `unsplit-paddle` | 16 | 99,7 % | 99,0 % | 94,9 % | 99,7 % | 1 | 18 / 0 / 0 | 5 | 7 | 0 | 10,2 MB |
+| `rapidocr-order` | 16 | 82,6 % | 86,9 % | 75,5 % | 80,5 % | 10 | 0 / 0 / 0 | 0 | 5 | – | – |
+| `order_lines` | 16 | 99,7 % | 99,4 % | 97,3 % | 99,7 % | 1 | 10 / 0 / 0 | 0 | 8 | – | – |
+
+Je Seite (`*` = Textspalten verschränkt):
+
+| Seite | Layout | `split-apple` | `split-tesseract` | `unsplit-apple` | `unsplit-tesseract` | `split-paddle` | `unsplit-paddle` | `rapidocr-order` | `order_lines` |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| t01 | Zweispalter, Kopf, Fußnoten, Fuß | 95,8 % | 95,9 % | 94,2 %* | 92,8 % | 95,8 % | 95,9 % | 79,2 %* | 99,3 % |
+| t02 | Zweispalter, Handschrift an beiden Rändern, Fußnoten | 96,2 % | 96,2 % | 100,0 % | 100,0 % | 96,2 % | 99,4 % | 77,9 %* | 99,4 % |
+| t03 | Zweispalter, hinterlegte Überschrift, Randnotiz, Fußnoten | 99,2 % | 99,2 % | 100,0 % | 99,7 % | 99,2 % | 99,2 % | 75,5 %* | 99,2 % |
+| t04 | Zweispalter, hinterlegte Überschriften, Fußnoten | 95,2 % | 95,2 % | 93,3 %* | 99,9 % | 95,2 % | 99,2 % | 82,7 %* | 99,2 % |
+| t05 | Zweispalter, schief fotografiert, Kästen, Fußnoten | 95,8 %* | 96,8 % | 96,0 %* | 95,8 %* | 96,1 % | 99,2 % | 78,8 %* | 99,2 % |
+| t06 | Zweispalter, Kästen | 94,9 % | 94,9 % | 99,2 % | 85,0 %* | 94,9 % | 94,9 % | 78,3 %* | 97,5 % |
+| t07 | Kopf, Vollbreite-Titel über zwei Spalten, Übersichtskästen | 91,4 % | 92,5 % | 97,8 %* | 74,6 %* | 91,1 % | 100,0 % | 82,4 %* | 100,0 % |
+| t08 | Zweispalter, Kästen, Fußnoten | 94,3 % | 94,3 % | 99,0 % | 77,5 %* | 94,3 % | 99,0 % | 75,9 %* | 99,0 % |
+| t09 | Zweispalter, Kästen, Fußnoten | 94,6 % | 94,2 % | 93,0 %* | 77,9 %* | 94,5 % | 97,2 %* | 76,7 %* | 97,3 %* |
+| t10 | Zweispalter aus 150-dpi-Scan, Kopf, Vollbreite-Titel | 93,6 % | 93,2 % | 98,9 % | 85,0 %* | 93,6 % | 100,0 % | 83,4 %* | 100,0 % |
+| t11 | einspaltig, Kopf, Titel, Fuß | 100,0 % | 100,0 % | 100,0 % | 99,9 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % |
+| t12 | einspaltig, Handschrift neben Überschriften, Seitenzahl | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % |
+| t13 | einspaltig, Handschrift über dem Titel und am linken Rand | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % |
+| t14 | einspaltig, Seitenzahl | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % |
+| t15 | einspaltig, schief fotografiert | 99,9 % | 100,0 % | 99,9 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % | 100,0 % |
+| t16 | einspaltig, Kopf, Fuß, Ordnerringe im Bild | 99,9 % | 100,0 % | 99,9 % | 100,0 % | 100,0 % | 100,0 % | 99,9 % | 100,0 % |
+
+### Befunde
+
+**Gate für `unsplit-paddle`:**
+- **Median:** 99,7 % gegen die beste Split-Baseline 96,5 % (`split-tesseract`). Das Kriterium ist erfüllt.
+- **Seitenprüfungen:** Seitenzahl und B5 bestehen auf allen 16 Seiten.
+- **Vollbreite-Zeilen:** Das Kriterium ist verfehlt, 18 Zeilen stehen in einer Spalte.
+  - **Seitentitel:** 8-mal die rechte Seitentitel-Zeile des Kopfes („…, Seite N“), auf t01–t06, t08 und t09.
+  - **Ortsliste:** auf t01 und t06 zusätzlich die fünfzeilige Ortsliste desselben Kopfes.
+  - **Ursache:** Auf diesen Seiten steht die letzte Kopfzeile weniger als eine Zeilenhöhe über dem Text. `order_lines()` schneidet deshalb kein Kopfband ab, und der rechte Teil des Kopfes wird als Anfang der rechten Spalte gelesen.
+  - **Real gegen Wahrheitsgeometrie:** Auf der Geometrie der Wahrheitszeilen (`order_lines`) sind es 10 statt 18 Zeilen. Im echten Lauf erkennt PaddleOCR die mit `--rotate-pages --deskew` aufbereitete Seite neu. Dabei wird auf t01 und t06 zusätzlich die ganze Ortsliste der rechten Spalte zugeschlagen.
+- **Keine Verschränkung:** Das Kriterium ist verfehlt, t09 verschränkt die Fußnoten. Dort beginnen die Fußnoten beider Spalten auf gleicher Höhe, die Lücke darüber läuft über die ganze Seite. Die Fußnoten landen im Fußband und werden zeilenweise über beide Spalten gelesen.
+
+**Split-Baselines:**
+- Sie verletzen das Vollbreite-Kriterium stärker (52–55 Zeilen). Der Split schneidet den Kopf; seine rechte Hälfte folgt erst nach der ganzen linken Spalte.
+- Deshalb liegen die Split-Workflows auf den Zweispaltern meist nur bei 91–96 %.
+
+**Native ungeteilte OCR:** Sie ist keine Alternative. Apple verschränkt die Spalten auf 5 Seiten, Tesseract auf 6 (Minimum 74,6 %).
+
+**Ohne `order_lines()`:** Der Textlayer wäre unbrauchbar. RapidOCRs Reihenfolge (`rapidocr-order`) verschränkt jede der 10 Zweispalterseiten (Median 82,6 %).
+
+**Erkennung und Größe:**
+- **Nicht gefunden:** `unsplit-paddle` findet bis auf 5 von 1348 Zeilen alles (je 1–2 Zeilen auf t07, t12, t13 und t15). `split-tesseract` verfehlt 50 Zeilen.
+- **Größe:** 16 Seiten ergeben 8,9–10,6 MB. Die Paddle-Läufe gehen nicht durch `pdf-auto.sh`, weil Paddle dort erst mit Schritt 4 eine Engine wird. Die Größen sind daher nur grob vergleichbar.
+
+### Einschränkungen
+
+- **Segmentierung:** Die Wahrheitszeilen stammen aus PaddleOCRs Zeilensegmentierung. Eine Zeile, die eine andere Engine anders schneidet, wird trotzdem gefunden, solange mindestens die Hälfte ihrer 4-Gramme übereinstimmt. Paddle-Workflows haben hier höchstens einen leichten Heimvorteil.
+- **Fehlende Seitenart:** Eine echte Seite mit Vollbreite-Überschrift *zwischen* zwei Spaltenbereichen ist nicht im Set. Dieser Fall ist nur synthetisch getestet.
+- **Messfehler in der ersten Auswertung, behoben:**
+  - **Fehler:** Kurze Zeilen, etwa eine Fundstelle in der Fußnote, trafen dieselbe Textstelle in einer längeren Zeile der anderen Spalte. Das ergab falsche Verschränkungen und Doppelte, bei `split-apple` z. B. 5 statt 1 verschränkte Seiten und 59 statt 9 doppelte Zeilen.
+  - **Korrektur:** Längere Zeilen belegen ihre Textstelle jetzt zuerst, mit Test in `bench/test_reading_order.py`. Alle Workflows wurden neu bewertet; `order_lines()` blieb dabei unverändert.
+- **Keine Nachjustierung:** `order_lines()` wurde an diesen 16 Seiten nicht nachjustiert. Eine Korrektur für den dichten Kopf und für seitenbreite Fußnotenlücken muss auf Seiten außerhalb dieses Sets gemessen werden. Sonst zeigt ein bestandenes Gate nur Anpassung an das Set.

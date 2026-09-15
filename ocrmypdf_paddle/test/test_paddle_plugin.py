@@ -81,16 +81,30 @@ PAGE_LINES = [
 ]
 
 
-def page_lines(plugin, width=REF_W, height=REF_H):
+def page_lines(plugin, width=REF_W, height=REF_H, specs=PAGE_LINES):
     from ocrmypdf_paddle.hocr import TextLine
 
     sx, sy = width / REF_W, height / REF_H
     return [TextLine(text, tuple((x * sx, y * sy) for x, y in polygon), 0.9)
-            for text, polygon in PAGE_LINES]
+            for text, polygon in specs]
 
 
 def expected_words():
     return [word for text, _ in PAGE_LINES for word in text.split()]
+
+
+# What the engine sees from RapidOCR: a two-column page sorted by y, so the
+# columns alternate. The text layer must read the left column, then the right.
+COLUMN_LINES = [
+    (f"{side} {i}", rect(x0, 400 + i * 120, x1, 460 + i * 120))
+    for i in range(5)
+    for side, x0, x1 in (("links", 200, 1150), ("rechts", 1330, 2280))
+]
+COLUMN_ORDER = [i for side in (0, 1) for i in range(side, len(COLUMN_LINES), 2)]
+
+
+def expected_column_words():
+    return [word for i in COLUMN_ORDER for word in COLUMN_LINES[i][0].split()]
 
 
 class FakeRecognizer:
@@ -106,7 +120,8 @@ class FakeRecognizer:
         self.threads.add(threading.current_thread().name)
         with Image.open(image_path) as image:
             width, height = image.size
-        return runtime.RecognizedPage(width, height, page_lines(self.plugin, width, height))
+        return runtime.RecognizedPage(
+            width, height, page_lines(self.plugin, width, height, COLUMN_LINES))
 
 
 @pytest.fixture
@@ -188,7 +203,7 @@ def test_pipeline_uses_the_engine_with_one_job(tmp_path, monkeypatch, caplog, oc
     assert exit_code == 0
     assert seen_jobs == [1, 1]
     assert "PaddleOCR engine runs one OCR job; ignoring --jobs 4." in caplog.text
-    assert raw_words(pdftotext, output) == expected_words() * 2
+    assert raw_words(pdftotext, output) == expected_column_words() * 2
 
 
 def test_sandwich_renderer_is_rejected(tmp_path, ocrmypdf, plugin, ready):
@@ -289,7 +304,8 @@ def test_debug_artifact_records_the_recognized_lines(tmp_path, monkeypatch, plug
 
     record = json.loads((tmp_path / "debug" / "000001_ocr.json").read_text(encoding="utf-8"))
     assert (record["width"], record["height"]) == (1240, 1754)
-    assert [line["text"] for line in record["lines"]] == [text for text, _ in PAGE_LINES]
-    assert record["lines"][0]["polygon"][0] == [665.0, 200.0]
+    assert [line["text"] for line in record["lines"]] == [text for text, _ in COLUMN_LINES]
+    assert record["lines"][0]["polygon"][0] == [100.0, 200.0]
+    assert record["order"] == COLUMN_ORDER
     assert (tmp_path / "p.txt").read_text(encoding="utf-8").splitlines() == [
-        text for text, _ in PAGE_LINES]
+        COLUMN_LINES[i][0] for i in COLUMN_ORDER]
