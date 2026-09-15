@@ -128,6 +128,14 @@ status file (all cleaned via `normalizePath()`, with a live indicator if a
 folder is missing), Markdown column default, scroll sync, PDF render factor,
 Markdown eager limit, and column widths.
 
+**Searchable copy** (for the Stage-1 action, #66): OCR engine (Automatic,
+Apple Vision, Tesseract; default Automatic) and Split two-column pages
+(default off). `parseOcrSettings()` in `src/ocr-settings.ts` validates both on
+load: data from before these settings and invalid values (such as an engine
+this version does not offer) fall back to the defaults field by field.
+PaddleOCR is not offered yet. Obsidian on mobile shows only a desktop-only
+notice in this section.
+
 ## Testing
 
 `cd plugin` — `npm run check` (tsc), `npm run lint` (eslint with
