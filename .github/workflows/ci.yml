@@ -82,3 +82,26 @@ jobs:
         run: python -m pytest pdf2md/test bin/test -q
       - name: Benchmark entry point smoke test
         run: python -m pytest bench/test_entrypoints.py -q
+
+  ocrmypdf:
+    name: OCRmyPDF-Textlayer (gepinnt 17.8.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tesseract und Poppler installieren
+        # OCRmyPDF 17.8.0 verlangt tesseract auch dann, wenn ein Engine-Plugin
+        # die Erkennung uebernimmt; pdftotext liest den Textlayer so, wie ihn
+        # das Quality-Gate liest (-raw, Content-Stream-Reihenfolge).
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr poppler-utils
+      - name: pytest und gepinntes ocrmypdf installieren
+        # Dieselbe Version wie in setup.sh: der Test ruft den fpdf2-Renderer
+        # direkt auf, und der ist keine oeffentliche API.
+        run: pip install pytest "ocrmypdf==17.8.0"
+      - name: Textlayer folgt der hOCR-Elementreihenfolge
+        env:
+          # Fehlende Voraussetzungen sind in diesem Job ein Fehler, kein Skip.
+          REQUIRE_OCRMYPDF: "1"
+        run: python -m pytest bin/test/test_hocr_text_layer_order.py -q

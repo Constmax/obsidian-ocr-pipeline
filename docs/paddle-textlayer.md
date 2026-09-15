@@ -41,7 +41,8 @@ This plan does not:
   text-layer rendering, and final-file validation.
 - OCRmyPDF renders hOCR through fpdf2. The order of hOCR words and lines affects
   the PDF content stream and therefore `pdftotext -raw`, copy/paste, and screen
-  readers. Geometry does not make multi-column order free.
+  readers. Geometry does not make multi-column order free. Verified for
+  17.8.0 in step 0: the content stream follows hOCR element order exactly.
 - OCRmyPDF 17.8.0 uses threads by default. A shared Paddle pipeline must not be
   called concurrently unless the pinned runtime is proven thread-safe.
 - Sandwich mode is not a supported shortcut. The engine must emit a text layer
@@ -102,9 +103,34 @@ Entry point: OCRmyPDF 17.8.0 no longer exports `HocrTransform`;
 `ocrmypdf.hocrtransform` contains only the parser (`HocrParser`,
 `OcrElement`, `BoundingBox`, `Baseline`). The renderer is
 `ocrmypdf.fpdf_renderer.renderer.Fpdf2PdfRenderer`, which is not public API,
-so the fixture is deliberately tied to the pinned version. The CI Python job
-installs only `pytest` and `pymupdf`; running the fixture in CI requires adding
-the pinned `ocrmypdf` to that job.
+so the fixture is deliberately tied to the pinned version. It runs in its own
+CI job, `ocrmypdf`, which installs the pinned version together with Tesseract
+and Poppler.
+
+**Observed** (OCRmyPDF 17.8.0, `bin/test/test_hocr_text_layer_order.py`):
+
+- `pdftotext -raw` returns the words in hOCR element order in every case:
+  column order, row-interleaved order, and right column first. Geometry
+  reorders nothing.
+- The same holds for the finished PDF of the full pipeline (pypdfium
+  rasterizer, fpdf2 renderer, grafting onto the original page) with a stub
+  engine plugin, not only for the renderer alone.
+- Plain `pdftotext` without `-raw` ignores element order and reconstructs its
+  own reading order; for these short lines it interleaves the columns.
+
+Consequences:
+
+- Reading order is entirely the adapter's responsibility. Emitting lines in
+  the order `order_lines()` returns (step 3) controls the text layer; no
+  renderer-side sorting interferes.
+- OCRmyPDF 17.8.0 requires the `tesseract` binary even when an engine plugin
+  does the recognition: its built-in Tesseract plugin checks for it
+  unconditionally. Blocking that plugin through `initialize` fails with
+  `'OcrOptions' object has no attribute 'tesseract'`. Tesseract therefore
+  stays a hard dependency of the Paddle engine (steps 2 and 6).
+- 17.8.0 also offers `generate_ocr`, which returns an `OcrElement` tree
+  instead of an hOCR file. It was not exercised here; if step 2 uses it,
+  extend the test to that path.
 
 **Complete when:** the fixture demonstrates the ordering mechanism, runs in CI
 without PaddleOCR, and this document records the observed behavior.
@@ -190,7 +216,8 @@ Initial policy:
   derive a bounding box plus baseline or angle information; and
 - add an optional alignment-debug artifact for upright and skewed fixtures.
 
-Use Tesseract OSD for orientation initially. Measure deskew behavior rather
+Use Tesseract OSD for orientation initially; Tesseract must be installed
+anyway (see step 0), so this adds no dependency. Measure deskew behavior rather
 than returning zero silently; a zero deskew result is acceptable only when the
 documented input contract or fixture proves that upstream normalization is
 sufficient.
