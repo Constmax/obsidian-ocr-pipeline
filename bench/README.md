@@ -18,6 +18,7 @@ directly inside the vault, the parent directory is detected automatically.
 | `python bench/regress_randlabel.py` | Check margin-label promotion across vector pages | No |
 | `python bench/regress_randmarke.py` | Check the margin-label heading exception across vector pages | No |
 | `python bench/randlabel_debug.py PDF PAGE` | Inspect OCR line geometry around a margin label | Yes |
+| `python bench/reading_order.py COMMAND` | Build the hand-checked reading-order truth set and compare Stage-1 workflows on it (`prepare`, `recognize`, `overlay`, `run`, `score`; issue #69) | `recognize` and the Paddle workflows |
 
 Example with an explicit vault location:
 
@@ -26,7 +27,10 @@ VAULT_ROOT=/path/to/vault python bench/build_bench.py
 ```
 
 `bench_ocr.py` writes its generated documents and metrics below
-`bench/bench-lauf/`. The regression commands require `bench/pages.json`, which
+`bench/bench-lauf/`. `reading_order.py` reads its truth from
+`bench/reading_order_truth.json` (source pages and hand-drawn regions, no page
+text) and writes page images, recognized lines, overlays and workflow outputs
+below `bench/reading-order-lauf/`. The regression commands require `bench/pages.json`, which
 is produced from the user's vault and is not versioned.
 
 CI imports every supported entry point without loading the ML model or reading
