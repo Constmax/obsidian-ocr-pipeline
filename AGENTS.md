@@ -43,7 +43,7 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   committed build against `src/` (`.github/workflows/ci.yml`).
 - Install into a vault: `VAULT_ROOT=<path> plugin/install-plugin.sh` (default
   copies, no build; `--build` to build, `--symlink` only outside iCloud).
-- ESLint: `eslint-plugin-obsidianmd`; `sentence-case` rule is enabled for English UI; `no-console` allows only `error`/`warn`.
+- ESLint: `eslint-plugin-obsidianmd`; the `sentence-case` rule is enabled for `src/settings.ts` only (older UI strings elsewhere still violate it); `no-console` allows only `error`/`warn`.
 - **Obsidian API Invariants & Quirks**:
   - **No `open()` on Views**: Never define a custom method named `open()` on classes extending `ItemView` / `View` (collides with Obsidian's internal `View.prototype.open(containerEl)` lifecycle). Use `openPreview()`.
   - **`loadPdfJs()` caching**: Obsidian's `loadPdfJs()` returns `Promise<any>` and may not attach to `window.pdfjsLib` automatically. Always use `const pdfjs = window.pdfjsLib ?? await loadPdfJs(); (window as any).pdfjsLib = pdfjs;`.
