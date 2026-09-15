@@ -1,51 +1,34 @@
 // Plugin entry point: registration of view, commands, ribbon, file menu,
-// and vault listeners that trigger reconciliation.
+// and vault listeners that trigger reconciliation. PDF conversion is
+// delegated to the ConversionController.
 
-import { homedir } from "os";
-import { join } from "path";
-import { existsSync } from "fs";
-import type { ChildProcess } from "child_process";
-import {
-	FileSystemAdapter,
-	Menu,
-	Notice,
-	Plugin,
-	TAbstractFile,
-	TFile,
-	normalizePath,
-} from "obsidian";
+import { Menu, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
 
 import { VIEW_TYPE, OcrComparisonView, PdfSelectModal, PageSelectModal } from "./view.ts";
 import { Inventory } from "./file-actions.ts";
 import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
-import { abortChild, convertPdf } from "./conversion.ts";
+import { ConversionController } from "./conversion-controller.ts";
+import { createConversionHost } from "./conversion-host.ts";
 
 const RECONCILE_DEBOUNCE_MS = 500;
-const CONVERSION_TIMEOUT_MS = 30 * 60 * 1000;
-const INDEX_WAIT_STEPS = 10;
-const INDEX_WAIT_MS = 200;
-
-function resolvePdf2md(): string {
-	const candidates = [join(homedir(), "bin", "pdf2md"), "/usr/local/bin/pdf2md"];
-	for (const part of (process.env.PATH ?? "").split(":")) {
-		if (part.length > 0) candidates.push(join(part, "pdf2md"));
-	}
-	for (const candidate of candidates) {
-		if (existsSync(candidate)) return candidate;
-	}
-	return candidates[0]!;
-}
 
 export default class OcrPreviewPlugin extends Plugin {
 	settings: Settings = { ...DEFAULT_SETTINGS };
 	inventory!: Inventory;
+	conversion!: ConversionController;
 
 	private reconcileTimer: number | null = null;
-	private isConverting = false;
-	private runningChild: ChildProcess | null = null;
 
 	async onload(): Promise<void> {
 		this.inventory = new Inventory(this.app, () => this.settings);
+		this.conversion = new ConversionController(
+			createConversionHost(
+				this.app,
+				() => this.inventory,
+				() => this.settings,
+				(entryName) => this.revealView(entryName),
+			),
+		);
 		await this.loadSettings();
 		await this.inventory.load();
 
@@ -126,8 +109,7 @@ export default class OcrPreviewPlugin extends Plugin {
 
 	onunload(): void {
 		if (this.reconcileTimer !== null) window.clearTimeout(this.reconcileTimer);
-		if (this.runningChild !== null) abortChild(this.runningChild);
-		this.runningChild = null;
+		this.conversion?.dispose();
 		void this.inventory?.saveImmediately();
 	}
 
@@ -244,7 +226,7 @@ export default class OcrPreviewPlugin extends Plugin {
 	}
 
 	async selectPdfAndConvert(): Promise<void> {
-		if (!this.checkConversionFree()) return;
+		if (!this.conversion.ensureIdle()) return;
 		const modal = new PdfSelectModal(
 			this.app,
 			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
@@ -255,149 +237,10 @@ export default class OcrPreviewPlugin extends Plugin {
 	}
 
 	private selectPagesAndConvert(file: TFile): void {
-		if (!this.checkConversionFree()) return;
+		if (!this.conversion.ensureIdle()) return;
 		const pageModal = new PageSelectModal(this.app, file);
-		pageModal.onSelection = (pages) => void this.convert(file, pages);
+		pageModal.onSelection = (pages) => void this.conversion.run(file, pages);
 		pageModal.open();
-	}
-
-	private checkConversionFree(): boolean {
-		if (this.isConverting) {
-			new Notice("OCR Preview: A conversion is already running.");
-			return false;
-		}
-		return true;
-	}
-
-	private async convert(file: TFile, pages?: string): Promise<void> {
-		if (!this.checkConversionFree()) return;
-		this.isConverting = true;
-		const name = file.basename;
-		let progressNotice: Notice | null = null;
-		try {
-			const duplicateStems = this.app.vault
-				.getFiles()
-				.filter(
-					(f) => f.extension === "pdf" && f.basename === name && f.path !== file.path,
-				);
-			if (duplicateStems.length > 0) {
-				new Notice(
-					`OCR Preview: "${name}" also exists as ${duplicateStems
-						.map((f) => f.path)
-						.join(", ")} — output would overwrite. Please rename one of the files.`,
-				);
-				return;
-			}
-			const adapter = this.app.vault.adapter;
-			if (!(adapter instanceof FileSystemAdapter)) {
-				new Notice("OCR Preview: Conversion requires file system access (Desktop).");
-				return;
-			}
-			const base = adapter.getBasePath();
-			const pdfRel = file.path;
-			const outRel = normalizePath(this.settings.previewFolder);
-			progressNotice = new Notice(`OCR Preview: Converting "${name}" …`, 0);
-			let cancelled = false;
-			const cancelBtn = progressNotice.containerEl.createEl("button", {
-				text: "Cancel",
-				cls: "ocr-notice-abbrechen",
-			});
-			cancelBtn.addEventListener("click", () => {
-				if (cancelled) return;
-				cancelled = true;
-				cancelBtn.detach();
-				progressNotice?.setMessage(`OCR Preview: "${name}" is being cancelled …`);
-				if (this.runningChild !== null) abortChild(this.runningChild);
-			});
-			const result = await convertPdf(
-				pdfRel,
-				outRel,
-				resolvePdf2md(),
-				base,
-				undefined,
-				{
-					timeoutMs: CONVERSION_TIMEOUT_MS,
-					...(pages && pages.length > 0 ? { pages } : {}),
-					onChild: (child) => {
-						this.runningChild = child;
-					},
-					onProgress: (e) => {
-						if (e.type !== "page" || cancelled) return;
-						if (progressNotice) {
-							const txt = e.derailed
-								? `— page ${e.num} of ${e.total} (derailed)`
-								: `— page ${e.num} of ${e.total}`;
-							progressNotice.setMessage(
-								`OCR Preview: Converting "${name}" ${txt} …`
-							);
-						}
-					},
-				},
-			);
-			this.runningChild = null;
-			progressNotice.hide();
-			progressNotice = null;
-			if (result.code !== 0) {
-				const stderrLast = result.stderrLast;
-				const stdoutLast = result.stdoutLast.filter((z) => !z.startsWith("→"));
-				const detail =
-					(stderrLast.length > 0
-						? stderrLast[stderrLast.length - 1]
-						: undefined) ??
-					(stdoutLast.length > 0 ? stdoutLast[stdoutLast.length - 1] : undefined) ??
-					"";
-				let codeText: string;
-				if (result.code === 6) {
-					codeText = "cancelled — partial file created (incomplete)";
-				} else if (result.code === 7) {
-					codeText = "cancelled — before first page (no partial file)";
-				} else if (result.signal === "SIGKILL") {
-					codeText = "cancelled — force terminated after grace period (SIGKILL)";
-				} else if (result.timeout) {
-					codeText = `cancelled after ${CONVERSION_TIMEOUT_MS / 60000} min`;
-				} else if (result.code === null && result.signal !== null) {
-					codeText = `cancelled (Signal ${result.signal})`;
-				} else if (result.code === null) {
-					codeText = "Start error";
-				} else {
-					codeText = `Code ${result.code}`;
-				}
-				let extra = detail.length > 0 ? ` — ${detail}` : "";
-				if (result.code === null && /ENOENT/.test(detail)) {
-					extra = " — pdf2md not found. Please run setup.sh in repo.";
-				}
-				new Notice(`OCR Preview: Conversion failed (${codeText})${extra}.`);
-				return;
-			}
-			const entryName = `${name}.md`;
-			const isPresent = () =>
-				this.inventory.entries.some(
-					(b) => b.name === entryName && b.file.parent?.path === outRel,
-				);
-			await this.inventory.reconcile();
-			for (let step = 0; !isPresent() && step < INDEX_WAIT_STEPS; step++) {
-				await new Promise((done) => window.setTimeout(done, INDEX_WAIT_MS));
-				await this.inventory.reconcile();
-			}
-			if (isPresent()) {
-				const opened = await this.revealView(entryName);
-				new Notice(
-					opened
-						? `OCR Preview: "${name}" finished — comparison opened.`
-						: `OCR Preview: "${name}" finished — preview created.`,
-				);
-			} else {
-				new Notice(
-					`OCR Preview: "${name}" finished, but was not placed in preview folder (Target: ${this.settings.previewFolder}).`,
-				);
-			}
-		} catch (err) {
-			new Notice(`OCR Preview: Conversion failed — ${String(err)}.`);
-		} finally {
-			progressNotice?.hide();
-			this.isConverting = false;
-			this.runningChild = null;
-		}
 	}
 
 	private populateFileMenu(menu: Menu, file: TAbstractFile): void {
