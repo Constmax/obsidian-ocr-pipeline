@@ -21,11 +21,13 @@ import sys
 import tempfile
 import time
 from datetime import date, datetime
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import cancellation
 import dictionary
 import assembly
+from page_cache import PageCache
 from assembly import (as_callout, build_document, clean_text, merge_fragments,
                         build_frontmatter, page_marker, assemble_paragraphs)
 from layout import (image_ratio, detect_boxes, assign_boxes,
@@ -116,7 +118,7 @@ def textlayer_lines(page):
     return lines
 
 
-def analyze_pages(pdf, dpi, ocr_only=False, selection=None):
+def analyze_pages(pdf, dpi, ocr_only=False, selection=None, cache=None):
     """Decide for each page: textlayer sufficient, or run through model?"""
     import fitz
     doc = fitz.open(pdf)
@@ -128,6 +130,12 @@ def analyze_pages(pdf, dpi, ocr_only=False, selection=None):
     for i in range(doc.page_count):
         if selection is not None and (i + 1) not in selection:
             continue
+        cached = cache.load(i + 1) if cache is not None else None
+        if cached is not None:
+            pages.append((i + 1, None, cached["chars"], cached["layout_type"],
+                          cached["gutter"], None, cached["boxes"],
+                          cached["diagram"], cached))
+            continue
         p = doc[i]
         chars = len(p.get_text("text").strip())
         scan = image_ratio(p) >= 0.5 or chars < 100
@@ -135,12 +143,13 @@ def analyze_pages(pdf, dpi, ocr_only=False, selection=None):
         boxes, diagram = detect_boxes(p, scan, table_frames)
         if not scan and not ocr_only:
             pages.append((i + 1, None, chars, "vektoriell", None,
-                          textlayer_lines(p), boxes, diagram))
+                          textlayer_lines(p), boxes, diagram, None))
             continue
         png = TMP / f"_seite{i+1:03d}.png"
         p.get_pixmap(dpi=dpi).save(png)
         layout_type, gutter = detect_layout(p)
-        pages.append((i + 1, png, chars, layout_type, gutter, None, boxes, diagram))
+        pages.append((i + 1, png, chars, layout_type, gutter, None, boxes,
+                      diagram, None))
     doc.close()
     return pages
 
@@ -271,6 +280,28 @@ def page_option(flag, text, page_count):
         sys.exit(f"{flag}: {e}")
 
 
+def _package_version(distribution):
+    try:
+        return version(distribution)
+    except PackageNotFoundError:
+        return "not-installed"
+
+
+def cache_parameters(args):
+    """Options and dependency versions that affect cached page results."""
+    return {
+        "dpi": args.dpi,
+        "tile_from": args.tile_from,
+        "detect_bold": not args.no_bold,
+        "ocr_only": args.ocr_only,
+        "retries": args.retries,
+        "model": MODEL,
+        "prompt": PROMPT,
+        "mlx_vlm_version": _package_version("mlx-vlm"),
+        "pymupdf_version": _package_version("PyMuPDF"),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf", nargs="?", default=None, help="Input PDF file")
@@ -306,6 +337,8 @@ def main():
                     help="Diagram pages without text callout")
     ap.add_argument("--pages", "--seiten", dest="pages", default="",
                     help="Convert only these pages")
+    ap.add_argument("--new", "--neu", dest="rebuild", action="store_true",
+                    help="Recompute selected pages instead of reading the page cache")
     ap.add_argument("--progress", "--fortschritt", dest="progress", action="store_true",
                     help="Output machine-readable progress as JSON lines on stderr")
     ap.add_argument("--check", action="store_true",
@@ -365,15 +398,25 @@ def main():
     TMP = Path(tmp_dir.name)
     try:
         a.out.mkdir(parents=True, exist_ok=True)
+        page_cache = PageCache(a.out, pdf, cache_parameters(a))
+        readable_cache = None if a.rebuild else page_cache
 
         selection_text = f" (pages {sorted(selection)})" if selection else ""
         print(f"Analyzing {pdf.name} (scan pages @ {a.dpi} dpi){selection_text} ...")
-        pages = analyze_pages(pdf, a.dpi, a.ocr_only, selection)
+        pages = analyze_pages(pdf, a.dpi, a.ocr_only, selection, readable_cache)
         if not pages:
             sys.exit(f"no pages to convert: {pdf.name}")
-        n_ocr = sum(1 for s in pages if s[1] is not None)
+        def page_source(page):
+            return (page[8]["source"] if page[8] is not None
+                    else ("ocr" if page[1] is not None else "textlayer"))
+
+        page_sources = [page_source(page) for page in pages]
+        n_ocr = page_sources.count("ocr")
+        n_pending_ocr = sum(1 for s in pages
+                            if s[8] is None and s[1] is not None)
+        n_cached = sum(1 for s in pages if s[8] is not None)
         print(f"   {len(pages)} pages — {len(pages)-n_ocr} from textlayer, "
-              f"{n_ocr} through model\n")
+              f"{n_ocr} OCR pages, {n_cached} cached\n")
 
         if a.progress:
             _progress({"typ": "start", "datei": pdf.name, "seiten": len(pages), "dpi": a.dpi})
@@ -389,7 +432,7 @@ def main():
                 print("   unambiguous cases will be replaced\n")
 
         ocr = None
-        if n_ocr:
+        if n_pending_ocr:
             from mlx_vlm import generate, load
             from mlx_vlm.prompt_utils import apply_chat_template
             from mlx_vlm.utils import load_config
@@ -473,13 +516,61 @@ def main():
 
         dump = []
 
-        for nr, png, chars, layout_type, gutter, textlayer, boxes, diagram in pages:
+        for (nr, png, chars, layout_type, gutter, textlayer, boxes, diagram,
+             cached) in pages:
             if cancellation.requested():
                 break
             t = time.perf_counter()
+            auto_diagram = diagram
             diagram = diagram or nr in forced
+            if cached is not None:
+                lines = cached["lines"]
+                trace = cached["trace"]
+                source = cached["source"]
+                mode = cached["mode"]
+                if trace:
+                    n_derailed += 1
+                dump.append({"seite": nr, "quelle": f"cache: {source}, {mode}",
+                             "zeilen": lines})
+                if diagram and a.diagram_image_only:
+                    paragraphs, discarded, findings = [], [], []
+                else:
+                    paragraphs = assemble_paragraphs(lines)
+                    discarded = getattr(assemble_paragraphs, "discarded", [])
+                    findings = []
+                    if source == "ocr":
+                        paragraphs, findings = dictionary.check(
+                            paragraphs, wb, a.dictionary_correct)
+                        n_corrected += sum(b.count for b in findings if b.corrected)
+                        n_suspect += sum(b.count for b in findings if not b.corrected)
+                        report += [
+                            {"seite": nr, "wort": b.word, "anzahl": b.count,
+                             "vorschlag": b.suggestion,
+                             "korrigiert": b.corrected}
+                            for b in findings
+                        ]
+                marker_extra = ("textlayer" if source == "textlayer" else
+                                f"ocr | {layout_type}, {mode}")
+                save_page(
+                    nr, paragraphs, diagram, time.perf_counter() - t, chars,
+                    f"cache: {source}, {mode}", discarded, trace,
+                    marker_extra, findings,
+                )
+                continue
+
             if textlayer is not None:
                 lines = split_columns(assign_boxes(textlayer, boxes))
+                page_cache.store(nr, {
+                    "source": "textlayer",
+                    "chars": chars,
+                    "layout_type": layout_type,
+                    "gutter": gutter,
+                    "boxes": boxes,
+                    "diagram": auto_diagram,
+                    "lines": lines,
+                    "trace": [],
+                    "mode": "textlayer",
+                })
                 dump.append({"seite": nr, "quelle": "textlayer", "zeilen": lines})
                 paragraphs = assemble_paragraphs(lines)
                 save_page(nr, paragraphs, diagram, time.perf_counter() - t, chars,
@@ -524,6 +615,17 @@ def main():
                 lines += trim_overlap(lines, ordered)
             if trace:
                 n_derailed += 1
+            page_cache.store(nr, {
+                "source": "ocr",
+                "chars": chars,
+                "layout_type": layout_type,
+                "gutter": gutter,
+                "boxes": boxes,
+                "diagram": auto_diagram,
+                "lines": lines,
+                "trace": trace,
+                "mode": mode,
+            })
             dump.append({"seite": nr, "quelle": f"{layout_type}, {mode}", "zeilen": lines})
             paragraphs = assemble_paragraphs(lines)
             discarded = getattr(assemble_paragraphs, "discarded", [])
@@ -548,8 +650,9 @@ def main():
                 source_pdf_path=pdf,
                 pages=len(written),
                 pages_textlayer=sum(1 for s in written
-                                    if s[5] is not None),
-                pages_ocr=sum(1 for s in written if s[5] is None),
+                                    if page_source(s) == "textlayer"),
+                pages_ocr=sum(1 for s in written
+                              if page_source(s) == "ocr"),
                 pages_diagram=n_diag,
                 pages_derailed=n_derailed,
                 words_suspect=n_suspect,

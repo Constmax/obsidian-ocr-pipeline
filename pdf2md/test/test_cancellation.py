@@ -135,7 +135,6 @@ def test_sigterm_before_first_page_no_partial_file():
             (Path(__file__).resolve().parent.parent / "out-C").glob("_tmp-*")
         ), "Temp folder still under pdf2md/out-C"
 
-
 def test_sigterm_during_last_page_complete():
     """Issue #25: SIGTERM during last page yields complete file."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -249,3 +248,50 @@ def test_sigint_halfway_through_run():
         assert not list(
             (Path(__file__).resolve().parent.parent / "out-C").glob("_tmp-*")
         ), "Temp folder still under pdf2md/out-C"
+
+        resumed = subprocess.run(
+            [
+                sys.executable,
+                "pdf2md/pdf2md.py",
+                str(pdf_path),
+                "--out",
+                str(out_dir),
+            ],
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert resumed.returncode == 0, resumed.stderr
+        assert f"{match.group(1)} cached" in resumed.stdout
+        resumed_text = target.read_text(encoding="utf-8")
+        assert "abgebrochen" not in resumed_text
+        assert all(f"%% S. {page} " in resumed_text for page in range(1, 51))
+
+        clean_out = Path(tmpdir) / "clean"
+        clean = subprocess.run(
+            [
+                sys.executable,
+                "pdf2md/pdf2md.py",
+                str(pdf_path),
+                "--out",
+                str(clean_out),
+            ],
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert clean.returncode == 0, clean.stderr
+        clean_text = (clean_out / "cancellation-test.md").read_text(
+            encoding="utf-8"
+        )
+        def without_run_time(value):
+            return re.sub(
+                r"^ocr-(?:datum|zeitpunkt):.*$", "", value,
+                flags=re.MULTILINE,
+            )
+
+        assert without_run_time(resumed_text) == without_run_time(clean_text)

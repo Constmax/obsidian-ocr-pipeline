@@ -253,15 +253,17 @@ With automated MediaBox Fix, large scans remain RAM-safe:
 pdf2md.py (CLI / Orchestration)
    ├── layout.py       Geometry: columns, boxes, tables, diagrams
    ├── ocr.py          Tiling, model invocation, derailment / repair
-   ├── zusammenbau.py  Markdown reassembly (pure functions) — testable
-   └── woerterbuch.py  Dictionary verification post-reassembly — testable
+   ├── assembly.py     Markdown reassembly (pure functions) — testable
+   ├── dictionary.py   Dictionary verification post-reassembly — testable
+   └── page_cache.py   Persistent page results for resumable runs — testable
 ```
 
 Reassembly represents the isolated unit-testable layer: `python3 -m pytest pdf2md/test -q` executes without MLX, fitz, or vault dependencies (golden snapshot in `pdf2md/test/daten/snapshot.json`; `pytest` included in `pdf2md/requirements.txt`). Heavy imports (`fitz`, `numpy`, `PIL`, `mlx_vlm`) are loaded scoped within functions across modules to maintain clean import chains.
 
-**Vault Copying**: `.ocr-bench/` in vault uses a flat structure (see `bench/pfade.py`, two-location convention) requiring **five** files: `pdf2md.py`, `layout.py`, `ocr.py`, `zusammenbau.py`, `woerterbuch.py`. Missing files trigger `ModuleNotFoundError`. For the same reason, legal term lists are embedded directly within modules rather than separate data files — a `daten/` directory would be lost during flat file copies.
+Stage 2 is run from the installed repository through `bin/pdf2md`; the former
+flat `.ocr-bench/` copy is not a supported installation path.
 
-## Stage 2: Dictionary Verification (`woerterbuch.py`)
+## Stage 2: Dictionary Verification (`dictionary.py`)
 
 Executes post-reassembly across **every OCR page** — skipping native textlayer pages whose text is exact and would produce false positives. Unrecognized terms are logged as `⌕` lines in execution output and added to `woerter-verdaechtig` in frontmatter.
 
@@ -302,9 +304,39 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
 - Page numbers are 1-based matching original PDF.
 - `--diagramm-seiten` uses the same grammar. Whitespace around entries is ignored.
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
-- `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
+- `running_lines()` (header/footer detection) evaluates the entire document so boilerplate analysis remains unaffected by page filtering.
 - Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`). Frontmatter `seiten` records count of selected pages.
 - Plugin queries selection via `SeitenAuswahlModal` (total page count rendered via pdf.js).
+
+## Page cache and `--new` (Stage 2)
+
+Every completed page is written atomically to
+`<out>/.cache/<pdf-stem>/<page>.json`. A record contains parsed lines and
+coordinates plus page provenance, layout, box, diagram, and derailment/repair
+metadata. Markdown assembly and dictionary checking are deliberately performed
+again on every run, so those layers can change without repeating model
+inference.
+
+The cache key includes a SHA-256 hash of the PDF and every option or dependency
+version that affects the page result: DPI, tiling threshold, bold detection,
+OCR-only mode, retry count, model identifier, prompt, MLX-VLM version, and
+PyMuPDF version. A mismatch or malformed record is treated as a cache miss;
+records from different configurations are never combined silently. Changes to
+page-analysis, tiling, OCR semantics, or model weights under an unchanged local
+identifier must increment `CACHE_VERSION` in `page_cache.py`; assembly-only
+changes do not.
+
+Existing valid records are used by default. Force recomputation with `--new`
+(`--neu`). Combine it with `--pages` to rebuild only selected pages:
+
+```bash
+pdf2md raw/ZR/skript.pdf --out _ocr-vorschau --new
+pdf2md raw/ZR/skript.pdf --out _ocr-vorschau --new --pages 12-15
+```
+
+The hidden `.cache/` directory is ignored by Git and should also be excluded
+from vault backup or synchronization rules when intermediate OCR data should
+remain local. Removing it is safe; the next conversion recreates it.
 
 ## --fortschritt (Stage 2)
 
@@ -373,4 +405,3 @@ pdf2md.py --check --out _ocr-preview
 - **1** — (wrapper) MLX venv does not exist
 
 The wrapper logic in `bin/pdf2md` skips its own fitz import check when `--check` is passed, delegating evaluation entirely to `pdf2md.py` for consistent exit codes.
-
