@@ -102,7 +102,8 @@ interface OcrCall {
 	args: [string, string, string, string];
 	spawnFn: unknown;
 	options: SearchableCopyOptions;
-	finish: (result: ConversionResult) => void;
+	/** Missing shortPages default to none. */
+	finish: (result: ConversionResult & { shortPages?: number[] }) => void;
 }
 
 function setup(host = new FakeHost()) {
@@ -115,8 +116,13 @@ function setup(host = new FakeHost()) {
 			calls.push({ args: [pdf, out, pdf2md, cwd], spawnFn, options, finish });
 		});
 	const searchableCopy: SearchableCopyFunction = (source, destination, cli, cwd, spawnFn, options = {}) =>
-		new Promise((finish) => {
-			ocrCalls.push({ args: [source, destination, cli, cwd], spawnFn, options, finish });
+		new Promise((resolve) => {
+			ocrCalls.push({
+				args: [source, destination, cli, cwd],
+				spawnFn,
+				options,
+				finish: (r) => resolve({ shortPages: [], ...r }),
+			});
 		});
 	const controller = new ConversionController(host, {
 		convert,
@@ -438,7 +444,7 @@ test("runOcr: passes paths and options, indeterminate progress, leaves success t
 	const done = result({ stdoutLast: ["✅ Written: /vault/raw/case-01-ocr.pdf"] });
 	call.finish(done);
 
-	assert.equal(await running, done);
+	assert.deepEqual(await running, { ...done, shortPages: [] });
 	assert.deepEqual(host.progress, ['OCR Preview: Creating searchable copy of "case-01" …']);
 	assert.equal(host.hidden, 1);
 	assert.deepEqual(host.notices, []);
@@ -584,4 +590,26 @@ test("classifyOcrFailure maps signals, start errors, ENOENT, and exit codes", ()
 		assert.equal(failure.kind, kind, JSON.stringify(overrides));
 		assert.equal(failure.message, message);
 	}
+});
+
+test("runOcr: a B5 failure with short pages is left to the caller", async () => {
+	const { host, ocrCalls, controller } = setup();
+	const running = controller.runOcr(OCR_REQUEST);
+	ocrCalls[0]!.finish({ ...result({ code: 1 }), shortPages: [1, 5] });
+
+	const failed = await running;
+	assert.deepEqual(failed?.shortPages, [1, 5]);
+	assert.deepEqual(host.notices, []);
+	assert.equal(controller.isRunning, false);
+});
+
+test("runOcr: a cancelled run reports cancellation and drops short pages", async () => {
+	const { host, ocrCalls, controller } = setup();
+	const running = controller.runOcr(OCR_REQUEST);
+	ocrCalls[0]!.options.onChild!(child);
+	controller.cancel();
+	ocrCalls[0]!.finish({ ...result({ code: 1 }), shortPages: [2] });
+
+	assert.deepEqual((await running)?.shortPages, []);
+	assert.deepEqual(host.notices, ['OCR Preview: Searchable copy of "case-01" cancelled — no file written.']);
 });

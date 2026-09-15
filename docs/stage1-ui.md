@@ -146,6 +146,16 @@ If B5 fails, show the exact short pages. Offer **Run with page exemptions…**,
 which opens a modal prefilled with those page numbers and reruns only after the
 user confirms the explicit list. Do not add a global “ignore B5” setting.
 
+*Implemented in #67.* `createSearchableCopy` collects every page from the
+B5 report, not just the last output lines. For such a failure the controller
+stays silent, and the action shows a persistent notice naming the pages with
+a **Run with page exemptions…** button. The modal (`src/exemption-modal.ts`)
+is prefilled and accepts only explicit pages or ranges. If a rerun fails on
+further pages, the new prefill keeps the confirmed exemptions and adds the new
+pages. A cancelled run never offers exemptions. Limit: exemptions only affect
+B5. `pdf-combine`'s document-wide quality gate (200 characters per page on
+average) still rejects a document that is mostly blank pages.
+
 An exceptional **Rebuild OCR text layer…** action may be designed after the
 safe workflow ships. It must warn that force OCR rasterizes born-digital text
 and must still produce a sibling file by default.
