@@ -52,10 +52,13 @@ users. The new mode has these semantics:
    OCR must not be overwritten. Use a same-filesystem exclusive primitive and
    fail cleanly if the final name appeared after the initial check.
    In Bash that primitive is effectively `ln` (fails if the target exists)
-   followed by removing the temporary name. iCloud Drive handles links
-   poorly, so verify `ln` inside the real vault path first; if it fails there,
-   fall back to a same-directory `mv` after the existence check and document
-   the remaining race window.
+   followed by removing the temporary name.
+   *Resolved in #63:* `ln` works and refuses existing targets inside both
+   iCloud Drive vault locations (`~/Documents` and the Obsidian iCloud
+   container), so there is no `mv` fallback. BSD `ln` links *into* a folder
+   that appears under the destination name, so the script confirms the new
+   link is the destination itself. Details in
+   [`scripts-detail.md`](scripts-detail.md#source-preserving-mode---output-file).
 6. On failure or cancellation, clean up all temporary output. `_FAILED_`
    artifacts remain available only to the legacy in-place shell workflow.
 
@@ -97,6 +100,14 @@ a detached group otherwise keeps running after Obsidian closes.
 Use indeterminate progress for the first release. A future CLI can emit JSON
 progress without changing the UI-facing conversion interface.
 
+*Implemented in #64* as `createSearchableCopy` and `terminateProcessGroup` in
+`conversion.ts` and `ConversionController.runOcr`. Two additions: the spawn
+prepends `~/bin`, `/opt/homebrew/bin` and `/usr/local/bin` to `PATH`, because
+Obsidian started from the Dock lacks them and `reprocess-raw` needs OCRmyPDF,
+qpdf, Ghostscript and Poppler; and Stage 1 has no timeout, since OCR time grows
+with page count and the user can cancel. On quit, the `SIGKILL` escalation
+only happens if Obsidian is still running when the grace period ends.
+
 **Complete when:** unit tests cover exact arguments, spawn errors, ordinary
 failure, cancellation escalation, and callback behavior; a local process-tree
 test proves that no descendant remains after cancellation; and all existing
@@ -123,6 +134,13 @@ letting commands reach into private view state.
 
 On success, show a notice with an action to open the sibling PDF. Do not run the
 Markdown cache inventory or Stage-2 reconciliation for a Stage-1-only result.
+
+*Implemented in #66* as `runSearchableCopy` in `src/searchable-copy.ts`, reached
+from the PDF file menu, the command **Create searchable copy (OCR)**, and the
+comparison view's More menu through `currentPdf()`. The destination check asks
+the vault adapter, so a file Obsidian has not indexed also counts. Instead of a
+notice button, the action waits up to two seconds for the vault index and opens
+the new PDF in a new tab. On mobile it shows only the desktop-only message.
 
 If B5 fails, show the exact short pages. Offer **Run with page exemptions…**,
 which opens a modal prefilled with those page numbers and reruns only after the
