@@ -4,6 +4,8 @@
 import tsparser from "@typescript-eslint/parser";
 import { defineConfig } from "eslint/config";
 import obsidianmd from "eslint-plugin-obsidianmd";
+// Not re-exported by the package entry point; the package has no exports map.
+import { DEFAULT_ACRONYMS } from "eslint-plugin-obsidianmd/dist/lib/rules/ui/acronyms.js";
 
 export default defineConfig([
 	// Generated artifacts and runtime data are not source code.
@@ -32,6 +34,15 @@ export default defineConfig([
 		files: ["src/conversion.ts"],
 		rules: {
 			"obsidianmd/prefer-window-timers": "off",
+		},
+	},
+	{
+		// The settings tab follows Obsidian's sentence case. The rule stays off
+		// elsewhere until the older UI strings in other files are updated.
+		// A custom acronym list replaces the defaults, so OCR is added to them.
+		files: ["src/settings.ts"],
+		rules: {
+			"obsidianmd/ui/sentence-case": ["error", { acronyms: [...DEFAULT_ACRONYMS, "OCR"] }],
 		},
 	},
 	{

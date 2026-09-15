@@ -7,6 +7,7 @@ import { Menu, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
 import { VIEW_TYPE, OcrComparisonView, PdfSelectModal, PageSelectModal } from "./view.ts";
 import { Inventory } from "./file-actions.ts";
 import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
+import { parseOcrSettings } from "./ocr-settings.ts";
 import { ConversionController } from "./conversion-controller.ts";
 import { createConversionHost } from "./conversion-host.ts";
 
@@ -152,6 +153,11 @@ export default class OcrPreviewPlugin extends Plugin {
 			else if (typeof saved["syncAktiv"] === "boolean") migrated.syncActive = saved["syncAktiv"];
 
 			if (typeof saved["mdEagerLimit"] === "number") migrated.mdEagerLimit = saved["mdEagerLimit"];
+
+			// OCR engine and column split: data from before these settings and
+			// invalid values (e.g. an engine this version does not offer) fall
+			// back to the defaults field by field.
+			Object.assign(migrated, parseOcrSettings(saved));
 
 			this.settings = { ...DEFAULT_SETTINGS, ...migrated };
 		} else {
