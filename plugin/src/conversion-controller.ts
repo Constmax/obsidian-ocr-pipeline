@@ -1,7 +1,8 @@
-// Conversion lifecycle for Stage 2 (pdf2md): one conversion at a time, child
-// ownership and cancellation, timeout policy, progress messages, result
-// classification, and opening the result. Free of Obsidian imports so it runs
-// under `node --test`; the plugin supplies a ConversionHost.
+// Conversion lifecycle for Stage 2 (pdf2md) and Stage 1 (reprocess-raw
+// --output): one conversion at a time, child ownership and cancellation,
+// timeout policy, progress messages, result classification, and opening the
+// Stage-2 result. Free of Obsidian imports so it runs under `node --test`; the
+// plugin supplies a ConversionHost.
 
 import { existsSync } from "fs";
 import { homedir } from "os";
@@ -11,8 +12,12 @@ import type { ChildProcess } from "child_process";
 import {
 	abortChild,
 	convertPdf,
+	createSearchableCopy,
+	terminateProcessGroup,
 	type ConversionOptions,
 	type ConversionResult,
+	type OcrEngine,
+	type SearchableCopyOptions,
 	type SpawnFunction,
 } from "./conversion.ts";
 
@@ -58,11 +63,35 @@ export type ConvertFunction = (
 	options?: ConversionOptions,
 ) => Promise<ConversionResult>;
 
+export type SearchableCopyFunction = (
+	source: string,
+	destination: string,
+	cli: string,
+	cwd: string,
+	spawnFn?: SpawnFunction,
+	options?: SearchableCopyOptions,
+) => Promise<ConversionResult>;
+
 export interface ControllerDependencies {
 	convert?: ConvertFunction;
+	/** Stops a Stage-2 child. */
 	abort?: (child: ChildProcess) => void;
 	resolveExecutable?: () => string;
 	timeoutMs?: number;
+	searchableCopy?: SearchableCopyFunction;
+	/** Stops a Stage-1 child together with its process group. */
+	abortGroup?: (child: ChildProcess) => void;
+	resolveReprocessRaw?: () => string;
+}
+
+/** A Stage-1 run; paths are vault-relative. */
+export interface SearchableCopyRequest {
+	source: PdfSource;
+	destination: string;
+	engine: OcrEngine;
+	splitColumns: boolean;
+	/** Pages exempt from the B5 gate, e.g. "1,5-7". */
+	allowPages?: string;
 }
 
 export type FailureKind =
@@ -82,19 +111,28 @@ export interface FailureDescription {
 }
 
 /** Candidate order: ~/bin, /usr/local/bin, then PATH; falls back to ~/bin. */
-export function resolvePdf2md(
+export function resolveCli(
+	name: string,
 	searchPath: string = process.env.PATH ?? "",
 	home: string = homedir(),
 	exists: (candidate: string) => boolean = existsSync,
 ): string {
-	const candidates = [join(home, "bin", "pdf2md"), "/usr/local/bin/pdf2md"];
+	const candidates = [join(home, "bin", name), join("/usr/local/bin", name)];
 	for (const part of searchPath.split(":")) {
-		if (part.length > 0) candidates.push(join(part, "pdf2md"));
+		if (part.length > 0) candidates.push(join(part, name));
 	}
 	for (const candidate of candidates) {
 		if (exists(candidate)) return candidate;
 	}
 	return candidates[0]!;
+}
+
+export function resolvePdf2md(
+	searchPath?: string,
+	home?: string,
+	exists?: (candidate: string) => boolean,
+): string {
+	return resolveCli("pdf2md", searchPath, home, exists);
 }
 
 /** Maps a non-zero pdf2md result to the user-facing failure message. */
@@ -146,15 +184,52 @@ export function classifyFailure(
 	return { kind, message: `OCR Preview: Conversion failed (${codeText})${extra}.` };
 }
 
+/**
+ * Maps a failed reprocess-raw result (not a user cancellation) to the
+ * user-facing message. The script reports its reason on a line starting with
+ * ❌; that line wins over the last output line ("No file written: …").
+ */
+export function classifyOcrFailure(result: ConversionResult): FailureDescription {
+	const lines = [...result.stdoutLast, ...result.stderrLast];
+	const reason = [...lines].reverse().find((line) => line.startsWith("❌"));
+	const last = result.stderrLast[result.stderrLast.length - 1] ?? result.stdoutLast[result.stdoutLast.length - 1];
+	let detail = (reason ?? last ?? "").replace(/^❌\s*/, "");
+
+	let kind: FailureKind;
+	let codeText: string;
+	if (result.signal === "SIGKILL") {
+		kind = "killed";
+		codeText = "force terminated (SIGKILL)";
+	} else if (result.code === null && result.signal !== null) {
+		kind = "signal";
+		codeText = `terminated (Signal ${result.signal})`;
+	} else if (result.code === null) {
+		kind = /ENOENT/.test(detail) ? "not-found" : "start-error";
+		codeText = "Start error";
+		if (kind === "not-found") detail = "reprocess-raw not found. Please run setup.sh in repo";
+	} else {
+		kind = "exit-code";
+		codeText = `Code ${result.code}`;
+	}
+
+	const extra = detail.length > 0 ? ` — ${detail.replace(/\.$/, "")}` : "";
+	return { kind, message: `OCR Preview: Searchable copy failed (${codeText})${extra}.` };
+}
+
 export class ConversionController {
 	private readonly host: ConversionHost;
 	private readonly convert: ConvertFunction;
 	private readonly abort: (child: ChildProcess) => void;
 	private readonly resolveExecutable: () => string;
 	private readonly timeoutMs: number;
+	private readonly searchableCopy: SearchableCopyFunction;
+	private readonly abortGroup: (child: ChildProcess) => void;
+	private readonly resolveReprocessRaw: () => string;
 
 	private running = false;
 	private child: ChildProcess | null = null;
+	/** How the current child is stopped: Stage 2 by PID, Stage 1 by process group. */
+	private stopChild: (child: ChildProcess) => void;
 	private progress: ProgressDisplay | null = null;
 	private cancelRequested = false;
 	private currentName = "";
@@ -165,6 +240,12 @@ export class ConversionController {
 		this.abort = dependencies.abort ?? ((child) => abortChild(child));
 		this.resolveExecutable = dependencies.resolveExecutable ?? (() => resolvePdf2md());
 		this.timeoutMs = dependencies.timeoutMs ?? CONVERSION_TIMEOUT_MS;
+		this.searchableCopy = dependencies.searchableCopy ?? createSearchableCopy;
+		this.abortGroup =
+			dependencies.abortGroup ?? ((child) => void terminateProcessGroup(child));
+		this.resolveReprocessRaw =
+			dependencies.resolveReprocessRaw ?? (() => resolveCli("reprocess-raw"));
+		this.stopChild = this.abort;
 	}
 
 	get isRunning(): boolean {
@@ -180,10 +261,8 @@ export class ConversionController {
 
 	async run(pdf: PdfSource, pages?: string): Promise<void> {
 		if (!this.ensureIdle()) return;
-		this.running = true;
-		this.cancelRequested = false;
+		this.begin(pdf.basename, this.abort);
 		const name = pdf.basename;
-		this.currentName = name;
 		try {
 			const duplicates = this.host.pdfsWithSameBasename(pdf);
 			if (duplicates.length > 0) {
@@ -234,11 +313,64 @@ export class ConversionController {
 		} catch (err) {
 			this.host.notify(`OCR Preview: Conversion failed — ${String(err)}.`);
 		} finally {
-			this.progress?.hide();
-			this.progress = null;
-			this.running = false;
+			this.end();
+		}
+	}
+
+	/**
+	 * Stage 1: writes a searchable copy of the source to `request.destination`
+	 * with `reprocess-raw --output`. Progress is indeterminate. Failures and
+	 * cancellation are reported here; success is left to the caller, which
+	 * opens the new PDF. Resolves with the CLI result, or null if nothing ran.
+	 */
+	async runOcr(request: SearchableCopyRequest): Promise<ConversionResult | null> {
+		if (!this.ensureIdle()) return null;
+		const name = request.source.basename;
+		this.begin(name, this.abortGroup);
+		try {
+			const base = this.host.vaultBasePath();
+			if (base === null) {
+				this.host.notify("OCR Preview: A searchable copy requires file system access (Desktop).");
+				return null;
+			}
+			const progress = this.host.showProgress(
+				`OCR Preview: Creating searchable copy of "${name}" …`,
+				() => this.cancel(),
+			);
+			this.progress = progress;
+			const result = await this.searchableCopy(
+				request.source.path,
+				request.destination,
+				this.resolveReprocessRaw(),
+				base,
+				undefined,
+				{
+					engine: request.engine,
+					splitColumns: request.splitColumns,
+					...(request.allowPages && request.allowPages.length > 0
+						? { allowPages: request.allowPages }
+						: {}),
+					onChild: (child) => {
+						this.child = child;
+					},
+				},
+			);
 			this.child = null;
-			this.cancelRequested = false;
+			progress.hide();
+			this.progress = null;
+			if (result.code !== 0) {
+				this.host.notify(
+					this.cancelRequested
+						? `OCR Preview: Searchable copy of "${name}" cancelled — no file written.`
+						: classifyOcrFailure(result).message,
+				);
+			}
+			return result;
+		} catch (err) {
+			this.host.notify(`OCR Preview: Searchable copy failed — ${String(err)}.`);
+			return null;
+		} finally {
+			this.end();
 		}
 	}
 
@@ -247,13 +379,28 @@ export class ConversionController {
 		if (this.progress === null || this.cancelRequested) return;
 		this.cancelRequested = true;
 		this.progress.setMessage(`OCR Preview: "${this.currentName}" is being cancelled …`);
-		if (this.child !== null) this.abort(this.child);
+		if (this.child !== null) this.stopChild(this.child);
 	}
 
-	/** Plugin unload: stop the child without waiting for its result. */
+	/** Plugin unload: stop the child (Stage 1: its whole process group) without waiting. */
 	dispose(): void {
-		if (this.child !== null) this.abort(this.child);
+		if (this.child !== null) this.stopChild(this.child);
 		this.child = null;
+	}
+
+	private begin(name: string, stopChild: (child: ChildProcess) => void): void {
+		this.running = true;
+		this.cancelRequested = false;
+		this.currentName = name;
+		this.stopChild = stopChild;
+	}
+
+	private end(): void {
+		this.progress?.hide();
+		this.progress = null;
+		this.running = false;
+		this.child = null;
+		this.cancelRequested = false;
 	}
 
 	private async openResult(

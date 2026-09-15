@@ -97,6 +97,14 @@ a detached group otherwise keeps running after Obsidian closes.
 Use indeterminate progress for the first release. A future CLI can emit JSON
 progress without changing the UI-facing conversion interface.
 
+*Implemented in #64* as `createSearchableCopy` and `terminateProcessGroup` in
+`conversion.ts` and `ConversionController.runOcr`. Two additions: the spawn
+prepends `~/bin`, `/opt/homebrew/bin` and `/usr/local/bin` to `PATH`, because
+Obsidian started from the Dock lacks them and `reprocess-raw` needs OCRmyPDF,
+qpdf, Ghostscript and Poppler; and Stage 1 has no timeout, since OCR time grows
+with page count and the user can cancel. On quit, the `SIGKILL` escalation
+only happens if Obsidian is still running when the grace period ends.
+
 **Complete when:** unit tests cover exact arguments, spawn errors, ordinary
 failure, cancellation escalation, and callback behavior; a local process-tree
 test proves that no descendant remains after cancellation; and all existing
