@@ -105,6 +105,42 @@ def test_header_band_is_read_before_the_columns():
     assert ordered[6:] == names("L", 20) + names("R", 20)
 
 
+def test_dense_running_header_is_read_before_the_columns():
+    # The header's last row sits less than one line height above the columns,
+    # and its location list crosses the gutter.
+    header = [
+        box("Logo", 200, 150, 900, height=90),
+        *(box(f"Ort{i}", 1000, 150 + i * 35, 2280, height=40) for i in range(4)),
+        box("Rubrik", 200, 300, 600, height=50),
+        box("Titel, Seite 7", 1800, 300, 2280, height=50),
+    ]
+    lines = column("L", LEFT, 370, 25) + column("R", RIGHT, 370, 25)
+    ordered = texts(order_lines(as_recognized(header + lines), W, H))
+    assert sorted(ordered[:7]) == sorted(texts(header))
+    assert ordered.index("Rubrik") < ordered.index("Titel, Seite 7")
+    assert ordered[7:] == names("L", 25) + names("R", 25)
+
+
+def test_footnotes_starting_level_in_both_columns_stay_in_their_column():
+    # The gap above the footnotes runs across the page in the bottom band.
+    left = column("L", LEFT, 1400, 30) + [box(f"FL{i}", 200, 3250 + i * 45, 1180, height=30)
+                                          for i in range(3)]
+    right = column("R", RIGHT, 1400, 30) + [box(f"FR{i}", 1300, 3250 + i * 45, 2000, height=30)
+                                            for i in range(2)]
+    footer = box("Fusszeile", 900, 3385, 1580)
+    ordered = order_lines(as_recognized(left + right + [footer]), W, H)
+    assert texts(ordered) == (
+        names("L", 30) + names("FL", 3) + names("R", 30) + names("FR", 2) + ["Fusszeile"]
+    )
+
+
+def test_running_footer_with_a_right_aligned_part_is_read_last():
+    lines = column("L", LEFT, 1400, 30) + column("R", RIGHT, 1400, 30)
+    footer = [box("Kurs", 200, 3300, 600), box("Titel, Seite 7", 1800, 3300, 2280)]
+    ordered = order_lines(as_recognized(lines + footer), W, H)
+    assert texts(ordered) == names("L", 30) + names("R", 30) + ["Kurs", "Titel, Seite 7"]
+
+
 def test_footnotes_stay_at_the_bottom_of_their_column():
     left = column("L", LEFT, 400, 15) + [box(f"FL{i}", 200, 1400 + i * 45, 1180, height=30)
                                           for i in range(3)]
