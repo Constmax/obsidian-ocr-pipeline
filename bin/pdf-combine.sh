@@ -156,7 +156,8 @@ ocr_arg_flags=()
 if [ "$SPLIT_COLUMNS" = true ]; then
     ocr_arg_flags+=(--no-rotate --no-deskew)
 fi
-build_ocr_args ocr_args "${ocr_arg_flags[@]}"
+# Bash 3.2 (macOS /bin/bash) treats an empty "${arr[@]}" as unbound under set -u.
+build_ocr_args ocr_args ${ocr_arg_flags[@]+"${ocr_arg_flags[@]}"}
 
 OCR_OK=true
 if [ "$NO_QUALITY_GATE" = true ]; then
