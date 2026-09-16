@@ -5,6 +5,7 @@ import { FileSystemAdapter, Notice, Platform, normalizePath, type App } from "ob
 
 import type { ConversionHost } from "./conversion-controller.ts";
 import type { Inventory } from "./file-actions.ts";
+import { ExemptionModal } from "./exemption-modal.ts";
 import type { SearchableCopyHost } from "./searchable-copy.ts";
 import type { Settings } from "./settings.ts";
 
@@ -24,6 +25,18 @@ export function createSearchableCopyHost(app: App, settings: () => Settings): Se
 			return true;
 		},
 		wait: (ms) => new Promise((done) => window.setTimeout(done, ms)),
+		offerExemptions(offer) {
+			// Stays until the user acts on it or clicks it away.
+			const notice = new Notice(offer.message, 0);
+			const button = notice.containerEl.createEl("button", {
+				text: "Run with page exemptions…",
+				cls: "ocr-notice-abbrechen",
+			});
+			button.addEventListener("click", () => {
+				notice.hide();
+				new ExemptionModal(app, offer).open();
+			});
+		},
 	};
 }
 
