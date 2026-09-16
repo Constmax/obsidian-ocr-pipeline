@@ -17,7 +17,7 @@ Options:
    --output-dir DIR                Output folder (Default: <input>/_processed)
    --engine auto|apple|tesseract   OCR engine (Default: auto)
    --dpi N                         Downscale target (Default: $DEFAULT_DPI, 0 = off)
-   --jobs N                        Parallel OCR workers (Default: $DEFAULT_JOBS)
+   --jobs N                        Parallel OCR workers (Default: by RAM, 1–4)
    --cleanup                       Move originals to _archive/ after success
    --fast                          Presets for large batches (dpi $FAST_DPI, jobs $FAST_JOBS)
    --split-columns                 Detect two-column pages, split + re-merge
@@ -33,33 +33,19 @@ INPUT_DIR=$(cd "$1" 2>/dev/null && pwd) || {
 }
 shift
 
+# Common options (--engine, --dpi, --jobs, split flags, --no-quality-gate)
+# are parsed and validated by parse_common_option in pdf-lib.sh.
 OUTPUT_DIR="$INPUT_DIR/_processed"
-ENGINE="auto"
-TARGET_DPI=$DEFAULT_DPI
-JOBS=$DEFAULT_JOBS
 CLEANUP=false
 FAST=false
-NO_QUALITY_GATE=false
 while [ $# -gt 0 ]; do
     case "$1" in
-        --output-dir)       OUTPUT_DIR="$2"; shift 2 ;;
-        --engine)           ENGINE="$2"; shift 2 ;;
-        --dpi)              TARGET_DPI="$2"; shift 2 ;;
-        --jobs)             JOBS="$2"; shift 2 ;;
+        --output-dir)       require_option_value "$@"; OUTPUT_DIR="$2"; shift 2 ;;
         --cleanup)          CLEANUP=true; shift ;;
         --fast)             FAST=true; shift ;;
-        --split-columns)     SPLIT_COLUMNS=true; shift ;;
-        --split-columns-all) SPLIT_COLUMNS=true; SPLIT_ALL_PAGES=true; shift ;;
-        --keep-split)        KEEP_SPLIT=true; shift ;;
-        --no-quality-gate)   NO_QUALITY_GATE=true; shift ;;
-        *) echo "⚠️  Unknown option: $1"; shift ;;
+        *) parse_common_option "$@"; shift "$OPTION_SHIFT" ;;
     esac
 done
-
-case "$ENGINE" in
-    auto|apple|tesseract) ;;
-    *) echo "❌ --engine must be 'auto', 'apple', or 'tesseract'"; exit 1 ;;
-esac
 
 # ── Init shared state ──
 lib_init "$ENGINE" "$FAST"
