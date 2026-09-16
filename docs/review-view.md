@@ -136,6 +136,12 @@ this version does not offer) fall back to the defaults field by field.
 PaddleOCR is not offered yet. Obsidian on mobile shows only a desktop-only
 notice in this section.
 
+The action itself is **Create searchable copy (OCR)**: in the PDF file menu,
+as a command that asks for a PDF, and in the view's More menu for the open
+preview's original PDF. It writes `<stem>-ocr.pdf` beside the source with
+`reprocess-raw --output`, stops if that file already exists, never touches the
+source, and opens the new PDF.
+
 ## Testing
 
 `cd plugin` — `npm run check` (tsc), `npm run lint` (eslint with

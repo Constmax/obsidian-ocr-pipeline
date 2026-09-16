@@ -42,7 +42,9 @@ export interface ConversionOptions {
 	onProgress?: (event: ProgressEvent) => void;
 }
 
-export type OcrEngine = "auto" | "apple" | "tesseract";
+// One definition of the offered engines, shared with the settings.
+import type { OcrEngine } from "./ocr-settings.ts";
+export type { OcrEngine };
 
 export interface SearchableCopyOptions {
 	/** Omitted: the CLI default (`auto`). */
