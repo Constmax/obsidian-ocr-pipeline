@@ -1,0 +1,142 @@
+{
+ "description": "Reading-order truth set for issue #69 (docs/paddle-textlayer.md, step 3). Sources resolve against VAULT_ROOT. Region boxes are x0, y0, x1, y1 in thousandths of the page image width and height, listed in reading order; each recognized line belongs to the smallest region containing its centre and is read in rows within it. Conventions: header first; per section the left column (body, then footnotes, then its margin notes), then the right column; full-width headings where they stand; footer last. Handwriting inside the body area is read in its row.",
+ "pages": [
+  {"id": "t01", "source": "raw/OeR/Verwaltungsrecht-AT/Verwaltungsprozessrecht.pdf", "page": 16,
+   "layout": "two columns, running header, footnotes, footer",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 97]},
+    {"role": "body", "column": "L", "box": [0, 97, 508, 905]},
+    {"role": "footnote", "column": "L", "box": [0, 905, 508, 962]},
+    {"role": "body", "column": "R", "box": [508, 97, 1000, 896]},
+    {"role": "footnote", "column": "R", "box": [508, 896, 1000, 962]},
+    {"role": "footer", "box": [0, 962, 1000, 1000]}
+   ]},
+  {"id": "t02", "source": "raw/OeR/Verwaltungsrecht-AT/Verwaltungsprozessrecht.pdf", "page": 24,
+   "layout": "two columns, handwritten notes in both margins, footnotes",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 105]},
+    {"role": "body", "column": "L", "box": [85, 105, 510, 885]},
+    {"role": "footnote", "column": "L", "box": [0, 885, 510, 955]},
+    {"role": "note", "column": "L", "box": [0, 105, 85, 885]},
+    {"role": "body", "column": "R", "box": [510, 105, 935, 840]},
+    {"role": "footnote", "column": "R", "box": [510, 840, 1000, 955]},
+    {"role": "note", "column": "R", "box": [935, 105, 1000, 840]},
+    {"role": "footer", "box": [0, 955, 1000, 1000]}
+   ]},
+  {"id": "t03", "source": "raw/OeR/Verwaltungsrecht-AT/Allgemeines-Verwaltungsrecht-Skript.pdf", "page": 22,
+   "layout": "two columns, shaded heading, handwritten margin note, footnotes",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 120]},
+    {"role": "body", "column": "L", "box": [0, 120, 510, 900]},
+    {"role": "footnote", "column": "L", "box": [0, 900, 510, 952]},
+    {"role": "body", "column": "R", "box": [510, 120, 918, 875]},
+    {"role": "footnote", "column": "R", "box": [510, 875, 1000, 952]},
+    {"role": "note", "column": "R", "box": [918, 120, 1000, 875]},
+    {"role": "footer", "box": [0, 952, 1000, 1000]}
+   ]},
+  {"id": "t04", "source": "raw/OeR/Verwaltungsrecht-AT/Verwaltungsrecht AT Fall 8.pdf", "page": 9,
+   "layout": "two columns, shaded headings, footnotes",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 115]},
+    {"role": "body", "column": "L", "box": [0, 115, 510, 910]},
+    {"role": "footnote", "column": "L", "box": [0, 910, 510, 950]},
+    {"role": "body", "column": "R", "box": [510, 115, 1000, 870]},
+    {"role": "footnote", "column": "R", "box": [510, 870, 1000, 950]},
+    {"role": "footer", "box": [0, 950, 1000, 1000]}
+   ]},
+  {"id": "t05", "source": "raw/StR/Rep-Faelle/strafrecht-fall-01.pdf", "page": 12,
+   "layout": "two columns, photographed with skew, boxed notes, footnotes",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 92]},
+    {"role": "body", "column": "L", "box": [0, 92, 512, 850]},
+    {"role": "footnote", "column": "L", "box": [0, 850, 512, 928]},
+    {"role": "body", "column": "R", "box": [512, 92, 1000, 845]},
+    {"role": "footnote", "column": "R", "box": [512, 845, 1000, 928]},
+    {"role": "footer", "box": [0, 928, 1000, 1000]}
+   ]},
+  {"id": "t06", "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-fall-18.pdf", "page": 11,
+   "layout": "two columns, boxed notes",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 122]},
+    {"role": "body", "column": "L", "box": [0, 122, 512, 940]},
+    {"role": "body", "column": "R", "box": [512, 122, 1000, 940]},
+    {"role": "footer", "box": [0, 940, 1000, 1000]}
+   ]},
+  {"id": "t07", "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-fall-4-5.pdf", "page": 11,
+   "layout": "header, full-width title above two columns, overview boxes",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 128]},
+    {"role": "heading", "box": [0, 128, 1000, 165]},
+    {"role": "body", "column": "L", "box": [0, 165, 520, 900]},
+    {"role": "body", "column": "R", "box": [520, 165, 1000, 900]},
+    {"role": "footer", "box": [0, 900, 1000, 1000]}
+   ]},
+  {"id": "t08", "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-fall-4-5.pdf", "page": 16,
+   "layout": "two columns, boxed heading and notes, footnotes",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 135]},
+    {"role": "body", "column": "L", "box": [0, 135, 512, 893]},
+    {"role": "footnote", "column": "L", "box": [0, 893, 512, 955]},
+    {"role": "body", "column": "R", "box": [512, 135, 1000, 870]},
+    {"role": "footnote", "column": "R", "box": [512, 870, 1000, 955]},
+    {"role": "footer", "box": [0, 955, 1000, 1000]}
+   ]},
+  {"id": "t09", "source": "raw/ZR/Arbeitsrecht/hemmer-arbeitsrecht-fall-01.pdf", "page": 4,
+   "layout": "two columns, boxed headings and notes, footnotes",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 127]},
+    {"role": "body", "column": "L", "box": [0, 127, 512, 912]},
+    {"role": "footnote", "column": "L", "box": [0, 912, 512, 958]},
+    {"role": "body", "column": "R", "box": [512, 127, 1000, 905]},
+    {"role": "footnote", "column": "R", "box": [512, 905, 1000, 958]},
+    {"role": "footer", "box": [0, 958, 1000, 1000]}
+   ]},
+  {"id": "t10", "source": "raw/ZR/BGB-AT/BGB-AT_14.Lösung.pdf", "page": 1,
+   "layout": "two columns from a 150-dpi scan, header, full-width title",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 125]},
+    {"role": "heading", "box": [0, 125, 1000, 165]},
+    {"role": "body", "column": "L", "box": [0, 165, 510, 945]},
+    {"role": "body", "column": "R", "box": [510, 165, 1000, 945]},
+    {"role": "footer", "box": [0, 945, 1000, 1000]}
+   ]},
+  {"id": "t11", "source": "raw/ZR/Arbeitsrecht/hemmer-arbeitsrecht-fall-01.pdf", "page": 1,
+   "layout": "single column, header, title, footer",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 125]},
+    {"role": "heading", "box": [0, 125, 1000, 165]},
+    {"role": "body", "box": [0, 165, 1000, 940]},
+    {"role": "footer", "box": [0, 940, 1000, 1000]}
+   ]},
+  {"id": "t12", "source": "raw/StR/Strafrecht-AT/Strafrecht AT II.pdf", "page": 15,
+   "layout": "single column, handwritten notes beside headings, page number",
+   "regions": [
+    {"role": "body", "box": [0, 0, 1000, 880]},
+    {"role": "footer", "box": [0, 880, 1000, 1000]}
+   ]},
+  {"id": "t13", "source": "raw/StR/Strafrecht-AT/Strafrecht AT III.pdf", "page": 14,
+   "layout": "single column, handwritten notes above the title and in the left margin",
+   "regions": [
+    {"role": "body", "box": [0, 0, 1000, 890]},
+    {"role": "footer", "box": [0, 890, 1000, 1000]}
+   ]},
+  {"id": "t14", "source": "raw/StR/Strafrecht-AT/Strafrecht AT VI - Fahrlaessigkeit.pdf", "page": 3,
+   "layout": "single column, page number",
+   "regions": [
+    {"role": "body", "box": [0, 0, 1000, 900]},
+    {"role": "footer", "box": [0, 900, 1000, 1000]}
+   ]},
+  {"id": "t15", "source": "raw/StR/Strafrecht-BT/strafrecht-bt-diebstahl-skript-1.pdf", "page": 11,
+   "layout": "single column, photographed with skew",
+   "regions": [
+    {"role": "body", "box": [0, 0, 1000, 1000]}
+   ]},
+  {"id": "t16", "source": "raw/StR/Strafrecht-AT/Strafrecht Fall 2.pdf", "page": 4,
+   "layout": "single column, header, footer, photographed with binder rings",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 130]},
+    {"role": "body", "box": [0, 130, 1000, 935]},
+    {"role": "footer", "box": [0, 935, 1000, 1000]}
+   ]}
+ ]
+}

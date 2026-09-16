@@ -337,6 +337,59 @@ forever. The median criterion is the gate.
 **Complete when:** the truth set and comparison output are reproducible, and
 the result explicitly says either “keep split mode” or “unsplit is supported.”
 
+**Implemented** in #69:
+
+- **`ordering.order_lines()`:** pure geometry, used by `generate_hocr`. It
+  estimates the skew from the median direction of long lines and measures every
+  line deskewed. Header and footer bands end at a horizontal gap of at least
+  one line height and 1.5 times the usual leading, in the top 22 % or bottom
+  12 % of the page. A gutter lies between 30 % and 70 % of the text width,
+  almost no narrow line crosses it, and lines stand side by side on both
+  sides. A line crossing the gutter with no column line beside it separates
+  sections; each section is read left column, then right. Within a column,
+  lines are read in rows, and short lines standing in the margin follow their
+  column. The debug JSON lists the chosen order.
+- **Truth set:** `bench/reading_order_truth.json`, 16 vault pages (10 two-column,
+  6 single-column). Role regions (header, heading, body, footnote, note,
+  footer) were drawn on gridded page images before any ordering output for
+  those pages was looked at. Truth lines are the PP-OCRv5 lines, each assigned
+  to the smallest region containing its centre and read in rows. Overlays
+  (`bench/reading_order.py overlay`) were checked by hand; no recognized line
+  lies outside every region.
+- **Metric:** `bench/reading_order.py score` finds every truth line of at least
+  10 normalized characters in the `pdftotext -raw` output by 4-gram voting.
+  Longer lines claim their text first, so a citation repeated in a footnote
+  does not take the place of the body line containing it. The score is
+  pairwise precedence accuracy over matched lines. Reported separately:
+  unmatched and duplicated lines, full-width lines out of order against a
+  column line, sections whose body columns interleave, page count, B5 (at
+  least 50 characters) and output size. No numeric file-size gate exists in
+  the Stage-1 scripts, so size is reported, not gated.
+- **Not covered by a real page:** a full-width heading *between* two column
+  regions. The truth set has full-width titles only above the columns; the
+  case between regions is covered by the synthetic tests in
+  `test_paddle_ordering.py`.
+
+**Result:** **keep split mode.** `--engine paddle --split-columns` stays the
+supported command. Numbers, pinned versions and commands are in
+`bench/ERGEBNIS.md`, Nachtrag 19.
+
+- Unsplit PaddleOCR with `order_lines()` has a higher median accuracy than
+  both split baselines, but it places full-width lines inside a column on
+  several pages, which the gate forbids.
+- **Running header:** on the repetitorium pages the header's last row sits
+  less than one line height above the columns. No header band is cut, and the
+  right part of that row ("…, Seite N") is read as the first line of the right
+  column. On two pages the header's multi-line location list follows it there.
+- **Footnotes across the page:** where both columns' footnotes start at the
+  same height, the gap above them runs across the page. The footnotes fall
+  into the footer band and are read in rows across both columns.
+- **Split baselines:** they fail the full-width criterion more often. The split
+  cuts the header row, so its right half follows the whole left column.
+- **Next attempt:** a fix for the two cases must be measured on pages outside
+  this truth set. Tuning against the same 16 pages would not show that the
+  gate passes.
+
 ### 4. Replace binary engine flags with one resolved state
 
 Prerequisites: #48 (central validation of common options, including
