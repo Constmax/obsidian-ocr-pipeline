@@ -1,6 +1,7 @@
 .DS_Store
 __pycache__/
 *.pyc
+.cache/
 
 # Setup-Sicherungen: alte ~/bin-Verknüpfungen, die setup.sh vor dem Ersetzen
 # protokolliert (maschinenspezifisch, nicht ins Repo)

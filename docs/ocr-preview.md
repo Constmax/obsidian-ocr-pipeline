@@ -40,6 +40,7 @@ Files move between three flat sibling folders — the folder location **is** the
 
 ```
 _ocr-vorschau/              open (awaiting review)
+_ocr-vorschau/.cache/       resumable per-page OCR results (generated)
 _ocr-vorschau/_akzeptiert/    accepted
 _ocr-vorschau/_abgelehnt/     rejected (nothing is ever deleted)
 ```
@@ -48,6 +49,10 @@ _ocr-vorschau/_abgelehnt/     rejected (nothing is ever deleted)
 (`notiz`, `geprüft-bis`, manual PDF mapping) and can be safely deleted at any time. Details on reconciliation rules: [review-view.md](review-view.md).
 
 `_ocr-vorschau/assets/` remains where it is: All three folders share the diagram images (`![[…png]]`); they are **not** moved alongside.
+
+`_ocr-vorschau/.cache/` is generated state, not review content. It is safe to
+delete, ignored by Git, and should be excluded from vault backup or sync rules
+when cached OCR text should remain local.
 
 ## Frontmatter Fields
 
@@ -78,4 +83,3 @@ pdf2md "raw/…/file.pdf" --out _ocr-vorschau --neuversuche 0
 Dictionary checking: Enabled by default in reporting mode. Replace clear-cut cases with `--woerterbuch-korrigieren`, disable with `--kein-woerterbuch`. Sources and limits: [scripts-detail.md](scripts-detail.md).
 
 Benchmark metrics and error categories: [../bench/ERGEBNIS.md](../bench/ERGEBNIS.md).
-
