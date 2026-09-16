@@ -1,9 +1,17 @@
-import { App, PluginSettingTab, Setting, TextComponent, normalizePath } from "obsidian";
+import { App, Platform, PluginSettingTab, Setting, TextComponent, normalizePath } from "obsidian";
 import type OcrPreviewPlugin from "./main.ts";
+import {
+	DEFAULT_OCR_SETTINGS,
+	DESKTOP_ONLY_MESSAGE,
+	OCR_ENGINES,
+	isOcrEngine,
+	type OcrEngine,
+	type OcrSettings,
+} from "./ocr-settings.ts";
 
 export type OperationMode = "review-flow" | "workbench";
 
-export interface Settings {
+export interface Settings extends OcrSettings {
 	/** Folder where pdf2md.py writes (--out). */
 	previewFolder: string;
 	acceptedFolder: string;
@@ -34,9 +42,17 @@ export const DEFAULT_SETTINGS: Settings = {
 	pdfZoomMax: 2,
 	syncActive: true,
 	mdEagerLimit: 200,
+	...DEFAULT_OCR_SETTINGS,
 };
 
 const PATH_DEBOUNCE_MS = 600;
+
+/** One label per offered engine; the Record type rejects extra engines. */
+const ENGINE_LABELS: Record<OcrEngine, string> = {
+	auto: "Automatic",
+	apple: "Apple Vision",
+	tesseract: "Tesseract",
+};
 
 export class SettingsTab extends PluginSettingTab {
 	constructor(
@@ -169,6 +185,49 @@ export class SettingsTab extends PluginSettingTab {
 			.addText((t) => this.widthField(t, 0))
 			.addText((t) => this.widthField(t, 1))
 			.addText((t) => this.widthField(t, 2));
+
+		this.searchableCopySettings();
+	}
+
+	/** Engine and column split for "Create searchable copy"; desktop only. */
+	private searchableCopySettings(): void {
+		const { containerEl } = this;
+		new Setting(containerEl).setName("Searchable copy").setHeading();
+
+		if (!Platform.isDesktopApp) {
+			containerEl.createEl("p", { cls: "ocr-einstellungen-hinweis", text: DESKTOP_ONLY_MESSAGE });
+			return;
+		}
+
+		new Setting(containerEl)
+			.setName("OCR engine")
+			.setDesc(
+				"Used for new searchable copies. Automatic uses Apple Vision when its " +
+					"OCRmyPDF plugin is installed and Tesseract otherwise.",
+			)
+			.addDropdown((d) => {
+				for (const engine of OCR_ENGINES) d.addOption(engine, ENGINE_LABELS[engine]);
+				d.setValue(this.plugin.settings.ocrEngine).onChange(async (value) => {
+					if (!isOcrEngine(value)) return;
+					this.plugin.settings.ocrEngine = value;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName("Split two-column pages")
+			.setDesc(
+				"Detects two-column pages, recognizes each column on its own, and merges " +
+					"the pages back. Recommended for two-column scripts; needs pikepdf.",
+			)
+			.addToggle((t) =>
+				t
+					.setValue(this.plugin.settings.splitColumns)
+					.onChange(async (val) => {
+						this.plugin.settings.splitColumns = val;
+						await this.plugin.saveSettings();
+					}),
+			);
 	}
 
 	/** Percentage field for a column width: Invalid falls back to default,
