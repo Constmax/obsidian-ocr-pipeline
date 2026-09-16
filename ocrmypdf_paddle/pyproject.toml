@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocrmypdf-paddle"
+dynamic = ["version"]
+description = "OCRmyPDF engine plugin: PaddleOCR PP-OCRv5 models through RapidOCR (ONNX Runtime)"
+requires-python = ">=3.12"
+# Pins from the runtime spike (#62, bench/ERGEBNIS.md, Nachtrag 18). The
+# engine checks the installed versions at startup (runtime.PINNED_PACKAGES).
+dependencies = [
+    "ocrmypdf==17.8.0",
+    "rapidocr==3.9.2",
+    "onnxruntime==1.26.0",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "ocrmypdf_paddle.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
