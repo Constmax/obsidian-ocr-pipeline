@@ -1845,3 +1845,117 @@ Je Seite (`*` = Textspalten verschränkt):
   - **Fehler:** Kurze Zeilen, etwa eine Fundstelle in der Fußnote, trafen dieselbe Textstelle in einer längeren Zeile der anderen Spalte. Das ergab falsche Verschränkungen und Doppelte, bei `split-apple` z. B. 5 statt 1 verschränkte Seiten und 59 statt 9 doppelte Zeilen.
   - **Korrektur:** Längere Zeilen belegen ihre Textstelle jetzt zuerst, mit Test in `bench/test_reading_order.py`. Alle Workflows wurden neu bewertet; `order_lines()` blieb dabei unverändert.
 - **Keine Nachjustierung:** `order_lines()` wurde an diesen 16 Seiten nicht nachjustiert. Eine Korrektur für den dichten Kopf und für seitenbreite Fußnotenlücken muss auf Seiten außerhalb dieses Sets gemessen werden. Sonst zeigt ein bestandenes Gate nur Anpassung an das Set.
+
+## Nachtrag 2026-09-16 (20): Lesereihenfolge — dichter Kopf, Fußnoten beider Spalten und neue Prüfseiten für #87
+
+**Ergebnis: keep split mode.** Auf 13 neuen Prüfseiten steht keine Vollbreite-Zeile mehr falsch, aber drei Gate-Kriterien bleiben verletzt: 3 Kopfzeilen werden nicht gefunden, und auf 3 Seiten gelten die Spalten als verschränkt. `--engine paddle --split-columns` bleibt der unterstützte Befehl; #71 vergleicht ungeteiltes PaddleOCR nicht.
+
+Auf den alten 16 Seiten besteht das Gate jetzt. Diese Seiten haben die beiden Fehler aber erst gezeigt, ihr Ergebnis belegt nur, dass die Korrektur dort wirkt. Entschieden wird auf den neuen Seiten.
+
+Plan: `docs/paddle-textlayer.md`, Schritt 3. Vorgänger: Nachtrag 19.
+
+### Korrektur (`aad8774`)
+
+**Befund auf den alten Seiten:** Die erkannten Zeilenboxen der dichten Scans überlappen sich senkrecht (Boxhöhe 50–75 px bei rund 38 px Zeilenabstand). `_leading()` ergibt deshalb 0, und zwischen Kopf und Text liegen nur 1–27 px. Keine Lückenschwelle trennt dort Kopf und Text.
+
+**Signal:** Auf allen Repetitoriums-Seiten endet der Kopf mit der Zeile „Rubrik | …, Seite N“. Deren rechter Teil ist rechtsbündig und beginnt 3,6–9,4 Zeilenhöhen rechts von dem Rand, an dem die vollen Zeilen der rechten Spalte beginnen. In Textzeilen beginnt die rechte Zeile höchstens 1,6 Zeilenhöhen neben diesem Rand (hängende Gliederungsziffern, Einzüge).
+
+**`order_lines()` auf Zweispalterseiten (`_column_bands()`):**
+- **Spaltenpaar:** eine linke und eine rechte Zeile nebeneinander; die rechte beginnt höchstens `ALIGN` = 2,5 Zeilenhöhen rechts vom Rand der rechten Spalte.
+- **Kopf:** reicht bis zur untersten Lücke zwischen Zeilenkernen (halbe Zeilenhöhe um die Zeilenmitte) oberhalb des ersten Spaltenpaars, weiterhin in den oberen 22 % der Seite und mit höchstens einem Viertel der Zeilen.
+- **Fuß:** Zeilen des Fußbands gehen von oben her zeilenweise an die Spalten zurück, solange eine Zeile nur Zeilen einer Spalte oder ein Spaltenpaar enthält und mindestens eine davon ein Spaltenpaar enthält. Die erste Zeile, die den Steg kreuzt oder ohne Spaltenpaar beide Seiten belegt, beginnt den Fuß.
+- **Tests:** synthetische Tests in `ocrmypdf_paddle/test/test_paddle_ordering.py` für den dichten Kopf, für Fußnoten auf gleicher Höhe in beiden Spalten und für eine zweiteilige Fußzeile mit rechtsbündigem Teil. Die ersten beiden schlagen mit dem Stand von `main` fehl. Alle 123 Paddle- und Bench-Tests bestehen.
+
+Die Korrektur wurde committet, bevor die neuen Seiten ausgesucht wurden, und danach nicht mehr geändert.
+
+### Neue Prüfseiten (`dfcbdfc`)
+
+**Set:** `bench/reading_order_holdout.json`, 13 Seiten aus 9 Dokumenten, die im alten Set nicht vorkommen.
+- **Zweispalter (12):** alle mit Repetitoriums-Kopf. Auf n04, n06 und n07 beginnen die Fußnoten beider Spalten auf gleicher Höhe, auf n05 und n10 fast gleich hoch.
+- **Einspalter (1):** n13 als Kontrolle.
+- **Fehlende Seitenart:** Eine echte Vollbreite-Überschrift *zwischen* zwei Spaltenbereichen fand sich in den durchgesehenen Dokumenten nicht; n11 hat nur einen Falltitel über den Spalten.
+
+**Ablauf:**
+1. Seiten auf Übersichtsbildern ausgewählt, ohne Ordnungsausgabe.
+2. `prepare` und `recognize`, dann Regionen auf den Rasterbildern gezeichnet.
+3. Overlays von Hand geprüft; keine erkannte Zeile liegt außerhalb aller Regionen. Zeilen nahe einer Regionsgrenze wurden zusätzlich als Text geprüft; danach liegt die Kopfgrenze auf n04 höher, weil die erste Zeile der rechten Spalte auf dem schiefen Scan in den Kopfbereich ragte.
+4. Wahrheit committet, erst danach `score`.
+
+**Befehle:** wie in Nachtrag 19, mit eigener Wahrheit und eigenem Laufverzeichnis:
+
+```text
+python bench/reading_order.py --truth bench/reading_order_holdout.json --run-dir <neu> prepare
+python bench/reading_order.py --truth bench/reading_order_holdout.json --run-dir <neu> recognize
+python bench/reading_order.py --truth bench/reading_order_holdout.json --run-dir <neu> overlay
+python bench/reading_order.py --truth bench/reading_order_holdout.json --run-dir <neu> run --optimize 3
+python bench/reading_order.py --truth bench/reading_order_holdout.json --run-dir <neu> --python <OCRmyPDF-Python> score
+```
+
+**Umgebung:** unverändert gegenüber Nachtrag 19 (dieselben Umgebungen, Modelle und Versionen). Kein Lauf zeigt einen Engine-Fallback.
+
+### Messwerte auf den neuen Seiten
+
+| Workflow | Seiten | Median | Mittel | Min | Median (gemeinsame Zeilen) | verschränkte Seiten | Vollbreite falsch / doppelt / fehlt (von 86) | nicht gefunden (von 1360) | doppelt | Seitenprüfung fehlgeschlagen | Größe |
+|---|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| `split-apple` | 13 | 94,8 % | 95,1 % | 89,9 % | 94,7 % | 2 | 61 / 0 / 8 | 30 | 24 | 0 | 9,2 MB |
+| `split-tesseract` | 13 | 94,8 % | 95,0 % | 87,7 % | 94,6 % | 2 | 61 / 0 / 14 | 26 | 21 | 0 | 9,2 MB |
+| `unsplit-apple` | 13 | 97,0 % | 96,0 % | 83,1 % | 96,9 % | 5 | 32 / 0 / 7 | 20 | 32 | 0 | 7,6 MB |
+| `unsplit-tesseract` | 13 | 91,4 % | 90,5 % | 77,1 % | 91,4 % | 8 | 14 / 0 / 10 | 58 | 22 | 0 | 7,8 MB |
+| `split-paddle` | 13 | 94,9 % | 94,8 % | 85,8 % | 94,7 % | 2 | 64 / 0 / 7 | 11 | 29 | 0 | 9,3 MB |
+| `unsplit-paddle` | 13 | 100,0 % | 99,1 % | 91,9 % | 100,0 % | 3 | 0 / 0 / 3 | 8 | 33 | 0 | 8,6 MB |
+| `rapidocr-order` | 13 | 77,9 % | 80,1 % | 76,1 % | 77,3 % | 12 | 0 / 0 / 0 | 0 | 20 | – | – |
+| `order_lines` | 13 | 100,0 % | 96,3 % | 76,0 % | 100,0 % | 3 | 0 / 0 / 0 | 0 | 25 | – | – |
+
+Je Seite (`*` = Textspalten verschränkt):
+
+| Seite | Layout | `split-apple` | `split-tesseract` | `unsplit-apple` | `unsplit-tesseract` | `split-paddle` | `unsplit-paddle` | `rapidocr-order` | `order_lines` |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| n01 | Zweispalter, dichter Kopf, Zitatkästen, Fußnoten, Fuß | 99,3 % | 99,2 % | 99,2 %* | 97,5 % | 99,3 % | 100,0 % | 77,0 %* | 100,0 % |
+| n02 | Zweispalter, dichter Kopf, Kästen, Fuß | 94,2 % | 94,1 % | 94,0 % | 82,7 %* | 94,2 % | 100,0 % | 77,9 %* | 100,0 % |
+| n03 | Zweispalter, dichter Kopf, Kästen, Fußnote rechts, Ordnerring | 94,9 % | 94,8 % | 94,9 % | 85,1 %* | 94,9 % | 100,0 % | 79,3 %* | 100,0 % |
+| n04 | Zweispalter, dichter Kopf, Fußnoten gleich hoch, schiefer Hochkontrast-Scan | 94,8 %* | 94,7 %* | 94,8 %* | 90,0 %* | 94,8 %* | 98,5 %* | 77,5 %* | 78,0 %* |
+| n05 | Zweispalter, dichter Kopf, Kasten, Fußnoten fast gleich hoch | 95,0 % | 95,0 % | 99,2 % | 78,4 %* | 95,0 % | 100,0 % | 79,2 %* | 100,0 % |
+| n06 | Zweispalter, dichter Kopf, Fußnoten gleich hoch, dunkler Scanrand | 94,8 % | 94,8 % | 94,8 % | 91,4 % | 94,8 % | 100,0 % | 76,3 %* | 100,0 % |
+| n07 | Zweispalter, Kopf, Kasten, Fußnoten gleich hoch, Ordnerring | 94,8 % | 94,8 % | 97,0 %* | 100,0 % | 94,9 % | 97,7 %* | 78,4 %* | 97,7 %* |
+| n08 | Zweispalter, angeschnittener Kopf, Kästen, lange Fußnoten auf verschiedener Höhe | 96,7 % | 98,3 % | 93,3 %* | 97,6 %* | 96,7 % | 100,0 % | 78,0 %* | 100,0 % |
+| n09 | zwei Spalten mit Fragekästen, Handschrift in einer Fragezeile, durchscheinender Text am linken Rand | 89,9 %* | 87,7 %* | 83,1 %* | 77,1 %* | 85,8 %* | 91,9 %* | 76,1 %* | 76,0 %* |
+| n10 | Zweispalter, dichter Kopf, Kästen, Fußnoten fast gleich hoch, Ordnerring | 95,3 % | 95,0 % | 99,2 % | 78,3 %* | 95,2 % | 100,0 % | 77,3 %* | 100,0 % |
+| n11 | Kopf, Vollbreite-Falltitel über zwei Gliederungsspalten | 93,5 % | 93,3 % | 100,0 % | 98,9 %* | 93,5 % | 100,0 % | 77,4 %* | 100,0 % |
+| n12 | dichter Kopf, zwei ungleich lange Kastenspalten, Fußnote rechts | 93,8 % | 93,9 % | 98,9 % | 100,0 % | 93,9 % | 100,0 % | 86,7 %* | 100,0 % |
+| n13 | einspaltig, Kopf, Fuß, Ordnerring | 100,0 % | 99,9 % | 100,0 % | 99,9 % | 100,0 % | 100,0 % | 99,9 % | 100,0 % |
+
+### Befunde auf den neuen Seiten
+
+**Gate für `unsplit-paddle`:**
+- **Median:** 100,0 % gegen die beste Split-Baseline 94,8 % (`split-apple`, `split-tesseract`). Das Kriterium ist erfüllt.
+- **Seitenprüfungen:** Seitenzahl und B5 bestehen auf allen 13 Seiten.
+- **Vollbreite-Zeilen falsch oder doppelt:** keine. Die Kopfkorrektur trägt auf den neuen Seiten. Mit `order_lines()` von `main` stünden auf denselben Zeilen des echten Laufs 18 Vollbreite-Zeilen falsch und 4 Seiten wären verschränkt.
+- **Vollbreite-Zeilen nicht gefunden:** Das Kriterium ist verfehlt, 3 Kopfzeilen fehlen. Es sind Erkennungs-, keine Ordnungsfehler: Der echte Lauf erkennt die mit `--rotate-pages --deskew` aufbereitete Seite neu und liest die angeschnittene erste Kopfzeile auf n08, ein Ortslisten-Bruchstück auf n11 und „Juristisches Repetitorium“ auf n10 anders als das Seitenbild der Wahrheit.
+- **Keine Verschränkung:** Das Kriterium ist verfehlt, n04, n07 und n09 gelten als verschränkt.
+  - **n07, echter Fehler:** Die Fußnoten beider Spalten beginnen auf gleicher Höhe, ihre Zeilen sind aber um eine halbe Zeile gegeneinander versetzt. `_row_groups()` legt deshalb nie eine linke und eine rechte Fußnote in dieselbe Zeile. Die Fußregel sucht das Spaltenpaar innerhalb einer Zeile, findet keins und gibt keine Fußnote an die Spalten zurück; die Fußnoten werden über beide Spalten zeilenweise gelesen. Auf n10 (Fußnoten fast gleich hoch) greift die Regel; mit `main` war n10 verschränkt.
+  - **n04 und n09 im echten Lauf, Messartefakt:** Die Reihenfolge der Debug-Ausgabe ist regionsweise richtig (Kopf, linke Spalte, linke Fußnoten, rechte Spalte, rechte Fußnoten, Fuß). n04 ist in Einzelwörter zerlegt („Fixgeschäft“ steht mehrfach als eigene Zeile), n09 wiederholt Fundstellen („Hemmer/Wüst, Basics Zivilrecht, Band 1“). `score` vergibt gleiche Schlüssel der Reihe nach und erzeugt so scheinbare Spaltenwechsel.
+  - **n04 und n09 in `order_lines` auf der Wahrheitsgeometrie:** 78 % bzw. 76 %. Auf dem nicht entzerrten Seitenbild findet `_gutter()` keinen Steg, die Seite wird zeilenweise gelesen. `main` verhält sich dort gleich. Der echte Workflow entzerrt vorher und liest beide Seiten spaltenweise.
+
+**Split-Baselines:** 61–64 Vollbreite-Zeilen falsch, Median 94,8–94,9 %; derselbe Kopfschnitt wie in Nachtrag 19.
+
+**Native ungeteilte OCR:** keine Alternative. Apple verschränkt 5 Seiten, Tesseract 8.
+
+### Alte 16 Seiten mit der Korrektur
+
+`unsplit-paddle` neu gelaufen; die übrigen Workflows sind die Läufe aus Nachtrag 19.
+
+| Workflow | Median | Mittel | Min | verschränkte Seiten | Vollbreite falsch / doppelt / fehlt (von 77) | nicht gefunden (von 1348) | Seitenprüfung fehlgeschlagen |
+|---|---:|---:|---:|---:|---|---:|---:|
+| `unsplit-paddle` (Nachtrag 19) | 99,7 % | 99,0 % | 94,9 % | 1 | 18 / 0 / 0 | 5 | 0 |
+| `unsplit-paddle` (Korrektur) | 100,0 % | 100,0 % | 99,9 % | 0 | 0 / 0 / 0 | 5 | 0 |
+| `order_lines` (Nachtrag 19) | 99,7 % | 99,4 % | 97,3 % | 1 | 10 / 0 / 0 | 0 | – |
+| `order_lines` (Korrektur) | 100,0 % | 100,0 % | 99,9 % | 0 | 0 / 0 / 0 | 0 | – |
+
+Das Gate meldet hier „unsplit is supported“. Weil die Korrektur an diesen Seiten entstand, belegt das keine Verallgemeinerung.
+
+### Einschränkungen und nächster Schritt
+
+- **Keine Nachjustierung auf den neuen Seiten:** Die Ursache auf n07 ist bekannt (Spaltenpaar im ganzen oberen Fußband statt je Zeile suchen), aber nicht behoben. Eine Korrektur entstünde an n07 und bräuchte wieder eigene, ungesehene Seiten.
+- **Metrik:** Kurze, im Text wiederholte Zeilen (Einzelwörter, gleiche Fundstellen) können Verschränkungen vortäuschen. Das Gate zählt sie trotzdem; die Gate-Kriterien bleiben unverändert.
+- **Fehlende Seitenart:** Eine Vollbreite-Überschrift zwischen zwei Spaltenbereichen ist weiterhin nur synthetisch getestet.
+- **Laufzeit:** `unsplit-paddle` brauchte 146 s für die 13 neuen und 182 s für die 16 alten Seiten, `split-paddle` 140 s für die neuen; nur ein Richtwert, gemessen wird in Schritt 5.
