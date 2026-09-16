@@ -8,11 +8,18 @@ All three scripts share these flags:
 |---|---|---|
 | `--engine auto\|apple\|tesseract` | `auto` | OCR engine selection |
 | `--dpi N` | `300` | Pre-OCR downscaling (0 = disabled) |
-| `--jobs N` | `2` | Parallel OCR workers |
+| `--jobs N` | by RAM (1–4) | Parallel OCR workers |
 | `--split-columns` | off | Automatically detect two-column pages, split, then re-merge back into original page layout |
 | `--split-columns-all` | off | Same as `--split-columns`, but without detection — splits every page |
 | `--keep-split` | off | Suppress re-merge (output remains split into half-pages) |
 | `--no-quality-gate` | off | Disable automated quality check + auto-retry |
+
+These flags are parsed and validated in one place (`parse_common_option` in
+`pdf-lib.sh`), so all three scripts apply the same rules: a missing or invalid
+value (`--jobs 0`, `--dpi abc`) and any unknown option stop the script with a
+usage error before any processing. A value you pass explicitly is kept as
+given, even when it equals the default: `--jobs 2` is never replaced by RAM
+detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 
 ### Engine Selection
 
@@ -31,8 +38,8 @@ Downscaling defaults to **Bicubic** resampling (`/Bicubic`) instead of Ghostscri
 
 ### Jobs Tuning
 
-- `auto`: Automatically determined via `detect_safe_jobs()`: ≤ 8 GB RAM → 1 job, ≤ 16 GB → 2 jobs, > 16 GB → 4 jobs. Overridable with `--jobs N`.
-- `2`: Default, safe on Apple Silicon with ≥ 16 GB RAM
+- `auto` (without `--jobs`): Automatically determined via `detect_safe_jobs()`: ≤ 8 GB RAM → 1 job, ≤ 16 GB → 2 jobs, > 16 GB → 4 jobs. Overridable with `--jobs N`.
+- `2`: Safe on Apple Silicon with ≥ 16 GB RAM
 - `1`: Single-threaded, enforced on 8 GB Macs (M1 Air, etc.)
 - `4-8`: High-end machines with abundant RAM only
 
@@ -49,7 +56,7 @@ pdf-auto <folder> [--output-dir <dir>] [--engine ...] [--dpi N] [--jobs N] \
 
 - `--output-dir <dir>`: Custom output path (Default: `<folder>/_processed/`)
 - `--cleanup`: Move originals to `<folder>/_archive/` after success (empties input folder, improving repeatability)
-- `--fast`: Presets for large batch jobs:
+- `--fast`: Presets for large batch jobs (an explicit `--dpi`/`--jobs` wins):
   - `--dpi 200` (instead of 300)
   - `--jobs 1` (more stable)
 - `--split-columns`: Per-page detection of two-column layouts, splits pages, and re-merges back into original page layout post-OCR — structural solution against column interleaving in Hemmer/Kaiser materials, including mixed documents (see "Column Splitting" below)

@@ -16,7 +16,7 @@ Usage: $(basename "$0") <folder> <output-name> [options]
 Options:
    --engine auto|apple|tesseract   OCR engine (Default: auto)
    --dpi N                         Downscale target (Default: $DEFAULT_DPI, 0 = off)
-   --jobs N                        Parallel OCR workers (Default: $DEFAULT_JOBS)
+   --jobs N                        Parallel OCR workers (Default: by RAM, 1–4)
    --split-columns                 Detect two-column pages, split + re-merge
    --split-columns-all             Like --split-columns, but split ALL pages (no auto-detect)
    --keep-split                    Suppress re-merge (keep half-pages)
@@ -40,27 +40,10 @@ fi
 
 OUTPUT_FILE="${INPUT_DIR}/${OUTPUT_NAME}.pdf"
 
-ENGINE="auto"
-TARGET_DPI=$DEFAULT_DPI
-JOBS=$DEFAULT_JOBS
-NO_QUALITY_GATE=false
+# All options are common ones, parsed and validated in pdf-lib.sh.
 while [ $# -gt 0 ]; do
-    case "$1" in
-        --engine)           ENGINE="$2"; shift 2 ;;
-        --dpi)              TARGET_DPI="$2"; shift 2 ;;
-        --jobs)             JOBS="$2"; shift 2 ;;
-        --split-columns)     SPLIT_COLUMNS=true; shift ;;
-        --split-columns-all) SPLIT_COLUMNS=true; SPLIT_ALL_PAGES=true; shift ;;
-        --keep-split)        KEEP_SPLIT=true; shift ;;
-        --no-quality-gate)  NO_QUALITY_GATE=true; shift ;;
-        *) echo "⚠️  Unknown option: $1"; shift ;;
-    esac
+    parse_common_option "$@"; shift "$OPTION_SHIFT"
 done
-
-case "$ENGINE" in
-    auto|apple|tesseract) ;;
-    *) echo "❌ --engine must be 'auto', 'apple', or 'tesseract'"; exit 1 ;;
-esac
 
 # ── Init ──
 lib_init "$ENGINE" "false"
