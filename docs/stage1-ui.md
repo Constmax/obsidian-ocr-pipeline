@@ -135,6 +135,13 @@ letting commands reach into private view state.
 On success, show a notice with an action to open the sibling PDF. Do not run the
 Markdown cache inventory or Stage-2 reconciliation for a Stage-1-only result.
 
+*Implemented in #66* as `runSearchableCopy` in `src/searchable-copy.ts`, reached
+from the PDF file menu, the command **Create searchable copy (OCR)**, and the
+comparison view's More menu through `currentPdf()`. The destination check asks
+the vault adapter, so a file Obsidian has not indexed also counts. Instead of a
+notice button, the action waits up to two seconds for the vault index and opens
+the new PDF in a new tab. On mobile it shows only the desktop-only message.
+
 If B5 fails, show the exact short pages. Offer **Run with page exemptions…**,
 which opens a modal prefilled with those page numbers and reruns only after the
 user confirms the explicit list. Do not add a global “ignore B5” setting.
