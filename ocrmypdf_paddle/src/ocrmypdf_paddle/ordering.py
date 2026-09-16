@@ -11,7 +11,10 @@ geometry alone:
 2. Cut off a header and a footer band at a horizontal gap that no line
    crosses, near the top or the bottom of the page.
 3. Look for a gutter between 30 % and 70 % of the text width that almost no
-   narrow line crosses, with lines side by side on both sides.
+   narrow line crosses, with lines side by side on both sides. On such a
+   page the columns begin at the first column pair, so a running header
+   closer above them than a gap still belongs to the header, and footer
+   rows paired across the gutter (footnotes) go back to their columns.
 4. A line crossing the gutter with no column line beside it is full width
    (a heading, a single-column paragraph, a footer) and separates the page
    into sections. A crossing line beside column lines (a note written into
@@ -47,6 +50,10 @@ GUTTER_BINS = 200
 
 #: Fewest lines on each side of a gutter.
 MIN_COLUMN_LINES = 4
+
+#: A right column line starting within this many line heights of the
+#: column's text edge begins a column row.
+ALIGN = 2.5
 
 
 @dataclass(frozen=True)
@@ -87,7 +94,13 @@ def order_lines(lines: Sequence[TextLine], width: int, height: int) -> list[Text
         return list(lines)
     h = statistics.median(box.h for box in boxes)
     header, body, footer = _bands(boxes, height, h)
-    ordered = _rows(header, h) + _body(body, h) + _rows(footer, h)
+    gutter = _gutter(body, h)
+    if gutter is None:
+        middle = _column(body, h)
+    else:
+        header, body, footer = _column_bands(boxes, header, body, footer, gutter, height, h)
+        middle = _sections(body, gutter, h)
+    ordered = _rows(header, h) + middle + _rows(footer, h)
     return [lines[box.index] for box in ordered] + [lines[i] for i in unplaced]
 
 
@@ -191,11 +204,103 @@ def _leading(boxes: list[_Box]) -> float:
     return statistics.median(spaces) if spaces else 0.0
 
 
-def _body(boxes: list[_Box], h: float) -> list[_Box]:
-    gutter = _gutter(boxes, h)
-    if gutter is None:
-        return _column(boxes, h)
-    return _sections(boxes, gutter, h)
+def _column_bands(
+    boxes: list[_Box],
+    header: list[_Box],
+    body: list[_Box],
+    footer: list[_Box],
+    gutter: float,
+    height: int,
+    h: float,
+) -> tuple[list[_Box], list[_Box], list[_Box]]:
+    """Header and footer bands of a two-column page, cut at its column pairs.
+
+    Detected boxes overlap on densely set scans, so a running header can sit
+    closer above the columns than any gap _bands() accepts. The header grows
+    to the lowest gap between line cores above the first column pair, within
+    the top HEADER_SHARE and a quarter of the lines.
+
+    Footnotes starting at the same height in both columns leave a page-wide
+    gap above them, which puts them into the footer. Footer rows holding a
+    column pair or lines of one column only go back to the columns, so the
+    footnotes stay at the bottom of their column; the footer starts at the
+    first row crossing the gutter or pairing lines that are no column rows.
+    """
+    edge = _right_edge(body, gutter, h)
+    pairs = _pairs(body, gutter, edge, h)
+    if pairs:
+        first = min(min(a.cy, b.cy) for a, b in pairs) - h / 4
+        above = [
+            cut
+            for cut in _core_gaps(boxes, h)
+            if cut <= min(first, HEADER_SHARE * height)
+            and sum(box.cy < cut for box in boxes) <= 0.25 * len(boxes)
+        ]
+        if above:
+            header = header + [box for box in body if box.cy < max(above)]
+            body = [box for box in body if box.cy >= max(above)]
+    rows = _row_groups(footer, h)
+    count, paired = 0, False
+    for row in rows:
+        sides = [_side(box, gutter, h) for box in row]
+        row_paired = bool(_pairs(row, gutter, edge, h))
+        if None in sides or (len(set(sides)) == 2 and not row_paired):
+            break
+        count, paired = count + 1, paired or row_paired
+    if paired:
+        body = body + [box for row in rows[:count] for box in row]
+        footer = [box for row in rows[count:] for box in row]
+    return header, body, footer
+
+
+def _side(box: _Box, gutter: float, h: float) -> str | None:
+    """"L" or "R" for a line clear of the gutter, None for a line crossing it."""
+    if box.x1 <= gutter + 0.25 * h:
+        return "L"
+    if box.x0 >= gutter - 0.25 * h:
+        return "R"
+    return None
+
+
+def _right_edge(boxes: list[_Box], gutter: float, h: float) -> float:
+    """Where the full lines of the right column start."""
+    right = [box for box in boxes if _side(box, gutter, h) == "R"]
+    if not right:
+        return gutter
+    span = max(box.x1 for box in right) - min(box.x0 for box in right)
+    full = [box for box in right if box.w >= 0.7 * span] or right
+    return statistics.median(box.x0 for box in full)
+
+
+def _pairs(
+    boxes: list[_Box], gutter: float, edge: float, h: float
+) -> list[tuple[_Box, _Box]]:
+    """Left and right column lines beside each other, the right one at the column edge.
+
+    Hanging numerals and indents start within ALIGN line heights of the
+    edge; the right part of a running header or footer is right-aligned or
+    centred and starts well inside the column.
+    """
+    left = [box for box in boxes if _side(box, gutter, h) == "L"]
+    right = [
+        box for box in boxes if _side(box, gutter, h) == "R" and box.x0 <= edge + ALIGN * h
+    ]
+    return [(a, b) for b in right for a in left if _beside(a, b)]
+
+
+def _core_gaps(boxes: list[_Box], h: float) -> list[float]:
+    """Heights of horizontal gaps that no line's core crosses.
+
+    A core is the middle half line height around a line's centre.
+    """
+    cores = sorted((box.cy - h / 4, box.cy + h / 4) for box in boxes)
+    gaps = []
+    reach = cores[0][1]
+    for top, bottom in cores[1:]:
+        if top > reach:
+            gaps.append((reach + top) / 2)
+        reach = max(reach, bottom)
+    return gaps
 
 
 def _overlap(a: _Box, b: _Box) -> float:
