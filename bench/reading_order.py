@@ -371,7 +371,7 @@ def prepare(args):
 
     target = _pages_dir(args)
     target.mkdir(parents=True, exist_ok=True)
-    for spec in load_truth():
+    for spec in load_truth(args.truth):
         png, pdf = target / f"{spec['id']}.png", target / f"{spec['id']}.pdf"
         if not png.exists():
             with tempfile.TemporaryDirectory() as tmp:
@@ -398,7 +398,7 @@ def recognize(args):
     recognizer = runtime.Recognizer()
     target = args.run_dir / "truth-lines"
     target.mkdir(parents=True, exist_ok=True)
-    for spec in load_truth():
+    for spec in load_truth(args.truth):
         started = time.monotonic()
         page = recognizer.recognize(_pages_dir(args) / f"{spec['id']}.png")
         record = {"width": page.width, "height": page.height,
@@ -424,7 +424,7 @@ def overlay(args):
     target = args.run_dir / "overlay"
     target.mkdir(parents=True, exist_ok=True)
     only = set(args.pages or [])
-    for spec in load_truth():
+    for spec in load_truth(args.truth):
         if only and spec["id"] not in only:
             continue
         record = _recognized(args, spec["id"])
@@ -469,7 +469,7 @@ def _log(args, name):
 
 
 def run(args):
-    specs = load_truth()
+    specs = load_truth(args.truth)
     pages = _pages_dir(args)
     for name in args.workflows or WORKFLOWS:
         out = args.run_dir / "runs" / name
@@ -554,7 +554,7 @@ def _percent(value):
 
 
 def score(args):
-    specs = load_truth()
+    specs = load_truth(args.truth)
     names = [name for name in WORKFLOWS if (args.run_dir / "runs" / name).is_dir()]
     results = defaultdict(dict)
     checks = defaultdict(dict)
@@ -633,6 +633,8 @@ def score(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--run-dir", type=Path, default=RUN_DIR)
+    parser.add_argument("--truth", type=Path, default=TRUTH,
+                        help="truth set (default: %(default)s); give each set its own --run-dir")
     parser.add_argument("--python", default=sys.executable,
                         help="Python of the OCRmyPDF environment (default: this one)")
     commands = parser.add_subparsers(dest="command", required=True)
