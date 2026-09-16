@@ -87,6 +87,8 @@ Für den Fall, dass eine bereits in `raw/` liegende Datei mit der aktuellen Pipe
 
 Bei Fehlschlag bleibt die Quelldatei unverändert; das fehlerhafte Ergebnis landet zur Inspektion daneben (`<name>_FAILED_*.pdf`). `--allow-pages "1,5-7"` nimmt bekannte Deckblatt-/Grafik-Seiten ohne Fließtext von Check 2 aus. Alle unbekannten Flags gehen 1:1 an `pdf-combine` durch.
 
+**Original behalten:** `reprocess-raw <datei.pdf> --output <datei>-ocr.pdf` schreibt das Ergebnis in eine neue Datei und fasst die Quelle nie an. Das Ziel darf noch nicht existieren und wird nie überschrieben; bei Fehlschlag oder Abbruch entsteht gar keine Datei (auch kein `_FAILED_`). Diesen Modus wählen, wenn der Nutzer das Original behalten will.
+
 **Bei jedem Batch-Reprocessing mehrerer bestehender `raw/`-Dateien immer `reprocess-raw` statt eines eigenen Ad-hoc-Kopier-Scripts verwenden** — der ungeprüfte Direkt-Überschreiben-Ansatz hat bereits einmal 14 Dateien mit einem stillen Halbseiten-Bug korrumpiert (siehe `references/BUGREPORT-2026-07-06-split-merge.md`).
 
 ## Vault-Integration (PW/)

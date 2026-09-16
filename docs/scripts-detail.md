@@ -129,17 +129,28 @@ Alphanumeric with Natural Sort. Use numerical prefixes for explicit ordering: `0
 ## reprocess-raw
 
 ```bash
-reprocess-raw <raw-pdf-file> [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
+reprocess-raw <raw-pdf-file> [--output FILE] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
 ```
 
 Wrapper around `pdf-combine` for the scenario "re-process an existing `raw/` file with the updated pipeline" (e.g. after bug fixes). Workflow:
 
-1. Copies source file to temporary directory and executes `pdf-combine` with passed options.
+1. Copies source file to a private temporary directory (`$TMPDIR`, outside the vault) and executes `pdf-combine` with passed options.
 2. **Check 1 — Page Count:** Output page count must match original exactly. Mismatch → original remains unchanged, result saved as `<name>_FAILED_pagecount.pdf` alongside source.
 3. **Check 2 — B5 Gate (`column_tools.py verify-pages`):** Every page must contain ≥ `--min-chars` characters (Default 50, via `pdftotext -raw`). A document-wide character average (as checked by standard quality gate) can mask a single textless page inside an otherwise healthy large document — which corrupted fourteen `raw/` files on 2026-07-06 (see `BUGREPORT-2026-07-06-split-merge.md`). Mismatch → original remains unchanged, result saved as `<name>_FAILED_pages.pdf`, affected pages reported individually.
 4. Only if both checks pass: Original source file is overwritten.
 
 `--allow-pages "1,5-7"` exempts known cover or diagram pages lacking body text from Check 2. Without `pikepdf` available (Python dependency of `column_tools.py`), the script aborts for safety rather than silently skipping B5 validation.
+
+### Source-preserving mode: `--output FILE`
+
+The interface for GUI callers such as the Obsidian plugin. The same checks run, but the source is never written:
+
+- `FILE` is resolved (symlinked folders included) before any processing. The script refuses a destination that is the source under any spelling, that already exists (file, folder or dangling symlink), or whose folder is missing.
+- Existing text is preserved: `--force-ocr` is only passed if the caller adds it.
+- Failed checks, a failing `pdf-combine` and cancellation (`SIGTERM` to the process group) write nothing: no destination, no `_FAILED_` file, no hidden temporary copy. Without `pikepdf` the script fails before OCR.
+- Publication never overwrites. The result is copied to a hidden `.<FILE>.XXXXXX` file in the destination folder and hard-linked (`ln`) to `FILE`; `ln` fails if `FILE` appeared while OCR was running. Afterwards the script confirms the link really is `FILE`, because BSD `ln` puts the link *inside* a folder that appeared under that name.
+- Hard links were verified inside iCloud Drive vaults (`~/Documents` and the Obsidian iCloud container). There is no `mv` fallback: on a filesystem without hard links, publication fails cleanly instead of accepting a check-then-rename race. macOS `mv -n` also exits 0 when it refuses to overwrite, so it cannot report that race.
+- `SIGKILL` cannot be trapped. If it lands between the hidden copy and its removal, a hidden `.<FILE>.XXXXXX` file can remain; it never carries the `.pdf` suffix. Cancel with `SIGTERM` to the process group first.
 
 ### `column_tools.py verify-pages`
 
