@@ -8,16 +8,21 @@ import {
 	INDEX_WAIT_STEPS,
 	ConversionController,
 	classifyFailure,
+	classifyOcrFailure,
+	resolveCli,
 	resolvePdf2md,
 	type ConversionHost,
 	type ConvertFunction,
 	type PdfSource,
 	type ProgressDisplay,
+	type SearchableCopyFunction,
+	type SearchableCopyRequest,
 } from "../src/conversion-controller.ts";
 import type {
 	ConversionOptions,
 	ConversionResult,
 	ProgressEvent,
+	SearchableCopyOptions,
 } from "../src/conversion.ts";
 
 const PDF: PdfSource = { path: "raw/case-01.pdf", basename: "case-01" };
@@ -93,12 +98,31 @@ function page(num: number, total: number, derailed = false): ProgressEvent {
 	return { type: "page", num, total, seconds: 1, origin: "OCR", derailed };
 }
 
+interface OcrCall {
+	args: [string, string, string, string];
+	spawnFn: unknown;
+	options: SearchableCopyOptions;
+	/** Missing shortPages default to none. */
+	finish: (result: ConversionResult & { shortPages?: number[] }) => void;
+}
+
 function setup(host = new FakeHost()) {
 	const calls: ConvertCall[] = [];
+	const ocrCalls: OcrCall[] = [];
 	const aborted: ChildProcess[] = [];
+	const groupAborted: ChildProcess[] = [];
 	const convert: ConvertFunction = (pdf, out, pdf2md, cwd, spawnFn, options = {}) =>
 		new Promise((finish) => {
 			calls.push({ args: [pdf, out, pdf2md, cwd], spawnFn, options, finish });
+		});
+	const searchableCopy: SearchableCopyFunction = (source, destination, cli, cwd, spawnFn, options = {}) =>
+		new Promise((resolve) => {
+			ocrCalls.push({
+				args: [source, destination, cli, cwd],
+				spawnFn,
+				options,
+				finish: (r) => resolve({ shortPages: [], ...r }),
+			});
 		});
 	const controller = new ConversionController(host, {
 		convert,
@@ -106,9 +130,22 @@ function setup(host = new FakeHost()) {
 			aborted.push(child);
 		},
 		resolveExecutable: () => "/home/test/bin/pdf2md",
+		searchableCopy,
+		abortGroup: (child) => {
+			groupAborted.push(child);
+		},
+		resolveReprocessRaw: () => "/home/test/bin/reprocess-raw",
 	});
-	return { host, calls, aborted, controller };
+	return { host, calls, ocrCalls, aborted, groupAborted, controller };
 }
+
+const OCR_REQUEST: SearchableCopyRequest = {
+	source: PDF,
+	destination: "raw/case-01-ocr.pdf",
+	engine: "apple",
+	splitColumns: true,
+	allowPages: "1",
+};
 
 const child = { pid: 42 } as unknown as ChildProcess;
 
@@ -372,4 +409,207 @@ test("resolvePdf2md: prefers ~/bin, then /usr/local/bin, then PATH; falls back t
 		"/opt/bin/pdf2md",
 	);
 	assert.equal(resolvePdf2md("/opt/bin", "/home/test", onlyExisting()), "/home/test/bin/pdf2md");
+});
+
+test("resolveCli: same order for reprocess-raw", () => {
+	assert.equal(
+		resolveCli("reprocess-raw", "/opt/bin", "/home/test", (c) => c === "/opt/bin/reprocess-raw"),
+		"/opt/bin/reprocess-raw",
+	);
+	assert.equal(resolveCli("reprocess-raw", "", "/home/test", () => false), "/home/test/bin/reprocess-raw");
+});
+
+// ── Stage 1: runOcr ────────────────────────────────────────────────────────
+
+test("runOcr: passes paths and options, indeterminate progress, leaves success to the caller", async () => {
+	const { host, calls, ocrCalls, controller } = setup();
+	const running = controller.runOcr(OCR_REQUEST);
+
+	assert.equal(controller.isRunning, true);
+	assert.equal(calls.length, 0);
+	assert.equal(ocrCalls.length, 1);
+	const call = ocrCalls[0]!;
+	assert.deepEqual(call.args, [
+		"raw/case-01.pdf",
+		"raw/case-01-ocr.pdf",
+		"/home/test/bin/reprocess-raw",
+		"/vault",
+	]);
+	assert.equal(call.spawnFn, undefined);
+	assert.equal(call.options.engine, "apple");
+	assert.equal(call.options.splitColumns, true);
+	assert.equal(call.options.allowPages, "1");
+
+	call.options.onChild!(child);
+	const done = result({ stdoutLast: ["✅ Written: /vault/raw/case-01-ocr.pdf"] });
+	call.finish(done);
+
+	assert.deepEqual(await running, { ...done, shortPages: [] });
+	assert.deepEqual(host.progress, ['OCR Preview: Creating searchable copy of "case-01" …']);
+	assert.equal(host.hidden, 1);
+	assert.deepEqual(host.notices, []);
+	// Stage 1 has no Markdown result: no inventory reconciliation.
+	assert.equal(host.reconciles, 0);
+	assert.equal(controller.isRunning, false);
+});
+
+test("runOcr: empty allowed pages are not passed", async () => {
+	const { ocrCalls, controller } = setup();
+	const running = controller.runOcr({ ...OCR_REQUEST, allowPages: "" });
+	assert.equal("allowPages" in ocrCalls[0]!.options, false);
+	ocrCalls[0]!.finish(result());
+	await running;
+});
+
+test("runOcr: failure is reported with the script's ❌ reason", async () => {
+	const { host, ocrCalls, controller } = setup();
+	const running = controller.runOcr(OCR_REQUEST);
+	ocrCalls[0]!.finish(
+		result({
+			code: 1,
+			stdoutLast: [
+				"📋 B5 Gate: checking chars/page (min: 50)...",
+				"❌ B5 gate failed (see pages above) — /vault/raw/case-01.pdf remains unchanged",
+				"No file written: /vault/raw/case-01-ocr.pdf",
+			],
+			stderrLast: ["🗑️  Page 3: only 5 characters (min: 50)"],
+		}),
+	);
+
+	assert.equal((await running)?.code, 1);
+	assert.deepEqual(host.notices, [
+		"OCR Preview: Searchable copy failed (Code 1) — B5 gate failed (see pages above) — /vault/raw/case-01.pdf remains unchanged.",
+	]);
+});
+
+test("runOcr: cancel stops the process group, not the single child", async () => {
+	const { host, ocrCalls, aborted, groupAborted, controller } = setup();
+	const running = controller.runOcr(OCR_REQUEST);
+	ocrCalls[0]!.options.onChild!(child);
+
+	host.cancelControl!();
+	controller.cancel();
+	ocrCalls[0]!.finish(result({ code: null, signal: "SIGTERM" }));
+	await running;
+
+	assert.deepEqual(groupAborted, [child]);
+	assert.deepEqual(aborted, []);
+	assert.deepEqual(host.progress, [
+		'OCR Preview: Creating searchable copy of "case-01" …',
+		'OCR Preview: "case-01" is being cancelled …',
+	]);
+	assert.deepEqual(host.notices, ['OCR Preview: Searchable copy of "case-01" cancelled — no file written.']);
+	assert.equal(controller.isRunning, false);
+});
+
+test("runOcr: dispose (plugin unload) stops the process group", async () => {
+	const { ocrCalls, aborted, groupAborted, controller } = setup();
+	const running = controller.runOcr(OCR_REQUEST);
+	ocrCalls[0]!.options.onChild!(child);
+
+	controller.dispose();
+	assert.deepEqual(groupAborted, [child]);
+	assert.deepEqual(aborted, []);
+
+	ocrCalls[0]!.finish(result({ code: null, signal: "SIGTERM" }));
+	await running;
+});
+
+test("Stage 2 after Stage 1 is stopped by PID again", async () => {
+	const { calls, ocrCalls, aborted, groupAborted, controller } = setup();
+	const ocr = controller.runOcr(OCR_REQUEST);
+	ocrCalls[0]!.finish(result());
+	await ocr;
+
+	const conversion = controller.run(PDF);
+	calls[0]!.options.onChild!(child);
+	controller.dispose();
+	calls[0]!.finish(result({ code: null, signal: "SIGTERM" }));
+	await conversion;
+
+	assert.deepEqual(aborted, [child]);
+	assert.deepEqual(groupAborted, []);
+});
+
+test("runOcr: refused while any conversion runs, and without file-system access", async () => {
+	const { host, calls, ocrCalls, controller } = setup();
+	const conversion = controller.run(PDF);
+
+	assert.equal(await controller.runOcr(OCR_REQUEST), null);
+	assert.equal(ocrCalls.length, 0);
+	calls[0]!.finish(result());
+	await conversion;
+
+	const ocr = controller.runOcr(OCR_REQUEST);
+	await controller.run(PDF);
+	assert.equal(calls.length, 1);
+	ocrCalls[0]!.finish(result());
+	await ocr;
+	assert.equal(
+		host.notices.filter((n) => n === "OCR Preview: A conversion is already running.").length,
+		2,
+	);
+
+	const noAccess = new FakeHost();
+	noAccess.basePath = null;
+	const offline = setup(noAccess);
+	assert.equal(await offline.controller.runOcr(OCR_REQUEST), null);
+	assert.equal(offline.ocrCalls.length, 0);
+	assert.deepEqual(noAccess.notices, ["OCR Preview: A searchable copy requires file system access (Desktop)."]);
+	assert.equal(offline.controller.isRunning, false);
+});
+
+test("runOcr: a rejected call is reported and the controller is idle again", async () => {
+	const host = new FakeHost();
+	const controller = new ConversionController(host, {
+		searchableCopy: () => Promise.reject(new Error("boom")),
+		resolveReprocessRaw: () => "/home/test/bin/reprocess-raw",
+	});
+
+	assert.equal(await controller.runOcr(OCR_REQUEST), null);
+	assert.deepEqual(host.notices, ["OCR Preview: Searchable copy failed — Error: boom."]);
+	assert.equal(host.hidden, 1);
+	assert.equal(controller.isRunning, false);
+});
+
+test("classifyOcrFailure maps signals, start errors, ENOENT, and exit codes", () => {
+	const cases: Array<[Partial<ConversionResult>, string, string]> = [
+		[{ code: null, signal: "SIGKILL" }, "killed", "OCR Preview: Searchable copy failed (force terminated (SIGKILL))."],
+		[{ code: null, signal: "SIGTERM" }, "signal", "OCR Preview: Searchable copy failed (terminated (Signal SIGTERM))."],
+		[{ code: null, stderrLast: ["Error: spawn EACCES"] }, "start-error", "OCR Preview: Searchable copy failed (Start error) — Error: spawn EACCES."],
+		[
+			{ code: null, stderrLast: ["Error: spawn /home/test/bin/reprocess-raw ENOENT"] },
+			"not-found",
+			"OCR Preview: Searchable copy failed (Start error) — reprocess-raw not found. Please run setup.sh in repo.",
+		],
+		[{ code: 1, stderrLast: ["Traceback", "ValueError: bad page."] }, "exit-code", "OCR Preview: Searchable copy failed (Code 1) — ValueError: bad page."],
+		[{ code: 2 }, "exit-code", "OCR Preview: Searchable copy failed (Code 2)."],
+	];
+	for (const [overrides, kind, message] of cases) {
+		const failure = classifyOcrFailure(result(overrides));
+		assert.equal(failure.kind, kind, JSON.stringify(overrides));
+		assert.equal(failure.message, message);
+	}
+});
+
+test("runOcr: a B5 failure with short pages is left to the caller", async () => {
+	const { host, ocrCalls, controller } = setup();
+	const running = controller.runOcr(OCR_REQUEST);
+	ocrCalls[0]!.finish({ ...result({ code: 1 }), shortPages: [1, 5] });
+
+	const failed = await running;
+	assert.deepEqual(failed?.shortPages, [1, 5]);
+	assert.deepEqual(host.notices, []);
+	assert.equal(controller.isRunning, false);
+});
+
+test("runOcr: a cancelled run reports cancellation and drops short pages", async () => {
+	const { host, ocrCalls, controller } = setup();
+	const running = controller.runOcr(OCR_REQUEST);
+	ocrCalls[0]!.options.onChild!(child);
+	controller.cancel();
+	ocrCalls[0]!.finish({ ...result({ code: 1 }), shortPages: [2] });
+
+	assert.deepEqual((await running)?.shortPages, []);
+	assert.deepEqual(host.notices, ['OCR Preview: Searchable copy of "case-01" cancelled — no file written.']);
 });

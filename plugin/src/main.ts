@@ -7,8 +7,10 @@ import { Menu, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
 import { VIEW_TYPE, OcrComparisonView, PdfSelectModal, PageSelectModal } from "./view.ts";
 import { Inventory } from "./file-actions.ts";
 import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
+import { parseOcrSettings } from "./ocr-settings.ts";
 import { ConversionController } from "./conversion-controller.ts";
-import { createConversionHost } from "./conversion-host.ts";
+import { createConversionHost, createSearchableCopyHost } from "./conversion-host.ts";
+import { runSearchableCopy, type SearchableCopyHost } from "./searchable-copy.ts";
 
 const RECONCILE_DEBOUNCE_MS = 500;
 
@@ -16,6 +18,7 @@ export default class OcrPreviewPlugin extends Plugin {
 	settings: Settings = { ...DEFAULT_SETTINGS };
 	inventory!: Inventory;
 	conversion!: ConversionController;
+	private searchableCopyHost!: SearchableCopyHost;
 
 	private reconcileTimer: number | null = null;
 
@@ -29,6 +32,7 @@ export default class OcrPreviewPlugin extends Plugin {
 				(entryName) => this.revealView(entryName),
 			),
 		);
+		this.searchableCopyHost = createSearchableCopyHost(this.app, () => this.settings);
 		await this.loadSettings();
 		await this.inventory.load();
 
@@ -97,6 +101,11 @@ export default class OcrPreviewPlugin extends Plugin {
 			name: "Convert PDF and open in OCR comparison",
 			callback: () => void this.selectPdfAndConvert(),
 		});
+		this.addCommand({
+			id: "create-searchable-copy",
+			name: "Create searchable copy (OCR)",
+			callback: () => this.selectPdfForSearchableCopy(),
+		});
 
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu, file) => {
@@ -152,6 +161,11 @@ export default class OcrPreviewPlugin extends Plugin {
 			else if (typeof saved["syncAktiv"] === "boolean") migrated.syncActive = saved["syncAktiv"];
 
 			if (typeof saved["mdEagerLimit"] === "number") migrated.mdEagerLimit = saved["mdEagerLimit"];
+
+			// OCR engine and column split: data from before these settings and
+			// invalid values (e.g. an engine this version does not offer) fall
+			// back to the defaults field by field.
+			Object.assign(migrated, parseOcrSettings(saved));
 
 			this.settings = { ...DEFAULT_SETTINGS, ...migrated };
 		} else {
@@ -243,6 +257,26 @@ export default class OcrPreviewPlugin extends Plugin {
 		pageModal.open();
 	}
 
+	/** Stage 1 for exactly this PDF: writes `<stem>-ocr.pdf` beside it. */
+	createSearchableCopy(file: TFile): void {
+		void runSearchableCopy(
+			{ path: file.path, basename: file.basename },
+			this.conversion,
+			this.searchableCopyHost,
+		);
+	}
+
+	private selectPdfForSearchableCopy(): void {
+		if (!this.conversion.ensureIdle()) return;
+		const modal = new PdfSelectModal(
+			this.app,
+			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
+		);
+		modal.setPlaceholder("Search PDF for a searchable copy…");
+		modal.onSelection = (file) => this.createSearchableCopy(file);
+		modal.open();
+	}
+
 	private populateFileMenu(menu: Menu, file: TAbstractFile): void {
 		if (!(file instanceof TFile)) return;
 		if (file.extension === "md" && this.isPreviewFile(file)) {
@@ -257,6 +291,12 @@ export default class OcrPreviewPlugin extends Plugin {
 				i
 					.setTitle("OCR → Markdown")
 					.onClick(() => this.selectPagesAndConvert(file)),
+			);
+			menu.addItem((i) =>
+				i
+					.setTitle("Create searchable copy (OCR)")
+					.setIcon("scan-text")
+					.onClick(() => this.createSearchableCopy(file)),
 			);
 			const stem = `${file.basename}.md`;
 			if (this.inventory.entries.some((b) => b.name === stem)) {
