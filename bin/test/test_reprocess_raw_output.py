@@ -70,6 +70,7 @@ def sb(tmp_path):
     bin_dir.mkdir()
     shutil.copy(BIN / "reprocess-raw.sh", bin_dir)
     shutil.copy(BIN / "column_tools.py", bin_dir)
+    shutil.copy(BIN / "pdf-lib.sh", bin_dir)
     _write_exe(bin_dir / "pdf-combine.sh", FAKE_COMBINE)
 
     # Tests put per-test stubs (ln, python3) here, ahead of everything else.
@@ -211,6 +212,29 @@ def test_output_without_pikepdf_fails_before_ocr(sb):
 
     assert result.returncode != 0
     assert "pikepdf" in result.output, result.output
+    assert not sb.log.exists()
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+# ── Own-flag values fail fast ──────────────────────────────────────────────
+
+@pytest.mark.parametrize("args,message", [
+    (["--min-chars"], "--min-chars needs a value"),
+    (["--allow-pages"], "--allow-pages needs a value"),
+    (["--output"], "--output needs a value"),
+    (["--min-chars", "--force-ocr"], "--min-chars needs a value"),
+    (["--allow-pages", "--force-ocr"], "--allow-pages needs a value"),
+    (["--output", "--force-ocr"], "--output needs a value"),
+    (["--min-chars", "abc"], "--min-chars must be a whole number"),
+    (["--min-chars", "-5"], "--min-chars must be a whole number"),
+    (["--output", "a.pdf", "--output", "b.pdf"], "--output needs exactly one file name"),
+])
+def test_own_flag_values_fail_before_processing(sb, args, message):
+    result = _run(sb, *args)
+
+    assert result.returncode != 0, result.output
+    assert message in result.output, result.output
+    assert "unbound variable" not in result.output, result.output
     assert not sb.log.exists()
     _assert_clean(sb, ["casebook.pdf"])
 
