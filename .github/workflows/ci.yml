@@ -78,6 +78,10 @@ jobs:
         run: pip install pytest
       - name: pymupdf installieren
         run: pip install pymupdf
+      - name: numpy und pillow installieren
+        # Die Scan-Strecke (detect_layout, _ink_amount) braucht beide. Ohne sie
+        # decken die Konvertierungstests nur vektorielle Seiten ab.
+        run: pip install numpy pillow
       - name: Tests (Nahtentdopplung, Randmarken, Schleifen, Golden-Snapshot)
         run: python -m pytest pdf2md/test bin/test -q
       - name: Benchmark entry point smoke test
