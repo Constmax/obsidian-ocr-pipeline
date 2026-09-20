@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 import dictionary
+import page_cache
 from assembly import (AssemblyContext, as_callout, assemble_paragraphs,
                       build_document, build_frontmatter, clean_text,
                       merge_fragments, page_marker)
@@ -58,6 +59,12 @@ class ConversionRequest:
     # is a vault folder in plugin runs, and Obsidian would index every
     # intermediate PNG. None means the system temporary directory.
     temp_root: Path | None = None
+    # Part of the page-cache fingerprint (Issue #11), not of OCR behavior
+    # itself — the adapter already has its own prompt baked in.
+    ocr_prompt: str | None = None
+    # Pages to force through recomputation even when the cache has a
+    # matching, valid entry (--neu/--refresh-cache).
+    refresh_pages: frozenset[int] = frozenset()
     cancel_requested: Callable[[], bool] = field(
         default=lambda: False, compare=False, repr=False)
 
@@ -248,6 +255,47 @@ def diagram_image(pdf: Path, number: int, image_dir: Path, max_edge=1800):
     return name, image_dir / name
 
 
+# Model-specific inputs never touch textlayer pages, so a model upgrade must
+# not discard their cache (Issue #11 over-invalidation).
+_TEXTLAYER_IGNORED_KEYS = frozenset({"model", "model_revision", "prompt"})
+
+
+def _cache_context(request: ConversionRequest) -> dict:
+    """Build the page-cache fingerprint (Issue #11) for one request."""
+    return _cache_contexts(request)[0]
+
+
+def _cache_contexts(request: ConversionRequest) -> tuple[dict, dict]:
+    """Build full and textlayer page-cache fingerprints for one request."""
+    parameters = {
+        "dpi": request.dpi,
+        "tile_from": request.tile_from,
+        "bold": not request.no_bold,
+        "ocr_only": request.ocr_only,
+        "retries": request.retries,
+        "model": request.model_name,
+        "model_revision": (page_cache.model_revision(request.model_name)
+                           if request.model_name else ""),
+        "prompt": request.ocr_prompt,
+        "diagram_image_only": request.diagram_image_only,
+        "diagram_pages": sorted(request.forced_diagram_pages),
+    }
+    full = page_cache.build_context(request.pdf, parameters)
+    textlayer = page_cache.build_context(
+        request.pdf,
+        {key: value for key, value in parameters.items()
+         if key not in _TEXTLAYER_IGNORED_KEYS},
+    )
+    return full, textlayer
+
+
+def _page_cache_key(page: AnalyzedPage, number: int, full: dict,
+                    textlayer: dict) -> str:
+    """Return the cache key matching a page's source (Issue #11)."""
+    context = textlayer if page.textlayer_lines is not None else full
+    return page_cache.page_key(context, number)
+
+
 def _document_text(request, page_blocks, page_results, total_pages, model_name,
                    words_suspect, words_corrected, completed):
     pages_textlayer = sum(page.source == "textlayer" for page in page_results)
@@ -319,8 +367,34 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
         emit({"type": "analysis_complete", "pages": len(analyzed),
               "pages_textlayer": len(analyzed) - ocr_page_count,
               "pages_ocr": ocr_page_count})
+
+        # Issue #11: a page whose complete input fingerprint (PDF content and
+        # every parameter that affects its result) still matches is read back
+        # from disk instead of recomputed. The fingerprint (which hashes the
+        # whole PDF) is built here, before "start", so cancellation timing
+        # right after "start" is unaffected — lookups themselves stay lazy,
+        # one page at a time, rather than an upfront scan of every page.
+        # Textlayer pages never touch the model, so their key excludes the
+        # model name, revision, and prompt: a model upgrade must not discard
+        # them. Both contexts are built here; per-page selection stays lazy.
+        cache_dir = page_cache.cache_directory(request.output_dir, request.pdf)
+        cache_context, textlayer_cache_context = _cache_contexts(request)
+
         emit({"type": "start", "file": request.pdf.name,
               "pages": len(analyzed), "dpi": request.dpi})
+
+        def cache_hit(page: AnalyzedPage):
+            if page.number in request.refresh_pages:
+                return None
+            expected_source = ("textlayer" if page.textlayer_lines is not None
+                               else "ocr")
+            entry = page_cache.read_page(
+                cache_dir, page.number,
+                _page_cache_key(page, page.number, cache_context,
+                                textlayer_cache_context))
+            if entry is not None and entry["source"] == expected_source:
+                return entry
+            return None
 
         wordbook = None
         if ocr_page_count and not request.no_dictionary:
@@ -329,12 +403,21 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                   "correct": request.dictionary_correct})
 
         # Load the model before the clock starts, so neither the first page's
-        # duration nor the total carries the one-off load.
-        if ocr_page_count and ocr_adapter is not None:
+        # duration nor the total carries the one-off load. Pages the cache
+        # already satisfies never reach the adapter at all.
+        needs_adapter = any(
+            page.needs_ocr
+            and not ((page.is_diagram or page.number in request.forced_diagram_pages)
+                     and request.diagram_image_only)
+            and cache_hit(page) is None
+            for page in analyzed
+        )
+        if needs_adapter and ocr_adapter is not None:
             prepare = getattr(ocr_adapter, "prepare", None)
             if prepare is not None:
                 prepare()
         started = time.perf_counter()
+        reused_count = 0
 
         page_blocks: list[str] = []
         page_results: list[PageResult] = []
@@ -353,14 +436,29 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
             trace: list[str] = []
             findings = []
             image_only = False
+            entry = cache_hit(page)
+            reused = entry is not None
 
-            if page.textlayer_lines is not None:
+            if reused:
+                reused_count += 1
+                lines = entry["lines"]
+                trace = list(entry.get("trace", []))
+                source = entry["source"]
+                layout_type = entry["layout"]
+                mode = entry["mode"]
+                image_only = mode == "image-only"
+                source_detail = ("" if image_only else
+                                 "Textlayer, without model" if source == "textlayer"
+                                 else f"{layout_type}, {mode}")
+            elif page.textlayer_lines is not None:
                 lines = split_columns(assign_boxes(page.textlayer_lines, page.boxes))
                 source = "textlayer"
+                layout_type, mode = page.layout_type, "textlayer"
                 source_detail = "Textlayer, without model"
             elif diagram and request.diagram_image_only:
                 lines = []
                 source = "ocr"
+                layout_type, mode = page.layout_type, "image-only"
                 source_detail = ""
                 image_only = True
             else:
@@ -402,7 +500,18 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                                            if line[1] else 0))
                     lines += trim_overlap(lines, ordered)
                 source = "ocr"
+                layout_type = page.layout_type
                 source_detail = f"{page.layout_type}, {mode}"
+
+            if not reused:
+                write_context = (textlayer_cache_context
+                                 if source == "textlayer" else cache_context)
+                cached_page: page_cache.CachedPage = {
+                    "number": page.number, "source": source,
+                    "characters": page.text_characters, "layout": layout_type,
+                    "mode": mode, "lines": lines, "trace": trace,
+                }
+                page_cache.write_page(cache_dir, write_context, cached_page)
 
             if not image_only:
                 lines_dump.append({"seite": page.number,
@@ -442,7 +551,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
             else:
                 block += "\n\n".join(paragraphs)
             page_blocks.append(block)
-            seconds = time.perf_counter() - page_started
+            seconds = 0.0 if reused else time.perf_counter() - page_started
             result = PageResult(
                 number=page.number, source=source, paragraphs=paragraphs,
                 discarded=assembled.discarded, trace=trace,
@@ -450,9 +559,13 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 text_characters=page.text_characters,
             )
             page_results.append(result)
-            emit({"type": "page", "page": result,
-                  "total_pages": len(analyzed), "source_detail": source_detail,
-                  "findings": findings, "image_path": image_path})
+            emit({"type": "page", "page": result, "total_pages": len(analyzed),
+                  "source_detail": source_detail + (" (cache)" if reused else ""),
+                  "findings": findings, "image_path": image_path,
+                  "cached": reused})
+
+        if reused_count:
+            emit({"type": "cache", "reused": reused_count, "directory": cache_dir})
 
         completed = len(page_results) == len(analyzed)
         cancelled = stop_requested and not completed

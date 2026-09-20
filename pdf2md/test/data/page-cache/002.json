@@ -1,0 +1,27 @@
+{
+ "schema": 1,
+ "key": "c6541f89455e5b31d4d9b1052ae2859691db46592078384a1344f938274f1ed7",
+ "context": {
+  "schema": 1,
+  "pdf_sha256": "fixture",
+  "parameters": {
+   "dpi": 150,
+   "model": "mlx-community/PaddleOCR-VL-1.5-4bit",
+   "model_revision": "fixture"
+  }
+ },
+ "page": {
+  "number": 2,
+  "source": "ocr",
+  "characters": 0,
+  "layout": "zweispaltig",
+  "mode": "senkrecht @50%",
+  "lines": [
+   ["a) Eigentum des Anspruchstellers", [76, 104, 463, 124]],
+   ["Der Anspruchsteller müsste Eigentümer der Sache sein.", [76, 142, 463, 162]],
+   ["b) Besitz des Anspruchsgegners", [537, 104, 924, 124]],
+   ["Der Anspruchsgegner müsste Besitzer der Sache sein.", [537, 142, 924, 162]]
+  ],
+  "trace": ["fixture: repaired tile overlap"]
+ }
+}

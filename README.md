@@ -183,6 +183,9 @@ pdf2md "raw/ZR/skript.pdf" --out _ocr-vorschau
 
 # PDF → Markdown, nur bestimmte Seiten
 pdf2md "raw/ZR/skript.pdf" --seiten "1,3-5,8" --out _ocr-vorschau
+
+# Passende Seitenergebnisse werden automatisch wiederverwendet; Seite 12 neu rechnen
+pdf2md "raw/ZR/skript.pdf" --out _ocr-vorschau --neu 12
 ```
 
 Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
@@ -200,8 +203,9 @@ Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
 
 ```
 bin/         Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
-pdf2md/      Stufe 2 — pdf2md.py (CLI) + layout.py + ocr.py + zusammenbau.py
-             + woerterbuch.py, Testsuite in pdf2md/test/ (pytest, ohne MLX)
+pdf2md/      Stufe 2 — pdf2md.py (CLI) + conversion.py (Runner) + layout.py
+             + ocr.py + assembly.py + dictionary.py + page_cache.py,
+             Testsuite in pdf2md/test/
 bench/       Benchmark-Harness und Messergebnisse
 plugin/      Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
 docs/        Installation, Flag-Referenz, Bugreport, Vault-Integration
