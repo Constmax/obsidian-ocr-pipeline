@@ -107,14 +107,17 @@ as missing.
 
 Environment of this spike run: Apple Silicon (arm64), 8 GiB RAM
 (`sysctl hw.memsize`), Python 3.12, repository at the #95 spike branch.
-Docling was **not installed** in this environment:
+Docling **is installed** in an evaluation-only venv following the repo
+convention (`VENV_ROOT=~/.venvs`, same `uv venv --seed --python 3.12`
+procedure as `setup.sh`, but a separate `docling` venv so the pinned
+`ocrmypdf` and `mlxocr` venvs are untouched; `setup.sh` itself was not
+changed):
 
 ```
-$ python bench/spike_docling.py check
+$ ~/.venvs/docling/bin/python bench/spike_docling.py check
 docling pipeline : standard (documented local default)
-docling version  : not installed
-status           : NOT RUNNABLE here
-  - docling is not installed (pip install docling ...)
+docling version  : 2.129.0
+status           : runnable (defaults, no tuning)
 ```
 
 Harness self-verification (synthetic, not vault material):
@@ -125,6 +128,13 @@ Harness self-verification (synthetic, not vault material):
   about scanned-page cost (15–60 s/page for the VLM path); it only proves
   the `run` plumbing, timing, `result.json`, and per-page `.md` outputs
   work end to end.
+- `run --engine docling` over the same two synthetic PDFs (first use,
+  models downloaded on demand): **5.4 s/page median, 968 MiB peak** warm
+  (the very first page took 28.6 s including model download and cold
+  start). Output text was correct on this trivial material (both lines in
+  order, `§` preserved). These are vector PDFs, so this measures Docling's
+  standard pipeline overhead, not scanned-page OCR cost — recorded here
+  only as proof that the adapter works end to end.
 - `compare` over those synthetic outputs without `--truth-lines`:
   timings table rendered, ordering marked missing, guidance
   **inconclusive**. With synthetic truth constructed in
@@ -134,10 +144,9 @@ Harness self-verification (synthetic, not vault material):
   `bench/test_entrypoints.py` + `bench/test_reading_order.py` (32 passed),
   `pdf2md/test` + `bin/test` (247 passed, 5 skipped).
 
-No vault pages (t01–t16) were scored in this environment, so there are no
-vault ordering numbers, no per-page timings for scanned pages, and no
-Docling peak-memory measurement to report here. Any numbers added later must
-come from the reproduction steps above on the target machine.
+No vault pages (t01–t16) were scored yet, so there are no vault ordering
+numbers and no scanned-page timings for either path. The vault run from the
+reproduction steps above is still the missing measurement.
 
 ## Structure findings (qualitative)
 
@@ -190,8 +199,8 @@ Decision criteria for the future vault run (unchanged from the issue):
 
 ## Completion criteria status
 
-- [x] Harness runs without Docling and reports the reason it cannot convert
-  (`check`); vault-capable Docling run itself is pending install.
+- [x] Docling runs locally on the target machine (2.129.0 in `~/.venvs/docling`,
+  `check` reports runnable; synthetic conversion verified end to end).
 - [ ] Both paths measured over the same vault pages with
   `bench/reading_order.py` — pending vault run (harness ready).
 - [ ] Per-page time and peak memory for both paths on the 8 GiB machine —
