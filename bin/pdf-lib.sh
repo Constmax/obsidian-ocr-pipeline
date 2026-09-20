@@ -8,6 +8,7 @@
 #
 # Provides:
 #   - Defaults & constants
+#   - Common option parsing
 #   - Dependency + engine detection
 #   - Ghostscript downscaling (Bicubic)
 #   - Two-column page splitting (CropBox)
@@ -33,13 +34,80 @@ HAS_JBIG2=false
 HAS_PNGQUANT=false
 HAS_UNPAPER=false
 OPTIMIZE_LEVEL=1
+ENGINE="auto"             # --engine flag
 TARGET_DPI=$DEFAULT_DPI
+DPI_SET=false             # true once --dpi was given (even with the default value)
 JOBS=$DEFAULT_JOBS
+JOBS_SET=false            # true once --jobs was given (even with the default value)
+NO_QUALITY_GATE=false     # --no-quality-gate flag
 SPLIT_COLUMNS=false       # --split-columns flag
 SPLIT_ALL_PAGES=false     # --split-columns-all flag (force --all instead of per-page --auto)
 KEEP_SPLIT=false          # --keep-split flag (suppress merge)
 SPLIT_MAP=""              # Path to split_map.json (set by split_two_column_pdf)
 PYTHON_BIN=""             # Python with pikepdf (set by lib_init)
+
+# ════════════════════════════════════════════════════════════
+#  OPTION PARSING
+# ════════════════════════════════════════════════════════════
+
+# usage_error <message>
+# Prints a one-line usage error to stderr and exits 1.
+usage_error() {
+    echo "❌ $1" >&2
+    echo "   Run $(basename "$0") without arguments for usage." >&2
+    exit 1
+}
+
+# require_option_value "$@"
+# Exits with a usage error unless option $1 is followed by a value.
+require_option_value() {
+    if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#--}" != "$2" ]; then
+        usage_error "$1 needs a value"
+    fi
+}
+
+# parse_common_option "$@"
+# Parses the option at $1 if it is shared by all three CLIs, validates its
+# value and sets OPTION_SHIFT to the number of arguments consumed. Any other
+# option is a usage error, so call this from the CLI's fallback case branch:
+#   *) parse_common_option "$@"; shift "$OPTION_SHIFT" ;;
+# ENGINE, NO_QUALITY_GATE and OPTION_SHIFT are read by the CLIs — usage is
+# not seen by shellcheck in pdf-lib.sh.
+# shellcheck disable=SC2034
+parse_common_option() {
+    OPTION_SHIFT=1
+    case "$1" in
+        --engine)
+            require_option_value "$@"
+            case "$2" in
+                auto|apple|tesseract) ENGINE="$2" ;;
+                *) usage_error "--engine must be 'auto', 'apple', or 'tesseract', got '$2'" ;;
+            esac
+            OPTION_SHIFT=2 ;;
+        --dpi)
+            require_option_value "$@"
+            case "$2" in
+                *[!0-9]*) usage_error "--dpi must be a whole number (0 = off), got '$2'" ;;
+            esac
+            TARGET_DPI=$((10#$2)); DPI_SET=true
+            OPTION_SHIFT=2 ;;
+        --jobs)
+            require_option_value "$@"
+            case "$2" in
+                *[!0-9]*) usage_error "--jobs must be a positive whole number, got '$2'" ;;
+            esac
+            if [ $((10#$2)) -lt 1 ]; then
+                usage_error "--jobs must be a positive whole number, got '$2'"
+            fi
+            JOBS=$((10#$2)); JOBS_SET=true
+            OPTION_SHIFT=2 ;;
+        --split-columns)     SPLIT_COLUMNS=true ;;
+        --split-columns-all) SPLIT_COLUMNS=true; SPLIT_ALL_PAGES=true ;;
+        --keep-split)        KEEP_SPLIT=true ;;
+        --no-quality-gate)   NO_QUALITY_GATE=true ;;
+        *) usage_error "Unknown option: $1" ;;
+    esac
+}
 
 # ════════════════════════════════════════════════════════════
 #  DETECTION FUNCTIONS
@@ -119,7 +187,7 @@ detect_optimizers() {
 
 # detect_safe_jobs
 # Sets JOBS based on available RAM to prevent OOM on low-memory Macs.
-# Called by lib_init when JOBS is still at DEFAULT_JOBS (user didn't override).
+# Called by lib_init when neither --jobs nor --fast chose JOBS.
 detect_safe_jobs() {
     local ram_gb
     ram_gb=$(sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1073741824)}')
@@ -675,14 +743,12 @@ lib_init() {
         exit 1
     fi
 
-    # Apply --fast overrides
+    # --fast presets and the RAM-aware jobs default fill in only what the
+    # user did not set explicitly: `--jobs 2` stays 2 on every machine.
     if [ "$fast" = "true" ]; then
-        [ "$TARGET_DPI" = "$DEFAULT_DPI" ] && TARGET_DPI=$FAST_DPI
-        [ "$JOBS" = "$DEFAULT_JOBS" ] && JOBS=$FAST_JOBS
-    fi
-
-    # RAM-aware default for JOBS (only if user didn't set --jobs)
-    if [ "$JOBS" = "$DEFAULT_JOBS" ]; then
+        [ "$DPI_SET" = true ] || TARGET_DPI=$FAST_DPI
+        [ "$JOBS_SET" = true ] || JOBS=$FAST_JOBS
+    elif [ "$JOBS_SET" != true ]; then
         detect_safe_jobs
     fi
 
