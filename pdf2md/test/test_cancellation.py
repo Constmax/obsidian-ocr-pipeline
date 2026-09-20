@@ -249,3 +249,61 @@ def test_sigint_halfway_through_run():
         assert not list(
             (Path(__file__).resolve().parent.parent / "out-C").glob("_tmp-*")
         ), "Temp folder still under pdf2md/out-C"
+
+        cache_dir = out_dir / ".cache" / pdf_path.stem
+        cached_before = sorted(p.name for p in cache_dir.glob("*.json"))
+        assert cached_before, "Issue #11: no page cached before cancellation"
+
+        resumed = subprocess.run(
+            [
+                sys.executable,
+                "pdf2md/pdf2md.py",
+                str(pdf_path),
+                "--out",
+                str(out_dir),
+            ],
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert resumed.returncode == 0, (
+            f"resume failed\nstdout: {resumed.stdout}\nstderr: {resumed.stderr}"
+        )
+        assert f"cache: {len(cached_before)} page(s) reused" in resumed.stdout, (
+            "Issue #11: resume did not reuse the pages cached before cancellation\n"
+            f"stdout: {resumed.stdout}"
+        )
+        resumed_text = target.read_text(encoding="utf-8")
+        assert "abgebrochen" not in resumed_text
+        assert all(f"%% S. {n} " in resumed_text for n in range(1, 51))
+
+        clean_out = Path(tmpdir) / "clean"
+        clean = subprocess.run(
+            [
+                sys.executable,
+                "pdf2md/pdf2md.py",
+                str(pdf_path),
+                "--out",
+                str(clean_out),
+            ],
+            cwd=str(Path(__file__).resolve().parent.parent.parent),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert clean.returncode == 0, clean.stderr
+        clean_text = (clean_out / "cancellation-test.md").read_text(
+            encoding="utf-8"
+        )
+
+        def without_run_time(value):
+            return re.sub(
+                r"^ocr-(?:datum|zeitpunkt):.*$", "", value, flags=re.MULTILINE,
+            )
+
+        assert without_run_time(resumed_text) == without_run_time(clean_text), (
+            "Issue #11: resumed result differs from an uninterrupted run"
+        )

@@ -31,6 +31,7 @@ bench/randlabel-debug/
 
 # Pipeline-Temporärdateien
 _tmp_ocr/
+**/.cache/
 map_page*.json
 *_FAILED_*.pdf
 *.bak
