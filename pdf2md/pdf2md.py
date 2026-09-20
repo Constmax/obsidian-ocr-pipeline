@@ -160,6 +160,9 @@ def _event_sink(progress):
         elif kind == "start" and progress:
             _progress({"typ": "start", "datei": event["file"],
                        "seiten": event["pages"], "dpi": event["dpi"]})
+        elif kind == "cache":
+            print(f"   cache: {event['reused']} page(s) reused from "
+                  f"{event['directory']}\n")
         elif kind == "dictionary":
             wordbook = event["wordbook"]
             print("Dictionary: " + (wordbook.source if wordbook else
@@ -277,6 +280,9 @@ def _parser():
     parser.add_argument("--diagram-image-only", "--diagramm-nur-bild",
                         dest="diagram_image_only", action="store_true")
     parser.add_argument("--pages", "--seiten", dest="pages", default="")
+    parser.add_argument("--refresh-cache", "--neu", dest="refresh_cache",
+                        nargs="?", const="all", default=None, metavar="PAGES",
+                        help="Recalculate all pages, or only a page list/range")
     parser.add_argument("--progress", "--fortschritt", dest="progress", action="store_true")
     parser.add_argument("--check", action="store_true")
     return parser
@@ -296,6 +302,13 @@ def main():
     selection = page_option("--pages/--seiten", args.pages, page_count)
     forced = page_option("--diagram-pages/--diagramm-seiten",
                          args.diagram_pages, page_count) or set()
+    if args.refresh_cache == "all":
+        refresh = selection or set(range(1, page_count + 1))
+    elif args.refresh_cache is None:
+        refresh = set()
+    else:
+        refresh = page_option("--refresh-cache/--neu", args.refresh_cache,
+                              page_count) or set()
     cancellation.reset()
     cancellation.install()
     request = ConversionRequest(
@@ -309,6 +322,7 @@ def main():
         forced_diagram_pages=frozenset(forced),
         selected_pages=frozenset(selection) if selection is not None else None,
         diagram_image_only=args.diagram_image_only, model_name=MODEL,
+        ocr_prompt=PROMPT, refresh_pages=frozenset(refresh),
         cancel_requested=cancellation.requested)
     result = convert_document(
         request, LazyMlxOcrAdapter(MODEL), _event_sink(args.progress))

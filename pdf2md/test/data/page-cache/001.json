@@ -1,0 +1,25 @@
+{
+ "schema": 1,
+ "key": "45fd6c468ea47fdd380a2f3c837161fcee51297ee1134b57ccd6e851b9ff253a",
+ "context": {
+  "schema": 1,
+  "pdf_sha256": "fixture",
+  "parameters": {
+   "dpi": 150,
+   "model": "mlx-community/PaddleOCR-VL-1.5-4bit",
+   "model_revision": "fixture"
+  }
+ },
+ "page": {
+  "number": 1,
+  "source": "ocr",
+  "characters": 0,
+  "layout": "einspaltig",
+  "mode": "ganz",
+  "lines": [
+   ["1. Anspruch aus § 985 BGB", [92, 112, 611, 132]],
+   ["Der Eigentümer kann von dem Besitzer die Herausgabe der Sache verlangen.", [92, 148, 902, 168]]
+  ],
+  "trace": []
+ }
+}

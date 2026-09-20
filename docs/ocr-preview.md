@@ -40,12 +40,18 @@ Files move between three flat sibling folders — the folder location **is** the
 
 ```
 _ocr-vorschau/              open (awaiting review)
+_ocr-vorschau/.cache/       resumable per-page OCR results (generated, Issue #11)
 _ocr-vorschau/_akzeptiert/    accepted
 _ocr-vorschau/_abgelehnt/     rejected (nothing is ever deleted)
 ```
 
 `review-status.json` in the same folder is merely an **annotation cache**
 (`notiz`, `geprüft-bis`, manual PDF mapping) and can be safely deleted at any time. Details on reconciliation rules: [review-view.md](review-view.md).
+
+`_ocr-vorschau/.cache/` is likewise generated state, not review content: it is
+safe to delete, is ignored by Git, and has no bearing on the three-folder model
+above. See [scripts-detail.md](scripts-detail.md#page-cache-and---neu-stage-2)
+for its lifecycle and the `--neu` flag.
 
 `_ocr-vorschau/assets/` remains where it is: All three folders share the diagram images (`![[…png]]`); they are **not** moved alongside.
 

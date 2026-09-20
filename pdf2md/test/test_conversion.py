@@ -107,7 +107,10 @@ def test_scan_page_images_stay_out_of_the_output_folder(tmp_path):
     )
 
     assert seen_temp_parents == [temp_root]
-    assert [entry.name for entry in sorted(output.iterdir())] == ["scan.md"]
+    # .cache/ is the Issue #11 page cache — intentionally under --out, unlike
+    # the scan-page renders above, so a stopped run can resume from it.
+    assert [entry.name for entry in sorted(output.iterdir())] == [
+        ".cache", "scan.md"]
 
 
 def test_the_adapter_is_prepared_before_pages_are_timed(tmp_path):

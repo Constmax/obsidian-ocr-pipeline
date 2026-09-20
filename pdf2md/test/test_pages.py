@@ -137,7 +137,7 @@ def test_pages_progress_selection_only():
         assert page_nrs == {2, 4}, f"Expected pages 2,4 in progress, got: {page_nrs}"
 
 
-@pytest.mark.parametrize("flag", ["--seiten", "--diagramm-seiten"])
+@pytest.mark.parametrize("flag", ["--seiten", "--diagramm-seiten", "--neu"])
 @pytest.mark.parametrize("spec, message", [
     (",", "empty entry"),
     ("1,,2", "empty entry"),
@@ -147,7 +147,7 @@ def test_pages_progress_selection_only():
     ("9", "does not exist"),
 ])
 def test_invalid_page_option_fails_cleanly(flag, spec, message):
-    """Both page options share one grammar and fail with one line, no traceback."""
+    """All page options share one grammar and fail with one line, no traceback."""
     with tempfile.TemporaryDirectory() as tmpdir:
         pdf_path = Path(tmpdir) / "test.pdf"
         _make_vector_pdf(pdf_path, pages=4)

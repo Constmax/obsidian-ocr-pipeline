@@ -267,10 +267,11 @@ Python interface:
 ```
 pdf2md.py (argparse / console / exit translation)
    └── conversion.py   Request-scoped document runner and result writing
-       ├── layout.py   Geometry: columns, boxes, tables, diagrams
-       ├── ocr.py      Tiling, model invocation, derailment / repair
-       ├── assembly.py Markdown reassembly (pure functions)
-       └── dictionary.py Dictionary verification post-reassembly
+       ├── layout.py     Geometry: columns, boxes, tables, diagrams
+       ├── ocr.py        Tiling, model invocation, derailment / repair
+       ├── assembly.py   Markdown reassembly (pure functions)
+       ├── dictionary.py Dictionary verification post-reassembly
+       └── page_cache.py Atomic per-page JSON cache and input fingerprints
 ```
 
 `ConversionRequest`, `AnalyzedPage`, `AssemblyResult`, and `ConversionResult`
@@ -289,12 +290,12 @@ and Obsidian would index every intermediate PNG. `ConversionRequest.temp_root`
 overrides the location.
 
 **Vault Copying**: `.ocr-bench/` in vault uses a flat structure (see
-`bench/paths.py`, two-location convention) requiring **eight** files:
+`bench/paths.py`, two-location convention) requiring **nine** files:
 `pdf2md.py`, `conversion.py`, `layout.py`, `ocr.py`, `assembly.py`,
-`dictionary.py`, `cancellation.py`, and `page_range.py`. Missing files trigger
-`ModuleNotFoundError`. For the same reason, legal term lists are embedded
-directly within modules rather than separate data files — a `daten/` directory
-would be lost during flat file copies.
+`dictionary.py`, `cancellation.py`, `page_range.py`, and `page_cache.py`.
+Missing files trigger `ModuleNotFoundError`. For the same reason, legal term
+lists are embedded directly within modules rather than separate data files —
+a `daten/` directory would be lost during flat file copies.
 
 ## Stage 2: Dictionary Verification (`dictionary.py`)
 
@@ -340,6 +341,41 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
 - `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
 - Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`). Frontmatter `seiten` records count of selected pages.
 - Plugin queries selection via `SeitenAuswahlModal` (total page count rendered via pdf.js).
+
+## Page Cache and `--neu` (Stage 2)
+
+Every completed page is written atomically below
+`<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains parsed lines with
+their boxes, source and layout metadata, and derailment/repair traces. Each
+run persists its pages while assembling from memory; a resumed or repeated run
+reads matching pages back from disk instead of recomputing them. Consequently,
+a stopped run resumes at the first missing page by default and a second pass
+can run without loading MLX when all OCR pages are cached.
+
+The cache key includes the PDF SHA-256 digest, DPI, tiling threshold, bold and
+OCR-only modes, retry count, prompt, diagram-image mode, and the OCR model name
+and locally resolved revision. Textlayer pages never touch the model, so their
+key excludes the model name, revision, and prompt — a model upgrade does not
+discard them. An unresolvable model revision never reuses a cached OCR page:
+the fingerprint is unique per run, so unknown versions are always recalculated.
+A changed input or parameter is otherwise a cache miss; corrupt entries, invalid
+boxes, and older-schema entries are likewise recalculated.
+
+```bash
+# Resume automatically, reusing every matching page
+pdf2md raw/ZR/skript.pdf --out _ocr-vorschau
+
+# Recalculate every selected page
+pdf2md raw/ZR/skript.pdf --out _ocr-vorschau --neu
+
+# Recalculate only pages 12-14; reuse all other matching pages
+pdf2md raw/ZR/skript.pdf --out _ocr-vorschau --neu "12-14"
+```
+
+`--refresh-cache` is the English alias of `--neu`. The optional range uses the
+same grammar and validation as `--seiten`. Dictionary reporting/correction and
+Markdown formatting are intentionally not part of the key: they are rerun from
+the cached raw lines on every invocation.
 
 ## --fortschritt (Stage 2)
 
