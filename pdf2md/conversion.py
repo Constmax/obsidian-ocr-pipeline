@@ -255,9 +255,19 @@ def diagram_image(pdf: Path, number: int, image_dir: Path, max_edge=1800):
     return name, image_dir / name
 
 
+# Model-specific inputs never touch textlayer pages, so a model upgrade must
+# not discard their cache (Issue #11 over-invalidation).
+_TEXTLAYER_IGNORED_KEYS = frozenset({"model", "model_revision", "prompt"})
+
+
 def _cache_context(request: ConversionRequest) -> dict:
     """Build the page-cache fingerprint (Issue #11) for one request."""
-    return page_cache.build_context(request.pdf, {
+    return _cache_contexts(request)[0]
+
+
+def _cache_contexts(request: ConversionRequest) -> tuple[dict, dict]:
+    """Build full and textlayer page-cache fingerprints for one request."""
+    parameters = {
         "dpi": request.dpi,
         "tile_from": request.tile_from,
         "bold": not request.no_bold,
@@ -269,7 +279,21 @@ def _cache_context(request: ConversionRequest) -> dict:
         "prompt": request.ocr_prompt,
         "diagram_image_only": request.diagram_image_only,
         "diagram_pages": sorted(request.forced_diagram_pages),
-    })
+    }
+    full = page_cache.build_context(request.pdf, parameters)
+    textlayer = page_cache.build_context(
+        request.pdf,
+        {key: value for key, value in parameters.items()
+         if key not in _TEXTLAYER_IGNORED_KEYS},
+    )
+    return full, textlayer
+
+
+def _page_cache_key(page: AnalyzedPage, number: int, full: dict,
+                    textlayer: dict) -> str:
+    """Return the cache key matching a page's source (Issue #11)."""
+    context = textlayer if page.textlayer_lines is not None else full
+    return page_cache.page_key(context, number)
 
 
 def _document_text(request, page_blocks, page_results, total_pages, model_name,
@@ -350,8 +374,11 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
         # whole PDF) is built here, before "start", so cancellation timing
         # right after "start" is unaffected — lookups themselves stay lazy,
         # one page at a time, rather than an upfront scan of every page.
+        # Textlayer pages never touch the model, so their key excludes the
+        # model name, revision, and prompt: a model upgrade must not discard
+        # them. Both contexts are built here; per-page selection stays lazy.
         cache_dir = page_cache.cache_directory(request.output_dir, request.pdf)
-        cache_context = _cache_context(request)
+        cache_context, textlayer_cache_context = _cache_contexts(request)
 
         emit({"type": "start", "file": request.pdf.name,
               "pages": len(analyzed), "dpi": request.dpi})
@@ -363,7 +390,8 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                                else "ocr")
             entry = page_cache.read_page(
                 cache_dir, page.number,
-                page_cache.page_key(cache_context, page.number))
+                _page_cache_key(page, page.number, cache_context,
+                                textlayer_cache_context))
             if entry is not None and entry["source"] == expected_source:
                 return entry
             return None
@@ -476,11 +504,14 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 source_detail = f"{page.layout_type}, {mode}"
 
             if not reused:
-                page_cache.write_page(cache_dir, cache_context, {
+                write_context = (textlayer_cache_context
+                                 if source == "textlayer" else cache_context)
+                cached_page: page_cache.CachedPage = {
                     "number": page.number, "source": source,
                     "characters": page.text_characters, "layout": layout_type,
                     "mode": mode, "lines": lines, "trace": trace,
-                })
+                }
+                page_cache.write_page(cache_dir, write_context, cached_page)
 
             if not image_only:
                 lines_dump.append({"seite": page.number,
