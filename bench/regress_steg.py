@@ -17,7 +17,7 @@ from collections import Counter
 from pathlib import Path
 
 from paths import BENCH, VAULT_ROOT as VAULT
-import pdf2md as M
+import conversion as C
 import layout as L
 import assembly as A
 
@@ -69,11 +69,12 @@ def buchstaben(absaetze):
     return Counter(re.sub(r"[\s\-–*#>|\[\]^]+", "", " ".join(absaetze)))
 
 
-def seite_bauen(page):
+def seite_bauen(page, context):
     boxes, _ = L.detect_boxes(page, False,
                               [t[2] for t in L.tables_markdown(page)])
-    lines = M.textlayer_lines(page)
-    return A.assemble_paragraphs(L.split_columns(L.assign_boxes(lines, boxes)))
+    lines = C.textlayer_lines(page)
+    return A.assemble_paragraphs(
+        L.split_columns(L.assign_boxes(lines, boxes)), context).paragraphs
 
 
 def main():
@@ -93,7 +94,7 @@ def main():
         for p in doc:
             if p.rotation:
                 p.remove_rotation()
-        A.set_running(M.running_lines(doc))
+        context = A.AssemblyContext(C.running_lines(doc))
         for nr in sorted(nach_datei[datei]):
             if nr > doc.page_count:
                 continue
@@ -102,9 +103,9 @@ def main():
             neu_f = L._column_gap
             try:
                 L._column_gap = alt_steg
-                a = seite_bauen(page)
+                a = seite_bauen(page, context)
                 L._column_gap = neu_f
-                b = seite_bauen(page)
+                b = seite_bauen(page, context)
             except Exception as e:                      # Seite ueberspringen
                 L._column_gap = neu_f
                 print(f"  FEHLER {datei} S.{nr}: {e}")

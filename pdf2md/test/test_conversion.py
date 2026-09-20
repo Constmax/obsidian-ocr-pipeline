@@ -86,3 +86,89 @@ def test_running_headers_are_scoped_to_the_assembly_request():
     assert with_header.discarded == ["Repeated document heading"]
     assert without_header.paragraphs == ["Repeated document heading"]
     assert without_header.discarded == []
+
+
+def test_scan_page_images_stay_out_of_the_output_folder(tmp_path):
+    """--out is a vault folder in plugin runs; intermediates must not land there."""
+    pdf = tmp_path / "scan.pdf"
+    output = tmp_path / "output"
+    temp_root = tmp_path / "scratch"
+    _make_vector_pdf(pdf, pages=1)
+    seen_temp_parents = []
+
+    def fake_ocr(image, max_tokens=None):
+        seen_temp_parents.append(Path(image).parent.parent)
+        return ""
+
+    convert_document(
+        ConversionRequest(pdf=pdf, output_dir=output, ocr_only=True,
+                          temp_root=temp_root, no_dictionary=True),
+        fake_ocr,
+    )
+
+    assert seen_temp_parents == [temp_root]
+    assert [entry.name for entry in sorted(output.iterdir())] == ["scan.md"]
+
+
+def test_the_adapter_is_prepared_before_pages_are_timed(tmp_path):
+    """The one-off model load must not be charged to the first OCR page."""
+    pdf = tmp_path / "scan.pdf"
+    _make_vector_pdf(pdf, pages=1)
+    calls = []
+
+    class Adapter:
+        def prepare(self):
+            calls.append("prepare")
+
+        def __call__(self, image, max_tokens=None):
+            calls.append("ocr")
+            return ""
+
+    convert_document(
+        ConversionRequest(pdf=pdf, output_dir=tmp_path / "output",
+                          ocr_only=True, temp_root=tmp_path / "scratch",
+                          no_dictionary=True),
+        Adapter(),
+    )
+
+    assert calls[0] == "prepare"
+    assert calls.count("prepare") == 1
+    assert "ocr" in calls
+
+
+def test_written_side_files_are_announced(tmp_path):
+    pdf = tmp_path / "input.pdf"
+    dump = tmp_path / "lines.json"
+    _make_vector_pdf(pdf, pages=2)
+    events = []
+
+    convert_document(
+        ConversionRequest(pdf=pdf, output_dir=tmp_path / "output",
+                          lines_dump=dump),
+        None,
+        events.append,
+    )
+
+    artifacts = [event for event in events if event["type"] == "artifact"]
+    assert [(event["kind"], event["count"], event["unit"])
+            for event in artifacts] == [("lines_dump", 2, "pages")]
+    assert artifacts[0]["path"] == dump
+
+
+def test_image_only_diagram_pages_stay_out_of_the_lines_dump(tmp_path):
+    import json
+
+    pdf = tmp_path / "input.pdf"
+    dump = tmp_path / "lines.json"
+    _make_vector_pdf(pdf, pages=2)
+
+    convert_document(
+        ConversionRequest(pdf=pdf, output_dir=tmp_path / "output",
+                          lines_dump=dump, ocr_only=True,
+                          temp_root=tmp_path / "scratch", no_dictionary=True,
+                          forced_diagram_pages=frozenset({1}),
+                          diagram_image_only=True),
+        lambda image, max_tokens=None: "",
+    )
+
+    assert [entry["seite"] for entry in json.loads(dump.read_text())] == [2]
