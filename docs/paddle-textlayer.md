@@ -390,6 +390,44 @@ supported command. Numbers, pinned versions and commands are in
   this truth set. Tuning against the same 16 pages would not show that the
   gate passes.
 
+**Follow-up** in #87 (`bench/ERGEBNIS.md`, Nachtrag 20):
+
+- **Cause:** detected boxes on the dense scans overlap vertically, so the
+  measured leading is 0 and the header sits 1–27 px above the columns. No gap
+  threshold separates them.
+- **Column bands:** on a two-column page `order_lines()` now looks for column
+  pairs: a left and a right line side by side, the right one starting within
+  2.5 line heights of where the right column's full lines start. The right
+  part of a running header is right-aligned and starts further in.
+  - The header reaches the lowest gap between line cores above the first
+    column pair.
+  - Footer rows go back to the columns from the top while a row holds lines
+    of one column only or a column pair, and one of them holds a pair. The
+    footer starts at the first row crossing the gutter or covering both sides
+    without a pair.
+- **Validation set:** `bench/reading_order_holdout.json`, 13 pages from
+  documents outside the first set (12 two-column, 1 single-column). They were
+  chosen after the fix was committed, and their regions were drawn and checked
+  before any ordering output for them was looked at. `bench/reading_order.py
+  --truth` scores them separately.
+- **Old 16 pages:** unsplit PaddleOCR has no misplaced full-width lines and no
+  interleaved pages (median 100.0 %). These pages exposed the failures, so this
+  does not decide the gate.
+- **Result on the new pages:** **keep split mode.** #71 does not compare
+  unsplit PaddleOCR.
+  - The median is 100.0 % against 94.8 % for the split baselines, page checks
+    pass, and no full-width line is misplaced.
+  - Three header lines are not found. The real run recognizes the deskewed
+    page slightly differently from the truth image.
+  - Three pages count as interleaved. On one (n07) the footnotes of both
+    columns start level but offset by half a line, so no footer row holds a
+    pair and they are read in rows. The other two are ordered correctly; short
+    lines repeated in the text (single words, identical citations) confuse the
+    text matching.
+- **Next attempt:** search the leading footer rows for a pair as a whole
+  rather than row by row. That change was found on a validation page, so it
+  needs further unseen pages before the gate can pass.
+
 ### 4. Replace binary engine flags with one resolved state
 
 Prerequisites: #48 (central validation of common options, including
