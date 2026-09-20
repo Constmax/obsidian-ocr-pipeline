@@ -19,6 +19,7 @@ directly inside the vault, the parent directory is detected automatically.
 | `python bench/regress_randmarke.py` | Check the margin-label heading exception across vector pages | No |
 | `python bench/randlabel_debug.py PDF PAGE` | Inspect OCR line geometry around a margin label | Yes |
 | `python bench/reading_order.py COMMAND` | Build the hand-checked reading-order truth set and compare Stage-1 workflows on it (`prepare`, `recognize`, `overlay`, `run`, `score`; issue #69) | `recognize` and the Paddle workflows |
+| `python bench/spike_docling.py COMMAND` | Measure Docling against the current PDF-to-Markdown pipeline on the same single-page PDFs (`check`, `run`, `compare`; issue #95) | `run --engine docling` and `run --engine pdf2md` on scanned pages |
 
 Example with an explicit vault location:
 
