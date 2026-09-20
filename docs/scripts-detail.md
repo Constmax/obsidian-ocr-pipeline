@@ -272,6 +272,19 @@ tests. Heavy dependencies (`fitz`, `numpy`, `PIL`, `mlx_vlm`) remain loaded
 inside their runtime boundaries; importing the conversion interface does not
 load the ML model.
 
+Scan pages are rendered into a temporary directory below the system temp folder
+(`$TMPDIR`), never below `--out`: the plugin points `--out` at a vault folder,
+and Obsidian would index every intermediate PNG. `ConversionRequest.temp_root`
+overrides the location.
+
+**Vault Copying**: `.ocr-bench/` in vault uses a flat structure (see
+`bench/paths.py`, two-location convention) requiring **eight** files:
+`pdf2md.py`, `conversion.py`, `layout.py`, `ocr.py`, `assembly.py`,
+`dictionary.py`, `cancellation.py`, and `page_range.py`. Missing files trigger
+`ModuleNotFoundError`. For the same reason, legal term lists are embedded
+directly within modules rather than separate data files — a `daten/` directory
+would be lost during flat file copies.
+
 ## Stage 2: Dictionary Verification (`dictionary.py`)
 
 Executes post-reassembly across **every OCR page** — skipping native textlayer pages whose text is exact and would produce false positives. Unrecognized terms are logged as `⌕` lines in execution output and added to `woerter-verdaechtig` in frontmatter.

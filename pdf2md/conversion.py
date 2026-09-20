@@ -27,6 +27,9 @@ class OcrAdapter(Protocol):
 
     def __call__(self, image: Path, max_tokens: int = TOKEN_MAX) -> str: ...
 
+    def prepare(self) -> None:
+        """Load whatever the first call would load, outside page timing."""
+
 
 EventSink = Callable[[dict[str, Any]], None]
 
@@ -51,6 +54,10 @@ class ConversionRequest:
     selected_pages: frozenset[int] | None = None
     diagram_image_only: bool = False
     model_name: str | None = None
+    # Scan pages are rendered here. Deliberately not `output_dir`: that folder
+    # is a vault folder in plugin runs, and Obsidian would index every
+    # intermediate PNG. None means the system temporary directory.
+    temp_root: Path | None = None
     cancel_requested: Callable[[], bool] = field(
         default=lambda: False, compare=False, repr=False)
 
@@ -91,6 +98,8 @@ class ConversionResult:
     total_pages: int
     completed: bool
     cancelled: bool
+    # Page processing only — analysis and the one-off model load are excluded,
+    # so s/page stays comparable across runs and against the benchmarks.
     seconds: float
     pages_textlayer: int = 0
     pages_ocr: int = 0
@@ -267,16 +276,22 @@ def _document_text(request, page_blocks, page_results, total_pages, model_name,
     return build_document(header, source_link, page_blocks)
 
 
-def _write_result(request, markdown, lines_dump, report):
+def _write_result(request, markdown, lines_dump, report, emit):
     """Write complete and partial artifacts through the same path."""
     target = request.output_dir / f"{request.pdf.stem}.md"
     target.write_text(markdown, encoding="utf-8")
     if request.lines_dump:
         request.lines_dump.write_text(
             json.dumps(lines_dump, ensure_ascii=False), encoding="utf-8")
+        emit({"type": "artifact", "kind": "lines_dump",
+              "path": request.lines_dump, "count": len(lines_dump),
+              "unit": "pages"})
     if request.dictionary_report:
         request.dictionary_report.write_text(
             json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+        emit({"type": "artifact", "kind": "dictionary_report",
+              "path": request.dictionary_report, "count": len(report),
+              "unit": "findings"})
     return target
 
 
@@ -286,18 +301,19 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
     emit = event_sink or (lambda _event: None)
     request.output_dir.mkdir(parents=True, exist_ok=True)
     image_dir = request.image_dir or request.output_dir / "assets"
-    started = time.perf_counter()
+    if request.temp_root is not None:
+        request.temp_root.mkdir(parents=True, exist_ok=True)
     emit({"type": "analysis_started", "file": request.pdf.name,
           "dpi": request.dpi, "selection": request.selected_pages})
 
     with tempfile.TemporaryDirectory(
-            prefix=f"_tmp-{request.pdf.stem}-", dir=request.output_dir) as temp_name:
+            prefix=f"_tmp-{request.pdf.stem}-",
+            dir=request.temp_root) as temp_name:
         analyzed, assembly_context = analyze_pages(request, Path(temp_name))
         if not analyzed:
             return ConversionResult(
                 target=None, markdown=None, pages=(), total_pages=0,
-                completed=False, cancelled=False,
-                seconds=time.perf_counter() - started,
+                completed=False, cancelled=False, seconds=0.0,
             )
         ocr_page_count = sum(page.needs_ocr for page in analyzed)
         emit({"type": "analysis_complete", "pages": len(analyzed),
@@ -311,6 +327,14 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
             wordbook = dictionary.load(list(request.dictionaries))
             emit({"type": "dictionary", "wordbook": wordbook,
                   "correct": request.dictionary_correct})
+
+        # Load the model before the clock starts, so neither the first page's
+        # duration nor the total carries the one-off load.
+        if ocr_page_count and ocr_adapter is not None:
+            prepare = getattr(ocr_adapter, "prepare", None)
+            if prepare is not None:
+                prepare()
+        started = time.perf_counter()
 
         page_blocks: list[str] = []
         page_results: list[PageResult] = []
@@ -328,6 +352,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                        or page.number in request.forced_diagram_pages)
             trace: list[str] = []
             findings = []
+            image_only = False
 
             if page.textlayer_lines is not None:
                 lines = split_columns(assign_boxes(page.textlayer_lines, page.boxes))
@@ -337,6 +362,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 lines = []
                 source = "ocr"
                 source_detail = ""
+                image_only = True
             else:
                 if ocr_adapter is None:
                     raise RuntimeError("OCR pages require an OCR adapter")
@@ -378,9 +404,10 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 source = "ocr"
                 source_detail = f"{page.layout_type}, {mode}"
 
-            lines_dump.append({"seite": page.number,
-                               "quelle": source if source == "textlayer"
-                               else source_detail, "zeilen": lines})
+            if not image_only:
+                lines_dump.append({"seite": page.number,
+                                   "quelle": source if source == "textlayer"
+                                   else source_detail, "zeilen": lines})
             assembled = assemble_paragraphs(lines, assembly_context)
             paragraphs = assembled.paragraphs
             if source == "ocr" and lines:
@@ -444,7 +471,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
             request.model_name if ocr_page_count else None,
             words_suspect, words_corrected, completed,
         )
-        target = _write_result(request, markdown, lines_dump, report)
+        target = _write_result(request, markdown, lines_dump, report, emit)
         pages_textlayer = sum(page.source == "textlayer" for page in page_results)
         result = ConversionResult(
             target=target, markdown=markdown, pages=tuple(page_results),

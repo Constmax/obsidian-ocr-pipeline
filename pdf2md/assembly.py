@@ -67,15 +67,6 @@ class AssemblyResult:
     paragraphs: list[str]
     discarded: list[str]
 
-    def __len__(self):
-        return len(self.paragraphs)
-
-    def __iter__(self):
-        return iter(self.paragraphs)
-
-    def __getitem__(self, index):
-        return self.paragraphs[index]
-
 
 def is_boilerplate(text, y=None, header_zone=70, footer_zone=950,
                    context=None):
@@ -367,7 +358,10 @@ def short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
 
 
 def assemble_paragraphs(lines, context=None):
-    """Resolve hyphens and merge lines into paragraphs."""
+    """Resolve hyphens and merge lines into paragraphs.
+
+    Returns an AssemblyResult — read .paragraphs, not the record itself.
+    """
     lines = attach_footnote_numbers(lines)
     ys = [z[1][1] for z in lines if z[1]]
     distances = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 200]

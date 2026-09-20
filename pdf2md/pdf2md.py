@@ -109,11 +109,20 @@ def page_option(flag, text, page_count):
 
 
 class LazyMlxOcrAdapter:
-    """Load the model only when the runner encounters its first OCR page."""
+    """Load the model only when the run actually needs it.
+
+    The runner calls prepare() once it knows OCR pages exist and before it
+    starts timing pages, so the one-off load stays out of the per-page and
+    total durations.
+    """
 
     def __init__(self, model_name):
         self.model_name = model_name
         self._generate = None
+
+    def prepare(self):
+        if self._generate is None:
+            self._load()
 
     def _load(self):
         from mlx_vlm import generate, load
@@ -191,6 +200,8 @@ def _event_sink(progress):
                 if page.trace:
                     payload["grund"] = page.trace[0]
                 _progress(payload)
+        elif kind == "artifact":
+            print(f"→ {event['path']} ({event['count']} {event['unit']})")
         elif kind == "complete":
             result = event["result"]
             if progress:
