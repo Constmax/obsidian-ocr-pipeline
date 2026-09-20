@@ -211,14 +211,91 @@ def test_refresh_without_range_recalculates_all_selected_pages(tmp_path):
 
 def test_checked_in_page_cache_fixture_is_assemblable_without_mlx():
     fixture = Path(__file__).parent / "data" / "page-cache"
-    pages = [
-        json.loads(path.read_text(encoding="utf-8"))["page"]
-        for path in sorted(fixture.glob("*.json"))
-    ]
+    paths = sorted(fixture.glob("*.json"))
+    assert [path.name for path in paths] == ["001.json", "002.json"]
 
     from assembly import assemble_paragraphs
 
-    paragraphs = [assemble_paragraphs(page["lines"]).paragraphs for page in pages]
-    assert len(paragraphs) == 2
-    assert all(result for result in paragraphs)
+    paragraphs = []
+    for path in paths:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        number = payload["page"]["number"]
+        expected_key = page_cache.page_key(payload["context"], number)
+        assert payload["key"] == expected_key, (
+            f"{path.name}: stored key must be the real page_key, "
+            "not a placeholder, so the fixture exercises cache validation"
+        )
+        page = page_cache.read_page(fixture, number, expected_key)
+        assert page is not None, f"{path.name}: fixture must pass read_page"
+        result = assemble_paragraphs(page["lines"])
+        assert result.paragraphs
+        paragraphs.append(result.paragraphs)
     assert "§ 985 BGB" in " ".join(paragraphs[0])
+
+
+def test_unresolved_model_revision_never_reuses(tmp_path, monkeypatch):
+    monkeypatch.delenv("MLX_OCR_MODEL_REVISION", raising=False)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty-hub"))
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "empty-home"))
+
+    first = page_cache.model_revision("mlx-community/PaddleOCR-VL-1.5-4bit")
+    second = page_cache.model_revision("mlx-community/PaddleOCR-VL-1.5-4bit")
+
+    assert first.startswith("unresolved-")
+    assert second.startswith("unresolved-")
+    assert first != second, (
+        "unknown revisions must not share a key across runs "
+        "(Issue #11: silent reuse is worse than loss)"
+    )
+
+
+def test_corrupt_box_is_a_miss(tmp_path):
+    pdf = tmp_path / "source.pdf"
+    pdf.write_bytes(b"pdf contents")
+    context = page_cache.build_context(pdf, {"dpi": 150, "model": "test@1"})
+    directory = page_cache.cache_directory(tmp_path / "out", pdf)
+    page_cache.write_page(directory, context, {
+        "number": 1,
+        "source": "ocr",
+        "characters": 0,
+        "layout": "single-column",
+        "mode": "whole",
+        "lines": [["Text", [10, 20, 900, 40]]],
+        "trace": [],
+    })
+    expected = page_cache.page_key(context, 1)
+    assert page_cache.read_page(directory, 1, expected) is not None
+
+    payload = json.loads(page_cache.page_path(directory, 1).read_text(
+        encoding="utf-8"))
+    payload["page"]["lines"] = [["Text", "not-a-box"]]
+    page_cache.page_path(directory, 1).write_text(
+        json.dumps(payload), encoding="utf-8")
+
+    assert page_cache.read_page(directory, 1, expected) is None
+
+
+def test_textlayer_cache_survives_model_upgrade(tmp_path):
+    from conversion import ConversionRequest, _cache_contexts, _page_cache_key
+    from conversion import AnalyzedPage
+
+    pdf = tmp_path / "source.pdf"
+    pdf.write_bytes(b"pdf contents")
+    page = AnalyzedPage(
+        number=1, image_path=None, text_characters=200,
+        layout_type="vektoriell", gutter=None,
+        textlayer_lines=[["Text", [0, 0, 10, 10]]], boxes=[],
+        is_diagram=False,
+    )
+    old_full, old_text = _cache_contexts(ConversionRequest(
+        pdf=pdf, output_dir=tmp_path / "out", model_name="model-a",
+        ocr_prompt="prompt-a"))
+    new_full, new_text = _cache_contexts(ConversionRequest(
+        pdf=pdf, output_dir=tmp_path / "out", model_name="model-b",
+        ocr_prompt="prompt-b"))
+
+    assert _page_cache_key(
+        page, 1, old_full, old_text) == _page_cache_key(
+        page, 1, new_full, new_text)
+    assert page_cache.page_key(old_full, 1) != page_cache.page_key(
+        new_full, 1)

@@ -346,15 +346,20 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
 
 Every completed page is written atomically below
 `<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains parsed lines with
-their boxes, source and layout metadata, and derailment/repair traces. Markdown
-assembly reads those files back instead of retaining model output in memory.
-Consequently, a stopped run resumes at the first missing page by default and a
-second assembly pass can run without loading MLX when all OCR pages are cached.
+their boxes, source and layout metadata, and derailment/repair traces. Each
+run persists its pages while assembling from memory; a resumed or repeated run
+reads matching pages back from disk instead of recomputing them. Consequently,
+a stopped run resumes at the first missing page by default and a second pass
+can run without loading MLX when all OCR pages are cached.
 
 The cache key includes the PDF SHA-256 digest, DPI, tiling threshold, bold and
 OCR-only modes, retry count, prompt, diagram-image mode, and the OCR model name
-and locally resolved revision. A changed input or parameter is a cache miss;
-corrupt and older-schema entries are likewise recalculated.
+and locally resolved revision. Textlayer pages never touch the model, so their
+key excludes the model name, revision, and prompt — a model upgrade does not
+discard them. An unresolvable model revision never reuses a cached OCR page:
+the fingerprint is unique per run, so unknown versions are always recalculated.
+A changed input or parameter is otherwise a cache miss; corrupt entries, invalid
+boxes, and older-schema entries are likewise recalculated.
 
 ```bash
 # Resume automatically, reusing every matching page
