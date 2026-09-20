@@ -21,6 +21,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=./pdf-lib.sh
+source "$SCRIPT_DIR/pdf-lib.sh"
 
 PDF_COMBINE="$HOME/bin/pdf-combine"
 if [ ! -x "$PDF_COMBINE" ]; then
@@ -68,11 +70,19 @@ DEST_ARG=""
 COMBINE_ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
-        --min-chars)   MIN_CHARS="$2"; shift 2 ;;
-        --allow-pages) ALLOW_PAGES="$2"; shift 2 ;;
+        --min-chars)
+            require_option_value "$@"
+            case "$2" in
+                *[!0-9]*) usage_error "--min-chars must be a whole number, got '$2'" ;;
+            esac
+            MIN_CHARS=$((10#$2)); shift 2 ;;
+        --allow-pages)
+            require_option_value "$@"
+            ALLOW_PAGES="$2"; shift 2 ;;
         --output)
-            if [ $# -lt 2 ] || [ -z "$2" ] || [ -n "$DEST_ARG" ]; then
-                echo "❌ --output needs exactly one file name"; exit 1
+            require_option_value "$@"
+            if [ -n "$DEST_ARG" ]; then
+                usage_error "--output needs exactly one file name"
             fi
             DEST_ARG="$2"; shift 2 ;;
         *) COMBINE_ARGS+=("$1"); shift ;;
