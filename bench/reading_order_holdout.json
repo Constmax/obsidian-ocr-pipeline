@@ -1,0 +1,126 @@
+{
+ "description": "Validation pages for issue #87, in the format and with the conventions of reading_order_truth.json. They come from documents outside that set and were chosen after the ordering fix was committed; the regions were drawn and the overlays checked before any order_lines() output of these pages was looked at. Text bleeding through from a facing page at the left edge is a margin note of the left column.",
+ "pages": [
+  {"id": "n01", "source": "raw/OeR/Verwaltungsrecht-AT/Verwaltungsrecht AT Fall 11.pdf", "page": 5,
+   "layout": "two columns, dense running header, boxed quotations, footnotes, footer",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 135]},
+    {"role": "body", "column": "L", "box": [0, 135, 510, 925]},
+    {"role": "footnote", "column": "L", "box": [0, 925, 510, 962]},
+    {"role": "body", "column": "R", "box": [510, 135, 1000, 905]},
+    {"role": "footnote", "column": "R", "box": [510, 905, 1000, 962]},
+    {"role": "footer", "box": [0, 962, 1000, 1000]}
+   ]},
+  {"id": "n02", "source": "raw/StR/Rep-Faelle/strafrecht-fall-10.pdf", "page": 9,
+   "layout": "two columns, dense running header, boxed notes, footer",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 122]},
+    {"role": "body", "column": "L", "box": [0, 122, 510, 950]},
+    {"role": "body", "column": "R", "box": [510, 122, 1000, 950]},
+    {"role": "footer", "box": [0, 950, 1000, 1000]}
+   ]},
+  {"id": "n03", "source": "raw/ZR/Arbeitsrecht/hemmer-arbeitsrecht-fall-05.pdf", "page": 6,
+   "layout": "two columns, dense running header, boxed notes, footnote in the right column, binder ring",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 132]},
+    {"role": "body", "column": "L", "box": [0, 132, 512, 955]},
+    {"role": "body", "column": "R", "box": [512, 132, 1000, 920]},
+    {"role": "footnote", "column": "R", "box": [512, 920, 1000, 955]},
+    {"role": "footer", "box": [0, 955, 1000, 1000]}
+   ]},
+  {"id": "n04", "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-fall-11-12.pdf", "page": 5,
+   "layout": "two columns, dense running header, footnotes level in both columns, skewed high-contrast scan",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 125]},
+    {"role": "body", "column": "L", "box": [0, 125, 465, 910]},
+    {"role": "footnote", "column": "L", "box": [0, 910, 465, 958]},
+    {"role": "body", "column": "R", "box": [465, 125, 1000, 910]},
+    {"role": "footnote", "column": "R", "box": [465, 910, 1000, 958]},
+    {"role": "footer", "box": [0, 958, 1000, 1000]}
+   ]},
+  {"id": "n05", "source": "raw/ZR/BGB-AT/BGB-AT_04.Lösung.pdf", "page": 6,
+   "layout": "two columns, dense running header, boxed note, footnotes nearly level in both columns",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 120]},
+    {"role": "body", "column": "L", "box": [0, 120, 500, 915]},
+    {"role": "footnote", "column": "L", "box": [0, 915, 500, 958]},
+    {"role": "body", "column": "R", "box": [500, 120, 1000, 925]},
+    {"role": "footnote", "column": "R", "box": [500, 925, 1000, 958]},
+    {"role": "footer", "box": [0, 958, 1000, 1000]}
+   ]},
+  {"id": "n06", "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-fall-21.pdf", "page": 8,
+   "layout": "two columns, dense running header, footnotes starting level in both columns, dark scan edge",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 130]},
+    {"role": "body", "column": "L", "box": [0, 130, 508, 903]},
+    {"role": "footnote", "column": "L", "box": [0, 903, 508, 955]},
+    {"role": "body", "column": "R", "box": [508, 130, 1000, 870]},
+    {"role": "footnote", "column": "R", "box": [508, 870, 1000, 955]},
+    {"role": "footer", "box": [0, 955, 1000, 1000]}
+   ]},
+  {"id": "n07", "source": "raw/StR/Rep-Faelle/strafrecht-fall-05.pdf", "page": 6,
+   "layout": "two columns, running header, boxed note, footnotes level in both columns, binder ring",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 139]},
+    {"role": "body", "column": "L", "box": [0, 139, 483, 905]},
+    {"role": "footnote", "column": "L", "box": [0, 905, 483, 955]},
+    {"role": "body", "column": "R", "box": [483, 139, 1000, 905]},
+    {"role": "footnote", "column": "R", "box": [483, 905, 1000, 955]},
+    {"role": "footer", "box": [0, 955, 1000, 1000]}
+   ]},
+  {"id": "n08", "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-fall-19-20.pdf", "page": 12,
+   "layout": "two columns, cropped running header, boxed heading and note, long footnotes at different heights",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 96]},
+    {"role": "body", "column": "L", "box": [0, 96, 500, 810]},
+    {"role": "footnote", "column": "L", "box": [0, 810, 500, 940]},
+    {"role": "body", "column": "R", "box": [500, 96, 1000, 775]},
+    {"role": "footnote", "column": "R", "box": [500, 775, 1000, 940]},
+    {"role": "footer", "box": [0, 940, 1000, 1000]}
+   ]},
+  {"id": "n09", "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-fall-1-2.pdf", "page": 8,
+   "layout": "two columns of boxed questions, running header, handwriting continuing a question line, text bleeding through at the left edge",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 154]},
+    {"role": "body", "column": "L", "box": [0, 154, 565, 960]},
+    {"role": "note", "column": "L", "box": [0, 770, 60, 960]},
+    {"role": "body", "column": "R", "box": [565, 154, 1000, 960]},
+    {"role": "footer", "box": [0, 960, 1000, 1000]}
+   ]},
+  {"id": "n10", "source": "raw/ZR/BGB-AT/BGB AT Fall 5 & 6.pdf", "page": 4,
+   "layout": "two columns, dense running header, boxed notes, footnotes nearly level in both columns, binder ring",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 121]},
+    {"role": "body", "column": "L", "box": [0, 121, 520, 890]},
+    {"role": "footnote", "column": "L", "box": [0, 890, 520, 952]},
+    {"role": "body", "column": "R", "box": [520, 121, 1000, 885]},
+    {"role": "footnote", "column": "R", "box": [520, 885, 1000, 952]},
+    {"role": "footer", "box": [0, 952, 1000, 1000]}
+   ]},
+  {"id": "n11", "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-fall-13-14.pdf", "page": 5,
+   "layout": "running header, full-width title above two columns of an overview outline",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 140]},
+    {"role": "heading", "box": [0, 140, 1000, 180]},
+    {"role": "body", "column": "L", "box": [0, 180, 515, 955]},
+    {"role": "body", "column": "R", "box": [515, 180, 1000, 955]},
+    {"role": "footer", "box": [0, 955, 1000, 1000]}
+   ]},
+  {"id": "n12", "source": "raw/ZR/BGB-AT/BGB-AT_04.Lösung.pdf", "page": 10,
+   "layout": "dense running header, two boxed columns of unequal length, footnote under the right column",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 120]},
+    {"role": "body", "column": "L", "box": [0, 120, 500, 955]},
+    {"role": "body", "column": "R", "box": [500, 120, 1000, 900]},
+    {"role": "footnote", "column": "R", "box": [500, 900, 1000, 958]},
+    {"role": "footer", "box": [0, 958, 1000, 1000]}
+   ]},
+  {"id": "n13", "source": "raw/StR/Rep-Faelle/strafrecht-fall-10.pdf", "page": 16,
+   "layout": "single column, running header, footer, binder ring",
+   "regions": [
+    {"role": "header", "box": [0, 0, 1000, 132]},
+    {"role": "body", "box": [0, 132, 1000, 955]},
+    {"role": "footer", "box": [0, 955, 1000, 1000]}
+   ]}
+ ]
+}
