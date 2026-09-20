@@ -1,9 +1,10 @@
 # Spike #95: Docling against the current PDF-to-Markdown pipeline
 
-Status: **inconclusive** (valid outcome per the issue). This spike built the
-measurement harness, verified it on synthetic pages, and recorded why the
-vault measurement it was designed for has not run yet. It did not change any
-production code path.
+Status: **keep the current pipeline** (measured 2026-09-20, see Vault
+measurement below). This spike built the measurement harness, verified it on
+synthetic pages, ran both paths over the same 16 hand-checked truth pages,
+and reached the decision the issue's criteria prescribe. It did not change
+any production code path.
 
 Issue: #95 — time-boxed evaluation spike, not a migration. Related tracking
 issue: #93. Result contracts and diagnostics (#90, #91, #92) are independent
@@ -148,68 +149,144 @@ No vault pages (t01–t16) were scored yet, so there are no vault ordering
 numbers and no scanned-page timings for either path. The vault run from the
 reproduction steps above is still the missing measurement.
 
+## Vault measurement (2026-09-20)
+
+Ran on the target machine (Apple Silicon, 8 GiB, macOS) with
+`VAULT_ROOT` pointing at the vault containing `raw/`. All 16 truth sources
+present. Docling 2.129.0, standard pipeline, CPU (layout + RapidOCR
+PP-OCRv6 `small` via onnxruntime, all defaults). Current path:
+`pdf2md/` defaults (PaddleOCR-VL-1.5-4bit via mlx-vlm, dpi 150,
+`tile_from` 3000) driven per single-page PDF through its CLI.
+
+Pipeline: `reading_order.py prepare` (16 pages ok, ocrmypdf venv) →
+`recognize` (PP-OCRv5 truth lines, 4–11 s/page, docling venv with pinned
+`rapidocr==3.9.2` + `onnxruntime==1.26.0` and SHA-256-verified models in
+`~/.cache/ocrmypdf-paddle/models`) → `spike_docling.py run --engine
+docling` → `run --engine pdf2md` (sequential, one process per engine) →
+`compare --truth-lines`.
+
+### Reading order (truth set t01–t16, `score_page`)
+
+| Page | Docling | Current (pdf2md) |
+|---|---|---|
+| t01 | 99.3% | 96.1% |
+| t02 | 99.2% | 98.6% |
+| t03 | 98.6% | 99.2% |
+| t04 | 99.2% | 97.2% |
+| t05 | 99.2% | 100.0% |
+| t06 | 94.3% | 100.0% |
+| t07 | 81.1% | 100.0% |
+| t08 | 95.1% | 100.0% |
+| t09 | 98.7% | 97.9% |
+| t10 | 99.0% | 100.0% |
+| t11 | 99.5% | 100.0% |
+| t12 | 100.0% | 100.0% |
+| t13 | 100.0% | 99.1% |
+| t14 | 99.1% | 100.0% |
+| t15 | 99.5% | 100.0% |
+| t16 | 98.7% | 100.0% |
+
+Summaries: Docling median **99.1%** (mean 97.5%, min 81.1%), current path
+median **100.0%** (mean 99.3%, min 96.1%). Docling interleaves columns on 4
+pages vs 3 for the current path, and misplaces 23 of 77 full-width lines vs
+6 (unmatched full-width: 14 vs 66 — the current path drops more lines but
+orders what it keeps almost perfectly; its unmatched lines cluster in
+box/header/footer zones, e.g. t07 with only 53/64 matched).
+
+The current pipeline's hand-written column/assembly code outscores Docling's
+trained reading order on this material. Docling's weak pages are exactly the
+layouts the issue worried about: t07 (full-width title above two columns,
+81.1%), t06 (boxed notes, 94.3%), t08 (boxed heading and notes, 95.1%).
+
+### Time and memory per page (same 16 pages)
+
+| Engine | Median s/page | Total 16 pages | Peak RSS |
+|---|---|---|---|
+| Docling | 12.3 | 192 s | 1,515 MiB (in-process) |
+| Current (pdf2md) | 65.3 | 969 s | ~1,138 MiB (bench/ERGEBNIS.md; harness process only 21 MiB, see limitations) |
+
+Docling is ~5x faster per page (min 6.8 s vs 27.4 s). Both fit 8 GiB:
+Docling peaked at 1.5 GiB in-process with light swap deltas; the pdf2md run
+showed sustained swap traffic over its 16 minutes, consistent with the known
+~1.1 GiB MLX peak. Raw run records (copyrighted page text) stay in the
+git-ignored `bench/docling-lauf/` (`docling-truth/`, `pdf2md-truth/`,
+`comparison.md`/`.json`).
+
 ## Structure findings (qualitative)
 
-None recorded against vault pages yet — deliberately. The issue requires
-structure failures with page references (t01–t16) marked as qualitative
-until #20 provides a hand-checked corpus. Inventing page-referenced failures
-from synthetic pages would be fabrication, so this section records what to
-inspect on the vault run instead:
+Recorded against the vault outputs above (page-referenced, qualitative until
+#20 provides a hand-checked corpus):
 
-- Tables: does Docling emit real Markdown tables where the current path
-  concatenates cells in reading direction (cf. `bench/ERGEBNIS.md`
-  Nachtrag 3)? Record page id, expected rows/columns, observed failure.
-- Footnotes: footnote apparatus placement per column vs. interleaved or
-  dropped definitions; record page id and footnote numbers.
-- Diagrams / boxed notes: image fallback vs. text destruction
-  (cf. Nachträge 4–7); record page id and which of the three diagram
-  signals (if any) the output corresponds to.
+- **Duplicated paragraphs (t06, t08, t03, t04, t09).** Docling repeats
+  nearly every paragraph back-to-back on two-column pages with boxed notes
+  (t06: 54 duplicated truth lines; total 225 vs 12 for the current path;
+  output visibly ~1.5x the text, e.g. t06 6,635 vs 4,105 chars). Content
+  integrity, worse than ordering noise: repeated paragraphs would surface
+  verbatim in the vault.
+- **Footnotes unlinked (t01, t02).** The current path emits `[^71]`–`[^75]`
+  references with definitions; Docling appends footnote paragraphs as plain
+  `- 71 …` bullets and leaves reference numbers naked in the text
+  (e.g. `Hauptsache.73`). Footnote apparatus does not transfer.
+- **Full-width title misplaced + element dropped (t07).** Docling moves the
+  full-width title (`Fall 15 Lösung`) after `FRAGE 1` and emits
+  `<!-- image -->` where the current path returns the text. The trained
+  layout model misreads exactly the full-width-over-columns construction.
+- **Tables: no comparison possible on this set.** Neither output contains a
+  Markdown table on t01–t16 (the pages carry boxed notes, not true tables),
+  so table-structure quality remains unmeasured.
+- Both paths show word-level recognition noise (each misreads `§`/roman
+  numerals somewhere); recognition accuracy was not scored here — it
+  belongs to #91/`bench_ocr.py`, not to this ordering spike.
 
-## Verdict: inconclusive
+## Verdict: keep the current pipeline
 
-The spike harness exists, is tested, and is ready for the vault run, but the
-vault comparison it was built for has not been measured: Docling is not
-installed in this environment and no t01–t16 pages were scored. Per the
-issue, an inconclusive result is a valid outcome and is recorded as one.
-The spike is not extended to make Docling win.
+Applied the issue's decision criteria to the vault measurement:
 
-Decision criteria for the future vault run (unchanged from the issue):
-
-- Docling better on reading order **and** not slower per page → open a
-  migration issue and re-scope the layout/assembly parts of #93 to the work
-  that would actually remain.
-- Docling comparable or worse on either axis → record the measurement and
-  observed failure modes, keep the current pipeline, proceed with #93.
-- Issues that would extend `layout.py` or `assembly.py` should wait for that
-  vault verdict. #90, #91, #92 proceed regardless.
+- Docling is **worse** on reading order (median 99.1% vs 100.0%, min 81.1%
+  vs 96.1%) **and** faster per page (12.3 s vs 65.3 s median). The criteria
+  require better-on-order **and** not-slower for a migration; failing the
+  first branch means **keep the current pipeline**, even with the ~5x speed
+  advantage. The qualitative failures (paragraph duplication, unlinked
+  footnotes, misplaced full-width title) independently disqualify Docling
+  for this material: they corrupt content, not just order.
+- No migration issue is opened. The layout/assembly parts of #93 proceed as
+  planned — this verdict unblocks the issues that were waiting on it. #90,
+  #91, #92 proceed regardless, as before.
 
 ## Limitations
 
-- Docling install and model download were not exercised here; first-run
-  download size, cold-start time, and peak RSS on 8 GiB remain unmeasured.
-- The `pdf2md` synthetic timing (0.1 s/page) covers vector textlayer pages
-  only, not the 15–60 s/page scanned VLM path.
-- `compare` without `--truth-lines` cannot score ordering; the guidance is
-  then inconclusive by construction.
-- Structure assessment awaits both the vault run and #20's corpus.
+- The `pdf2md` peak RSS in `comparison.json` (21 MiB) is the harness process
+  only: that engine converts via one `pdf2md.py` subprocess per page, whose
+  memory is not attributed. The comparable figure is the known MLX peak of
+  ~1,138 MiB (`bench/ERGEBNIS.md`, same model); the sustained swap traffic
+  over the 16-minute run corroborates it. A future harness could read
+  subprocess peak via `/usr/bin/time -l` or `resource` wait4.
+- Recognition (word) accuracy was not scored; only ordering, time, and
+  memory were measured, plus qualitative structure review.
+- Table structure is unmeasured: t01–t16 contain no true tables.
+- Structure findings are qualitative (no #20 corpus yet), as the issue
+  requires.
 - Docling defaults may drift upstream; the spike pins the intent
   ("documented local/ARM64 defaults, standard pipeline, no tuning"), not a
-  version. Record the installed version with any future measurement
-  (`check` prints it).
+  version. The measured version was 2.129.0 (`check` prints it).
+- Raw outputs contain copyrighted page text and stay in the git-ignored
+  `bench/docling-lauf/`; only aggregates and short phrases are recorded
+  here.
 
 ## Completion criteria status
 
 - [x] Docling runs locally on the target machine (2.129.0 in `~/.venvs/docling`,
-  `check` reports runnable; synthetic conversion verified end to end).
-- [ ] Both paths measured over the same vault pages with
-  `bench/reading_order.py` — pending vault run (harness ready).
-- [ ] Per-page time and peak memory for both paths on the 8 GiB machine —
-  pending vault run (synthetic pdf2md vector timing recorded above only as
-  plumbing proof).
-- [ ] Structure failures with page references, marked qualitative — none
-  invented; inspection list recorded for the vault run.
+  `check` reports runnable; vault conversion verified end to end).
+- [x] Both paths measured over the same vault pages with
+  `bench/reading_order.py` (t01–t16, `compare --truth-lines`).
+- [x] Per-page time and peak memory for both paths on the 8 GiB machine
+  (12.3 vs 65.3 s/page median; 1,515 MiB in-process vs ~1,138 MiB known
+  MLX peak — harness attribution limit stated above).
+- [x] Structure failures with page references, marked qualitative
+  (duplication t06/t08/t03/t04/t09; footnotes t01/t02; title t07; tables
+  unmeasurable on this set).
 - [x] Written verdict in `docs/` with limitations stated (this file):
-  **inconclusive**.
+  **keep the current pipeline**.
 
 ## References
 
