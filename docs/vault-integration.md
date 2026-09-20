@@ -96,6 +96,12 @@ mv "raw/assets/_processed/Verwaltungsrecht AT.pdf" "raw/verwaltungsrecht-at.pdf"
 
 ## Special Case: Obsidian iCloud Sync
 
+Stage 2 stores resumable page results in `_ocr-vorschau/.cache/` (or the
+corresponding configured output folder). Add that directory to the vault's
+`.gitignore` and, if the cache should not appear in search, to Obsidian's
+excluded-files setting. The cache is reproducible and must not be committed;
+it may remain in iCloud so another Mac can resume the same conversion.
+
 When the vault resides in iCloud:
 1. Scripts write `raw/foo.pdf` locally
 2. iCloud Sync runs in background automatically
@@ -109,4 +115,3 @@ CLAUDE.md Batch Ingest Step 2 states:
 > Execute `pdf-auto raw/assets --cleanup --fast`. This generates a finalized PDF in `raw/assets/_processed/` for each subdirectory or group.
 
 This skill implements that exact step. The additional intelligence provided by this skill: **Engine selection based on source type** (e.g., automatically applying `--engine tesseract` when course scripts are mentioned).
-
