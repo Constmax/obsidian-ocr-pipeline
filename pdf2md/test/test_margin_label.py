@@ -16,7 +16,7 @@ def test_label_flows_into_sentence():
         z("Mutter M putzt gerade die Fenster ihrer Terrasse und stoesst dabei "
           "aus Unachtsamkeit einen", 166, 97, 899),
         z("Blumentopf herunter, welcher sodann den Dieb D trifft.",
-          166, 116, 899)])
+          166, 116, 899)]).paragraphs
     assert len(out) == 1
     assert out[0].startswith("**Beispiel:** Mutter M putzt")
     assert out[0].endswith("den Dieb D trifft.")
@@ -26,7 +26,7 @@ def test_real_heading_still_separates():
     out = assemble_paragraphs([
         z("**A. Grundsaetzliches zum Unterlassen**", 166, 98, 600),
         z("Zu unterscheiden sind das unechte und das echte "
-          "Unterlassungsdelikt.", 166, 120, 899)])
+          "Unterlassungsdelikt.", 166, 120, 899)]).paragraphs
     assert len(out) == 2
     assert out[0].startswith("#")
 

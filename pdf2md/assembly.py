@@ -5,13 +5,14 @@ Separated from pdf2md.py so that the layer changing most frequently can be teste
 without MLX, fitz, and Vault assets (pdf2md/test). Imports nothing from sibling
 modules — dependency flows only in this direction:
 
-    pdf2md.py (CLI)  →  layout.py, ocr.py  →  assembly.py
+    pdf2md.py (CLI)  →  conversion.py  →  layout.py, ocr.py, assembly.py
 
 Heavy imports (fitz, numpy, PIL) are function-local in all modules.
 """
 import json
 import re
 import statistics
+from dataclasses import dataclass
 
 LOC = re.compile(r"<\|LOC_(\d+)\|>")
 # --- Post-processing -------------------------------------------------------
@@ -52,22 +53,29 @@ ZONE_SIGNALS = [
     re.compile(r"^\s*Seite\s*\d+\s*$", re.I),
 ]
 
-# Filled per document from set_running().
-RUNNING = set()
+@dataclass(frozen=True)
+class AssemblyContext:
+    """Document-scoped state used while assembling pages."""
+
+    running_lines: frozenset[str] = frozenset()
 
 
-def set_running(lines):
-    """Set running header/footer lines of the document."""
-    RUNNING.clear()
-    RUNNING.update(lines)
+@dataclass(frozen=True)
+class AssemblyResult:
+    """Paragraphs assembled from a page and lines discarded as boilerplate."""
+
+    paragraphs: list[str]
+    discarded: list[str]
 
 
-def is_boilerplate(text, y=None, header_zone=70, footer_zone=950):
+def is_boilerplate(text, y=None, header_zone=70, footer_zone=950,
+                   context=None):
     """Detect Hemmer boilerplate."""
     t = text.strip().strip("*").strip()
     if not t:
         return False
-    if RUNNING and re.sub(r"\s+", " ", re.sub(r"\*", "", t)).strip() in RUNNING:
+    running = context.running_lines if context else frozenset()
+    if running and re.sub(r"\s+", " ", re.sub(r"\*", "", t)).strip() in running:
         return True
     if any(p.search(t) for p in BOILERPLATE):
         return True
@@ -349,8 +357,11 @@ def short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
     return short, block
 
 
-def assemble_paragraphs(lines):
-    """Resolve hyphens and merge lines into paragraphs."""
+def assemble_paragraphs(lines, context=None):
+    """Resolve hyphens and merge lines into paragraphs.
+
+    Returns an AssemblyResult — read .paragraphs, not the record itself.
+    """
     lines = attach_footnote_numbers(lines)
     ys = [z[1][1] for z in lines if z[1]]
     distances = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 200]
@@ -375,7 +386,7 @@ def assemble_paragraphs(lines):
         y = box[1] if box else None
         if not text:
             continue
-        if is_boilerplate(text, y):
+        if is_boilerplate(text, y, context=context):
             discarded.append(text)
             continue
 
@@ -423,8 +434,8 @@ def assemble_paragraphs(lines):
     if buffer:
         out.append(buffer)
     out = [balance_bold(re.sub(r"\*\*(\s*)\*\*", r"\1", p)) for p in out]
-    assemble_paragraphs.discarded = discarded
-    return format_headings(footnotes_obsidian(out))
+    paragraphs = format_headings(footnotes_obsidian(out))
+    return AssemblyResult(paragraphs=paragraphs, discarded=discarded)
 
 
 SENTENCE_END = re.compile(r"[.!?][\"“»)\]]?$")

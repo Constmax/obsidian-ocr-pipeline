@@ -21,7 +21,7 @@ import json, sys
 from pathlib import Path
 
 from paths import BENCH, VAULT_ROOT as VAULT
-import pdf2md as M
+import conversion as C
 import assembly as A
 from regress_steg import buchstaben, seite_bauen, woerter
 
@@ -44,7 +44,7 @@ def main():
         for p in doc:
             if p.rotation:
                 p.remove_rotation()
-        A.set_running(M.running_lines(doc))
+        context = A.AssemblyContext(C.running_lines(doc))
         for nr in sorted(nach_datei[datei]):
             if nr > doc.page_count:
                 continue
@@ -60,9 +60,9 @@ def main():
                 continue
             try:
                 A.promote_margin_labels = lambda z, *r, **k: z
-                a = seite_bauen(page)
+                a = seite_bauen(page, context)
                 A.promote_margin_labels = echt
-                b = seite_bauen(page)
+                b = seite_bauen(page, context)
             except Exception as e:
                 A.promote_margin_labels = echt
                 print(f"  FEHLER {datei} S.{nr}: {e}")
