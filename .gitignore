@@ -24,6 +24,7 @@ bench/pages.json
 # *_debug.py-Skripten.
 bench/bench-lauf/
 bench/reading-order-lauf/
+bench/structure-lauf/
 bench/defekt-lauf/
 bench/nachspiel-lauf/
 bench/kachel-debug/
