@@ -19,6 +19,9 @@ directly inside the vault, the parent directory is detected automatically.
 | `python bench/regress_randmarke.py` | Check the margin-label heading exception across vector pages | No |
 | `python bench/randlabel_debug.py PDF PAGE` | Inspect OCR line geometry around a margin label | Yes |
 | `python bench/reading_order.py COMMAND` | Build the hand-checked reading-order truth set and compare Stage-1 workflows on it (`prepare`, `recognize`, `overlay`, `run`, `score`; issue #69) | `recognize` and the Paddle workflows |
+| `python bench/structure_bench.py run` | Assemble the 20 hand-checked structure-truth pages through the real pipeline and score headings, paragraph boundaries, footnotes, and order (issue #20) | No (vector pages; the Issue #11 page cache serves repeats) |
+| `python bench/structure_bench.py score` | Score existing candidates in `bench/structure-lauf/` without recomputing | No |
+| `python bench/regress_footnote.py` | Compare the citation-safe footnote splitter with its previous implementation across vector pages | No |
 
 Example with an explicit vault location:
 
@@ -31,7 +34,13 @@ VAULT_ROOT=/path/to/vault python bench/build_bench.py
 `bench/reading_order_truth.json` (source pages and hand-drawn regions, no page
 text) and writes page images, recognized lines, overlays and workflow outputs
 below `bench/reading-order-lauf/`. `--truth bench/reading_order_holdout.json`
-selects the validation pages of issue #87; give them their own `--run-dir`. The regression commands require `bench/pages.json`, which
+selects the validation pages of issue #87; give them their own `--run-dir`. `structure_bench.py` reads its truth from
+`bench/structure_truth.json` (20 pages across all assembly layouts;
+fingerprints plus short anchors, no page text) and writes candidates below
+`bench/structure-lauf/`; `bless` refreshes the fingerprints after a
+hand-check and is local-only, never CI. `review_structure.py` prints the
+per-page hand-check view (coverage against the source text layer plus the
+full candidate) used to bless responsibly. The regression commands require `bench/pages.json`, which
 is produced from the user's vault and is not versioned.
 
 CI imports every supported entry point without loading the ML model or reading

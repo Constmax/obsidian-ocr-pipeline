@@ -1959,3 +1959,58 @@ Das Gate meldet hier „unsplit is supported“. Weil die Korrektur an diesen Se
 - **Metrik:** Kurze, im Text wiederholte Zeilen (Einzelwörter, gleiche Fundstellen) können Verschränkungen vortäuschen. Das Gate zählt sie trotzdem; die Gate-Kriterien bleiben unverändert.
 - **Fehlende Seitenart:** Eine Vollbreite-Überschrift zwischen zwei Spaltenbereichen ist weiterhin nur synthetisch getestet.
 - **Laufzeit:** `unsplit-paddle` brauchte 146 s für die 13 neuen und 182 s für die 16 alten Seiten, `split-paddle` 140 s für die neuen; nur ein Richtwert, gemessen wird in Schritt 5.
+
+## Nachtrag 2026-09-21 (21): Struktur-Referenzkorpus für die Zusammenbau-Schicht (Issue #20)
+
+`bench/structure_bench.py`, Wahrheit in `bench/structure_truth.json`. 20
+handgeprüfte Vektorseiten quer durch alle Layouts: Einspalter, Zweispalter,
+Fußnotenblöcke (ein- und zweispaltig), tiefe Gliederung (bis Ebene 6),
+Randmarken in beiden Bauformen (ausgerückt und inline), Tabellen (6×3,
+DSL-Vergleich, QA-Raster), Diagrammseiten (linearisiert, mit Bild-Callout
+in der echten Ausgabe) und Trennstrich-Auflösung. Gemessen wird Struktur,
+nicht Wörter: Überschriften (Anzahl und Ebene), Absatzgrenzen, korrekt
+zugeordnete Fußnoten, Reihenfolge auf Absatzebene — als exakte
+Fingerabdrücke (SHA-1 über normalisiertem Text), nicht als Text: kein
+urheberrechtlich geschütztes Material im Repo, dieselbe Regel wie
+`BENCHMARK-SET.md` und `reading_order_truth.json`.
+
+Stand: **20 von 20 Seiten bestehen.** Der Lauf braucht kein Modell
+(Vektorseiten, Textlayer-Pfad) und wiederholt sich über den Seiten-Cache
+aus #11; fünf aufeinanderfolgende Läufe liefern byte-identische Kandidaten.
+
+### Drei Fehler, gefunden durch das Handprüfen
+
+Jeder wurde erst repariert, dann geblesst — die Referenzen enthalten keinen
+einzigen bekannten Fehler:
+
+1. **Wortverschmelzung an Span-Grenzen** (`conversion.textlayer_lines`):
+   `clean_text` entfernte nachstehende Leerzeichen jedes Spans, bevor die
+   Naht gelesen wurde — aus `Gläubigerrechte stärken` wurde
+   `Gläubigerrechtestärken`, aus `**Reformziel:** Die` wurde
+   `**Reformziel:**Die`. Jetzt stammt der Randabstand aus dem Roh-Span.
+2. **Klausur-Boilerplate** (`assembly.is_boilerplate`): `Klausurenkurs/…`,
+   `Lösung - Klausur Nr. N, Seite M` und `Klausur Nr. N - Lösung, Seite M`
+   standen als eigene Absätze in jeder Ausgabe. Zwei verankerte Muster.
+3. **Phantom-Fußnoten im Splitter** (`assembly.split_footnote_defs`): die
+   Trennung nach jedem Punkt/Leerzeichen zerlegte Zitate — aus
+   `Kopp/Ramsauer, § 35 VwVfG, Rn. 18` wurden die Definitionen 8 (gekürzt)
+   und 35 (Phantom). Jetzt trennt nur Satzzeichen plus Leerzeichen, und
+   ein Zitatwort davor (inklusive römischer Ziffern) schützt die Zahl.
+   Regression über alle 1404 Vektorseiten (`bench/regress_footnote.py`):
+   **1026 unverändert, 378 neu gruppiert, 294 Phantom-Doppelpunkte weg,
+   0 Zeichen verloren.**
+
+### Bewusst nicht enthalten
+
+- **Scanseiten** (Kachelschnitt): Die OCR-Ausbeute schwankt zwischen Läufen
+  leicht — exakte Fingerabdrücke würden flakken. Die Naht-Entdopplung ist
+  über `pdf2md/test/test_seam.py` abgedeckt.
+- **Drei Zweispalter ohne erkennbaren Steg** (2131_Lösung S. 1/4, 2135_Lösung
+  S. 1): `_column_gap` findet dort keinen Spalt, die Spalten verschränken
+  sich zeilenweise. Als Referenz unbrauchbar — das ist offener Fehler #12,
+  kein Korpusfall. Ersetzt durch Seiten mit gefundenem Steg.
+- **Bekannte Restfehler mit Vermerk** statt Austausch: linearisierte
+  Diagrammseiten (Box-Reihenfolge), ein in Fußnote 33 eingehängter
+  Fließtext-Rest, zwei am Fließtext klebende Langüberschriften. Die
+  `note`-Felder im Truth-File benennen sie; jede künftige Reparatur bricht
+  gezielt diese Fingerabdrücke.

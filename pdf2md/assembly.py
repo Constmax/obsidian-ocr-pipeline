@@ -35,6 +35,7 @@ CITY_FRAGMENT = re.compile(
 
 BOILERPLATE = [
     re.compile(r"^Juristisches\s+Repetitorium"),
+    re.compile(r"^Klausurenkurs\s*/"),                 # course label header
     re.compile(r"^hemmer\s*$", re.I),
     re.compile(r"^Hauptkurs\s*/"),
     re.compile(r"^h\s*/\s*w\s*/\s*t\b"),                  # Footer
@@ -49,6 +50,8 @@ ZONE_SIGNALS = [
     re.compile(r"^\W*(Juristisches\s*)?Repetitorium\W*$", re.I),
     re.compile(r"^(BGB|StGB|StR|ZR|OeR|ÖR)[\s-]*(AT|BT)?\s*$"),
     re.compile(r"(Lösung|Sachverhalte?|Übersicht)\s*[-–]\s*Seite", re.I),
+    re.compile(r"^Lösung\s*[-–].*Seite\s+\d+\s*$"),          # running head
+    re.compile(r"^Klausur\s*Nr\.?\s*\d+\s*[-–]\s*Lösung,\s*Seite\s+\d+\s*$"),
     re.compile(r"^Fall\s*\d*\s*[-–]?\s*L[äöa]?"),      # "Fall 3 - Lä" (truncated)
     re.compile(r"^\s*Seite\s*\d+\s*$", re.I),
 ]
@@ -118,6 +121,27 @@ LATEX = [
 
 FN_START = r"[A-ZÄÖÜ„»§(]"
 FN_DEF = re.compile(r"^(\d{1,2})\s+(?=" + FN_START + r")(.+)$")
+# A definition starts a new sentence: the number follows sentence-ending
+# punctuation or a closing bracket/quote. A bare space is not enough —
+# citations like "BayVBl. 2016, 77 (78)" would split mid-citation.
+FN_DEF_SPLIT = re.compile(r"(?<=[.!?:)\]»\"“”]\s)(?=\d{1,2}\s+" + FN_START + ")")
+
+# A number after a citation word or roman numeral continues the citation
+# ("§ 35 VwVfG", "Art. 3 III 1 GG") — it never starts a footnote definition.
+CITATION_BEFORE = re.compile(
+    r"(§+|Art\.|Abs\.|S\.|Satz|Alt\.|Nr\.|Rn\.|Rz\.|Hs\.|Halbs\.|Var\.|"
+    r"lit\.|Buchst\.|Seite|Fall|Teil|Rspr\.|Anm\.|[IVXL]+)\s*$")
+
+
+def split_footnote_defs(text):
+    """Split a footnote block at definition starts, never inside citations."""
+    bounds = [0]
+    for m in FN_DEF_SPLIT.finditer(text):
+        if CITATION_BEFORE.search(text[:m.start()]):
+            continue
+        bounds.append(m.start())
+    bounds.append(len(text))
+    return [text[a:b] for a, b in zip(bounds, bounds[1:])]
 
 
 def footnotes_obsidian(paragraphs):
@@ -131,7 +155,7 @@ def footnotes_obsidian(paragraphs):
         p = re.sub(r"\*\*(.+?)\*\*", r"\1", p) if FN_DEF.match(p.strip("* ")) else p
         m = FN_DEF.match(p.strip())
         if m and int(m.group(1)) <= 99:
-            parts = re.split(r"(?<=[.\s])(?=\d{1,2}\s+" + FN_START + ")", p.strip())
+            parts = split_footnote_defs(p.strip())
             detected = False
             for part in parts:
                 mm = FN_DEF.match(part.strip())
@@ -147,9 +171,6 @@ def footnotes_obsidian(paragraphs):
     if not defs:
         return rest
 
-    CITATION_BEFORE = re.compile(
-        r"(§+|Art\.|Abs\.|S\.|Satz|Alt\.|Nr\.|Rn\.|Rz\.|Hs\.|Halbs\.|Var\.|"
-        r"lit\.|Buchst\.|Seite|Fall|Teil|Rspr\.|Anm\.)\s*$")
     nums = sorted(defs)
 
     def mark(s):

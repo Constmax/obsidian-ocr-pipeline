@@ -174,19 +174,23 @@ def textlayer_lines(page):
                 continue
             parts = []
             for span in line["spans"]:
-                text = clean_text(span["text"])
-                if not text.strip():
-                    parts.append(text)
+                raw = span["text"]
+                if not raw.strip():
+                    parts.append(" " if raw else "")
                     continue
-                if (text.strip() in ("o", "O")
+                text = clean_text(raw.strip())
+                if (text in ("o", "O")
                         and "courier" in span.get("font", "").lower()):
                     parts.append("-")
                     continue
                 bold = (bool(span.get("flags", 0) & 16)
                         or "bold" in span.get("font", "").lower())
-                before = text[:len(text) - len(text.lstrip())]
-                after = text[len(text.rstrip()):]
-                parts.append(f"{before}**{text.strip()}**{after}" if bold else text)
+                before = raw[:len(raw) - len(raw.lstrip())]
+                after = raw[len(raw.rstrip()):]
+                if bold:
+                    parts.append(f"{before}**{text}**{after}")
+                else:
+                    parts.append(f"{before}{text}{after}")
             text = "".join(parts).strip()
             if not text:
                 continue
