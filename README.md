@@ -69,7 +69,8 @@ eingeklappten Callout.
 Eingabe ist ein PDF oder ein einzelnes Seitenbild (`.png`, `.jpg`, `.jpeg`,
 `.tif`, `.tiff`, `.bmp`): Bilder werden an der Eingabegrenze zu einer
 einseitigen PDF normalisiert, in voller Auflösung, sodass dahinter alles
-PDF-only bleibt. Details in `docs/scripts-detail.md`.
+PDF-only bleibt. Ein Bild ist genau eine Seite — ein mehrseitiges TIFF wird
+abgelehnt statt halb verarbeitet. Details in `docs/scripts-detail.md`.
 
 Entgleist die Generierung — eine Wortfolge wiederholt sich, ein Zähler läuft
 davon, die Ausgabe bricht ab —, wird das erkannt, die Kachel feiner geschnitten

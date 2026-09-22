@@ -59,7 +59,7 @@ ASSUMED_PAGE_LONG_SIDE = 842.0
 
 
 class UnsupportedInput(ValueError):
-    """Input file whose suffix the pipeline does not accept."""
+    """Input the pipeline does not accept — by suffix or by frame count."""
 
 
 def is_image_input(path: Path) -> bool:
@@ -90,10 +90,23 @@ def _wrap_image(path: Path):
     out on assumed A4 instead, which costs nothing downstream (the embedded
     image keeps every pixel) and keeps the page geometry readable as a
     resolution.
+
+    Raises UnsupportedInput for an image carrying more than one frame.
     """
     import fitz
 
     with fitz.open(path) as image:
+        # One image is one page — and a multi-frame TIFF is not one image.
+        # fitz opens it as several pages, but the OCR branch is handed the
+        # source file itself, of which PIL reads only the first frame: every
+        # page after the first would silently repeat page 1. The A4 fallback
+        # below is worse still, dropping the extra frames without a word.
+        # Neither is acceptable, and combining frames is Issue #100's
+        # explicitly separate feature, so reject the file instead.
+        if image.page_count > 1:
+            raise UnsupportedInput(
+                f"multi-page image not supported: {path.name} carries "
+                f"{image.page_count} frames — convert it to a PDF first")
         wrapped, rect = image.convert_to_pdf(), image[0].rect
     document = fitz.open("pdf", wrapped)
     if _is_page_sized(document[0].rect):
@@ -112,7 +125,8 @@ def open_document(path: Path):
 
     A PDF passes through unchanged. An image becomes a single page carrying it
     as a full-page raster: `get_text` is empty and `image_ratio()` returns 1.0,
-    so the page lands on the OCR branch exactly like a scan would.
+    so the page lands on the OCR branch exactly like a scan would. An image
+    with more than one frame is rejected rather than half-processed.
     """
     import fitz
 

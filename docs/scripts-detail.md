@@ -287,6 +287,19 @@ Anything else is rejected by suffix before a single page is processed, with a
 one-line error (exit code 1) naming the accepted formats. WebP and HEIC are not
 on the list because fitz does not open them; HEIC would need `pillow-heif`.
 
+A **multi-frame TIFF** — what a sheet feeder emits — is rejected too, by frame
+count rather than by suffix, and therefore only once the file is opened:
+
+```
+multi-page image not supported: stapel.tif carries 3 frames — convert it to a PDF first
+```
+
+fitz opens such a file as several pages, but the model is handed the source
+file itself and PIL reads only its first frame, so every page after the first
+would quietly repeat page 1; the assumed-A4 path below is worse still and
+drops the extra frames without a word. Combining several pages is what the PDF
+input is for.
+
 Three consequences worth knowing:
 
 - **The source resolution is preserved.** The page image handed to the model is
@@ -298,9 +311,10 @@ Three consequences worth knowing:
   check that catches derailed generations. Such an image is laid out on an
   assumed A4 page instead, keeping every pixel. A file that *does* declare its
   resolution is taken at its word.
-- **One image is one page.** Header/footer detection in `running_lines()` needs
-  at least two pages, so it contributes nothing here. Combining a folder of
-  images into one Markdown file is a separate feature.
+- **One image is one page** — enforced, not assumed: a file carrying more than
+  one frame is rejected (above). Header/footer detection in `running_lines()`
+  needs at least two pages, so it contributes nothing here. Combining a folder
+  of images into one Markdown file is a separate feature.
 
 Stage 1 (`bin/`) remains PDF-only: `pdf-auto`, `pdf-combine`, the column split
 and the text-layer checks all assume PDF input. In the plugin this is the
