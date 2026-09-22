@@ -475,12 +475,14 @@ export class OcrComparisonView extends ItemView {
 		if (preview !== null) candidates.push(preview.sourcePdf);
 		const link = this.app.metadataCache.getFileCache(file)?.links?.[0]?.link;
 		if (link !== undefined && link.length > 0) candidates.push(link);
+		// Images convert too (Issue #100), so the basename fallback has to find
+		// them — but a PDF of the same name wins, because this column renders a
+		// PDF and can only explain itself for an image.
+		const sameBasename = this.app.vault
+			.getFiles()
+			.filter((f) => isConvertible(f) && f.basename === file.basename);
 		candidates.push(
-			this.app.vault.getFiles().find(
-				// Images convert too (Issue #100), so the basename fallback has
-				// to find them — the source column then explains itself.
-				(f) => isConvertible(f) && f.basename === file.basename,
-			)?.path ?? null,
+			(sameBasename.find((f) => !isImageSource(f)) ?? sameBasename[0])?.path ?? null,
 		);
 		candidates.push(item.entry["manual-source-pdf"]);
 
