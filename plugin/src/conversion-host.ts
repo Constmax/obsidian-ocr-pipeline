@@ -1,7 +1,7 @@
 // Obsidian side of the ConversionController and the searchable-copy action:
 // Notices, vault paths, the inventory, the comparison view, and opening files.
 
-import { FileSystemAdapter, Notice, Platform, normalizePath, type App } from "obsidian";
+import { FileSystemAdapter, Notice, Platform, TFile, normalizePath, type App } from "obsidian";
 
 import type { ConversionHost } from "./conversion-controller.ts";
 import { isConvertible } from "./input-formats.ts";
@@ -79,6 +79,21 @@ export function createConversionHost(
 				.getFiles()
 				.filter((f) => isConvertible(f) && f.basename === pdf.basename && f.path !== pdf.path)
 				.map((f) => f.path);
+		},
+		previewSource(entryName, folder) {
+			const item = inventory().entries.find(
+				(entry) => entry.name === entryName && entry.file.parent?.path === folder,
+			);
+			if (item === undefined) return null;
+			const recorded = item.entry["source-pdf"] ?? item.entry["manual-source-pdf"];
+			if (recorded === null || recorded.length === 0) return item.file.path;
+			// `quelle-pdf` holds the path pdf2md was called with, but a
+			// hand-written `Source: [[…]]` link resolves the same way the
+			// comparison view resolves it.
+			const byPath = app.vault.getFileByPath(normalizePath(recorded));
+			if (byPath instanceof TFile) return byPath.path;
+			const dest = app.metadataCache.getFirstLinkpathDest(recorded, item.file.path);
+			return dest?.path ?? item.file.path;
 		},
 		previewFolder() {
 			const configured = settings().previewFolder;

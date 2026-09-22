@@ -300,7 +300,7 @@ would quietly repeat page 1; the assumed-A4 path below is worse still and
 drops the extra frames without a word. Combining several pages is what the PDF
 input is for.
 
-Three consequences worth knowing:
+Four consequences worth knowing:
 
 - **The source resolution is preserved.** The page image handed to the model is
   the input file itself, not a `--dpi` re-render of it — a 400 dpi scan is not
@@ -315,6 +315,14 @@ Three consequences worth knowing:
   one frame is rejected (above). Header/footer detection in `running_lines()`
   needs at least two pages, so it contributes nothing here. Combining a folder
   of images into one Markdown file is a separate feature.
+- **A shared basename only matters once it overwrites something.** `scan.pdf`
+  and `scan.png` both write `scan.md`. The plugin blocks the conversion when a
+  preview of that name already exists and did not come from the file being
+  converted (`previewSource()` reads its `quelle-pdf`); otherwise it says the
+  name is shared and continues. Vetoing on the mere existence of a rival was
+  tolerable while only PDFs could be sources — with images convertible, every
+  same-named attachment in the vault would block a conversion that destroys
+  nothing.
 
 Stage 1 (`bin/`) remains PDF-only: `pdf-auto`, `pdf-combine`, the column split
 and the text-layer checks all assume PDF input. In the plugin this is the

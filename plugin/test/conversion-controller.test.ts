@@ -42,6 +42,8 @@ class FakeHost implements ConversionHost {
 	openSucceeds = true;
 	opened: string[] = [];
 	lookups: Array<[string, string]> = [];
+	/** Origin of an already existing preview; null = no preview yet. */
+	existingPreviewSource: string | null = null;
 
 	notify(message: string): void {
 		this.notices.push(message);
@@ -63,6 +65,9 @@ class FakeHost implements ConversionHost {
 	}
 	pdfsWithSameBasename(): string[] {
 		return this.duplicates;
+	}
+	previewSource(): string | null {
+		return this.existingPreviewSource;
 	}
 	previewFolder(): { configured: string; normalized: string } {
 		return this.folder;
@@ -248,18 +253,47 @@ test("a second request while running is refused without spawning", async () => {
 	);
 });
 
-test("duplicate basename stops before spawning", async () => {
+test("duplicate basename stops before spawning when a foreign preview exists", async () => {
 	const host = new FakeHost();
 	host.duplicates = ["other/case-01.pdf", "old/case-01.pdf"];
+	host.existingPreviewSource = "other/case-01.pdf";
 	const { calls, controller } = setup(host);
 	await controller.run(PDF);
 
 	assert.equal(calls.length, 0);
 	assert.deepEqual(host.progress, []);
 	assert.deepEqual(host.notices, [
-		'OCR Preview: "case-01" also exists as other/case-01.pdf, old/case-01.pdf — output would overwrite. Please rename one of the files.',
+		'OCR Preview: "case-01.md" was not converted from raw/case-01.pdf — converting would overwrite it. Please rename one of raw/case-01.pdf, other/case-01.pdf, old/case-01.pdf.',
 	]);
 	assert.equal(controller.isRunning, false);
+});
+
+test("duplicate basename only warns while there is no preview to overwrite", async () => {
+	// A vault image named like the PDF must not veto a conversion that
+	// destroys nothing (Issue #100).
+	const host = new FakeHost();
+	host.duplicates = ["attachments/case-01.png"];
+	const { calls, controller } = setup(host);
+	const running = controller.run(PDF);
+
+	assert.equal(calls.length, 1);
+	assert.deepEqual(host.notices, [
+		'OCR Preview: "case-01" also exists as attachments/case-01.png — all of them write "case-01.md".',
+	]);
+	calls[0]!.finish(result());
+	await running;
+});
+
+test("duplicate basename does not block re-converting the same source", async () => {
+	const host = new FakeHost();
+	host.duplicates = ["attachments/case-01.png"];
+	host.existingPreviewSource = PDF.path;
+	const { calls, controller } = setup(host);
+	const running = controller.run(PDF);
+
+	assert.equal(calls.length, 1);
+	calls[0]!.finish(result());
+	await running;
 });
 
 test("without file-system access nothing is spawned", async () => {
