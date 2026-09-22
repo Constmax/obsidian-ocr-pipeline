@@ -104,7 +104,7 @@ frontmatter/page marker before scoring. `compare --truth-lines` reuses the
 `recognize` records; without them it reports timings only and marks ordering
 as missing.
 
-## What was actually measured here
+## Environment and harness self-verification
 
 Environment of this spike run: Apple Silicon (arm64), 8 GiB RAM
 (`sysctl hw.memsize`), Python 3.12, repository at the #95 spike branch.
@@ -145,9 +145,8 @@ Harness self-verification (synthetic, not vault material):
   `bench/test_entrypoints.py` + `bench/test_reading_order.py` (32 passed),
   `pdf2md/test` + `bin/test` (247 passed, 5 skipped).
 
-No vault pages (t01–t16) were scored yet, so there are no vault ordering
-numbers and no scanned-page timings for either path. The vault run from the
-reproduction steps above is still the missing measurement.
+The numbers in this section are synthetic-page plumbing checks only. The
+vault measurement follows below.
 
 ## Vault measurement (2026-09-20)
 
@@ -198,6 +197,17 @@ trained reading order on this material. Docling's weak pages are exactly the
 layouts the issue worried about: t07 (full-width title above two columns,
 81.1%), t06 (boxed notes, 94.3%), t08 (boxed heading and notes, 95.1%).
 
+**Read these accuracies with the metric's limit in mind.** `score_page`
+reports `precedence(positions)`, which builds pairs only from truth lines it
+matched in the output (`bench/reading_order.py`); unmatched lines leave the
+denominator entirely, so a dropped line costs no accuracy. The two paths
+drop very differently (unmatched full-width 66 for the current path vs 14
+for Docling; t07 scores 100.0% for the current path on 53 of 64 matched
+lines). The two medians are therefore computed over different, differently
+hard pair sets and are not directly comparable. Treat the ordering figures
+as directional, not as a precise margin; content loss is not scored here at
+all.
+
 ### Time and memory per page (same 16 pages)
 
 | Engine | Median s/page | Total 16 pages | Peak RSS |
@@ -240,21 +250,42 @@ Recorded against the vault outputs above (page-referenced, qualitative until
 
 ## Verdict: keep the current pipeline
 
-Applied the issue's decision criteria to the vault measurement:
+The decision rests first on content integrity, then on ordering.
 
-- Docling is **worse** on reading order (median 99.1% vs 100.0%, min 81.1%
-  vs 96.1%) **and** faster per page (12.3 s vs 65.3 s median). The criteria
-  require better-on-order **and** not-slower for a migration; failing the
-  first branch means **keep the current pipeline**, even with the ~5x speed
-  advantage. The qualitative failures (paragraph duplication, unlinked
-  footnotes, misplaced full-width title) independently disqualify Docling
-  for this material: they corrupt content, not just order.
+- **Content integrity disqualifies Docling on this material.** It duplicates
+  nearly every paragraph on two-column pages with boxed notes (t06, t08, t03,
+  t04, t09; 225 duplicated truth lines vs 12, output ~1.5x the text), and it
+  does not carry the footnote apparatus — plain `- 71 …` bullets and naked
+  reference numbers in the body (`Hauptsache.73`) where the current path emits
+  linked `[^71]` references and definitions (t01, t02). On t07 it also moves
+  the full-width title below the columns and drops an element to
+  `<!-- image -->`. Duplicated paragraphs and broken footnotes would reach the
+  vault verbatim. This finding is independent of any score and would stand
+  even if the ordering numbers favoured Docling.
+- **Ordering points the same way, with a weaker claim.** Median 99.1% vs
+  100.0%, min 81.1% vs 96.1%, and Docling's weak pages (t07, t06, t08) are
+  exactly the full-width-over-columns and boxed-note layouts the issue
+  worried about. But the metric scores matched lines only and does not
+  penalise the current path's larger content loss (see Limitations), so this
+  is corroboration, not the load-bearing argument.
+- **Speed does not rescue it.** Docling is ~5x faster per page (12.3 s vs
+  65.3 s median). The issue's criteria require better-on-order **and**
+  not-slower; failing the quality branch means **keep the current pipeline**
+  regardless of the speed advantage.
 - No migration issue is opened. The layout/assembly parts of #93 proceed as
   planned — this verdict unblocks the issues that were waiting on it. #90,
   #91, #92 proceed regardless, as before.
 
 ## Limitations
 
+- Ordering accuracy is scored over matched lines only. `precedence` ignores
+  truth lines the output never produced, so a path that drops content is not
+  penalised for the loss and can score higher than a path that keeps the text
+  but orders it imperfectly. With unmatched full-width lines at 66 (current)
+  vs 14 (Docling), the median comparison is directional, not a precise
+  margin. A recall-aware score, or accuracy restricted to the lines both
+  paths matched, would settle it; neither exists yet and both belong with
+  #20/#91 rather than this spike.
 - The `pdf2md` peak RSS in `comparison.json` (21 MiB) is the harness process
   only: that engine converts via one `pdf2md.py` subprocess per page, whose
   memory is not attributed. The comparable figure is the known MLX peak of
