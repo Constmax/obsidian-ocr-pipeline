@@ -9,7 +9,9 @@ import tempfile
 from pathlib import Path
 
 import cancellation
-from conversion import ConversionRequest, convert_document
+from conversion import (INPUT_SUFFIXES, ConversionRequest, UnsupportedInput,
+                        convert_document, ensure_supported_input,
+                        open_document)
 from ocr import TOKEN_MAX
 from page_range import PageRangeError, parse_page_range
 
@@ -95,9 +97,9 @@ def preflight(out):
     return checks, warnings
 
 
-def pdf_page_count(pdf):
-    import fitz
-    with fitz.open(pdf) as doc:
+def page_count_of(source):
+    """Pages of the input — always 1 for an image (Issue #100)."""
+    with open_document(source) as doc:
         return doc.page_count
 
 
@@ -224,8 +226,9 @@ def _event_sink(progress):
 
 
 def _run_preflight(args, parser):
-    if args.pdf:
-        parser.error("--check does not require a PDF file (only runs preflight check)")
+    if args.source:
+        parser.error("--check does not require an input file "
+                     "(only runs preflight check)")
     temporary = None
     target = args.out
     if args.out == OUT:
@@ -255,7 +258,9 @@ def _run_preflight(args, parser):
 
 def _parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("pdf", nargs="?", default=None, help="Input PDF file")
+    accepted = ", ".join(sorted(INPUT_SUFFIXES))
+    parser.add_argument("source", nargs="?", default=None, metavar="INPUT",
+                        help=f"Input file — PDF or image ({accepted})")
     parser.add_argument("--dpi", type=int, default=150)
     parser.add_argument("--tile-from", "--kachel-ab", dest="tile_from", type=int,
                         default=TILE_THRESHOLD)
@@ -293,12 +298,17 @@ def main():
     args = parser.parse_args()
     if args.check:
         sys.exit(_run_preflight(args, parser))
-    if not args.pdf:
-        parser.error("Requires a PDF file (or --check for preflight check)")
-    pdf = Path(args.pdf)
-    if not pdf.exists():
-        sys.exit(f"not found: {pdf}")
-    page_count = pdf_page_count(pdf)
+    if not args.source:
+        parser.error("Requires an input file — PDF or image "
+                     "(or --check for preflight check)")
+    source = Path(args.source)
+    if not source.exists():
+        sys.exit(f"not found: {source}")
+    try:
+        ensure_supported_input(source)
+    except UnsupportedInput as error:
+        sys.exit(str(error))
+    page_count = page_count_of(source)
     selection = page_option("--pages/--seiten", args.pages, page_count)
     forced = page_option("--diagram-pages/--diagramm-seiten",
                          args.diagram_pages, page_count) or set()
@@ -312,7 +322,7 @@ def main():
     cancellation.reset()
     cancellation.install()
     request = ConversionRequest(
-        pdf=pdf, output_dir=args.out, dpi=args.dpi, tile_from=args.tile_from,
+        pdf=source, output_dir=args.out, dpi=args.dpi, tile_from=args.tile_from,
         no_bold=args.no_bold, ocr_only=args.ocr_only, retries=args.retries,
         lines_dump=args.lines_dump, no_dictionary=args.no_dictionary,
         dictionaries=tuple(args.dictionary),
@@ -329,7 +339,7 @@ def main():
     if result.cancelled:
         sys.exit(6 if result.pages else 7)
     if not result.pages:
-        sys.exit(f"no pages to convert: {pdf.name}")
+        sys.exit(f"no pages to convert: {source.name}")
 
 
 if __name__ == "__main__":
