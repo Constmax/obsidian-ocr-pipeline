@@ -29,6 +29,20 @@ def _write_page_image(path: Path, dpi=300, **save):
     return path
 
 
+def _write_multi_frame_tiff(path: Path, frames=3, dpi=300, declare_dpi=True):
+    """Write the TIFF a sheet feeder emits: several pages in one file."""
+    from PIL import Image
+
+    pages = []
+    for number in range(frames):
+        pixmap = _page_pixmap(dpi, f"Seite {number + 1}")
+        pages.append(Image.frombytes(
+            "RGB", (pixmap.width, pixmap.height), pixmap.samples))
+    pages[0].save(path, save_all=True, append_images=pages[1:],
+                  **({"dpi": (dpi, dpi)} if declare_dpi else {}))
+    return path
+
+
 @pytest.mark.parametrize("suffix", sorted(INPUT_SUFFIXES - {".pdf"}))
 def test_every_accepted_image_suffix_opens_as_a_single_pdf_page(tmp_path, suffix):
     source = _write_page_image(tmp_path / f"scan{suffix}")
@@ -72,6 +86,51 @@ def test_unsupported_suffix_exits_with_a_message_not_a_traceback(tmp_path):
     assert result.returncode == 1
     assert "Traceback" not in result.stderr
     assert "unsupported input format .webp" in result.stderr
+
+
+def test_a_multi_frame_tiff_is_rejected_rather_than_repeating_page_one(tmp_path):
+    """Page-sized frames survive the wrap — but PIL reads only the first.
+
+    The OCR branch is handed the source file itself, so every page after the
+    first would silently be a copy of page 1.
+    """
+    source = _write_multi_frame_tiff(tmp_path / "stapel.tiff", frames=3, dpi=96)
+
+    with pytest.raises(UnsupportedInput) as error, open_document(source):
+        pass
+
+    assert "multi-page image not supported" in str(error.value)
+    assert "3 frames" in str(error.value)
+
+
+def test_a_multi_frame_tiff_without_resolution_is_rejected_not_truncated(tmp_path):
+    """The assumed-A4 fallback builds one page and would drop frames 2..n."""
+    source = _write_multi_frame_tiff(tmp_path / "stapel.tif", frames=4,
+                                     declare_dpi=False)
+
+    with pytest.raises(UnsupportedInput) as error, open_document(source):
+        pass
+
+    assert "4 frames" in str(error.value)
+
+
+def test_a_multi_frame_tiff_exits_with_a_message_not_a_traceback(tmp_path):
+    source = _write_multi_frame_tiff(tmp_path / "stapel.tif", frames=3, dpi=96)
+
+    result = subprocess.run(
+        [sys.executable, str(PDF2MD_PY), str(source), "--out", str(tmp_path / "out")],
+        cwd=str(REPOSITORY), capture_output=True, text=True, timeout=60)
+
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert "multi-page image not supported" in result.stderr
+
+
+def test_a_single_frame_tiff_is_unaffected(tmp_path):
+    source = _write_multi_frame_tiff(tmp_path / "scan.tif", frames=1)
+
+    with open_document(source) as document:
+        assert document.page_count == 1
 
 
 def test_image_input_lands_on_the_ocr_branch_as_one_page(tmp_path):

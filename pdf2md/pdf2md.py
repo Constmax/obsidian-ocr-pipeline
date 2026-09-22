@@ -98,7 +98,11 @@ def preflight(out):
 
 
 def page_count_of(source):
-    """Pages of the input — always 1 for an image (Issue #100)."""
+    """Pages of the input — always 1 for an image, or UnsupportedInput.
+
+    A multi-frame image has no honest page count here (Issue #100), so
+    `open_document()` rejects it rather than reporting one.
+    """
     with open_document(source) as doc:
         return doc.page_count
 
@@ -305,10 +309,12 @@ def main():
     if not source.exists():
         sys.exit(f"not found: {source}")
     try:
+        # The suffix is checked before the file is opened; the frame count
+        # only `page_count_of()` can see (Issue #100). Both exit the same way.
         ensure_supported_input(source)
+        page_count = page_count_of(source)
     except UnsupportedInput as error:
         sys.exit(str(error))
-    page_count = page_count_of(source)
     selection = page_option("--pages/--seiten", args.pages, page_count)
     forced = page_option("--diagram-pages/--diagramm-seiten",
                          args.diagram_pages, page_count) or set()
