@@ -21,6 +21,7 @@ import type { KeymapEventHandler } from "obsidian";
 import type OcrPreviewPlugin from "./main.ts";
 import { EditStateTracker } from "./edit-state.ts";
 import { Inventory, type InventoryEntry } from "./file-actions.ts";
+import { isConvertible, isImageSource } from "./input-formats.ts";
 import { MarkdownColumn, type Representation } from "./md-pane.ts";
 import { PdfColumn } from "./pdf-pane.ts";
 import { Sidebar } from "./sidebar.ts";
@@ -476,7 +477,9 @@ export class OcrComparisonView extends ItemView {
 		if (link !== undefined && link.length > 0) candidates.push(link);
 		candidates.push(
 			this.app.vault.getFiles().find(
-				(f) => f.extension === "pdf" && f.basename === file.basename,
+				// Images convert too (Issue #100), so the basename fallback has
+				// to find them — the source column then explains itself.
+				(f) => isConvertible(f) && f.basename === file.basename,
 			)?.path ?? null,
 		);
 		candidates.push(item.entry["manual-source-pdf"]);
@@ -1094,9 +1097,10 @@ export class PdfSelectModal extends SuggestModal<TFile> {
 	constructor(
 		app: App,
 		private pdfs: TFile[],
+		emptyStateText = "No PDFs in vault.",
 	) {
 		super(app);
-		this.emptyStateText = "No PDFs in vault.";
+		this.emptyStateText = emptyStateText;
 	}
 
 	getSuggestions(query: string): TFile[] {
@@ -1161,29 +1165,12 @@ export class PageSelectModal extends Modal {
 		this.titleEl.setText("Select pages");
 		this.contentEl.createDiv({
 			cls: "setting-item-description",
-			text: `PDF: ${this.file.basename}`,
+			text: `Source: ${this.file.name}`,
 		});
-		try {
-			const loaded = (typeof window.pdfjsLib === "undefined" ? await loadPdfJs() : window.pdfjsLib) as {
-				getDocument: (opts: object) => { promise: Promise<{ numPages: number }> };
-			};
-			const pdfjs = window.pdfjsLib ?? loaded;
-			if (typeof window.pdfjsLib === "undefined" && pdfjs) {
-				(window as unknown as { pdfjsLib: unknown }).pdfjsLib = pdfjs;
-			}
-			const doc = await pdfjs.getDocument({
-				url: this.app.vault.getResourcePath(this.file),
-			}).promise;
-			this.contentEl.createDiv({
-				cls: "setting-item-description",
-				text: `Total ${doc.numPages} pages`,
-			});
-		} catch {
-			this.contentEl.createDiv({
-				cls: "setting-item-description",
-				text: "(Could not determine page count)",
-			});
-		}
+		this.contentEl.createDiv({
+			cls: "setting-item-description",
+			text: await this.pageCountText(),
+		});
 		new Setting(this.contentEl)
 			.setName("Pages")
 			.setDesc("e.g. 1,3-5,8 — leave empty = all pages")
@@ -1209,6 +1196,29 @@ export class PageSelectModal extends Modal {
 		this.input?.addEventListener("keydown", (e) => {
 			if (e.key === "Enter") execute();
 		});
+	}
+
+	/** "Total N pages", or a note when pdf.js cannot open the source. */
+	private async pageCountText(): Promise<string> {
+		// An image is normalized into a single page at the pipeline's input
+		// boundary (Issue #100); pdf.js can neither open it nor tell us
+		// anything we do not already know.
+		if (isImageSource(this.file)) return "Total 1 page";
+		try {
+			const loaded = (typeof window.pdfjsLib === "undefined" ? await loadPdfJs() : window.pdfjsLib) as {
+				getDocument: (opts: object) => { promise: Promise<{ numPages: number }> };
+			};
+			const pdfjs = window.pdfjsLib ?? loaded;
+			if (typeof window.pdfjsLib === "undefined" && pdfjs) {
+				(window as unknown as { pdfjsLib: unknown }).pdfjsLib = pdfjs;
+			}
+			const doc = await pdfjs.getDocument({
+				url: this.app.vault.getResourcePath(this.file),
+			}).promise;
+			return `Total ${doc.numPages} pages`;
+		} catch {
+			return "(Could not determine page count)";
+		}
 	}
 
 	onClose(): void {

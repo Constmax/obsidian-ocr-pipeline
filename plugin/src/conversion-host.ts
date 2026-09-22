@@ -4,6 +4,7 @@
 import { FileSystemAdapter, Notice, Platform, normalizePath, type App } from "obsidian";
 
 import type { ConversionHost } from "./conversion-controller.ts";
+import { isConvertible } from "./input-formats.ts";
 import type { Inventory } from "./file-actions.ts";
 import { ExemptionModal } from "./exemption-modal.ts";
 import type { SearchableCopyHost } from "./searchable-copy.ts";
@@ -72,9 +73,11 @@ export function createConversionHost(
 			return adapter instanceof FileSystemAdapter ? adapter.getBasePath() : null;
 		},
 		pdfsWithSameBasename(pdf) {
+			// Any convertible source, not just PDFs: `scan.png` and `scan.pdf`
+			// both write `scan.md` and would overwrite each other (Issue #100).
 			return app.vault
 				.getFiles()
-				.filter((f) => f.extension === "pdf" && f.basename === pdf.basename && f.path !== pdf.path)
+				.filter((f) => isConvertible(f) && f.basename === pdf.basename && f.path !== pdf.path)
 				.map((f) => f.path);
 		},
 		previewFolder() {

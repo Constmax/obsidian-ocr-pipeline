@@ -263,6 +263,50 @@ With automated MediaBox Fix, large scans remain RAM-safe:
 
 `ocrmypdf --max-image-mpixels` is configured to 400 MP in `build_ocr_args` (accommodates edge cases lacking MediaBox Fix) passed as CLI argument rather than environment variable (as ocrmypdf ignores `PILLOW_MAX_IMAGE_PIXELS`).
 
+## Stage 2: Accepted Input Formats
+
+`pdf2md.py` takes a PDF or a single page image:
+
+| Format | Suffix |
+|---|---|
+| PDF | `.pdf` |
+| Image | `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.bmp` |
+
+```bash
+pdf2md raw/ZR/scan.png --out _ocr-vorschau
+```
+
+An image is normalized into a one-page PDF at the input boundary
+(`open_document()` in `conversion.py`), so layout detection, box detection,
+reassembly and the dictionary pass stay PDF-only and need no second code path.
+The wrapped page carries the image as a full-page raster: its text layer is
+empty and `image_ratio()` returns 1.0, so the page lands on the OCR branch
+exactly like a scan inside a PDF would.
+
+Anything else is rejected by suffix before a single page is processed, with a
+one-line error (exit code 1) naming the accepted formats. WebP and HEIC are not
+on the list because fitz does not open them; HEIC would need `pillow-heif`.
+
+Three consequences worth knowing:
+
+- **The source resolution is preserved.** The page image handed to the model is
+  the input file itself, not a `--dpi` re-render of it — a 400 dpi scan is not
+  resampled down to 150. `--dpi` therefore has no effect on image input.
+- **The paper size is assumed when the file does not declare one.** fitz reads
+  an image that carries no resolution metadata (most JPEGs) at 96 dpi, which
+  would make an A4 scan a 49-inch page and throw off the ink-based length
+  check that catches derailed generations. Such an image is laid out on an
+  assumed A4 page instead, keeping every pixel. A file that *does* declare its
+  resolution is taken at its word.
+- **One image is one page.** Header/footer detection in `running_lines()` needs
+  at least two pages, so it contributes nothing here. Combining a folder of
+  images into one Markdown file is a separate feature.
+
+Stage 1 (`bin/`) remains PDF-only: `pdf-auto`, `pdf-combine`, the column split
+and the text-layer checks all assume PDF input. In the plugin this is the
+difference between **OCR → Markdown** (PDF or image) and **Create searchable
+copy (OCR)** (PDF only).
+
 ## Stage 2: Module Structure (`pdf2md/`)
 
 `pdf2md.py` is the CLI adapter. It translates arguments, console events, and
@@ -294,7 +338,9 @@ load the ML model.
 Scan pages are rendered into a temporary directory below the system temp folder
 (`$TMPDIR`), never below `--out`: the plugin points `--out` at a vault folder,
 and Obsidian would index every intermediate PNG. `ConversionRequest.temp_root`
-overrides the location.
+overrides the location. Image input is copied there instead of rendered, for
+the same reason — `tile_vertically()` writes its tiles beside the page image,
+which must not be the user's own folder.
 
 **Vault Copying**: `.ocr-bench/` in vault uses a flat structure (see
 `bench/paths.py`, two-location convention) requiring **nine** files:
@@ -342,7 +388,8 @@ Convert selected pages only. Format as comma-separated list with page ranges (e.
 python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
 ```
 
-- Page numbers are 1-based matching original PDF.
+- Page numbers are 1-based matching original PDF. Image input has exactly one
+  page, so `--seiten` accepts only `1`.
 - `--diagramm-seiten` uses the same grammar. Whitespace around entries is ignored.
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
 - `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
