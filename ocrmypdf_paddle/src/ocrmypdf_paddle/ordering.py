@@ -14,7 +14,7 @@ geometry alone:
    narrow line crosses, with lines side by side on both sides. On such a
    page the columns begin at the first column pair, so a running header
    closer above them than a gap still belongs to the header when it spans
-   the gutter, and footer rows paired across the gutter (footnotes, even
+   the gutter or stands apart by more than the line pitch, and footer rows paired across the gutter (footnotes, even
    half a line offset) go back to their columns.
 4. A line crossing the gutter with no column line beside it is full width
    (a heading, a single-column paragraph, a footer) and separates the page
@@ -220,9 +220,10 @@ def _column_bands(
     closer above the columns than any gap _bands() accepts. The header grows
     to the lowest gap between line cores above the first column pair, within
     the top HEADER_SHARE and a quarter of the lines. The grown rows must hold
-    a line crossing the gutter (a location list, a centred title): without
-    one they are the first body row with an indented right line, not a
-    header, and stay in the columns.
+    a line crossing the gutter (a location list, a centred title) or stand
+    at least half again the line pitch above the first column pair (a label
+    and a page reference): otherwise they are the first body row with an
+    indented right line, not a header, and stay in the columns.
 
     Footnotes starting at the same height in both columns leave a page-wide
     gap above them, which puts them into the footer. Leading footer rows
@@ -235,7 +236,8 @@ def _column_bands(
     edge = _right_edge(body, gutter, h)
     pairs = _pairs(body, gutter, edge, h)
     if pairs:
-        first = min(min(a.cy, b.cy) for a, b in pairs) - h / 4
+        start = min(min(a.cy, b.cy) for a, b in pairs)
+        first = start - h / 4
         above = [
             cut
             for cut in _core_gaps(boxes, h)
@@ -244,7 +246,10 @@ def _column_bands(
         ]
         if above:
             grown = [box for box in body if box.cy < max(above)]
-            if any(_side(box, gutter, h) is None for box in grown):
+            if grown and (
+                any(_side(box, gutter, h) is None for box in grown)
+                or start - max(box.cy for box in grown) >= 1.5 * _pitch(body, gutter, h)
+            ):
                 header = header + grown
                 body = [box for box in body if box.cy >= max(above)]
     rows = _row_groups(footer, h)
@@ -259,6 +264,13 @@ def _column_bands(
         body = body + leading
         footer = [box for row in rows[count:] for box in row]
     return header, body, footer
+
+
+def _pitch(boxes: list[_Box], gutter: float, h: float) -> float:
+    """Median distance between consecutive lines of the left column."""
+    left = sorted((box.cy for box in boxes if _side(box, gutter, h) == "L"))
+    steps = [b - a for a, b in zip(left, left[1:]) if 0 < b - a < 3 * h]
+    return statistics.median(steps) if steps else h
 
 
 def _side(box: _Box, gutter: float, h: float) -> str | None:
