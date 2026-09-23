@@ -121,6 +121,17 @@ def test_dense_running_header_is_read_before_the_columns():
     assert ordered[7:] == names("L", 25) + names("R", 25)
 
 
+def test_dense_two_part_running_header_is_read_before_the_columns():
+    # No header line crosses the gutter, and the tall header boxes leave no
+    # gap _bands() accepts. The row stands 1.7 line pitches above the
+    # columns, as on the course pages (n01, t03), not one pitch like a row.
+    header = [box("Rubrik", 200, 245, 600, height=90),
+              box("Titel, Seite 7", 1800, 245, 2280, height=90)]
+    lines = column("L", LEFT, 370, 25) + column("R", RIGHT, 370, 25)
+    ordered = texts(order_lines(as_recognized(header + lines), W, H))
+    assert ordered == ["Rubrik", "Titel, Seite 7"] + names("L", 25) + names("R", 25)
+
+
 def test_footnotes_starting_level_in_both_columns_stay_in_their_column():
     # The gap above the footnotes runs across the page in the bottom band.
     left = column("L", LEFT, 1400, 30) + [box(f"FL{i}", 200, 3250 + i * 45, 1180, height=30)
