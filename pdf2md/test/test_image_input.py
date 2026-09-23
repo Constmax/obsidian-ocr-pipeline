@@ -253,3 +253,73 @@ def test_tiles_of_a_two_column_image_stay_beside_the_temporary_copy(tmp_path):
     assert {path.parent.parent for path in seen} == {scratch}
     assert sorted(entry.name for entry in tmp_path.iterdir()) == [
         "out", "scan.jpg", "scratch"]
+
+
+def _sideways_two_column_jpeg(path: Path, dpi=None):
+    """A phone photo: pixels stored sideways, EXIF orientation 6 turns them upright."""
+    from PIL import Image
+
+    pixmap = _two_column_pixmap()
+    upright = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+    exif = Image.Exif()
+    exif[0x0112] = 6  # display: rotate the stored pixels 90° clockwise
+    upright.rotate(90, expand=True).save(
+        path, format="JPEG", quality=90, exif=exif,
+        **({"dpi": (dpi, dpi)} if dpi else {}))
+    return upright.size
+
+
+@pytest.mark.parametrize("dpi", [200, None])
+def test_a_sideways_phone_photo_is_tiled_upright(tmp_path, dpi):
+    """fitz lays the page out upright by EXIF; the tilers must see it the same way."""
+    from PIL import Image
+
+    source = tmp_path / "foto.jpg"
+    upright_size = _sideways_two_column_jpeg(source, dpi)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    request = ConversionRequest(pdf=source, output_dir=tmp_path / "out",
+                                temp_root=scratch, no_dictionary=True,
+                                retries=0)
+
+    pages, _context = analyze_pages(request, scratch)
+    page = pages[0]
+
+    assert page.layout_type == "zweispaltig"
+    with Image.open(page.image_path) as image:
+        assert image.size == upright_size
+    # 200 dpi on A4 either way: declared, or read back from the assumed page.
+    assert page.image_dpi == pytest.approx(200, rel=0.02)
+
+    seen = {}
+
+    def fake_ocr(image, max_tokens=None):
+        with Image.open(image) as tile:
+            seen[Path(image).name] = tile.size
+        return "Lorem ipsum"
+
+    result = convert_document(request, fake_ocr)
+
+    assert result.completed is True
+    assert set(seen) == {"_seite001_L.png", "_seite001_R.png"}
+    for width, height in seen.values():
+        assert height > width  # a column, not a sideways strip
+
+
+def test_a_cmyk_jpeg_can_be_tiled(tmp_path):
+    """The tilers save PNG crops, and PIL cannot write CMYK as PNG."""
+    from PIL import Image
+
+    pixmap = _two_column_pixmap()
+    source = tmp_path / "scan.jpg"
+    Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples) \
+        .convert("CMYK").save(source, format="JPEG", quality=90, dpi=(200, 200))
+
+    result = convert_document(
+        ConversionRequest(pdf=source, output_dir=tmp_path / "out",
+                          temp_root=tmp_path / "scratch", no_dictionary=True,
+                          retries=0),
+        lambda image, max_tokens=None: "Lorem ipsum",
+    )
+
+    assert result.completed is True
