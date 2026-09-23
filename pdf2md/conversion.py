@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import tempfile
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -33,6 +35,160 @@ class OcrAdapter(Protocol):
 
 
 EventSink = Callable[[dict[str, Any]], None]
+
+
+# --- Input boundary (Issue #100) --------------------------------------------
+#
+# Image input is normalized into a one-page PDF right here, so layout
+# detection, box detection, assembly and the dictionary pass stay PDF-only and
+# need no second code path. fitz opens these suffixes directly; WebP and HEIC
+# do not open and are therefore not listed.
+IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"})
+INPUT_SUFFIXES = frozenset({".pdf"}) | IMAGE_SUFFIXES
+
+# A wrapped page whose long side falls outside this window is not a document
+# page: fitz assumes 96 dpi for an image that declares no resolution, which
+# turns an A4 scan into a 49-inch page. See `_wrap_image()`.
+PLAUSIBLE_PAGE_INCHES = (3.0, 20.0)
+
+# Long side of the page an undeclared image is laid out on: A4 in points. The
+# image keeps its aspect ratio and its full pixel count, so layout detection
+# sees a normal document page and `page_image_dpi()` reports the resolution the
+# scan would have on A4 instead of a JPEG's decorative 72 dpi.
+ASSUMED_PAGE_LONG_SIDE = 842.0
+
+
+class UnsupportedInput(ValueError):
+    """Input the pipeline does not accept — by suffix or by frame count."""
+
+
+def is_image_input(path: Path) -> bool:
+    return path.suffix.lower() in IMAGE_SUFFIXES
+
+
+def ensure_supported_input(path: Path) -> None:
+    """Raise UnsupportedInput unless `path` is a PDF or a supported image."""
+    if path.suffix.lower() in INPUT_SUFFIXES:
+        return
+    accepted = ", ".join(sorted(INPUT_SUFFIXES))
+    suffix = path.suffix or "(no suffix)"
+    raise UnsupportedInput(
+        f"unsupported input format {suffix}: {path.name} — accepted: {accepted}")
+
+
+def _is_page_sized(rect) -> bool:
+    low, high = PLAUSIBLE_PAGE_INCHES
+    return low <= max(rect.width, rect.height) / 72 <= high
+
+
+def _wrap_image(path: Path):
+    """One-page PDF carrying `path` as a full-page raster.
+
+    `convert_to_pdf()` sizes the page from the image's own resolution, which is
+    right for a scan and absurd for a file that declares none — fitz then falls
+    back to 96 dpi and an A4 scan becomes a 49-inch page. Such a page is laid
+    out on assumed A4 instead, which costs nothing downstream (the embedded
+    image keeps every pixel) and keeps the page geometry readable as a
+    resolution.
+
+    Raises UnsupportedInput for an image carrying more than one frame.
+    """
+    import fitz
+
+    with fitz.open(path) as image:
+        # One image is one page — and a multi-frame TIFF is not one image.
+        # fitz opens it as several pages, but the OCR branch is handed the
+        # source file itself, of which PIL reads only the first frame: every
+        # page after the first would silently repeat page 1. The A4 fallback
+        # below is worse still, dropping the extra frames without a word.
+        # Neither is acceptable, and combining frames is Issue #100's
+        # explicitly separate feature, so reject the file instead.
+        if image.page_count > 1:
+            raise UnsupportedInput(
+                f"multi-page image not supported: {path.name} carries "
+                f"{image.page_count} frames — convert it to a PDF first")
+        wrapped, rect = image.convert_to_pdf(), image[0].rect
+    document = fitz.open("pdf", wrapped)
+    if _is_page_sized(document[0].rect):
+        return document
+    document.close()
+    scale = ASSUMED_PAGE_LONG_SIDE / (max(rect.width, rect.height) or 1)
+    document = fitz.open()
+    page = document.new_page(width=rect.width * scale, height=rect.height * scale)
+    page.insert_image(page.rect, filename=str(path))
+    return document
+
+
+@contextmanager
+def open_document(path: Path):
+    """Yield `path` as a fitz document, wrapping images into a one-page PDF.
+
+    A PDF passes through unchanged. An image becomes a single page carrying it
+    as a full-page raster: `get_text` is empty and `image_ratio()` returns 1.0,
+    so the page lands on the OCR branch exactly like a scan would. An image
+    with more than one frame is rejected rather than half-processed.
+    """
+    import fitz
+
+    ensure_supported_input(path)
+    if not is_image_input(path):
+        with fitz.open(path) as document:
+            yield document
+        return
+    document = _wrap_image(path)
+    try:
+        yield document
+    finally:
+        document.close()
+
+
+def page_image_dpi(document, page) -> float | None:
+    """Resolution of a wrapped image page, or None when there is none to read.
+
+    The page is exactly as wide as the image it carries, so its pixel count per
+    page point is the resolution the raster has on that paper size. Without a
+    single embedded image there is no scale, and the caller has to skip every
+    heuristic that needs one rather than calibrate against an invented number.
+    """
+    images = page.get_images(full=True)
+    if len(images) != 1 or not page.rect.width:
+        return None
+    # Long sides, not widths: fitz lays out a JPEG upright by its EXIF
+    # orientation but embeds the pixels as stored, so a sideways phone photo
+    # has the image's width along the page's height.
+    embedded = document.extract_image(images[0][0])
+    long_pixels = max(embedded["width"], embedded["height"])
+    return long_pixels / (max(page.rect.width, page.rect.height) / 72)
+
+
+# Pixel modes PIL writes as PNG, which is what the tilers save their crops as.
+_PNG_MODES = frozenset({"1", "L", "LA", "P", "RGB", "RGBA", "I", "I;16"})
+
+
+def _page_image_from_source(source: Path, stem: Path) -> Path:
+    """Put the input image beside `stem` as the page image the model reads.
+
+    Byte for byte where possible. fitz and mlx_vlm both honour a JPEG's EXIF
+    orientation, but the tilers, the ink count and the bold check open the
+    file with plain PIL: a phone photo stored sideways would be cut along the
+    wrong axis and its tiles handed to the model sideways. Such a file, and
+    one in a mode the tilers cannot save as PNG (CMYK), is written upright as
+    a PNG instead — same pixels, no resampling.
+    """
+    from PIL import ExifTags, Image, ImageOps
+
+    with Image.open(source) as image:
+        orientation = image.getexif().get(ExifTags.Base.Orientation, 1)
+        if orientation == 1 and image.mode in _PNG_MODES:
+            target = stem.with_name(stem.name + source.suffix.lower())
+            shutil.copyfile(source, target)
+            return target
+        upright = ImageOps.exif_transpose(image)
+    if upright.mode not in _PNG_MODES:
+        upright = upright.convert("RGB")
+    target = stem.with_name(stem.name + ".png")
+    upright.save(target)
+    return target
 
 
 @dataclass(frozen=True)
@@ -79,6 +235,9 @@ class AnalyzedPage:
     textlayer_lines: list[list[Any]] | None
     boxes: list[Any]
     is_diagram: bool
+    # Resolution of `image_path`. None means unknown, and every heuristic that
+    # needs a scale (ink calibration) has to be skipped for this page.
+    image_dpi: float | None = None
 
     @property
     def needs_ocr(self) -> bool:
@@ -203,10 +362,9 @@ def textlayer_lines(page):
 
 def analyze_pages(request: ConversionRequest, temporary_dir: Path):
     """Analyze selected pages and return named page records plus context."""
-    import fitz
-
+    source_is_image = is_image_input(request.pdf)
     pages: list[AnalyzedPage] = []
-    with fitz.open(request.pdf) as doc:
+    with open_document(request.pdf) as doc:
         for page in doc:
             if page.rotation:
                 page.remove_rotation()
@@ -229,14 +387,25 @@ def analyze_pages(request: ConversionRequest, temporary_dir: Path):
                     boxes=boxes, is_diagram=diagram,
                 ))
                 continue
-            image_path = temporary_dir / f"_seite{number:03d}.png"
-            page.get_pixmap(dpi=request.dpi).save(image_path)
+            if source_is_image:
+                # The page carries the source image at full resolution, so
+                # re-rendering it at --dpi would only resample a 400 dpi scan
+                # down (Issue #100). The copy keeps the tiles that
+                # `tile_vertically()` writes beside the page image out of the
+                # user's folder; the wrapped page is used for layout only.
+                image_path = _page_image_from_source(
+                    request.pdf, temporary_dir / f"_seite{number:03d}")
+                image_dpi = page_image_dpi(doc, page)
+            else:
+                image_path = temporary_dir / f"_seite{number:03d}.png"
+                page.get_pixmap(dpi=request.dpi).save(image_path)
+                image_dpi = float(request.dpi)
             layout_type, gutter = detect_layout(page)
             pages.append(AnalyzedPage(
                 number=number, image_path=image_path,
                 text_characters=characters, layout_type=layout_type,
                 gutter=gutter, textlayer_lines=None, boxes=boxes,
-                is_diagram=diagram,
+                is_diagram=diagram, image_dpi=image_dpi,
             ))
     return pages, context
 
@@ -247,7 +416,7 @@ def diagram_image(pdf: Path, number: int, image_dir: Path, max_edge=1800):
 
     image_dir.mkdir(parents=True, exist_ok=True)
     name = f"{pdf.stem}-s{number:03d}.png".replace(" ", "-")
-    with fitz.open(pdf) as doc:
+    with open_document(pdf) as doc:
         page = doc[number - 1]
         long_side = max(page.rect.width, page.rect.height) or 1
         zoom = min(max_edge / long_side, 4.0)
@@ -481,15 +650,23 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                     mode = "ganz"
                     tiles = [(page.image_path, (0, 1000))]
 
-                ink = _ink_amount(page.image_path, request.dpi)
-                calibrated = page.text_characters >= 400 and ink > 0
-                factor = (page.text_characters / ink
-                          if calibrated else CHARACTERS_PER_INK)
+                # Without a credible resolution the ink count has no scale
+                # (Issue #100), so no length is expected and the derailment
+                # check falls back to the repetition test alone.
+                dpi = page.image_dpi
+                if dpi is None:
+                    calibrated, factor, ink = False, None, 0.0
+                else:
+                    ink = _ink_amount(page.image_path, dpi)
+                    calibrated = page.text_characters >= 400 and ink > 0
+                    factor = (page.text_characters / ink
+                              if calibrated else CHARACTERS_PER_INK)
                 lines = []
                 for part, window in tiles:
                     parsed, tile_trace = tile_lines(
                         part, ocr_adapter, not request.no_bold, factor,
-                        request.dpi, calibrated, max_depth=request.retries,
+                        dpi or request.dpi, calibrated,
+                        max_depth=request.retries,
                     )
                     trace += tile_trace
                     if window:
