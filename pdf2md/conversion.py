@@ -153,8 +153,42 @@ def page_image_dpi(document, page) -> float | None:
     images = page.get_images(full=True)
     if len(images) != 1 or not page.rect.width:
         return None
-    width = document.extract_image(images[0][0])["width"]
-    return width / (page.rect.width / 72)
+    # Long sides, not widths: fitz lays out a JPEG upright by its EXIF
+    # orientation but embeds the pixels as stored, so a sideways phone photo
+    # has the image's width along the page's height.
+    embedded = document.extract_image(images[0][0])
+    long_pixels = max(embedded["width"], embedded["height"])
+    return long_pixels / (max(page.rect.width, page.rect.height) / 72)
+
+
+# Pixel modes PIL writes as PNG, which is what the tilers save their crops as.
+_PNG_MODES = frozenset({"1", "L", "LA", "P", "RGB", "RGBA", "I", "I;16"})
+
+
+def _page_image_from_source(source: Path, stem: Path) -> Path:
+    """Put the input image beside `stem` as the page image the model reads.
+
+    Byte for byte where possible. fitz and mlx_vlm both honour a JPEG's EXIF
+    orientation, but the tilers, the ink count and the bold check open the
+    file with plain PIL: a phone photo stored sideways would be cut along the
+    wrong axis and its tiles handed to the model sideways. Such a file, and
+    one in a mode the tilers cannot save as PNG (CMYK), is written upright as
+    a PNG instead — same pixels, no resampling.
+    """
+    from PIL import ExifTags, Image, ImageOps
+
+    with Image.open(source) as image:
+        orientation = image.getexif().get(ExifTags.Base.Orientation, 1)
+        if orientation == 1 and image.mode in _PNG_MODES:
+            target = stem.with_name(stem.name + source.suffix.lower())
+            shutil.copyfile(source, target)
+            return target
+        upright = ImageOps.exif_transpose(image)
+    if upright.mode not in _PNG_MODES:
+        upright = upright.convert("RGB")
+    target = stem.with_name(stem.name + ".png")
+    upright.save(target)
+    return target
 
 
 @dataclass(frozen=True)
@@ -359,9 +393,8 @@ def analyze_pages(request: ConversionRequest, temporary_dir: Path):
                 # down (Issue #100). The copy keeps the tiles that
                 # `tile_vertically()` writes beside the page image out of the
                 # user's folder; the wrapped page is used for layout only.
-                image_path = (temporary_dir
-                              / f"_seite{number:03d}{request.pdf.suffix.lower()}")
-                shutil.copyfile(request.pdf, image_path)
+                image_path = _page_image_from_source(
+                    request.pdf, temporary_dir / f"_seite{number:03d}")
                 image_dpi = page_image_dpi(doc, page)
             else:
                 image_path = temporary_dir / f"_seite{number:03d}.png"

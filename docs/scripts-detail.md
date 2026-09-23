@@ -305,6 +305,10 @@ Four consequences worth knowing:
 - **The source resolution is preserved.** The page image handed to the model is
   the input file itself, not a `--dpi` re-render of it — a 400 dpi scan is not
   resampled down to 150. `--dpi` therefore has no effect on image input.
+  Two exceptions are rewritten as a PNG with the same pixels: a photo whose
+  EXIF orientation says it is stored sideways is turned upright (fitz and the
+  model honour EXIF, the tilers would not), and a CMYK file is converted to
+  RGB so its tiles can be saved.
 - **The paper size is assumed when the file does not declare one.** fitz reads
   an image that carries no resolution metadata (most JPEGs) at 96 dpi, which
   would make an A4 scan a 49-inch page and throw off the ink-based length
