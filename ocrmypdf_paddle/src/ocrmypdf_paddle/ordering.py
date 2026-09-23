@@ -13,8 +13,9 @@ geometry alone:
 3. Look for a gutter between 30 % and 70 % of the text width that almost no
    narrow line crosses, with lines side by side on both sides. On such a
    page the columns begin at the first column pair, so a running header
-   closer above them than a gap still belongs to the header, and footer
-   rows paired across the gutter (footnotes) go back to their columns.
+   closer above them than a gap still belongs to the header when it spans
+   the gutter or stands apart by more than the line pitch, and footer rows paired across the gutter (footnotes, even
+   half a line offset) go back to their columns.
 4. A line crossing the gutter with no column line beside it is full width
    (a heading, a single-column paragraph, a footer) and separates the page
    into sections. A crossing line beside column lines (a note written into
@@ -218,18 +219,25 @@ def _column_bands(
     Detected boxes overlap on densely set scans, so a running header can sit
     closer above the columns than any gap _bands() accepts. The header grows
     to the lowest gap between line cores above the first column pair, within
-    the top HEADER_SHARE and a quarter of the lines.
+    the top HEADER_SHARE and a quarter of the lines. The grown rows must hold
+    a line crossing the gutter (a location list, a centred title) or stand
+    at least half again the line pitch above the first column pair (a label
+    and a page reference): otherwise they are the first body row with an
+    indented right line, not a header, and stay in the columns.
 
     Footnotes starting at the same height in both columns leave a page-wide
-    gap above them, which puts them into the footer. Footer rows holding a
-    column pair or lines of one column only go back to the columns, so the
-    footnotes stay at the bottom of their column; the footer starts at the
-    first row crossing the gutter or pairing lines that are no column rows.
+    gap above them, which puts them into the footer. Leading footer rows
+    holding lines of one column only go back to the columns while they hold
+    a column pair as a whole, so footnotes offset by half a line stay at the
+    bottom of their column even though no single row pairs them; the footer
+    starts at the first row crossing the gutter or pairing lines that are no
+    column rows.
     """
     edge = _right_edge(body, gutter, h)
     pairs = _pairs(body, gutter, edge, h)
     if pairs:
-        first = min(min(a.cy, b.cy) for a, b in pairs) - h / 4
+        start = min(min(a.cy, b.cy) for a, b in pairs)
+        first = start - h / 4
         above = [
             cut
             for cut in _core_gaps(boxes, h)
@@ -237,20 +245,32 @@ def _column_bands(
             and sum(box.cy < cut for box in boxes) <= 0.25 * len(boxes)
         ]
         if above:
-            header = header + [box for box in body if box.cy < max(above)]
-            body = [box for box in body if box.cy >= max(above)]
+            grown = [box for box in body if box.cy < max(above)]
+            if grown and (
+                any(_side(box, gutter, h) is None for box in grown)
+                or start - max(box.cy for box in grown) >= 1.5 * _pitch(body, gutter, h)
+            ):
+                header = header + grown
+                body = [box for box in body if box.cy >= max(above)]
     rows = _row_groups(footer, h)
-    count, paired = 0, False
+    count = 0
     for row in rows:
         sides = [_side(box, gutter, h) for box in row]
-        row_paired = bool(_pairs(row, gutter, edge, h))
-        if None in sides or (len(set(sides)) == 2 and not row_paired):
+        if None in sides or (len(set(sides)) == 2 and not _pairs(row, gutter, edge, h)):
             break
-        count, paired = count + 1, paired or row_paired
-    if paired:
-        body = body + [box for row in rows[:count] for box in row]
+        count += 1
+    leading = [box for row in rows[:count] for box in row]
+    if _pairs(leading, gutter, edge, h):
+        body = body + leading
         footer = [box for row in rows[count:] for box in row]
     return header, body, footer
+
+
+def _pitch(boxes: list[_Box], gutter: float, h: float) -> float:
+    """Median distance between consecutive lines of the left column."""
+    left = sorted((box.cy for box in boxes if _side(box, gutter, h) == "L"))
+    steps = [b - a for a, b in zip(left, left[1:]) if 0 < b - a < 3 * h]
+    return statistics.median(steps) if steps else h
 
 
 def _side(box: _Box, gutter: float, h: float) -> str | None:

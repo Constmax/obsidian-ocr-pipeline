@@ -121,6 +121,17 @@ def test_dense_running_header_is_read_before_the_columns():
     assert ordered[7:] == names("L", 25) + names("R", 25)
 
 
+def test_dense_two_part_running_header_is_read_before_the_columns():
+    # No header line crosses the gutter, and the tall header boxes leave no
+    # gap _bands() accepts. The row stands 1.7 line pitches above the
+    # columns, as on the course pages (n01, t03), not one pitch like a row.
+    header = [box("Rubrik", 200, 245, 600, height=90),
+              box("Titel, Seite 7", 1800, 245, 2280, height=90)]
+    lines = column("L", LEFT, 370, 25) + column("R", RIGHT, 370, 25)
+    ordered = texts(order_lines(as_recognized(header + lines), W, H))
+    assert ordered == ["Rubrik", "Titel, Seite 7"] + names("L", 25) + names("R", 25)
+
+
 def test_footnotes_starting_level_in_both_columns_stay_in_their_column():
     # The gap above the footnotes runs across the page in the bottom band.
     left = column("L", LEFT, 1400, 30) + [box(f"FL{i}", 200, 3250 + i * 45, 1180, height=30)
@@ -132,6 +143,31 @@ def test_footnotes_starting_level_in_both_columns_stay_in_their_column():
     assert texts(ordered) == (
         names("L", 30) + names("FL", 3) + names("R", 30) + names("FR", 2) + ["Fusszeile"]
     )
+
+
+def test_footnotes_offset_by_half_a_line_stay_in_their_column():
+    # Both columns' footnotes start level but are offset by half a line, so
+    # no row holds a left and a right footnote (n07). The leading footer rows
+    # still pair across the gutter as a whole.
+    left = column("L", LEFT, 1400, 30) + [box(f"FL{i}", 200, 3250 + i * 45, 1180, height=30)
+                                          for i in range(3)]
+    right = column("R", RIGHT, 1400, 30) + [box(f"FR{i}", 1300, 3264 + i * 45, 2000, height=30)
+                                            for i in range(2)]
+    footer = box("Fusszeile", 900, 3385, 1580)
+    ordered = order_lines(as_recognized(left + right + [footer]), W, H)
+    assert texts(ordered) == (
+        names("L", 30) + names("FL", 3) + names("R", 30) + names("FR", 2) + ["Fusszeile"]
+    )
+
+
+def test_indented_first_column_row_is_not_a_header():
+    # The top right body line starts more than ALIGN line heights inside the
+    # right column edge, so the first column pair drops a row. The grown rows
+    # hold no line crossing the gutter, so they stay the first body row.
+    lines = column("L", LEFT, 400, 10) + column("R", RIGHT, 400, 10)
+    lines[10] = box("R0", RIGHT[0] + 3 * LINE, 400, RIGHT[1])
+    ordered = order_lines(as_recognized(lines), W, H)
+    assert texts(ordered) == names("L", 10) + names("R", 10)
 
 
 def test_running_footer_with_a_right_aligned_part_is_read_last():
