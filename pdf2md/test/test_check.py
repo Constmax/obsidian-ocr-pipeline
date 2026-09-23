@@ -148,22 +148,22 @@ def test_modell_groesse_zaehlt_blobs_nur_einfach():
         assert "(2.0 KB)" in modell["detail"], modell["detail"]
 
 
-def test_no_pdf_with_check():
-    """--check without a PDF argument succeeds (pdf not required)."""
+def test_no_input_with_check():
+    """--check without an input argument succeeds (input not required)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         Ergebnis = _run_check("--out", str(tmpdir))
-        # Should not fail with "argparse error" about missing PDF
-        assert "Requires a PDF file" not in (Ergebnis.stderr + Ergebnis.stdout)
+        # Should not fail with "argparse error" about a missing input file
+        assert "Requires an input file" not in (Ergebnis.stderr + Ergebnis.stdout)
 
 
-def test_check_rejects_pdf_argument():
-    """--check rejects an explicit PDF argument with an informative error message."""
+def test_check_rejects_input_argument():
+    """--check rejects an explicit input argument with an informative message."""
     with tempfile.TemporaryDirectory() as tmpdir:
         fake_pdf = Path(tmpdir) / "test.pdf"
         fake_pdf.touch()
         Ergebnis = _run_check("--out", str(tmpdir), str(fake_pdf))
         assert Ergebnis.returncode != 0
-        assert "--check does not require a PDF file" in Ergebnis.stderr
+        assert "--check does not require an input file" in Ergebnis.stderr
 
 
 def test_check_ohne_out_fasst_repo_ordner_nicht_an():

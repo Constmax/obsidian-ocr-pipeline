@@ -9,6 +9,7 @@ import { Inventory } from "./file-actions.ts";
 import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
 import { parseOcrSettings } from "./ocr-settings.ts";
 import { ConversionController } from "./conversion-controller.ts";
+import { isConvertible } from "./input-formats.ts";
 import { createConversionHost, createSearchableCopyHost } from "./conversion-host.ts";
 import { runSearchableCopy, type SearchableCopyHost } from "./searchable-copy.ts";
 
@@ -243,9 +244,10 @@ export default class OcrPreviewPlugin extends Plugin {
 		if (!this.conversion.ensureIdle()) return;
 		const modal = new PdfSelectModal(
 			this.app,
-			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
+			this.app.vault.getFiles().filter(isConvertible),
+			"No PDFs or images in vault.",
 		);
-		modal.setPlaceholder("Search PDF for conversion…");
+		modal.setPlaceholder("Search PDF or image for conversion…");
 		modal.onSelection = (file) => this.selectPagesAndConvert(file);
 		modal.open();
 	}
@@ -268,6 +270,9 @@ export default class OcrPreviewPlugin extends Plugin {
 
 	private selectPdfForSearchableCopy(): void {
 		if (!this.conversion.ensureIdle()) return;
+		// Stage 1 only: `bin/pdf-auto` and the column split assume PDF input,
+		// so this list stays PDF-only while conversion accepts images too
+		// (Issue #100).
 		const modal = new PdfSelectModal(
 			this.app,
 			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
@@ -286,18 +291,21 @@ export default class OcrPreviewPlugin extends Plugin {
 					.setIcon("columns-3")
 					.onClick(() => void this.revealView(file.name)),
 			);
-		} else if (file.extension === "pdf") {
+		} else if (isConvertible(file)) {
 			menu.addItem((i) =>
 				i
 					.setTitle("OCR → Markdown")
 					.onClick(() => this.selectPagesAndConvert(file)),
 			);
-			menu.addItem((i) =>
-				i
-					.setTitle("Create searchable copy (OCR)")
-					.setIcon("scan-text")
-					.onClick(() => this.createSearchableCopy(file)),
-			);
+			// Stage 1 is PDF-only (Issue #100), unlike the conversion above.
+			if (file.extension === "pdf") {
+				menu.addItem((i) =>
+					i
+						.setTitle("Create searchable copy (OCR)")
+						.setIcon("scan-text")
+						.onClick(() => this.createSearchableCopy(file)),
+				);
+			}
 			const stem = `${file.basename}.md`;
 			if (this.inventory.entries.some((b) => b.name === stem)) {
 				menu.addItem((i) =>

@@ -8,6 +8,7 @@
 import { App, TFile } from "obsidian";
 import { loadPdfJs } from "obsidian";
 
+import { isImageSource } from "./input-formats.ts";
 import type {
 	PdfDokument,
 	PdfJsLib,
@@ -121,6 +122,16 @@ export class PdfColumn {
 		}
 		this.pdfFile = file;
 		this.emptyState.hide();
+		// Stage 2 converts images as well (Issue #100), but this column is
+		// pdf.js and has no second render path — say so instead of reporting
+		// a load failure for a file that is not broken.
+		if (isImageSource(file)) {
+			this.onLoaded?.(file.name, 0);
+			this.onError?.(
+				`"${file.name}" is an image — this column shows PDFs only.`,
+			);
+			return;
+		}
 		try {
 			await this.loadDocument(file, run);
 			if (run !== this.run) return;

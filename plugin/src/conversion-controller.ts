@@ -44,8 +44,15 @@ export interface ConversionHost {
 	showProgress(message: string, onCancel: () => void): ProgressDisplay;
 	/** Vault root on disk, or null without file-system access. */
 	vaultBasePath(): string | null;
-	/** Paths of other vault PDFs with the same basename. */
+	/** Paths of other convertible vault files with the same basename. */
 	pdfsWithSameBasename(pdf: PdfSource): string[];
+	/**
+	 * Where the existing preview `entryName` came from, or null when there is
+	 * none and nothing can be overwritten. A preview that records no source
+	 * returns its own path, which matches no input: an unknown origin counts
+	 * as foreign rather than as safe to overwrite.
+	 */
+	previewSource(entryName: string, folder: string): string | null;
 	/** Preview folder as configured and normalized for vault lookups. */
 	previewFolder(): { configured: string; normalized: string };
 	reconcile(): Promise<void>;
@@ -265,19 +272,32 @@ export class ConversionController {
 		this.begin(pdf.basename, this.abort);
 		const name = pdf.basename;
 		try {
+			const folder = this.host.previewFolder();
+			const entryName = `${name}.md`;
 			const duplicates = this.host.pdfsWithSameBasename(pdf);
 			if (duplicates.length > 0) {
+				// A shared basename costs something only once it destroys
+				// something: a preview that exists and came from one of the
+				// rivals. Vetoing on the mere existence of a rival was
+				// tolerable while only PDFs could be sources; since images
+				// convert too (Issue #100), any same-named vault attachment
+				// would block a conversion that overwrites nothing.
+				const existing = this.host.previewSource(entryName, folder.normalized);
+				if (existing !== null && existing !== pdf.path) {
+					this.host.notify(
+						`OCR Preview: "${entryName}" was not converted from ${pdf.path} — converting would overwrite it. Please rename one of ${[pdf.path, ...duplicates].join(", ")}.`,
+					);
+					return;
+				}
 				this.host.notify(
-					`OCR Preview: "${name}" also exists as ${duplicates.join(", ")} — output would overwrite. Please rename one of the files.`,
+					`OCR Preview: "${name}" also exists as ${duplicates.join(", ")} — all of them write "${entryName}".`,
 				);
-				return;
 			}
 			const base = this.host.vaultBasePath();
 			if (base === null) {
 				this.host.notify("OCR Preview: Conversion requires file system access (Desktop).");
 				return;
 			}
-			const folder = this.host.previewFolder();
 			const progress = this.host.showProgress(`OCR Preview: Converting "${name}" …`, () =>
 				this.cancel(),
 			);
