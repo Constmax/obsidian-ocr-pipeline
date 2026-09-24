@@ -4,6 +4,7 @@
 The handler tests run without MLX; the CLI tests replace the model with a
 fake adapter.
 """
+import json
 import os
 import re
 import signal
@@ -171,7 +172,8 @@ def test_sigterm_during_last_page_complete():
         def read_stderr():
             for line in proc.stderr:
                 stderr_lines.append(line)
-                if '"typ": "seite", "nr": 49' in line:
+                event = json.loads(line) if line.startswith("{") else {}
+                if event.get("typ") == "seite" and event.get("nr") == 49:
                     penultimate.set()
 
         thread = threading.Thread(target=read_stderr, daemon=True)

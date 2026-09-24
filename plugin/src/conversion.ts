@@ -178,51 +178,63 @@ function collect(last: string[], line: string): void {
 	if (last.length > LAST_LINES) last.shift();
 }
 
-function parseProgressEvent(line: string): ProgressEvent | null {
+/**
+ * Version of pdf2md's `--fortschritt` protocol this parser reads (Issue #55).
+ * Keys, types and the version are fixed in contracts/cli-contract.json, which
+ * pdf2md's tests read too; docs/cli-contract.md explains the rules.
+ */
+export const PROGRESS_PROTOCOL = 1;
+
+/**
+ * Parses one stderr line of `pdf2md --fortschritt`, or null when the line is
+ * no progress event of a protocol this plugin reads. Unknown fields are
+ * ignored; a missing or mistyped required field rejects the event. An event
+ * without `protokoll` comes from a pdf2md older than the field and is read as
+ * version 1, which is what those versions emitted.
+ */
+export function parseProgressEvent(line: string): ProgressEvent | null {
 	let obj: unknown;
 	try {
 		obj = JSON.parse(line) as unknown;
 	} catch {
 		return null;
 	}
-	if (typeof obj !== "object" || obj === null) return null;
+	if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return null;
 	const e = obj as Record<string, unknown>;
-	const typ = e.typ ?? e.type;
-	if (typeof typ !== "string") return null;
-	switch (typ) {
+	if (e.protokoll !== undefined && e.protokoll !== PROGRESS_PROTOCOL) return null;
+	switch (e.typ) {
 		case "start": {
-			const file = textVal(e.datei ?? e.file);
-			const pages = numVal(e.seiten ?? e.pages);
-			const dpi = numVal(e.dpi);
-			if (!file || pages === null || dpi === null) return null;
+			const file = textVal(e.datei);
+			const pages = intVal(e.seiten);
+			const dpi = intVal(e.dpi);
+			if (file === null || pages === null || dpi === null) return null;
 			return { type: "start", file, pages, dpi };
 		}
-		case "seite":
-		case "page": {
-			const num = numVal(e.nr ?? e.num);
-			const total = numVal(e.von ?? e.total);
-			const seconds = numVal(e.sekunden ?? e.seconds);
-			const origin = textVal(e.herkunft ?? e.origin);
-			const derailed = typeof (e.entgleist ?? e.derailed) === "boolean" ? (e.entgleist ?? e.derailed) as boolean : false;
-			const reason = textVal(e.grund ?? e.reason);
-			if (num === null || total === null || seconds === null || !origin) return null;
+		case "seite": {
+			const num = intVal(e.nr);
+			const total = intVal(e.von);
+			const seconds = numVal(e.sekunden);
+			const origin = textVal(e.herkunft);
+			if (num === null || total === null || seconds === null || origin === null) return null;
+			if (typeof e.entgleist !== "boolean") return null;
+			if (e.grund !== undefined && typeof e.grund !== "string") return null;
+			const reason = textVal(e.grund);
 			return {
 				type: "page",
 				num,
 				total,
 				seconds,
 				origin,
-				derailed,
-				...(reason ? { reason } : {}),
+				derailed: e.entgleist,
+				...(reason !== null ? { reason } : {}),
 			};
 		}
-		case "fertig":
-		case "finished": {
-			const target = textVal(e.ziel ?? e.target);
-			const sec = numVal(e.sekunden ?? e.seconds);
-			const der = numVal(e.entgleist ?? e.derailed);
-			if (!target || sec === null || der === null) return null;
-			return { type: "finished", target, seconds: sec, derailed: der };
+		case "fertig": {
+			const target = textVal(e.ziel);
+			const seconds = numVal(e.sekunden);
+			const derailed = intVal(e.entgleist);
+			if (target === null || seconds === null || derailed === null) return null;
+			return { type: "finished", target, seconds, derailed };
 		}
 		default:
 			return null;
@@ -235,6 +247,10 @@ function textVal(v: unknown): string | null {
 
 function numVal(v: unknown): number | null {
 	return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function intVal(v: unknown): number | null {
+	return typeof v === "number" && Number.isInteger(v) ? v : null;
 }
 
 function lineBuffer(last: string[], onLine?: (line: string) => boolean): { write: (chunk: string) => void; flush: () => void } {
@@ -437,5 +453,9 @@ export interface SearchableCopyResult extends ConversionResult {
 	shortPages: number[];
 }
 
-/** column_tools.py verify-pages: "🗑️  Page 3: only 5 characters (min: 50)". */
-const SHORT_PAGE_LINE = /\bPage (\d+): only \d+ characters\b/;
+/**
+ * column_tools.py verify-pages: "🗑️  Page 3: only 5 characters (min: 50)".
+ * Stage 1 has no structured channel; the exact line is pinned in
+ * contracts/cli-contract.json and checked against the real script (Issue #55).
+ */
+export const SHORT_PAGE_LINE = /\bPage (\d+): only \d+ characters\b/;

@@ -483,22 +483,13 @@ Machine-readable progress emitted as JSON lines to stderr. Default console outpu
 
 ### Emitted Events
 
-One event object emitted per state transition. Downstream parsers must accept and ignore unknown fields.
+The events, their order, the protocol version and the exit codes are specified in [`cli-contract.md`](cli-contract.md); the canonical examples are `contracts/progress-v1.jsonl`.
 
 ```json
-{"typ":"start","datei":"…","seiten":42,"dpi":150}
-{"typ":"seite","nr":7,"von":42,"sekunden":31.2,"herkunft":"ocr","entgleist":false}
-{"typ":"seite","nr":8,"von":42,"sekunden":44.1,"herkunft":"ocr","entgleist":true,"grund":"zu lang 324%"}
-{"typ":"fertig","ziel":"…","sekunden":1284.0,"entgleist":1}
+{"typ": "start", "protokoll": 1, "datei": "…", "seiten": 42, "dpi": 150}
+{"typ": "seite", "protokoll": 1, "nr": 8, "von": 42, "sekunden": 44.1, "herkunft": "ocr", "entgleist": true, "grund": "zu lang 324%"}
+{"typ": "fertig", "protokoll": 1, "ziel": "…", "sekunden": 1284.0, "entgleist": 1}
 ```
-
-- **start** — post PDF analysis: filename, page count, DPI
-- **seite** — per page: page number, total pages, elapsed seconds, provenance (`textlayer`/`ocr`/`diagramm`), derailment flag, optional cause
-- **fertig** — post completion: total execution time, output path, total derailments
-
-### Schema Contract
-
-Additional fields may be introduced to events in future revisions. Parsers (plugins, UIs, external tools) must ignore unrecognized fields without throwing errors.
 
 ## --check (Stage 2)
 
