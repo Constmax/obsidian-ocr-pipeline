@@ -9,6 +9,8 @@ modules — dependency flows only in this direction:
 
 Heavy imports (fitz, numpy, PIL) are function-local in all modules.
 """
+from __future__ import annotations
+
 import json
 import re
 import statistics
@@ -518,6 +520,90 @@ def page_marker(nr, extra=None):
     if extra is not None:
         return f"%% S. {nr} | {extra} %%\n\n"
     return f"%% S. {nr} %%\n\n"
+
+
+# --- Reading an existing preview (Issue #106) ------------------------------
+#
+# Same grammar as `plugin/src/preview-parser.ts` and docs/preview-format.md:
+# a marker counts only at line start and outside a code fence.
+PREVIEW_MARKER = re.compile(
+    r"^%%\s*(?:S\.|p\.|P\.)\s*(\d+)\s*(?:\|(.*?))?\s*%%\s*$", re.I)
+FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+
+
+class PreviewFormatError(ValueError):
+    """An existing preview whose pages cannot be told apart."""
+
+
+@dataclass(frozen=True)
+class PreviewPage:
+    """One page block of an existing preview, kept verbatim."""
+    number: int
+    origin: str | None  # textlayer, ocr, diagramm — None for a legacy marker
+    text: str           # from the marker line to the end of the block
+
+
+@dataclass(frozen=True)
+class PreviewDocument:
+    fields: dict[str, str]
+    preamble: str  # between frontmatter and first marker: the Quelle line
+    pages: tuple[PreviewPage, ...]
+
+
+def _marker_origin(extra):
+    first = (extra or "").split("|")[0].strip().lower()
+    if first in ("diagram", "diagramm"):
+        return "diagramm"
+    return first if first in ("textlayer", "ocr") else None
+
+
+def split_preview(text):
+    """Split a preview into frontmatter fields, preamble and page blocks.
+
+    Raises PreviewFormatError when there is no frontmatter, no page marker,
+    or a page number appears twice: a merge could not say which block a
+    page replaces.
+    """
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        raise PreviewFormatError("no frontmatter")
+    try:
+        end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+    except StopIteration:
+        raise PreviewFormatError("frontmatter is not closed") from None
+    fields = {}
+    for line in lines[1:end]:
+        key, colon, value = line.partition(":")
+        if colon and key.strip():
+            fields[key.strip()] = value.strip()
+
+    starts, fence = [], None
+    for index in range(end + 1, len(lines)):
+        opening = FENCE.match(lines[index])
+        if opening:
+            mark = opening.group(1)
+            if fence is None:
+                fence = mark
+            elif mark[0] == fence[0] and len(mark) >= len(fence):
+                fence = None
+            continue
+        match = None if fence else PREVIEW_MARKER.match(lines[index])
+        if match:
+            starts.append((index, int(match.group(1)),
+                           _marker_origin(match.group(2))))
+    if not starts:
+        raise PreviewFormatError("no page markers")
+
+    pages, seen = [], set()
+    for position, (index, number, origin) in enumerate(starts):
+        if number in seen:
+            raise PreviewFormatError(f"page {number} appears twice")
+        seen.add(number)
+        stop = starts[position + 1][0] if position + 1 < len(starts) else len(lines)
+        block = "\n".join(lines[index:stop]).rstrip()
+        pages.append(PreviewPage(number, origin, block))
+    preamble = "\n".join(lines[end + 1:starts[0][0]]).strip("\n")
+    return PreviewDocument(fields, preamble, tuple(pages))
 
 
 def build_document(frontmatter_text, source_text, blocks_texts):
