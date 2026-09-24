@@ -606,7 +606,8 @@
 	overflow: hidden;
 }
 
-.ocr-pdf-canvas {
+.ocr-pdf-canvas,
+.ocr-pdf-bild {
 	position: absolute;
 	inset: 0;
 	width: 100%;
