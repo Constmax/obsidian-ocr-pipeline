@@ -146,16 +146,18 @@ einem `git pull`, ausdrücklich **kein paralleler Installationsweg**:
 
 ```bash
 ./install.sh                                # Stufe-1-Symlinks nach ~/bin + Prüfung
-VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh   # Plugin (Stufe 3)
+VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh --enable   # Plugin (Stufe 3)
 ```
 
 - `install.sh` verlinkt `pdf-auto`, `pdf-combine`, `pdf-workflow`,
   `reprocess-raw` nach `~/bin` und prüft die Abhängigkeiten.
 - `plugin/install-plugin.sh` kopiert `main.js`, `manifest.json` und
-  `styles.css` nach `$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/` (ohne Build,
-  kein Node nötig; `--build` baut aus `src/` auf der Dev-Maschine). Kopie ist
-  Default (Symlinks verlieren in iCloud Dateien), `--symlink` bleibt als
-  Dev-Opt-in.
+  `styles.css` nach `$VAULT_ROOT/.obsidian/plugins/<id>/` — die ID steht nur in
+  `plugin/manifest.json` (ohne Build, kein Node nötig; `--build` baut aus `src/`
+  auf der Dev-Maschine). `--enable` trägt das Plugin in
+  `community-plugins.json` ein und schaltet die alte ID `ocr-vorschau` ab.
+  Kopie ist Default (Symlinks verlieren in iCloud Dateien), `--symlink` bleibt
+  als Dev-Opt-in.
 
 Systempakete installiert `setup.sh` über das `brew bundle` aus dem
 [Brewfile](Brewfile). `ocrmypdf` steht dort bewusst **nicht**: der brew-Build
