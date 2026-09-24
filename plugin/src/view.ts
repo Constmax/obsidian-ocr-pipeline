@@ -27,7 +27,7 @@ import { PdfColumn } from "./pdf-pane.ts";
 import { Sidebar } from "./sidebar.ts";
 import { Coupling } from "./sync.ts";
 import type { FolderLocation, Preview } from "./types.ts";
-import { parsePreview, buildPreview } from "./preview-parser.ts";
+import { parsePreview, buildPreview, previewFormatWarning } from "./preview-parser.ts";
 import { LatestTaskQueue } from "./open-queue.ts";
 
 export const VIEW_TYPE = "ocr-preview-comparison";
@@ -405,6 +405,8 @@ export class OcrComparisonView extends ItemView {
 			await this.saveChangeImmediately();
 			if (this.closed || run !== this.openRun) return;
 			const preview = parsePreview(text);
+			const formatWarning = previewFormatWarning(preview);
+			if (formatWarning !== null) new Notice(`OCR Preview: "${name}": ${formatWarning}`);
 			await this.mdColumn.open(
 				item.file,
 				preview,

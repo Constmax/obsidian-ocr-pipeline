@@ -8,7 +8,7 @@ The YAML frontmatter (enclosed by `---`) contains metadata regarding the source 
 
 | Field | Meaning | Format / Allowed Values |
 |---|---|---|
-| `titel` | Short title (often PDF filename) | String |
+| `titel` | Short title (often PDF filename) | String, always JSON-quoted via `json.dumps` |
 | `quelle-pdf` | Path to raw PDF file | String, always JSON-quoted via `json.dumps` |
 | `seiten` | Total page count | Positive integer (as string) |
 | `seiten-textlayer` | Number of pages with lossless text layer | Integer |
@@ -25,7 +25,7 @@ The YAML frontmatter (enclosed by `---`) contains metadata regarding the source 
 
 ### Rules
 
-1. `quelle-pdf` is always quoted via `json.dumps` (even when containing no spaces). The parser reads it as a scalar value — full YAML parsing is intentionally avoided.
+1. `titel` and `quelle-pdf` are always quoted via `json.dumps` (even when containing no spaces): a JSON string is valid YAML, so a file name such as `Fall 8: Anfechtung.pdf` keeps the frontmatter parseable (Issue #55). The parser decodes such a value as JSON — full YAML parsing is intentionally avoided.
 2. All fields are optional; missing fields are treated as `undefined` / `null` by the parser.
 3. The field `vorschau-format: 1` identifies files created according to this specification. The parser tolerates unknown fields (see Section 7).
 4. `abgebrochen` marks a **partial file** resulting from an orderly abort (SIGINT/SIGTERM, exit code 6): the file is incomplete, but intentionally written rather than discarded. Count fields (`seiten`, `seiten-ocr`, …) reflect only pages actually written; `m` in the note indicates planned run total. If the run aborts **before the first page**, no file is generated and pdf2md exits with code 7 — UI must not claim a partial file exists. An abort during the *last* page creates no partial file notice: the file is complete.
@@ -101,5 +101,5 @@ still page 2
 
 - Field `vorschau-format: 1` in frontmatter specifies compliance with this specification.
 - The parser reads this field; if missing or unknown, execution does **not** fail, but evaluates to `undefined`.
-- The field is currently **reserved**: written by producer, but not yet evaluated by consumer logic. Future migration checks ("file originated from older format") can leverage this field.
+- The review view shows a notice for a preview whose version the plugin does not know (`previewFormatWarning`, usually a file from a newer pdf2md) and still renders it. Producer and parser take the version from `contracts/cli-contract.json` (see [`cli-contract.md`](cli-contract.md)).
 - Existing files lacking this field remain valid (handled as absent).
