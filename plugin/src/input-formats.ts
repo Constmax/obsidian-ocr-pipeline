@@ -4,7 +4,8 @@
 // (Issue #100), so the plugin only widens its file filters — there is no
 // second conversion path here and none in the CLI either.
 //
-// Kept in sync with `INPUT_SUFFIXES` in `pdf2md/conversion.py`. WebP and HEIC
+// Same list as `INPUT_SUFFIXES` in `pdf2md/conversion.py`; both are checked
+// against contracts/cli-contract.json (Issue #55). WebP and HEIC
 // are missing on purpose: fitz does not open them.
 //
 // Stage 1 (`bin/`, the searchable copy) stays PDF-only — its column split and
@@ -32,7 +33,24 @@ export function isConvertible(file: { extension: string }): boolean {
 	return CONVERTIBLE_EXTENSIONS.has(file.extension.toLowerCase());
 }
 
+/**
+ * Image formats the comparison column can show as an `<img>` (Issue #101).
+ * TIFF is missing on purpose: Chromium, and so Obsidian, does not decode it.
+ */
+export const DISPLAYABLE_IMAGE_EXTENSIONS: readonly string[] = [
+	"png",
+	"jpg",
+	"jpeg",
+	"bmp",
+];
+
 /** Is this file an image, i.e. exactly one page and not renderable by pdf.js? */
 export function isImageSource(file: { extension: string }): boolean {
 	return CONVERTIBLE_IMAGE_EXTENSIONS.includes(file.extension.toLowerCase());
+}
+
+/** Can the comparison column show this file, through pdf.js or as an image? */
+export function isDisplayableSource(file: { extension: string }): boolean {
+	const extension = file.extension.toLowerCase();
+	return extension === "pdf" || DISPLAYABLE_IMAGE_EXTENSIONS.includes(extension);
 }

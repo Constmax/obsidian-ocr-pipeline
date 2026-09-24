@@ -1,0 +1,5 @@
+{"typ": "start", "protokoll": 1, "datei": "Verwaltungsrecht AT Fall 8.pdf", "seiten": 3, "dpi": 150}
+{"typ": "seite", "protokoll": 1, "nr": 1, "von": 3, "sekunden": 0.1, "herkunft": "textlayer", "entgleist": false}
+{"typ": "seite", "protokoll": 1, "nr": 2, "von": 3, "sekunden": 41.7, "herkunft": "ocr", "entgleist": true, "grund": "repetition loop in tile 2, retried as halves"}
+{"typ": "seite", "protokoll": 1, "nr": 3, "von": 3, "sekunden": 18.2, "herkunft": "diagramm", "entgleist": false}
+{"typ": "fertig", "protokoll": 1, "ziel": "_ocr-vorschau/Verwaltungsrecht AT Fall 8.md", "sekunden": 60.0, "entgleist": 1}

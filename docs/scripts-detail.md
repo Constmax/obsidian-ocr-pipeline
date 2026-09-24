@@ -419,7 +419,10 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
 - `--diagramm-seiten` uses the same grammar. Whitespace around entries is ignored.
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
 - `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
-- Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`). Frontmatter `seiten` records count of selected pages.
+- Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`).
+- **An existing preview is merged, not replaced (Issue #106).** The selected pages replace their blocks, new ones are inserted in page order, and every other block stays verbatim, manual edits included. Without an existing preview only the selected pages are written, and `seiten` counts those.
+- The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--seiten` run adds no note, because pages it did not reach keep their previous blocks.
+- A preview without frontmatter or page markers, or with a page number twice, cannot be merged. The run stops before analysis with exit code 1 and leaves the file untouched; convert without `--seiten` to replace it.
 - Plugin queries selection via `SeitenAuswahlModal` (total page count rendered via pdf.js).
 
 ## Page Cache and `--neu` (Stage 2)
@@ -457,28 +460,36 @@ same grammar and validation as `--seiten`. Dictionary reporting/correction and
 Markdown formatting are intentionally not part of the key: they are rerun from
 the cached raw lines on every invocation.
 
+## Cancellation and Result Writing (Stage 2)
+
+- **First `SIGINT`/`SIGTERM`:** the current page finishes and is cached, then
+  the run stops and writes a partial file (`abgebrochen` in the frontmatter,
+  exit code 6) — or none, if no page was finished yet (exit code 7).
+- **Second signal:** stops the current page right away. That page is dropped;
+  the partial file holds exactly the pages finished before it (exit 6, or 7
+  when there are none). `pdf2md.py` picks the exit code from the result, not
+  the signal handler.
+- **Atomic writes:** the `.md`, `--zeilen-dump` and `--woerterbuch-bericht`
+  go to a hidden `.<name>.<pid>.tmp` sibling first and replace the target in
+  one rename. An interrupted write leaves the previous preview whole; only
+  `SIGKILL` can leave the hidden sibling behind.
+- **Plugin:** cancel sends `SIGTERM`, a second `SIGTERM` after 15 s, and
+  `SIGKILL` only if pdf2md is still alive 5 s later. The plugin stops a run
+  only after 15 minutes without any output, never after a fixed total time.
+
 ## --fortschritt (Stage 2)
 
 Machine-readable progress emitted as JSON lines to stderr. Default console output (German sentences, emojis, arrows) remains unaffected. Passing `--fortschritt` streams one JSON event per status change to stderr without altering stdout.
 
 ### Emitted Events
 
-One event object emitted per state transition. Downstream parsers must accept and ignore unknown fields.
+The events, their order, the protocol version and the exit codes are specified in [`cli-contract.md`](cli-contract.md); the canonical examples are `contracts/progress-v1.jsonl`.
 
 ```json
-{"typ":"start","datei":"…","seiten":42,"dpi":150}
-{"typ":"seite","nr":7,"von":42,"sekunden":31.2,"herkunft":"ocr","entgleist":false}
-{"typ":"seite","nr":8,"von":42,"sekunden":44.1,"herkunft":"ocr","entgleist":true,"grund":"zu lang 324%"}
-{"typ":"fertig","ziel":"…","sekunden":1284.0,"entgleist":1}
+{"typ": "start", "protokoll": 1, "datei": "…", "seiten": 42, "dpi": 150}
+{"typ": "seite", "protokoll": 1, "nr": 8, "von": 42, "sekunden": 44.1, "herkunft": "ocr", "entgleist": true, "grund": "zu lang 324%"}
+{"typ": "fertig", "protokoll": 1, "ziel": "…", "sekunden": 1284.0, "entgleist": 1}
 ```
-
-- **start** — post PDF analysis: filename, page count, DPI
-- **seite** — per page: page number, total pages, elapsed seconds, provenance (`textlayer`/`ocr`/`diagramm`), derailment flag, optional cause
-- **fertig** — post completion: total execution time, output path, total derailments
-
-### Schema Contract
-
-Additional fields may be introduced to events in future revisions. Parsers (plugins, UIs, external tools) must ignore unrecognized fields without throwing errors.
 
 ## --check (Stage 2)
 

@@ -91,17 +91,24 @@ uv python uninstall 3.12 && uv python install --force 3.12
 ## Plugin (Stage 3)
 
 ```bash
-VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh
+VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh --enable
 ```
 
 - Copies `main.js`, `manifest.json`, and `styles.css` to
-  `$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/`. The committed `main.js`
+  `$VAULT_ROOT/.obsidian/plugins/<id>/`, with the id taken from
+  `plugin/manifest.json` (`plugin/install-plugin.sh --print-id` shows it).
+  The committed `main.js`
   is default — no Node needed; only `--build` (npm, dev machine)
   requires node/npm.
 - Copying is default: when vault lives in iCloud Drive, symlinks can lose
   files. `--symlink` remains a dev opt-in (local only, never iCloud).
-- Afterwards in Obsidian: Settings → Community Plugins → Enable "OCR Preview",
-  reload once (`Cmd+R`).
+- `--enable` also enables the plugin in `community-plugins.json` and disables
+  the pre-rename id `ocr-vorschau`. Without it: Settings → Community Plugins →
+  Enable "OCR Preview". Reload once (`Cmd+R`) either way.
+- Coming from the pre-rename install (`plugins/ocr-vorschau/`): on its first
+  start the plugin takes over that install's `data.json`, or — without one —
+  keeps an existing `_ocr-vorschau/` folder. Delete `plugins/ocr-vorschau/`
+  afterwards.
 - Usage: [review-view.md](review-view.md).
 
 ## Verification

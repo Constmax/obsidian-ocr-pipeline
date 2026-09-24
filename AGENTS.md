@@ -22,6 +22,10 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   models (`python3 -m pytest ocrmypdf_paddle/test`).
 - `bench/` — benchmark harness; page images are copyrighted scans, NOT in the
   repo, reproducible via `bench/build_bench.py` from the user's vault.
+- `contracts/` — the CLI contract with the plugin (progress events, exit
+  codes, Stage-1 message lines, input formats, preview format version; see
+  `docs/cli-contract.md`). Python and TypeScript tests both read it: change
+  the contract and both sides in one PR.
 - `skill/SKILL.md` — Claude skill for vault usage; contains hard-earned
   Stage-1 quirks (`pdftotext -raw` for split-merged pages, leptonica rewrites
   `/tmp` paths on macOS). Read it before touching `bin/`.
@@ -48,7 +52,7 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 - **`main.js` is committed** so a clone runs without Node. After changing
   `src/`, run `npm run build` and commit `main.js` too — CI verifies the
   committed build against `src/` (`.github/workflows/ci.yml`).
-- Install into a vault: `VAULT_ROOT=<path> plugin/install-plugin.sh` (default
+- Install into a vault: `VAULT_ROOT=<path> plugin/install-plugin.sh --enable` (plugin id from `manifest.json` only; default
   copies, no build; `--build` to build, `--symlink` only outside iCloud).
 - ESLint: `eslint-plugin-obsidianmd`; the `sentence-case` rule is enabled for `src/settings.ts` only (older UI strings elsewhere still violate it); `no-console` allows only `error`/`warn`.
 - **Obsidian API Invariants & Quirks**:
@@ -78,5 +82,6 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 ## Docs
 
 `docs/` is English: `scripts-detail.md` (flag reference), `installation.md`,
-`review-view.md`, `plugin-roadmap.md` (architecture decision: the plugin
+`review-view.md`, `cli-contract.md` (what the plugin reads from the CLIs),
+`preview-format.md`, `plugin-roadmap.md` (architecture decision: the plugin
 spawns the installed CLIs as a thin client — pipeline code is not bundled).

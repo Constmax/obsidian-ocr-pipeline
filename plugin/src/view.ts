@@ -21,13 +21,13 @@ import type { KeymapEventHandler } from "obsidian";
 import type OcrPreviewPlugin from "./main.ts";
 import { EditStateTracker } from "./edit-state.ts";
 import { Inventory, type InventoryEntry } from "./file-actions.ts";
-import { isConvertible, isImageSource } from "./input-formats.ts";
+import { isConvertible, isDisplayableSource, isImageSource } from "./input-formats.ts";
 import { MarkdownColumn, type Representation } from "./md-pane.ts";
 import { PdfColumn } from "./pdf-pane.ts";
 import { Sidebar } from "./sidebar.ts";
 import { Coupling } from "./sync.ts";
 import type { FolderLocation, Preview } from "./types.ts";
-import { parsePreview, buildPreview } from "./preview-parser.ts";
+import { parsePreview, buildPreview, previewFormatWarning } from "./preview-parser.ts";
 import { LatestTaskQueue } from "./open-queue.ts";
 
 export const VIEW_TYPE = "ocr-preview-comparison";
@@ -405,6 +405,8 @@ export class OcrComparisonView extends ItemView {
 			await this.saveChangeImmediately();
 			if (this.closed || run !== this.openRun) return;
 			const preview = parsePreview(text);
+			const formatWarning = previewFormatWarning(preview);
+			if (formatWarning !== null) new Notice(`OCR Preview: "${name}": ${formatWarning}`);
 			await this.mdColumn.open(
 				item.file,
 				preview,
@@ -476,8 +478,8 @@ export class OcrComparisonView extends ItemView {
 		const link = this.app.metadataCache.getFileCache(file)?.links?.[0]?.link;
 		if (link !== undefined && link.length > 0) candidates.push(link);
 		// Images convert too (Issue #100), so the basename fallback has to find
-		// them — but a PDF of the same name wins, because this column renders a
-		// PDF and can only explain itself for an image.
+		// them — but a PDF of the same name wins, since it is what Stage 1 and
+		// "Open in PDF viewer" work with.
 		const sameBasename = this.app.vault
 			.getFiles()
 			.filter((f) => isConvertible(f) && f.basename === file.basename);
@@ -808,7 +810,8 @@ export class OcrComparisonView extends ItemView {
 				.onClick(() => void this.decide("open")),
 		);
 		const pdf = this.currentPdf();
-		if (pdf !== null) {
+		// Stage 1 is PDF-only (Issue #100); an image source gets no copy.
+		if (pdf !== null && pdf.extension === "pdf") {
 			menu.addItem((i) =>
 				i
 					.setTitle("Create searchable copy (OCR)")
@@ -835,9 +838,9 @@ export class OcrComparisonView extends ItemView {
 		if (name === null) return;
 		const modal = new PdfSelectModal(
 			this.app,
-			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
+			this.app.vault.getFiles().filter(isDisplayableSource),
 		);
-		modal.setPlaceholder("Search original PDF…");
+		modal.setPlaceholder("Search original PDF or image…");
 		modal.onSelection = (file) => {
 			void this.inventory.updateEntry(name, { "manual-source-pdf": file.path });
 			this.safelyOpenPreview(name);
@@ -1175,7 +1178,7 @@ export class PageSelectModal extends Modal {
 		});
 		new Setting(this.contentEl)
 			.setName("Pages")
-			.setDesc("e.g. 1,3-5,8 — leave empty = all pages")
+			.setDesc("e.g. 1,3-5,8 — leave empty = all pages. An existing preview keeps its other pages.")
 			.addText((t) => {
 				t.inputEl.placeholder = "all pages";
 				t.inputEl.addClass("ocr-seiten-eingabe");
