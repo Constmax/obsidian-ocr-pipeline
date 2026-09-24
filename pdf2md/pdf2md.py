@@ -21,10 +21,36 @@ MODEL = os.environ.get("MLX_OCR_MODEL", "mlx-community/PaddleOCR-VL-1.5-4bit")
 PROMPT = "Parse this document page to Markdown."
 TILE_THRESHOLD = 3000
 KACHEL_AB = TILE_THRESHOLD
+EXIT_USAGE = 2  # argparse
 EXIT_CHECK = 4
 # Cancellation (Issues #25, #105): a partial file was written, or none was.
 EXIT_CANCELLED_PARTIAL = 6
 EXIT_CANCELLED_EMPTY = 7
+
+
+# --fortschritt protocol (Issue #55). The keys, the version and the exit codes
+# above are fixed in contracts/cli-contract.json, which the plugin's tests
+# read too; docs/cli-contract.md explains the rules.
+PROGRESS_PROTOCOL = 1
+
+
+def start_event(file, pages, dpi):
+    return {"typ": "start", "protokoll": PROGRESS_PROTOCOL, "datei": file,
+            "seiten": pages, "dpi": dpi}
+
+
+def page_event(number, total, seconds, origin, derailed, reason=None):
+    event = {"typ": "seite", "protokoll": PROGRESS_PROTOCOL, "nr": number,
+             "von": total, "sekunden": round(seconds, 1), "herkunft": origin,
+             "entgleist": derailed}
+    if reason is not None:
+        event["grund"] = reason
+    return event
+
+
+def finished_event(target, seconds, derailed):
+    return {"typ": "fertig", "protokoll": PROGRESS_PROTOCOL, "ziel": target,
+            "sekunden": round(seconds, 1), "entgleist": derailed}
 
 
 def _progress(event):
@@ -167,8 +193,7 @@ def _event_sink(progress):
             print(f"   {event['pages']} pages — {event['pages_textlayer']} from textlayer, "
                   f"{event['pages_ocr']} through model\n")
         elif kind == "start" and progress:
-            _progress({"typ": "start", "datei": event["file"],
-                       "seiten": event["pages"], "dpi": event["dpi"]})
+            _progress(start_event(event["file"], event["pages"], event["dpi"]))
         elif kind == "cache":
             print(f"   cache: {event['reused']} page(s) reused from "
                   f"{event['directory']}\n")
@@ -205,21 +230,16 @@ def _event_sink(progress):
             if progress:
                 origin = ("diagramm" if page.is_diagram else
                           "textlayer" if page.source == "textlayer" else "ocr")
-                payload = {"typ": "seite", "nr": page.number,
-                           "von": event["total_pages"],
-                           "sekunden": round(page.seconds, 1),
-                           "herkunft": origin, "entgleist": bool(page.trace)}
-                if page.trace:
-                    payload["grund"] = page.trace[0]
-                _progress(payload)
+                _progress(page_event(
+                    page.number, event["total_pages"], page.seconds, origin,
+                    bool(page.trace), page.trace[0] if page.trace else None))
         elif kind == "artifact":
             print(f"→ {event['path']} ({event['count']} {event['unit']})")
         elif kind == "complete":
             result = event["result"]
             if progress:
-                _progress({"typ": "fertig", "ziel": str(result.target),
-                           "sekunden": round(result.seconds, 1),
-                           "entgleist": result.pages_derailed})
+                _progress(finished_event(str(result.target), result.seconds,
+                                         result.pages_derailed))
             print(f"\n{result.seconds:.1f} s total "
                   f"({result.seconds / len(result.pages):.1f} s/page)\n→ {result.target}")
         elif kind == "cancelled":

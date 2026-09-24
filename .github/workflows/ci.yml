@@ -75,7 +75,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: pytest installieren
-        run: pip install pytest
+        # pyyaml: the CLI-contract test loads the frontmatter as real YAML.
+        run: pip install pytest pyyaml
       - name: pymupdf installieren
         run: pip install pymupdf
       - name: numpy und pillow installieren

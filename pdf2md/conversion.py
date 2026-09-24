@@ -43,7 +43,8 @@ EventSink = Callable[[dict[str, Any]], None]
 # Image input is normalized into a one-page PDF right here, so layout
 # detection, box detection, assembly and the dictionary pass stay PDF-only and
 # need no second code path. fitz opens these suffixes directly; WebP and HEIC
-# do not open and are therefore not listed.
+# do not open and are therefore not listed. The plugin's file filters check the
+# same list in contracts/cli-contract.json (Issue #55).
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"})
 INPUT_SUFFIXES = frozenset({".pdf"}) | IMAGE_SUFFIXES
 
