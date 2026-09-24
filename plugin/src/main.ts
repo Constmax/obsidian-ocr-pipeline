@@ -2,12 +2,13 @@
 // and vault listeners that trigger reconciliation. PDF conversion is
 // delegated to the ConversionController.
 
-import { Menu, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
+import { Menu, Notice, Plugin, TAbstractFile, TFile, normalizePath } from "obsidian";
 
 import { VIEW_TYPE, OcrComparisonView, PdfSelectModal, PageSelectModal } from "./view.ts";
 import { Inventory } from "./file-actions.ts";
 import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
 import { parseOcrSettings } from "./ocr-settings.ts";
+import { LEGACY_FOLDERS, LEGACY_PLUGIN_ID, legacyStart } from "./legacy-install.ts";
 import { ConversionController } from "./conversion-controller.ts";
 import { isConvertible } from "./input-formats.ts";
 import { createConversionHost, createSearchableCopyHost } from "./conversion-host.ts";
@@ -124,7 +125,20 @@ export default class OcrPreviewPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const saved = (await this.loadData()) as Record<string, unknown> | null;
+		let saved = (await this.loadData()) as Record<string, unknown> | null;
+		// A fresh install may follow the pre-rename plugin (Issue #104): start
+		// from its data or its folders instead of hiding existing previews.
+		// The adapter checks the disk directly — the vault index is not
+		// complete this early in onload.
+		let carriedOver = false;
+		if (!saved) {
+			const adapter = this.app.vault.adapter;
+			saved = legacyStart(await this.readLegacyData(), {
+				legacyFolder: await adapter.exists(LEGACY_FOLDERS.previewFolder),
+				currentFolder: await adapter.exists(DEFAULT_SETTINGS.previewFolder),
+			});
+			carriedOver = saved !== null;
+		}
 		if (saved) {
 			const migrated: Partial<Settings> = {};
 			const str = (k: string): string | undefined => {
@@ -171,6 +185,24 @@ export default class OcrPreviewPlugin extends Plugin {
 			this.settings = { ...DEFAULT_SETTINGS, ...migrated };
 		} else {
 			this.settings = { ...DEFAULT_SETTINGS };
+		}
+		if (carriedOver) {
+			await this.saveSettings();
+			new Notice(
+				`OCR Preview: Settings taken over from the former install (${LEGACY_PLUGIN_ID}) — previews stay in ${this.settings.previewFolder}.`,
+			);
+		}
+	}
+
+	/** data.json of the pre-rename plugin id, or null if absent or unreadable. */
+	private async readLegacyData(): Promise<unknown> {
+		const path = normalizePath(
+			`${this.app.vault.configDir}/plugins/${LEGACY_PLUGIN_ID}/data.json`,
+		);
+		try {
+			return JSON.parse(await this.app.vault.adapter.read(path)) as unknown;
+		} catch {
+			return null;
 		}
 	}
 
