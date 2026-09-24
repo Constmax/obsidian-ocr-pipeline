@@ -6,6 +6,7 @@ import test from "node:test";
 import {
 	CONVERTIBLE_EXTENSIONS,
 	isConvertible,
+	isDisplayableSource,
 	isImageSource,
 } from "../src/input-formats.ts";
 
@@ -29,4 +30,17 @@ test("formats fitz cannot open are not offered", () => {
 test("a PDF is not an image source — it renders in the comparison column", () => {
 	assert.equal(isImageSource({ extension: "pdf" }), false);
 	assert.equal(CONVERTIBLE_EXTENSIONS.has("pdf"), true);
+});
+
+test("the comparison column shows PDFs and browser-decodable images (Issue #101)", () => {
+	for (const extension of ["pdf", "PDF", "png", "jpg", "JPEG", "bmp"]) {
+		assert.equal(isDisplayableSource({ extension }), true, extension);
+	}
+});
+
+test("TIFF converts but is not displayable — Chromium does not decode it", () => {
+	for (const extension of ["tif", "tiff"]) {
+		assert.equal(isConvertible({ extension }), true, extension);
+		assert.equal(isDisplayableSource({ extension }), false, extension);
+	}
 });

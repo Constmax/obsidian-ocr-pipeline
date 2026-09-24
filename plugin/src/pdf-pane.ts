@@ -4,11 +4,14 @@
 // Placeholder strategy: after `getDocument`, ALL viewports at scale 1 are queried.
 // Custom properties set CSS aspect-ratio on containers before rasterization,
 // preventing jumpiness on lazy loading.
+//
+// An image source (Issue #101) bypasses pdf.js: one `<img>` as page 1, sized by
+// the same aspect-ratio property, so zoom and scroll coupling need no branch.
 
 import { App, TFile } from "obsidian";
 import { loadPdfJs } from "obsidian";
 
-import { isImageSource } from "./input-formats.ts";
+import { isDisplayableSource, isImageSource } from "./input-formats.ts";
 import type {
 	PdfDokument,
 	PdfJsLib,
@@ -51,6 +54,7 @@ export class PdfColumn {
 	private stack: HTMLElement;
 	private emptyState: HTMLElement;
 	private pages = new Map<number, PageState>();
+	private imagePage: HTMLElement | null = null;
 	private doc: PdfDokument | null = null;
 	private pdfFile: TFile | null = null;
 	private run = 0;
@@ -81,6 +85,7 @@ export class PdfColumn {
 	elements(): Map<number, HTMLElement> {
 		const m = new Map<number, HTMLElement>();
 		for (const [nr, z] of this.pages) m.set(nr, z.el);
+		if (this.imagePage !== null) m.set(1, this.imagePage);
 		return m;
 	}
 
@@ -109,6 +114,7 @@ export class PdfColumn {
 		this.observer = null;
 		this.pdfFile = null;
 		this.pages.clear();
+		this.imagePage = null;
 		this.stack.empty();
 		this.queue = [];
 		this.requested.clear();
@@ -122,14 +128,25 @@ export class PdfColumn {
 		}
 		this.pdfFile = file;
 		this.emptyState.hide();
-		// Stage 2 converts images as well (Issue #100), but this column is
-		// pdf.js and has no second render path — say so instead of reporting
-		// a load failure for a file that is not broken.
 		if (isImageSource(file)) {
-			this.onLoaded?.(file.name, 0);
-			this.onError?.(
-				`"${file.name}" is an image — this column shows PDFs only.`,
-			);
+			// Stage 2 converts TIFF too (Issue #100), but Chromium cannot show
+			// it — say so instead of reporting a load failure.
+			if (!isDisplayableSource(file)) {
+				this.onLoaded?.(file.name, 0);
+				this.onError?.(
+					`"${file.name}" is a TIFF image — this column cannot display it.`,
+				);
+				return;
+			}
+			try {
+				await this.loadImage(file, run);
+			} catch (err) {
+				if (run !== this.run) return;
+				console.error("OCR Preview: image failed to load", err);
+				this.stack.empty();
+				this.imagePage = null;
+				this.onError?.(`The image "${file.name}" could not be loaded.`);
+			}
 			return;
 		}
 		try {
@@ -152,6 +169,28 @@ export class PdfColumn {
 		if (this.resizeTimer !== null) window.clearTimeout(this.resizeTimer);
 		void this.doc?.destroy().catch(() => undefined);
 		this.doc = null;
+	}
+
+	private async loadImage(file: TFile, run: number): Promise<void> {
+		const el = this.stack.createDiv({ cls: "ocr-pdf-seite" });
+		el.dataset["seite"] = "1";
+		const img = el.createEl("img", { cls: "ocr-pdf-bild" });
+		img.alt = file.name;
+		// `load`, not `img.decode()`: decode never settles while the window is
+		// hidden, which left a zero-height page behind.
+		await new Promise<void>((resolve, reject) => {
+			img.addEventListener("load", () => resolve(), { once: true });
+			img.addEventListener("error", () => reject(new Error("image load failed")), { once: true });
+			img.src = this.app.vault.getResourcePath(file);
+		});
+		if (run !== this.run) return;
+		el.style.setProperty(
+			"--ocr-seitenverhaeltnis",
+			`${img.naturalWidth} / ${img.naturalHeight}`,
+		);
+		this.imagePage = el;
+		this.onLoaded?.(file.name, 1);
+		this.onMeasurementNeeded?.();
 	}
 
 	private async loadDocument(file: TFile, run: number): Promise<void> {

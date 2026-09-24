@@ -2,8 +2,8 @@
 
 Three-column Obsidian view for inspecting OCR preview files from
 Stage 2: Original PDF and generated Markdown file coupled page by page, with
-**Accept / Reject**, notes, editing, and Undo. The plugin is named `ocr-vorschau` and
-is located in `plugin/`.
+**Accept / Reject**, notes, editing, and Undo. The plugin id is `ocr-preview` (`ocr-vorschau`
+before the English rename) and the code is located in `plugin/`.
 
 What this is about: 15% of pages derail (repetition loops or aborts)
 and drag accuracy down from 98.2% to 93.3% (measured against `ddf69e9`) — see `README.md`,
@@ -70,7 +70,7 @@ Applies only when the view has focus:
   to the next matching entry.
 - **⋯**: Note… · Replace old version (only when `re-generated`) · Reset status · Copy path.
 - **Assign PDF…**: Appears in error banner if no original was found;
-  opens a suggestion list of all vault PDFs. The assignment lands
+  opens a suggestion list of all vault PDFs and displayable images. The assignment lands
   in the manifest (`manual-source-pdf`), never in frontmatter — the `.md` is
   generated output.
 
@@ -106,6 +106,8 @@ File movement runs exclusively via `fileManager.renameFile` (updates links in va
 pdf.js library bundled with Obsidian itself — including the pre-wired worker (`GlobalWorkerOptions.workerSrc`). The plugin builds no Blob worker and no main-thread fallback; the bundle stays at ~45 kB instead of ~2.5 MB. Only the long-term stable API surface is used: `getDocument`, `numPages`, `getPage`, `getViewport`, `render`, `destroy` — all isolated in `src/pdf-pane.ts`, rendering in a single function so signature changes remain a single-line fix. Obsidian's *Viewer* is not modified. cMaps are set (`/lib/pdfjs/cmaps/`): PDFs with embedded CID/Type0 fonts — which is standard for this material — would render blank otherwise.
 
 Lazy rendering with pre-measured geometry: After `getDocument`, the column fetches **all** viewports at scale 1 (page dictionary only, no rasterization) and assigns each page its aspect ratio as a CSS custom property. Height and width follow via `aspect-ratio` — scrollbars have correct geometry from frame one, preventing layout shifts during lazy loading rather than compensating for them. Rasterization runs via `IntersectionObserver` (rootMargin 200%), max 2 parallel, with pixel scale `min(width/page · devicePixelRatio, pdfZoomMax)` and LRU eviction at 12 canvases (on eviction `canvas.width = height = 0`, otherwise buffer remains allocated). `doc.destroy()` on file switch and view close; `RenderTask.cancel()` before re-renders. **Error degradation:** Banners in PDF header offer "Open in PDF viewer" and "Assign PDF…" — never a dead pane.
+
+**What the source column accepts (Issue #101):** PDFs, rendered through pdf.js as above, and PNG, JPG/JPEG and BMP images. An image bypasses pdf.js: it becomes a single `<img>` page whose aspect ratio comes from its natural size after the image loads, so zoom and page/scroll coupling treat it as a one-page document. TIFF converts (Stage 2 accepts it) but Chromium cannot decode it, so a TIFF source shows a banner naming the reason instead. When a PDF and an image share the preview's basename, the PDF wins. "Create searchable copy" is not offered for an image source — Stage 1 is PDF-only.
 
 ### Fallback if `loadPdfJs` is ever removed
 
