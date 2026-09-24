@@ -1,0 +1,903 @@
+{
+ "description": "Second validation set, for issue #94. Pages come from documents outside reading_order_truth.json and reading_order_holdout.json and were chosen on overview sheets after the #94 fix (PR #97) was merged; the regions were drawn and the overlays checked before any order_lines() output of these pages was looked at. Same format and conventions as reading_order_holdout.json. Handwritten margin notes are note regions of the nearest column.",
+ "pages": [
+  {
+   "id": "m01",
+   "source": "raw/OeR/Verwaltungsrecht-BT/hsog-skript-teil-1.pdf",
+   "page": 10,
+   "layout": "two columns, dense running header, citation blocks, footnotes in both columns offset by half a line, footer",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      110
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      110,
+      515,
+      860
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      860,
+      515,
+      952
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      515,
+      110,
+      1000,
+      850
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      515,
+      850,
+      1000,
+      952
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      952,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m02",
+   "source": "raw/OeR/Verwaltungsrecht-BT/hsog-skript-teil-1.pdf",
+   "page": 18,
+   "layout": "two columns, dense running header, citation blocks, footnotes in the right column only, footer",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      108
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      108,
+      515,
+      952
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      515,
+      108,
+      1000,
+      860
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      515,
+      860,
+      1000,
+      952
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      952,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m03",
+   "source": "raw/StR/Rep-Faelle/strafrecht-fall-03.pdf",
+   "page": 7,
+   "layout": "two columns, header, handwritten margin notes left and in the gutter, footnotes level in both columns, ring shadow",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      128
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      128,
+      515,
+      895
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      895,
+      515,
+      950
+     ]
+    },
+    {
+     "role": "note",
+     "column": "L",
+     "box": [
+      15,
+      205,
+      135,
+      250
+     ]
+    },
+    {
+     "role": "note",
+     "column": "L",
+     "box": [
+      45,
+      332,
+      137,
+      360
+     ]
+    },
+    {
+     "role": "note",
+     "column": "L",
+     "box": [
+      60,
+      430,
+      137,
+      468
+     ]
+    },
+    {
+     "role": "note",
+     "column": "L",
+     "box": [
+      50,
+      810,
+      137,
+      840
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      515,
+      128,
+      1000,
+      895
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      515,
+      895,
+      1000,
+      950
+     ]
+    },
+    {
+     "role": "note",
+     "column": "R",
+     "box": [
+      505,
+      480,
+      570,
+      520
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      950,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m04",
+   "source": "raw/StR/Rep-Faelle/strafrecht-fall-03.pdf",
+   "page": 12,
+   "layout": "two columns, header, right column opens with a case-section title and a boxed heading, footnotes offset by half a line",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      133
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      133,
+      510,
+      880
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      880,
+      510,
+      945
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      510,
+      133,
+      1000,
+      880
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      510,
+      880,
+      1000,
+      945
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      945,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m05",
+   "source": "raw/ZR/Arbeitsrecht/hemmer-arbeitsrecht-fall-09.pdf",
+   "page": 9,
+   "layout": "two columns, header, boxed italic note, footnotes at different heights, ring",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      127
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      127,
+      500,
+      880
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      880,
+      500,
+      943
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      500,
+      127,
+      1000,
+      905
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      500,
+      905,
+      1000,
+      943
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      943,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m06",
+   "source": "raw/ZR/Arbeitsrecht/hemmer-arbeitsrecht-fall-09.pdf",
+   "page": 14,
+   "layout": "two columns, header, italic text, footnotes at different heights, ring and binding shadow",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      122
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      122,
+      520,
+      850
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      850,
+      520,
+      958
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      520,
+      122,
+      1000,
+      875
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      520,
+      875,
+      1000,
+      958
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      958,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m07",
+   "source": "raw/ZR/BGB-AT/BGSB AT Fall 4.pdf",
+   "page": 6,
+   "layout": "two columns, header, boxed notes, footnotes offset by half a line, bleed-through marks at the edges",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      125
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      125,
+      505,
+      882
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      882,
+      505,
+      933
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      505,
+      125,
+      1000,
+      882
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      505,
+      882,
+      1000,
+      933
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      933,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m08",
+   "source": "raw/OeR/Verwaltungsrecht-AT/Verwaltungsrecht AT Fall 13.pdf",
+   "page": 7,
+   "layout": "two columns, header without recognized city list, boxed citations in both columns, footnotes at different heights",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      140
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      140,
+      510,
+      850
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      850,
+      510,
+      960
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      510,
+      140,
+      1000,
+      890
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      510,
+      890,
+      1000,
+      960
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      960,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m09",
+   "source": "raw/OeR/Verwaltungsrecht-AT/Verwaltungsrecht AT Fall 13.pdf",
+   "page": 9,
+   "layout": "two columns, header, grey column-wide band headings in the right column, question list, footnotes at different heights",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      130
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      130,
+      495,
+      848
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      848,
+      495,
+      938
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      495,
+      130,
+      1000,
+      866
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      495,
+      866,
+      1000,
+      938
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      938,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m10",
+   "source": "raw/ZR/Familienrecht/familienrecht-fall-05.pdf",
+   "page": 4,
+   "layout": "two columns, header, boxed italic note, footnotes at different heights",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      115
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      115,
+      505,
+      822
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      822,
+      505,
+      958
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      505,
+      115,
+      1000,
+      862
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      505,
+      862,
+      1000,
+      958
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      958,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m11",
+   "source": "raw/ZR/Familienrecht/familienrecht-fall-05.pdf",
+   "page": 8,
+   "layout": "two columns, header cut at the left edge, boxed note, footnotes at different heights, right footnotes higher",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      117
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      117,
+      478,
+      850
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      850,
+      478,
+      972
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      478,
+      117,
+      1000,
+      800
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      478,
+      800,
+      1000,
+      972
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      972,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m12",
+   "source": "raw/ZR/Erbrecht/erbrecht-fall-07-08.pdf",
+   "page": 9,
+   "layout": "two columns, header, boxed notes in both columns, long left footnote far above the right ones, ring",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      129
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      129,
+      503,
+      780
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      780,
+      503,
+      955
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      503,
+      129,
+      1000,
+      865
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      503,
+      865,
+      1000,
+      955
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      955,
+      1000,
+      1000
+     ]
+    }
+   ]
+  },
+  {
+   "id": "m13",
+   "source": "raw/ZR/BGB-AT/BGB-AT_01.Lösung.pdf",
+   "page": 4,
+   "layout": "two columns, header, boxed notes, footnotes at different heights",
+   "regions": [
+    {
+     "role": "header",
+     "box": [
+      0,
+      0,
+      1000,
+      118
+     ]
+    },
+    {
+     "role": "body",
+     "column": "L",
+     "box": [
+      0,
+      118,
+      502,
+      910
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "L",
+     "box": [
+      0,
+      910,
+      502,
+      956
+     ]
+    },
+    {
+     "role": "body",
+     "column": "R",
+     "box": [
+      502,
+      118,
+      1000,
+      872
+     ]
+    },
+    {
+     "role": "footnote",
+     "column": "R",
+     "box": [
+      502,
+      872,
+      1000,
+      956
+     ]
+    },
+    {
+     "role": "footer",
+     "box": [
+      0,
+      956,
+      1000,
+      1000
+     ]
+    }
+   ]
+  }
+ ]
+}
