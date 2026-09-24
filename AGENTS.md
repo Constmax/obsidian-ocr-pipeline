@@ -22,6 +22,10 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   models (`python3 -m pytest ocrmypdf_paddle/test`).
 - `bench/` — benchmark harness; page images are copyrighted scans, NOT in the
   repo, reproducible via `bench/build_bench.py` from the user's vault.
+- `contracts/` — the CLI contract with the plugin (progress events, exit
+  codes, Stage-1 message lines, input formats, preview format version; see
+  `docs/cli-contract.md`). Python and TypeScript tests both read it: change
+  the contract and both sides in one PR.
 - `skill/SKILL.md` — Claude skill for vault usage; contains hard-earned
   Stage-1 quirks (`pdftotext -raw` for split-merged pages, leptonica rewrites
   `/tmp` paths on macOS). Read it before touching `bin/`.
@@ -78,5 +82,6 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 ## Docs
 
 `docs/` is English: `scripts-detail.md` (flag reference), `installation.md`,
-`review-view.md`, `plugin-roadmap.md` (architecture decision: the plugin
+`review-view.md`, `cli-contract.md` (what the plugin reads from the CLIs),
+`preview-format.md`, `plugin-roadmap.md` (architecture decision: the plugin
 spawns the installed CLIs as a thin client — pipeline code is not bundled).

@@ -47,20 +47,52 @@ function readFrontmatter(lines: string[]): {
 		const colon = line.indexOf(":");
 		if (colon <= 0) continue;
 		const key = line.slice(0, colon).trim();
-		let val = line.slice(colon + 1).trim();
-		// pdf2md.py main() frontmatter writes `source-pdf` JSON-quoted.
-		// If the path contains quotes, remove them here; a path with ':' breaks
-		// frontmatter anyway — for that there is the Source link.
-		if (
-			(val.startsWith('"') && val.endsWith('"') && val.length > 1) ||
-			(val.startsWith("'") && val.endsWith("'") && val.length > 1)
-		) {
-			val = val.slice(1, -1);
-		}
-		data[key] = val;
+		data[key] = unquote(line.slice(colon + 1).trim());
 	}
 	// No closing '---' — broken frontmatter, take nothing.
 	return { data: {}, rest: 0 };
+}
+
+/**
+ * pdf2md writes free text (`titel`, `quelle-pdf`) JSON-quoted, which is also
+ * valid YAML, so a value with `: ` or an escaped quote survives. Other quoted
+ * values, e.g. from a hand edit, only lose their quotes.
+ */
+function unquote(val: string): string {
+	if (val.length > 1 && val.startsWith('"') && val.endsWith('"')) {
+		try {
+			const parsed = JSON.parse(val) as unknown;
+			if (typeof parsed === "string") return parsed;
+		} catch {
+			// Not JSON after all: fall through to plain unquoting.
+		}
+		return val.slice(1, -1);
+	}
+	if (val.length > 1 && val.startsWith("'") && val.endsWith("'")) {
+		return val.slice(1, -1);
+	}
+	return val;
+}
+
+/**
+ * Newest `vorschau-format` this parser reads; pdf2md writes the same number,
+ * both pinned in contracts/cli-contract.json (Issue #55).
+ */
+export const SUPPORTED_PREVIEW_FORMAT = 1;
+
+/**
+ * A warning when the preview carries a format this plugin does not know,
+ * usually one from a newer pdf2md, otherwise null. A missing field is a preview from before the
+ * field existed and is read as it always was.
+ */
+export function previewFormatWarning(preview: Preview): string | null {
+	const raw = preview.frontmatter["vorschau-format"];
+	if (raw === undefined) return null;
+	const version = Number(raw);
+	if (Number.isInteger(version) && version >= 1 && version <= SUPPORTED_PREVIEW_FORMAT) {
+		return null;
+	}
+	return `unknown preview format ${raw} (this plugin reads up to ${SUPPORTED_PREVIEW_FORMAT}) — update the plugin; pages may show incorrectly.`;
 }
 
 function parseExtra(extra: string | undefined): {

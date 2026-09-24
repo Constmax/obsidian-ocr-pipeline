@@ -611,15 +611,24 @@ def build_document(frontmatter_text, source_text, blocks_texts):
     return f"{frontmatter_text}\n{source_text}\n" + "\n\n".join(blocks_texts) + "\n"
 
 
+# `vorschau-format` written into every preview; contracts/cli-contract.json
+# holds the same number for the plugin's parser (Issue #55).
+PREVIEW_FORMAT = 1
+
+
 def build_frontmatter(title, source_pdf_path, pages, pages_textlayer,
                       pages_ocr, pages_diagram=0, pages_derailed=0,
                       words_suspect=0, words_corrected=0,
                       ocr_model=None, ocr_date=None, ocr_timestamp=None,
                       aborted=None):
-    """Build YAML frontmatter for preview file."""
+    """Build YAML frontmatter for preview file.
+
+    Free text is JSON-quoted, which is valid YAML: a file name such as
+    `Fall 8: Anfechtung.pdf` would otherwise break the frontmatter.
+    """
     lines = [
         "---",
-        f"titel: {title}",
+        f"titel: {json.dumps(str(title), ensure_ascii=False)}",
         f"quelle-pdf: {json.dumps(str(source_pdf_path), ensure_ascii=False)}",
         f"seiten: {pages}",
         f"seiten-textlayer: {pages_textlayer}",
@@ -640,7 +649,7 @@ def build_frontmatter(title, source_pdf_path, pages, pages_textlayer,
     lines += [
         f"ocr-datum: {ocr_date}",
         f"ocr-zeitpunkt: {ocr_timestamp}",
-        "vorschau-format: 1",
+        f"vorschau-format: {PREVIEW_FORMAT}",
         "---",
     ]
     return "\n".join(lines) + "\n"
