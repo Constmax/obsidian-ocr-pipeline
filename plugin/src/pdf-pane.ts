@@ -302,7 +302,8 @@ export class PdfColumn {
 	private scaleFor(z: PageState): number {
 		const viewport = z.viewport;
 		if (viewport === null) return 1;
-		const width = Math.max(z.el.clientWidth * this.zoomLevel, 1);
+		// The page's own width already includes the zoom factor (styles.css).
+		const width = Math.max(z.el.clientWidth, 1);
 		return Math.min(
 			(width / viewport.width) * window.devicePixelRatio,
 			this.zoomMax(),

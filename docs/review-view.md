@@ -117,7 +117,7 @@ Documented reserve: Bundle `pdfjs-dist` and inline the worker as a Blob URL via 
   images are post-processed after rendering (image embeds via `getFirstLinkpathDest` + `<img>`). Should Obsidian resolve them natively in the future, the post-processing loop is a no-op.
 - **Block-by-block rendering instead of a single block:** Required because `%%…%%` is invisible in preview mode (no DOM node at marker); the page container acts as sync anchor. Positive side-effect: Footnote collisions across page boundaries are eliminated.
 - **12-canvas cap** (~4.5 MB per A4 canvas): Distant pages are re-rasterized when scrolling back.
-- **Zoom is layout zoom** (CSS `zoom`), not re-render: Zoomed-in pages may appear softer. For pixel-exact inspection, use "Open in PDF viewer".
+- **Zoom scales the page width** (the stack is `zoom` × the column width; not CSS `zoom`, which a `width: 100%` page cancels out). Above 100 % the column scrolls horizontally. Visible pages re-render at the new width, but the pixel scale stays capped at `pdfZoomMax`, so strongly zoomed pages may appear softer. For pixel-exact inspection, use "Open in PDF viewer".
 - **minAppVersion 1.8.7** instead of originally planned 1.5.3: `revealLeaf` and current `Notice` layout require newer versions. The original plan specified 1.5.3, but actual API surface requires more — documented transparently.
 - Code that is untestable headless (anything touching `window.pdfjsLib`, `MarkdownRenderer`, DOM) is untestable here as well — see smoke test below.
 

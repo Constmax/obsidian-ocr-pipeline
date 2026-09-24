@@ -590,9 +590,21 @@
 }
 
 .ocr-pdf-stapel {
-	padding: 12px 16px 24px;
-	zoom: var(--ocr-pdf-zoom, 1);
-	transform-origin: top left;
+	/* Zoom scales the stack's width, not the CSS `zoom` property: a
+	   `width: 100%` page inside a zoomed box resolves against the box's
+	   unzoomed width divided by the factor, which cancels the zoom out.
+	   Pages keep `width: 100%` of a stack that is `zoom` × the column's
+	   content width (padding stays fixed), so they grow past the column
+	   and scroll horizontally above 100 %, and shrink below it. */
+	--ocr-pdf-rand: 16px;
+	box-sizing: border-box;
+	flex: none;
+	width: calc(
+		(100% - 2 * var(--ocr-pdf-rand)) * var(--ocr-pdf-zoom, 1) +
+			2 * var(--ocr-pdf-rand)
+	);
+	margin-inline: auto;
+	padding: 12px var(--ocr-pdf-rand) 24px;
 }
 
 .ocr-pdf-seite {
