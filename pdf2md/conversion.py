@@ -17,9 +17,9 @@ from typing import Any, Callable, Protocol
 import cancellation
 import dictionary
 import page_cache
-from assembly import (AssemblyContext, as_callout, assemble_paragraphs,
-                      build_document, build_frontmatter, clean_text,
-                      merge_fragments, page_marker)
+from assembly import (AssemblyContext, PreviewFormatError, as_callout,
+                      assemble_paragraphs, build_document, build_frontmatter,
+                      clean_text, merge_fragments, page_marker, split_preview)
 from layout import (assign_boxes, detect_boxes, detect_layout, image_ratio,
                     split_columns, tables_markdown)
 from ocr import (CHARACTERS_PER_INK, OVERLAP, TOKEN_MAX, _ink_amount,
@@ -504,13 +504,117 @@ def _document_text(request, page_blocks, page_results, total_pages, model_name,
     return build_document(header, source_link, page_blocks)
 
 
+def preview_path(request: ConversionRequest) -> Path:
+    return request.output_dir / f"{request.pdf.stem}.md"
+
+
+def _existing_preview(request: ConversionRequest):
+    """The preview a `--pages` run merges into (Issue #106), or None.
+
+    Read before any page is analyzed: a preview that cannot be merged must
+    stop the run before minutes of OCR, not after.
+    """
+    if request.selected_pages is None:
+        return None
+    target = preview_path(request)
+    try:
+        text = target.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    try:
+        return split_preview(text)
+    except PreviewFormatError as error:
+        raise PreviewFormatError(
+            f"cannot merge the selected pages into {target}: {error} — "
+            "convert without --pages to replace it") from None
+
+
+def _merged_document(request, existing, finished, cache_dir, assembly_context,
+                     wordbook, model_name):
+    """Put the recomputed pages into the existing preview (Issue #106).
+
+    Every other page block stays verbatim, manual edits included. The counts
+    describe the merged file. A kept page contributes the origin in its
+    marker and, from its page-cache entry, its derailment and dictionary
+    findings: what a full run would report for it. Without an entry it
+    counts as not derailed and without findings.
+    """
+    blocks = {page.number: page.text for page in existing.pages}
+    fresh = {page.result.number: page for page in finished}
+    blocks.update((number, page.block.rstrip()) for number, page in fresh.items())
+
+    textlayer = diagram = derailed = suspect = corrected = 0
+    for page in existing.pages:
+        if page.number in fresh:
+            continue
+        entry = page_cache.read_latest_page(cache_dir, page.number)
+        source = (entry["source"] if entry is not None
+                  else "textlayer" if page.origin == "textlayer" else "ocr")
+        textlayer += source == "textlayer"
+        diagram += page.origin == "diagramm"
+        if entry is None:
+            continue
+        derailed += bool(entry["trace"])
+        if source == "ocr" and entry["lines"] and not request.no_dictionary:
+            if wordbook is None:
+                wordbook = dictionary.load(list(request.dictionaries))
+            paragraphs = assemble_paragraphs(
+                entry["lines"], assembly_context).paragraphs
+            _, findings = dictionary.check(
+                paragraphs, wordbook, request.dictionary_correct)
+            corrected += sum(item.count for item in findings if item.corrected)
+            suspect += sum(item.count for item in findings if not item.corrected)
+    for page in fresh.values():
+        textlayer += page.result.source == "textlayer"
+        diagram += page.result.is_diagram
+        derailed += bool(page.result.trace)
+        corrected += sum(entry["anzahl"] for entry in page.report
+                         if entry["korrigiert"])
+        suspect += sum(entry["anzahl"] for entry in page.report
+                       if not entry["korrigiert"])
+
+    ocr = len(blocks) - textlayer
+    header = build_frontmatter(
+        title=request.pdf.stem,
+        source_pdf_path=request.pdf,
+        pages=len(blocks),
+        pages_textlayer=textlayer,
+        pages_ocr=ocr,
+        pages_diagram=diagram,
+        pages_derailed=derailed,
+        words_suspect=suspect,
+        words_corrected=corrected,
+        ocr_model=(model_name or existing.fields.get("ocr-modell")) if ocr else None,
+        ocr_date=date.today().isoformat(),
+        ocr_timestamp=datetime.now().isoformat(timespec="seconds"),
+        aborted=_carried_abort_note(existing, blocks.keys()),
+    )
+    preamble = existing.preamble or f"Quelle: [[{request.pdf.as_posix()}]]"
+    return build_document(header, preamble + "\n",
+                          [blocks[number] for number in sorted(blocks)])
+
+
+def _carried_abort_note(existing, numbers):
+    """Keep an earlier run's `abgebrochen` note until its gap is filled.
+
+    A cancelled `--pages` run adds no note of its own: the pages it did not
+    reach keep their previous blocks, so the merged file is no less complete
+    than before.
+    """
+    note = existing.fields.get("abgebrochen")
+    match = re.fullmatch(r"seite \d+ von (\d+)", note or "")
+    if match is None:
+        return note
+    return None if set(range(1, int(match.group(1)) + 1)) <= set(numbers) else note
+
+
 def _write_result(request, markdown, lines_dump, report, emit):
     """Write complete and partial artifacts through the same path.
 
     Every file is replaced atomically (Issue #105), and the preview goes
     last: an interrupt while writing leaves the previous preview in the vault.
     """
-    target = request.output_dir / f"{request.pdf.stem}.md"
+    target = preview_path(request)
     if request.lines_dump:
         page_cache.write_text_atomic(
             request.lines_dump, json.dumps(lines_dump, ensure_ascii=False))
@@ -532,8 +636,14 @@ def _write_result(request, markdown, lines_dump, report, emit):
 
 def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                      event_sink: EventSink | None = None) -> ConversionResult:
-    """Convert one PDF without argparse, console I/O, or process exits."""
+    """Convert one PDF without argparse, console I/O, or process exits.
+
+    A run with `selected_pages` merges into an existing preview instead of
+    replacing it (Issue #106); PreviewFormatError means that preview has no
+    page markers to merge into, and nothing was touched.
+    """
     emit = event_sink or (lambda _event: None)
+    existing = _existing_preview(request)
     request.output_dir.mkdir(parents=True, exist_ok=True)
     image_dir = request.image_dir or request.output_dir / "assets"
     if request.temp_root is not None:
@@ -783,11 +893,17 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 cancelled=cancelled, seconds=elapsed,
             )
 
-        markdown = _document_text(
-            request, page_blocks, page_results, len(analyzed),
-            request.model_name if ocr_page_count else None,
-            words_suspect, words_corrected, completed,
-        )
+        model_name = request.model_name if ocr_page_count else None
+        if existing is None:
+            markdown = _document_text(
+                request, page_blocks, page_results, len(analyzed), model_name,
+                words_suspect, words_corrected, completed,
+            )
+        else:
+            markdown = _merged_document(
+                request, existing, finished, cache_dir, assembly_context,
+                wordbook, model_name,
+            )
         target = _write_result(request, markdown, lines_dump, report, emit)
         pages_textlayer = sum(page.source == "textlayer" for page in page_results)
         result = ConversionResult(

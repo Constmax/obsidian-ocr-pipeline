@@ -9,9 +9,9 @@ import tempfile
 from pathlib import Path
 
 import cancellation
-from conversion import (INPUT_SUFFIXES, ConversionRequest, UnsupportedInput,
-                        convert_document, ensure_supported_input,
-                        open_document)
+from conversion import (INPUT_SUFFIXES, ConversionRequest, PreviewFormatError,
+                        UnsupportedInput, convert_document,
+                        ensure_supported_input, open_document)
 from ocr import TOKEN_MAX
 from page_range import PageRangeError, parse_page_range
 
@@ -352,6 +352,8 @@ def main():
         # its previous preview.
         print("Cancellation — no file written.")
         sys.exit(EXIT_CANCELLED_EMPTY)
+    except PreviewFormatError as error:
+        sys.exit(str(error))
     if result.cancelled:
         sys.exit(EXIT_CANCELLED_PARTIAL if result.pages else EXIT_CANCELLED_EMPTY)
     if not result.pages:
