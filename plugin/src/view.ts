@@ -1176,7 +1176,7 @@ export class PageSelectModal extends Modal {
 		});
 		new Setting(this.contentEl)
 			.setName("Pages")
-			.setDesc("e.g. 1,3-5,8 — leave empty = all pages")
+			.setDesc("e.g. 1,3-5,8 — leave empty = all pages. An existing preview keeps its other pages.")
 			.addText((t) => {
 				t.inputEl.placeholder = "all pages";
 				t.inputEl.addClass("ocr-seiten-eingabe");

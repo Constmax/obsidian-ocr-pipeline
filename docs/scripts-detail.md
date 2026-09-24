@@ -419,7 +419,10 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
 - `--diagramm-seiten` uses the same grammar. Whitespace around entries is ignored.
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
 - `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
-- Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`). Frontmatter `seiten` records count of selected pages.
+- Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`).
+- **An existing preview is merged, not replaced (Issue #106).** The selected pages replace their blocks, new ones are inserted in page order, and every other block stays verbatim, manual edits included. Without an existing preview only the selected pages are written, and `seiten` counts those.
+- The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--seiten` run adds no note, because pages it did not reach keep their previous blocks.
+- A preview without frontmatter or page markers, or with a page number twice, cannot be merged. The run stops before analysis with exit code 1 and leaves the file untouched; convert without `--seiten` to replace it.
 - Plugin queries selection via `SeitenAuswahlModal` (total page count rendered via pdf.js).
 
 ## Page Cache and `--neu` (Stage 2)
