@@ -196,22 +196,32 @@ def write_page(directory: Path, context: dict, page: dict) -> Path:
     page_number = page["number"]
     directory.mkdir(parents=True, exist_ok=True)
     target = page_path(directory, page_number)
-    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
     payload = {
         "schema": CACHE_SCHEMA,
         "key": page_key(context, page_number),
         "context": context,
         "page": page,
     }
+    write_text_atomic(
+        target, json.dumps(payload, ensure_ascii=False, indent=1) + "\n")
+    return target
+
+
+def write_text_atomic(target: Path, text: str) -> None:
+    """Replace `target` so readers see the old or the new file, never a
+    truncated one (Issue #105).
+
+    The text goes to a hidden sibling first, which then replaces `target` in
+    one rename. An exception, a full disk or an interrupt before the rename
+    leaves the previous file untouched and removes the sibling; only SIGKILL
+    can leave the hidden `.<name>.<pid>.tmp` behind.
+    """
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
     try:
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=1) + "\n",
-            encoding="utf-8",
-        )
+        temporary.write_text(text, encoding="utf-8")
         temporary.replace(target)
     finally:
         try:
             temporary.unlink()
         except FileNotFoundError:
             pass
-    return target

@@ -23,13 +23,16 @@ class FakeChild extends EventEmitter {
 	signalCode: NodeJS.Signals | null = null;
 	signals: NodeJS.Signals[] = [];
 	exitOnSigterm?: number;
+	/** Which SIGTERM makes the child exit with `exitOnSigterm`. */
+	sigtermsToExit = 1;
 	kill = (signal?: NodeJS.Signals) => {
 		this.signals.push(signal ?? "SIGTERM");
+		const sigterms = this.signals.filter((sent) => sent === "SIGTERM").length;
 		if (signal === "SIGKILL") {
 			this.signalCode = "SIGKILL";
 			this.emit("exit", null, "SIGKILL");
 			this.emit("close", null, "SIGKILL");
-		} else if (this.exitOnSigterm !== undefined) {
+		} else if (this.exitOnSigterm !== undefined && sigterms >= this.sigtermsToExit) {
 			this.exitCode = this.exitOnSigterm;
 			this.emit("exit", this.exitOnSigterm, null);
 			this.emit("close", this.exitOnSigterm, null);
@@ -182,7 +185,7 @@ test("onChild reports child process", async () => {
 	assert.equal(reported, child);
 });
 
-test("timeout: hanging child gets SIGTERM, after grace period SIGKILL, timeout: true", async () => {
+test("timeout: hanging child gets SIGTERM twice, then SIGKILL, timeout: true", async () => {
 	const child = new FakeChild();
 	const promise = convertPdf(
 		"raw/hanging.pdf",
@@ -190,13 +193,13 @@ test("timeout: hanging child gets SIGTERM, after grace period SIGKILL, timeout: 
 		"/Users/test/bin/pdf2md",
 		"/vault",
 		spawnMock([], child),
-		{ timeoutMs: 20, gracePeriodMs: 30 },
+		{ idleTimeoutMs: 20, gracePeriodMs: 30, killDelayMs: 30 },
 	);
 
 	child.stdout.emit("data", "→ p.1: 12.3 s\n");
 
 	const result = await promise;
-	assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+	assert.deepEqual(child.signals, ["SIGTERM", "SIGTERM", "SIGKILL"]);
 	assert.equal(result.timeout, true);
 	assert.equal(result.code, null);
 	assert.equal(result.signal, "SIGKILL");
@@ -212,7 +215,7 @@ test("timeout: child exits cleanly on SIGTERM (code 6), no SIGKILL", async () =>
 		"/Users/test/bin/pdf2md",
 		"/vault",
 		spawnMock([], child),
-		{ timeoutMs: 20, gracePeriodMs: 200 },
+		{ idleTimeoutMs: 20, gracePeriodMs: 200 },
 	);
 
 	const result = await promise;
@@ -222,14 +225,58 @@ test("timeout: child exits cleanly on SIGTERM (code 6), no SIGKILL", async () =>
 	assert.equal(result.signal, null);
 });
 
-test("abortChild: hanging child gets SIGTERM, after grace period SIGKILL", async () => {
+test("abortChild: hanging child gets a second SIGTERM after the grace period, then SIGKILL", async () => {
 	const child = new FakeChild();
 
-	abortChild(child as unknown as ChildProcess, 20);
+	abortChild(child as unknown as ChildProcess, 20, 40);
 	assert.deepEqual(child.signals, ["SIGTERM"]);
 
+	await new Promise((done) => setTimeout(done, 35));
+	assert.deepEqual(child.signals, ["SIGTERM", "SIGTERM"]);
+
 	await new Promise((done) => setTimeout(done, 50));
-	assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+	assert.deepEqual(child.signals, ["SIGTERM", "SIGTERM", "SIGKILL"]);
+});
+
+test("abortChild: a child writing its partial file on the second SIGTERM gets no SIGKILL", async () => {
+	// Issue #105: pdf2md stops the current page on the second signal and
+	// exits 6 with the pages before it; SIGKILL would lose that file.
+	const child = new FakeChild();
+	child.exitOnSigterm = 6;
+	child.sigtermsToExit = 2;
+
+	abortChild(child as unknown as ChildProcess, 20, 20);
+	await new Promise((done) => setTimeout(done, 80));
+
+	assert.deepEqual(child.signals, ["SIGTERM", "SIGTERM"]);
+	assert.equal(child.exitCode, 6);
+});
+
+test("idle timeout: a long run is not stopped while it keeps writing", async () => {
+	// Issue #105: a 60-page document runs far past any fixed limit; only
+	// silence means the child hangs.
+	const child = new FakeChild();
+	const promise = convertPdf(
+		"raw/long.pdf",
+		"_ocr-preview",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnMock([], child),
+		{ idleTimeoutMs: 40 },
+	);
+
+	for (let page = 1; page <= 60; page++) {
+		await new Promise((done) => setTimeout(done, 5));
+		child.stderr.emit(
+			"data",
+			`{"typ": "seite", "nr": ${page}, "von": 60, "sekunden": 55.0, "herkunft": "ocr", "entgleist": false}\n`,
+		);
+	}
+	child.emit("close", 0, null);
+
+	const result = await promise;
+	assert.equal(result.timeout, false);
+	assert.deepEqual(child.signals, []);
 });
 
 test("abortChild: exited child receives no signal", () => {

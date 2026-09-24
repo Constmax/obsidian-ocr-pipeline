@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { ChildProcess } from "node:child_process";
 
 import {
-	CONVERSION_TIMEOUT_MS,
+	CONVERSION_IDLE_TIMEOUT_MS,
 	INDEX_WAIT_MS,
 	INDEX_WAIT_STEPS,
 	ConversionController,
@@ -163,7 +163,7 @@ test("success: passes paths, timeout and pages, reports page progress, opens the
 	const call = calls[0]!;
 	assert.deepEqual(call.args, ["raw/case-01.pdf", "_ocr-preview", "/home/test/bin/pdf2md", "/vault"]);
 	assert.equal(call.spawnFn, undefined);
-	assert.equal(call.options.timeoutMs, CONVERSION_TIMEOUT_MS);
+	assert.equal(call.options.idleTimeoutMs, CONVERSION_IDLE_TIMEOUT_MS);
 	assert.equal(call.options.pages, "1-3");
 
 	call.options.onChild!(child);
@@ -382,7 +382,7 @@ test("classifyFailure maps exit codes, signals, timeouts, and ENOENT", () => {
 			"killed",
 			"cancelled — force terminated after grace period (SIGKILL)",
 		],
-		[{ code: null, signal: "SIGTERM", timeout: true }, "timeout", "cancelled after 30 min"],
+		[{ code: null, signal: "SIGTERM", timeout: true }, "timeout", "cancelled — no output for 15 min"],
 		[{ code: 6, timeout: true }, "partial-output", "cancelled — partial file created (incomplete)"],
 		[{ code: null, signal: "SIGTERM" }, "signal", "cancelled (Signal SIGTERM)"],
 		[{ code: null }, "start-error", "Start error"],
@@ -411,7 +411,7 @@ test("classifyFailure detail: last stderr line, else last stdout line without pr
 	);
 	assert.equal(
 		classifyFailure(result({ code: null, signal: "SIGTERM", timeout: true }), 60_000).message,
-		"OCR Preview: Conversion failed (cancelled after 1 min).",
+		"OCR Preview: Conversion failed (cancelled — no output for 1 min).",
 	);
 });
 

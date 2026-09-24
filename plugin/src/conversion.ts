@@ -13,7 +13,7 @@ export interface ConversionResult {
 	code: number | null;
 	/** Signal if process ended due to signal. */
 	signal: NodeJS.Signals | null;
-	/** true if process was killed after `timeoutMs`. */
+	/** true if the process was stopped after `idleTimeoutMs` without output. */
 	timeout: boolean;
 	/** Last non-empty stdout lines (at most 5). */
 	stdoutLast: string[];
@@ -35,8 +35,10 @@ export type ProgressEvent =
 	| { type: "finished"; target: string; seconds: number; derailed: number };
 
 export interface ConversionOptions {
-	timeoutMs?: number;
+	/** Stops the run once it has written nothing for this long. */
+	idleTimeoutMs?: number;
 	gracePeriodMs?: number;
+	killDelayMs?: number;
 	pages?: string;
 	onChild?: (child: ChildProcess) => void;
 	onProgress?: (event: ProgressEvent) => void;
@@ -56,7 +58,16 @@ export interface SearchableCopyOptions {
 }
 
 const LAST_LINES = 5;
-export const ABORT_GRACE_PERIOD_MS = 5000;
+/**
+ * Stage 2: time the current page gets to finish after the first SIGTERM. A
+ * page takes 15–60 s, so most cancels end the page early with the second
+ * SIGTERM; a textlayer page or a nearly finished one still makes it.
+ */
+export const ABORT_GRACE_PERIOD_MS = 15_000;
+/** Stage 2: time pdf2md gets to write the partial file after the second SIGTERM. */
+export const ABORT_KILL_DELAY_MS = 5000;
+/** Stage 1: time the process group gets after SIGTERM before SIGKILL. */
+export const GROUP_GRACE_PERIOD_MS = 5000;
 /** How often terminateProcessGroup checks whether the group is gone. */
 export const GROUP_POLL_MS = 100;
 
@@ -76,14 +87,27 @@ function safeClearTimeout(timer: number | ReturnType<typeof setTimeout> | null):
 	}
 }
 
+/**
+ * Stops a pdf2md child in three steps (Issue #105). The first SIGTERM lets the
+ * current page finish. After `gracePeriodMs` a second SIGTERM stops that page,
+ * and pdf2md writes the partial file from the pages before it (exit 6, or 7
+ * without any). Only a child still alive `killDelayMs` later gets SIGKILL,
+ * which loses the partial file.
+ */
 export function abortChild(
 	child: ChildProcess,
 	gracePeriodMs: number = ABORT_GRACE_PERIOD_MS,
+	killDelayMs: number = ABORT_KILL_DELAY_MS,
 ): void {
-	if (child.exitCode !== null || child.signalCode !== null) return;
+	const alive = () => child.exitCode === null && child.signalCode === null;
+	if (!alive()) return;
 	if (!child.kill("SIGTERM")) return;
-	const timer = safeSetTimeout(() => {
-		child.kill("SIGKILL");
+	let timer = safeSetTimeout(() => {
+		// The exit listener below cannot clear a timer armed after the exit.
+		if (!child.kill("SIGTERM") || !alive()) return;
+		timer = safeSetTimeout(() => {
+			child.kill("SIGKILL");
+		}, killDelayMs);
 	}, gracePeriodMs);
 	child.once("exit", () => safeClearTimeout(timer));
 }
@@ -102,7 +126,7 @@ export type SignalFunction = (pid: number, signal: NodeJS.Signals | 0) => void;
  */
 export function terminateProcessGroup(
 	child: ChildProcess,
-	gracePeriodMs: number = ABORT_GRACE_PERIOD_MS,
+	gracePeriodMs: number = GROUP_GRACE_PERIOD_MS,
 	signal: SignalFunction = (pid, sig) => process.kill(pid, sig),
 ): Promise<void> {
 	return new Promise((done) => {
@@ -233,8 +257,9 @@ function lineBuffer(last: string[], onLine?: (line: string) => boolean): { write
 }
 
 interface RunOptions {
-	timeoutMs?: number;
-	/** Stops the child when `timeoutMs` has passed. */
+	/** Restarted by every chunk of output, so only a silent child times out. */
+	idleTimeoutMs?: number;
+	/** Stops the child when `idleTimeoutMs` has passed without output. */
 	onTimeout?: (child: ChildProcess) => void;
 	onChild?: (child: ChildProcess) => void;
 	/** Sees every stderr line; returning false keeps it out of `stderrLast`. */
@@ -268,21 +293,35 @@ function runProcess(
 		const stderrLast: string[] = [];
 		const stdoutBuf = lineBuffer(stdoutLast);
 		const stderrBuf = lineBuffer(stderrLast, options.onStderrLine);
+
+		// A fixed limit killed long documents that were still converting
+		// (Issue #105); only silence means the child hangs. Page lines, the
+		// model load and analysis output all count as a sign of life.
+		let isTimeout = false;
+		let finished = false;
+		let timer: number | ReturnType<typeof setTimeout> | null = null;
+		const armIdleTimer = () => {
+			if (options.idleTimeoutMs === undefined || isTimeout || finished) return;
+			safeClearTimeout(timer);
+			timer = safeSetTimeout(() => {
+				isTimeout = true;
+				options.onTimeout?.(child);
+			}, options.idleTimeoutMs);
+		};
+		armIdleTimer();
 		child.stdout?.setEncoding("utf8");
 		child.stderr?.setEncoding("utf8");
-		child.stdout?.on("data", (chunk) => stdoutBuf.write(String(chunk)));
-		child.stderr?.on("data", (chunk) => stderrBuf.write(String(chunk)));
-
-		let isTimeout = false;
-		const timer =
-			options.timeoutMs === undefined
-				? null
-				: safeSetTimeout(() => {
-						isTimeout = true;
-						options.onTimeout?.(child);
-					}, options.timeoutMs);
+		child.stdout?.on("data", (chunk) => {
+			armIdleTimer();
+			stdoutBuf.write(String(chunk));
+		});
+		child.stderr?.on("data", (chunk) => {
+			armIdleTimer();
+			stderrBuf.write(String(chunk));
+		});
 		const done = (result: ConversionResult) => {
-			if (timer !== null) safeClearTimeout(timer);
+			finished = true;
+			safeClearTimeout(timer);
 			resolve(result);
 		};
 		child.on("error", (err) => {
@@ -325,8 +364,8 @@ export function convertPdf(
 	}
 	args.push("--fortschritt");
 	return runProcess(pdf2md, args, { cwd, stdio: ["ignore", "pipe", "pipe"] }, spawnFn, {
-		...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
-		onTimeout: (child) => abortChild(child, options.gracePeriodMs),
+		...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
+		onTimeout: (child) => abortChild(child, options.gracePeriodMs, options.killDelayMs),
 		...(options.onChild ? { onChild: options.onChild } : {}),
 		onStderrLine: (line) => {
 			const event = parseProgressEvent(line);

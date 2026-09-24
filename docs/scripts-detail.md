@@ -457,6 +457,23 @@ same grammar and validation as `--seiten`. Dictionary reporting/correction and
 Markdown formatting are intentionally not part of the key: they are rerun from
 the cached raw lines on every invocation.
 
+## Cancellation and Result Writing (Stage 2)
+
+- **First `SIGINT`/`SIGTERM`:** the current page finishes and is cached, then
+  the run stops and writes a partial file (`abgebrochen` in the frontmatter,
+  exit code 6) — or none, if no page was finished yet (exit code 7).
+- **Second signal:** stops the current page right away. That page is dropped;
+  the partial file holds exactly the pages finished before it (exit 6, or 7
+  when there are none). `pdf2md.py` picks the exit code from the result, not
+  the signal handler.
+- **Atomic writes:** the `.md`, `--zeilen-dump` and `--woerterbuch-bericht`
+  go to a hidden `.<name>.<pid>.tmp` sibling first and replace the target in
+  one rename. An interrupted write leaves the previous preview whole; only
+  `SIGKILL` can leave the hidden sibling behind.
+- **Plugin:** cancel sends `SIGTERM`, a second `SIGTERM` after 15 s, and
+  `SIGKILL` only if pdf2md is still alive 5 s later. The plugin stops a run
+  only after 15 minutes without any output, never after a fixed total time.
+
 ## --fortschritt (Stage 2)
 
 Machine-readable progress emitted as JSON lines to stderr. Default console output (German sentences, emojis, arrows) remains unaffected. Passing `--fortschritt` streams one JSON event per status change to stderr without altering stdout.
