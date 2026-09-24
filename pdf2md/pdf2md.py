@@ -22,6 +22,9 @@ PROMPT = "Parse this document page to Markdown."
 TILE_THRESHOLD = 3000
 KACHEL_AB = TILE_THRESHOLD
 EXIT_CHECK = 4
+# Cancellation (Issues #25, #105): a partial file was written, or none was.
+EXIT_CANCELLED_PARTIAL = 6
+EXIT_CANCELLED_EMPTY = 7
 
 
 def _progress(event):
@@ -340,10 +343,17 @@ def main():
         diagram_image_only=args.diagram_image_only, model_name=MODEL,
         ocr_prompt=PROMPT, refresh_pages=frozenset(refresh),
         cancel_requested=cancellation.requested)
-    result = convert_document(
-        request, LazyMlxOcrAdapter(MODEL), _event_sink(args.progress))
+    try:
+        result = convert_document(
+            request, LazyMlxOcrAdapter(MODEL), _event_sink(args.progress))
+    except cancellation.Interrupted:
+        # A repeated signal outside the page loop: during analysis, the model
+        # load or the result write. That write is atomic, so the vault keeps
+        # its previous preview.
+        print("Cancellation — no file written.")
+        sys.exit(EXIT_CANCELLED_EMPTY)
     if result.cancelled:
-        sys.exit(6 if result.pages else 7)
+        sys.exit(EXIT_CANCELLED_PARTIAL if result.pages else EXIT_CANCELLED_EMPTY)
     if not result.pages:
         sys.exit(f"no pages to convert: {source.name}")
 
