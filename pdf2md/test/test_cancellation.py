@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Tests for the cancellation module (SIGINT/SIGTERM, Issue #25).
 
-Runs without MLX and fitz: only abbruch.py module is imported.
+The handler tests run without MLX; the CLI tests replace the model with a
+fake adapter.
 """
 import os
 import re
@@ -10,11 +11,14 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 import pytest
 
 import cancellation
+import pdf2md as pdf2md_cli
+from conversion import ConversionRequest, convert_document
 
 
 @pytest.fixture
@@ -43,13 +47,12 @@ def test_first_sigterm_sets_the_flag(handler):
     assert cancellation.requested() is True
 
 
-def test_second_signal_exits_with_code_6(handler):
+def test_second_signal_raises_interrupted(handler):
+    """Issue #105: the exit code is decided by main, not by the handler."""
     _signal(signal.SIGINT)
 
-    with pytest.raises(SystemExit) as info:
+    with pytest.raises(cancellation.Interrupted):
         _signal(signal.SIGINT)
-
-    assert info.value.code == 6
 
 
 def test_without_signal_no_cancellation(handler):
@@ -307,3 +310,101 @@ def test_sigint_halfway_through_run():
         assert without_run_time(resumed_text) == without_run_time(clean_text), (
             "Issue #11: resumed result differs from an uninterrupted run"
         )
+
+
+def _run_cli(monkeypatch, adapter, *argv):
+    """Run pdf2md's main() in-process with `adapter` in place of the model."""
+    monkeypatch.setattr(pdf2md_cli, "LazyMlxOcrAdapter", lambda _model: adapter)
+    monkeypatch.setattr(sys, "argv", ["pdf2md.py", *map(str, argv)])
+    try:
+        with pytest.raises(SystemExit) as info:
+            pdf2md_cli.main()
+    finally:
+        cancellation.reset()
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    return info.value.code
+
+
+class _SlowAdapter:
+    """Stands in for the model. Page 2 takes far longer than the plugin's
+    grace period, so the plugin's second SIGTERM arrives mid-call."""
+
+    def prepare(self):
+        pass
+
+    def __call__(self, image, max_tokens=None):
+        if Path(image).name.startswith("_seite002"):
+            _signal(signal.SIGTERM)  # the user cancels
+            threading.Timer(0.2, _signal, (signal.SIGTERM,)).start()
+            time.sleep(10)
+            raise AssertionError("the second SIGTERM did not stop the page")
+        return "Text der ersten Seite"
+
+
+def test_second_sigterm_during_an_ocr_page_writes_the_partial_file(
+        tmp_path, monkeypatch):
+    """Issue #105: a cancel during a slow OCR page ends with exit 6 and a
+    partial file holding exactly the pages finished before it."""
+    pdf = tmp_path / "slow.pdf"
+    _make_vector_pdf(pdf, pages=3)
+    out = tmp_path / "out"
+
+    code = _run_cli(monkeypatch, _SlowAdapter(), pdf, "--ocr-only",
+                    "--kein-woerterbuch", "--out", out)
+
+    assert code == 6
+    text = (out / "slow.md").read_text(encoding="utf-8")
+    assert "abgebrochen: seite 1 von 3" in text
+    assert "%% S. 1 " in text
+    assert "%% S. 2 " not in text
+    assert not [path.name for path in out.iterdir() if path.suffix == ".tmp"]
+
+
+def test_second_signal_before_the_first_page_exits_7(tmp_path, monkeypatch):
+    """Issue #105: exit 6 promises a partial file, so a repeated signal
+    before any page is finished must end with 7."""
+    pdf = tmp_path / "early.pdf"
+    _make_vector_pdf(pdf, pages=3)
+    out = tmp_path / "out"
+
+    class InterruptedWhileLoading:
+        def prepare(self):
+            _signal(signal.SIGTERM)
+            _signal(signal.SIGTERM)
+
+        def __call__(self, image, max_tokens=None):
+            raise AssertionError("no page may start after the second signal")
+
+    code = _run_cli(monkeypatch, InterruptedWhileLoading(), pdf, "--ocr-only",
+                    "--kein-woerterbuch", "--out", out)
+
+    assert code == 7
+    assert not (out / "early.md").exists()
+
+
+def test_interrupt_while_writing_keeps_the_previous_preview(
+        tmp_path, monkeypatch):
+    """Issue #105: a stop in the middle of the result write leaves the
+    previous preview whole and no hidden temporary file behind."""
+    pdf = tmp_path / "input.pdf"
+    _make_vector_pdf(pdf, pages=2)
+    out = tmp_path / "out"
+    out.mkdir()
+    previous = out / "input.md"
+    previous.write_text("previous preview\n", encoding="utf-8")
+    write_text = Path.write_text
+
+    def half_then_interrupted(self, text, *args, **kwargs):
+        if self.name.startswith(".input.md."):
+            write_text(self, text[:len(text) // 2], *args, **kwargs)
+            raise cancellation.Interrupted()
+        return write_text(self, text, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", half_then_interrupted)
+
+    with pytest.raises(cancellation.Interrupted):
+        convert_document(ConversionRequest(pdf=pdf, output_dir=out), None)
+
+    assert previous.read_text(encoding="utf-8") == "previous preview\n"
+    assert sorted(path.name for path in out.iterdir()) == [".cache", "input.md"]

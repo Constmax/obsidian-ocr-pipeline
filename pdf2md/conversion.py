@@ -14,6 +14,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+import cancellation
 import dictionary
 import page_cache
 from assembly import (AssemblyContext, as_callout, assemble_paragraphs,
@@ -257,6 +258,16 @@ class PageResult:
 
 
 @dataclass(frozen=True)
+class _FinishedPage:
+    """Everything one page contributes to the result, committed at once."""
+    result: PageResult
+    block: str
+    lines_dump: dict[str, Any] | None
+    report: tuple[dict[str, Any], ...]
+    cached: bool
+
+
+@dataclass(frozen=True)
 class ConversionResult:
     target: Path | None
     markdown: str | None
@@ -494,18 +505,25 @@ def _document_text(request, page_blocks, page_results, total_pages, model_name,
 
 
 def _write_result(request, markdown, lines_dump, report, emit):
-    """Write complete and partial artifacts through the same path."""
+    """Write complete and partial artifacts through the same path.
+
+    Every file is replaced atomically (Issue #105), and the preview goes
+    last: an interrupt while writing leaves the previous preview in the vault.
+    """
     target = request.output_dir / f"{request.pdf.stem}.md"
-    target.write_text(markdown, encoding="utf-8")
     if request.lines_dump:
-        request.lines_dump.write_text(
-            json.dumps(lines_dump, ensure_ascii=False), encoding="utf-8")
+        page_cache.write_text_atomic(
+            request.lines_dump, json.dumps(lines_dump, ensure_ascii=False))
+    if request.dictionary_report:
+        page_cache.write_text_atomic(
+            request.dictionary_report,
+            json.dumps(report, ensure_ascii=False, indent=1))
+    page_cache.write_text_atomic(target, markdown)
+    if request.lines_dump:
         emit({"type": "artifact", "kind": "lines_dump",
               "path": request.lines_dump, "count": len(lines_dump),
               "unit": "pages"})
     if request.dictionary_report:
-        request.dictionary_report.write_text(
-            json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
         emit({"type": "artifact", "kind": "dictionary_report",
               "path": request.dictionary_report, "count": len(report),
               "unit": "findings"})
@@ -586,161 +604,170 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
             if prepare is not None:
                 prepare()
         started = time.perf_counter()
-        reused_count = 0
-
-        page_blocks: list[str] = []
-        page_results: list[PageResult] = []
-        lines_dump: list[dict[str, Any]] = []
-        report: list[dict[str, Any]] = []
-        words_suspect = words_corrected = 0
+        # One append per page, after the page is done: a repeated signal can
+        # land anywhere inside a page (Issue #105), and must never leave that
+        # page half in the partial file.
+        finished: list[_FinishedPage] = []
         stop_requested = False
 
-        for page in analyzed:
-            if request.cancel_requested():
-                stop_requested = True
-                break
-            page_started = time.perf_counter()
-            diagram = (page.is_diagram
-                       or page.number in request.forced_diagram_pages)
-            trace: list[str] = []
-            findings = []
-            image_only = False
-            entry = cache_hit(page)
-            reused = entry is not None
+        try:
+            for page in analyzed:
+                if request.cancel_requested():
+                    stop_requested = True
+                    break
+                page_started = time.perf_counter()
+                diagram = (page.is_diagram
+                           or page.number in request.forced_diagram_pages)
+                trace: list[str] = []
+                findings = []
+                image_only = False
+                entry = cache_hit(page)
+                reused = entry is not None
 
-            if reused:
-                reused_count += 1
-                lines = entry["lines"]
-                trace = list(entry.get("trace", []))
-                source = entry["source"]
-                layout_type = entry["layout"]
-                mode = entry["mode"]
-                image_only = mode == "image-only"
-                source_detail = ("" if image_only else
-                                 "Textlayer, without model" if source == "textlayer"
-                                 else f"{layout_type}, {mode}")
-            elif page.textlayer_lines is not None:
-                lines = split_columns(assign_boxes(page.textlayer_lines, page.boxes))
-                source = "textlayer"
-                layout_type, mode = page.layout_type, "textlayer"
-                source_detail = "Textlayer, without model"
-            elif diagram and request.diagram_image_only:
-                lines = []
-                source = "ocr"
-                layout_type, mode = page.layout_type, "image-only"
-                source_detail = ""
-                image_only = True
-            else:
-                if ocr_adapter is None:
-                    raise RuntimeError("OCR pages require an OCR adapter")
-                if page.layout_type == "zweispaltig":
-                    mode = f"senkrecht @{page.gutter:.0%}"
-                    overlap = int(OVERLAP * 1000)
-                    gutter = int(page.gutter * 1000)
-                    tiles = list(zip(
-                        tile_vertically(page.image_path, page.gutter),
-                        [(0, min(gutter + overlap, 1000)),
-                         (max(gutter - overlap, 0), 1000)],
-                    ))
-                elif page.text_characters >= request.tile_from:
-                    mode = "waagerecht"
-                    tiles = [(path, None)
-                             for path, _, _ in tile_horizontally(page.image_path)]
+                if reused:
+                    lines = entry["lines"]
+                    trace = list(entry.get("trace", []))
+                    source = entry["source"]
+                    layout_type = entry["layout"]
+                    mode = entry["mode"]
+                    image_only = mode == "image-only"
+                    source_detail = ("" if image_only else
+                                     "Textlayer, without model" if source == "textlayer"
+                                     else f"{layout_type}, {mode}")
+                elif page.textlayer_lines is not None:
+                    lines = split_columns(assign_boxes(page.textlayer_lines, page.boxes))
+                    source = "textlayer"
+                    layout_type, mode = page.layout_type, "textlayer"
+                    source_detail = "Textlayer, without model"
+                elif diagram and request.diagram_image_only:
+                    lines = []
+                    source = "ocr"
+                    layout_type, mode = page.layout_type, "image-only"
+                    source_detail = ""
+                    image_only = True
                 else:
-                    mode = "ganz"
-                    tiles = [(page.image_path, (0, 1000))]
+                    if ocr_adapter is None:
+                        raise RuntimeError("OCR pages require an OCR adapter")
+                    if page.layout_type == "zweispaltig":
+                        mode = f"senkrecht @{page.gutter:.0%}"
+                        overlap = int(OVERLAP * 1000)
+                        gutter = int(page.gutter * 1000)
+                        tiles = list(zip(
+                            tile_vertically(page.image_path, page.gutter),
+                            [(0, min(gutter + overlap, 1000)),
+                             (max(gutter - overlap, 0), 1000)],
+                        ))
+                    elif page.text_characters >= request.tile_from:
+                        mode = "waagerecht"
+                        tiles = [(path, None)
+                                 for path, _, _ in tile_horizontally(page.image_path)]
+                    else:
+                        mode = "ganz"
+                        tiles = [(page.image_path, (0, 1000))]
 
-                # Without a credible resolution the ink count has no scale
-                # (Issue #100), so no length is expected and the derailment
-                # check falls back to the repetition test alone.
-                dpi = page.image_dpi
-                if dpi is None:
-                    calibrated, factor, ink = False, None, 0.0
-                else:
-                    ink = _ink_amount(page.image_path, dpi)
-                    calibrated = page.text_characters >= 400 and ink > 0
-                    factor = (page.text_characters / ink
-                              if calibrated else CHARACTERS_PER_INK)
-                lines = []
-                for part, window in tiles:
-                    parsed, tile_trace = tile_lines(
-                        part, ocr_adapter, not request.no_bold, factor,
-                        dpi or request.dpi, calibrated,
-                        max_depth=request.retries,
-                    )
-                    trace += tile_trace
-                    if window:
-                        parsed = assign_boxes(parsed, page.boxes, window)
-                    ordered = (split_columns(parsed) if len(tiles) == 1
-                               else sorted(parsed,
-                                           key=lambda line: line[1][1]
-                                           if line[1] else 0))
-                    lines += trim_overlap(lines, ordered)
-                source = "ocr"
-                layout_type = page.layout_type
-                source_detail = f"{page.layout_type}, {mode}"
+                    # Without a credible resolution the ink count has no scale
+                    # (Issue #100), so no length is expected and the derailment
+                    # check falls back to the repetition test alone.
+                    dpi = page.image_dpi
+                    if dpi is None:
+                        calibrated, factor, ink = False, None, 0.0
+                    else:
+                        ink = _ink_amount(page.image_path, dpi)
+                        calibrated = page.text_characters >= 400 and ink > 0
+                        factor = (page.text_characters / ink
+                                  if calibrated else CHARACTERS_PER_INK)
+                    lines = []
+                    for part, window in tiles:
+                        parsed, tile_trace = tile_lines(
+                            part, ocr_adapter, not request.no_bold, factor,
+                            dpi or request.dpi, calibrated,
+                            max_depth=request.retries,
+                        )
+                        trace += tile_trace
+                        if window:
+                            parsed = assign_boxes(parsed, page.boxes, window)
+                        ordered = (split_columns(parsed) if len(tiles) == 1
+                                   else sorted(parsed,
+                                               key=lambda line: line[1][1]
+                                               if line[1] else 0))
+                        lines += trim_overlap(lines, ordered)
+                    source = "ocr"
+                    layout_type = page.layout_type
+                    source_detail = f"{page.layout_type}, {mode}"
 
-            if not reused:
-                write_context = (textlayer_cache_context
-                                 if source == "textlayer" else cache_context)
-                cached_page: page_cache.CachedPage = {
-                    "number": page.number, "source": source,
-                    "characters": page.text_characters, "layout": layout_type,
-                    "mode": mode, "lines": lines, "trace": trace,
+                if not reused:
+                    write_context = (textlayer_cache_context
+                                     if source == "textlayer" else cache_context)
+                    cached_page: page_cache.CachedPage = {
+                        "number": page.number, "source": source,
+                        "characters": page.text_characters, "layout": layout_type,
+                        "mode": mode, "lines": lines, "trace": trace,
+                    }
+                    page_cache.write_page(cache_dir, write_context, cached_page)
+
+                dump = None if image_only else {
+                    "seite": page.number,
+                    "quelle": source if source == "textlayer" else source_detail,
+                    "zeilen": lines,
                 }
-                page_cache.write_page(cache_dir, write_context, cached_page)
+                assembled = assemble_paragraphs(lines, assembly_context)
+                paragraphs = assembled.paragraphs
+                if source == "ocr" and lines:
+                    paragraphs, findings = dictionary.check(
+                        paragraphs, wordbook, request.dictionary_correct)
 
-            if not image_only:
-                lines_dump.append({"seite": page.number,
-                                   "quelle": source if source == "textlayer"
-                                   else source_detail, "zeilen": lines})
-            assembled = assemble_paragraphs(lines, assembly_context)
-            paragraphs = assembled.paragraphs
-            if source == "ocr" and lines:
-                paragraphs, findings = dictionary.check(
-                    paragraphs, wordbook, request.dictionary_correct)
-                words_corrected += sum(item.count for item in findings
-                                       if item.corrected)
-                words_suspect += sum(item.count for item in findings
-                                     if not item.corrected)
-                report += [
-                    {"seite": page.number, "wort": item.word,
-                     "anzahl": item.count, "vorschlag": item.suggestion,
-                     "korrigiert": item.corrected}
-                    for item in findings
-                ]
+                marker_extra = "diagramm" if diagram else (
+                    "textlayer" if source == "textlayer"
+                    else f"ocr | {source_detail}")
+                block = page_marker(page.number, marker_extra)
+                image_path = None
+                if diagram:
+                    name, image_path = diagram_image(
+                        request.pdf, page.number, image_dir, request.image_max_edge)
+                    parts = [f"![[{name}]]"]
+                    if not request.diagram_image_only and paragraphs:
+                        parts.append(as_callout(
+                            paragraphs,
+                            "Text der Seite (Reihenfolge nicht verlässlich)",
+                        ))
+                    block += "\n\n".join(parts)
+                else:
+                    block += "\n\n".join(paragraphs)
+                seconds = 0.0 if reused else time.perf_counter() - page_started
+                result = PageResult(
+                    number=page.number, source=source, paragraphs=paragraphs,
+                    discarded=assembled.discarded, trace=trace,
+                    is_diagram=diagram, seconds=seconds,
+                    text_characters=page.text_characters,
+                )
+                finished.append(_FinishedPage(
+                    result=result, block=block, lines_dump=dump,
+                    report=tuple(
+                        {"seite": page.number, "wort": item.word,
+                         "anzahl": item.count, "vorschlag": item.suggestion,
+                         "korrigiert": item.corrected}
+                        for item in findings),
+                    cached=reused))
+                emit({"type": "page", "page": result, "total_pages": len(analyzed),
+                      "source_detail": source_detail + (" (cache)" if reused else ""),
+                      "findings": findings, "image_path": image_path,
+                      "cached": reused})
+        except cancellation.Interrupted:
+            # A repeated signal stopped the current page (Issue #105). It was
+            # never committed, so the partial file below holds exactly the
+            # pages finished before it.
+            stop_requested = True
 
-            marker_extra = "diagramm" if diagram else (
-                "textlayer" if source == "textlayer"
-                else f"ocr | {source_detail}")
-            block = page_marker(page.number, marker_extra)
-            image_path = None
-            if diagram:
-                name, image_path = diagram_image(
-                    request.pdf, page.number, image_dir, request.image_max_edge)
-                parts = [f"![[{name}]]"]
-                if not request.diagram_image_only and paragraphs:
-                    parts.append(as_callout(
-                        paragraphs,
-                        "Text der Seite (Reihenfolge nicht verlässlich)",
-                    ))
-                block += "\n\n".join(parts)
-            else:
-                block += "\n\n".join(paragraphs)
-            page_blocks.append(block)
-            seconds = 0.0 if reused else time.perf_counter() - page_started
-            result = PageResult(
-                number=page.number, source=source, paragraphs=paragraphs,
-                discarded=assembled.discarded, trace=trace,
-                is_diagram=diagram, seconds=seconds,
-                text_characters=page.text_characters,
-            )
-            page_results.append(result)
-            emit({"type": "page", "page": result, "total_pages": len(analyzed),
-                  "source_detail": source_detail + (" (cache)" if reused else ""),
-                  "findings": findings, "image_path": image_path,
-                  "cached": reused})
-
+        page_results = [page.result for page in finished]
+        page_blocks = [page.block for page in finished]
+        lines_dump = [page.lines_dump for page in finished
+                      if page.lines_dump is not None]
+        report = [entry for page in finished for entry in page.report]
+        words_corrected = sum(entry["anzahl"] for entry in report
+                              if entry["korrigiert"])
+        words_suspect = sum(entry["anzahl"] for entry in report
+                            if not entry["korrigiert"])
+        reused_count = sum(page.cached for page in finished)
         if reused_count:
             emit({"type": "cache", "reused": reused_count, "directory": cache_dir})
 

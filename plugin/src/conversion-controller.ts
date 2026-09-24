@@ -22,7 +22,12 @@ import {
 	type SpawnFunction,
 } from "./conversion.ts";
 
-export const CONVERSION_TIMEOUT_MS = 30 * 60 * 1000;
+/**
+ * pdf2md is stopped after this long without any output. A page takes 15–60 s
+ * and a document may have hundreds, so no limit on the total run fits
+ * (Issue #105); a quarter hour of silence leaves room for derailment retries.
+ */
+export const CONVERSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 export const INDEX_WAIT_STEPS = 10;
 export const INDEX_WAIT_MS = 200;
 
@@ -85,7 +90,7 @@ export interface ControllerDependencies {
 	/** Stops a Stage-2 child. */
 	abort?: (child: ChildProcess) => void;
 	resolveExecutable?: () => string;
-	timeoutMs?: number;
+	idleTimeoutMs?: number;
 	searchableCopy?: SearchableCopyFunction;
 	/** Stops a Stage-1 child together with its process group. */
 	abortGroup?: (child: ChildProcess) => void;
@@ -146,7 +151,7 @@ export function resolvePdf2md(
 /** Maps a non-zero pdf2md result to the user-facing failure message. */
 export function classifyFailure(
 	result: ConversionResult,
-	timeoutMs: number = CONVERSION_TIMEOUT_MS,
+	idleTimeoutMs: number = CONVERSION_IDLE_TIMEOUT_MS,
 ): FailureDescription {
 	const stderrLast = result.stderrLast;
 	const stdoutLast = result.stdoutLast.filter((line) => !line.startsWith("→"));
@@ -168,7 +173,7 @@ export function classifyFailure(
 		codeText = "cancelled — force terminated after grace period (SIGKILL)";
 	} else if (result.timeout) {
 		kind = "timeout";
-		codeText = `cancelled after ${timeoutMs / 60000} min`;
+		codeText = `cancelled — no output for ${idleTimeoutMs / 60000} min`;
 	} else if (result.code === null && result.signal !== null) {
 		kind = "signal";
 		codeText = `cancelled (Signal ${result.signal})`;
@@ -229,7 +234,7 @@ export class ConversionController {
 	private readonly convert: ConvertFunction;
 	private readonly abort: (child: ChildProcess) => void;
 	private readonly resolveExecutable: () => string;
-	private readonly timeoutMs: number;
+	private readonly idleTimeoutMs: number;
 	private readonly searchableCopy: SearchableCopyFunction;
 	private readonly abortGroup: (child: ChildProcess) => void;
 	private readonly resolveReprocessRaw: () => string;
@@ -247,7 +252,7 @@ export class ConversionController {
 		this.convert = dependencies.convert ?? convertPdf;
 		this.abort = dependencies.abort ?? ((child) => abortChild(child));
 		this.resolveExecutable = dependencies.resolveExecutable ?? (() => resolvePdf2md());
-		this.timeoutMs = dependencies.timeoutMs ?? CONVERSION_TIMEOUT_MS;
+		this.idleTimeoutMs = dependencies.idleTimeoutMs ?? CONVERSION_IDLE_TIMEOUT_MS;
 		this.searchableCopy = dependencies.searchableCopy ?? createSearchableCopy;
 		this.abortGroup =
 			dependencies.abortGroup ?? ((child) => void terminateProcessGroup(child));
@@ -309,7 +314,7 @@ export class ConversionController {
 				base,
 				undefined,
 				{
-					timeoutMs: this.timeoutMs,
+					idleTimeoutMs: this.idleTimeoutMs,
 					...(pages && pages.length > 0 ? { pages } : {}),
 					onChild: (child) => {
 						this.child = child;
@@ -327,7 +332,7 @@ export class ConversionController {
 			progress.hide();
 			this.progress = null;
 			if (result.code !== 0) {
-				this.host.notify(classifyFailure(result, this.timeoutMs).message);
+				this.host.notify(classifyFailure(result, this.idleTimeoutMs).message);
 				return;
 			}
 			await this.openResult(name, folder);
