@@ -48,7 +48,7 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 - **`main.js` is committed** so a clone runs without Node. After changing
   `src/`, run `npm run build` and commit `main.js` too — CI verifies the
   committed build against `src/` (`.github/workflows/ci.yml`).
-- Install into a vault: `VAULT_ROOT=<path> plugin/install-plugin.sh` (default
+- Install into a vault: `VAULT_ROOT=<path> plugin/install-plugin.sh --enable` (plugin id from `manifest.json` only; default
   copies, no build; `--build` to build, `--symlink` only outside iCloud).
 - ESLint: `eslint-plugin-obsidianmd`; the `sentence-case` rule is enabled for `src/settings.ts` only (older UI strings elsewhere still violate it); `no-console` allows only `error`/`warn`.
 - **Obsidian API Invariants & Quirks**:
