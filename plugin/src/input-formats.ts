@@ -32,7 +32,24 @@ export function isConvertible(file: { extension: string }): boolean {
 	return CONVERTIBLE_EXTENSIONS.has(file.extension.toLowerCase());
 }
 
+/**
+ * Image formats the comparison column can show as an `<img>` (Issue #101).
+ * TIFF is missing on purpose: Chromium, and so Obsidian, does not decode it.
+ */
+export const DISPLAYABLE_IMAGE_EXTENSIONS: readonly string[] = [
+	"png",
+	"jpg",
+	"jpeg",
+	"bmp",
+];
+
 /** Is this file an image, i.e. exactly one page and not renderable by pdf.js? */
 export function isImageSource(file: { extension: string }): boolean {
 	return CONVERTIBLE_IMAGE_EXTENSIONS.includes(file.extension.toLowerCase());
+}
+
+/** Can the comparison column show this file, through pdf.js or as an image? */
+export function isDisplayableSource(file: { extension: string }): boolean {
+	const extension = file.extension.toLowerCase();
+	return extension === "pdf" || DISPLAYABLE_IMAGE_EXTENSIONS.includes(extension);
 }
