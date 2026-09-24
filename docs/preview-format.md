@@ -29,6 +29,7 @@ The YAML frontmatter (enclosed by `---`) contains metadata regarding the source 
 2. All fields are optional; missing fields are treated as `undefined` / `null` by the parser.
 3. The field `vorschau-format: 1` identifies files created according to this specification. The parser tolerates unknown fields (see Section 7).
 4. `abgebrochen` marks a **partial file** resulting from an orderly abort (SIGINT/SIGTERM, exit code 6): the file is incomplete, but intentionally written rather than discarded. Count fields (`seiten`, `seiten-ocr`, …) reflect only pages actually written; `m` in the note indicates planned run total. If the run aborts **before the first page**, no file is generated and pdf2md exits with code 7 — UI must not claim a partial file exists. An abort during the *last* page creates no partial file notice: the file is complete.
+5. A `--seiten` run merges into an existing preview (Issue #106): count fields then describe the merged file, not just the pages of that run. Consumers can rely on `seiten` matching the number of page markers either way.
 
 ## 2. Page Markers
 

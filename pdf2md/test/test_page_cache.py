@@ -206,7 +206,9 @@ def test_refresh_without_range_recalculates_all_selected_pages(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert "page(s) reused" not in result.stdout
-    assert "%% S. 2 " not in (out / "source.md").read_text(encoding="utf-8")
+    assert "p.2:" not in result.stdout
+    # Issue #106: the unselected page keeps its block in the merged preview.
+    assert "%% S. 2 " in (out / "source.md").read_text(encoding="utf-8")
 
 
 def test_checked_in_page_cache_fixture_is_assemblable_without_mlx():
