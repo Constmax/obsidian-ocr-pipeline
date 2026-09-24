@@ -29,7 +29,7 @@ their stdout for progress. The pipeline remains the exact code in this repositor
 
 - **Pros:** Immediately actionable. No re-implementation needed. All pipeline bugfixes automatically benefit the plugin.
 - **Cons:** Desktop only (`child_process` does not exist on mobile). The user must run `./setup.sh` beforehand. The Obsidian Community Store only accepts plugins relying on external binaries with clear labeling — for a private plugin, this is irrelevant.
-- **Required work on this repo:** Scripts must emit machine-readable progress output (`--json` flag or a line like `PROGRESS 7/20` on stderr). Currently output is formatted for human reading (emojis, German sentences). This is the most concrete pending task.
+- **Required work on this repo:** Scripts must emit machine-readable progress output. Done for Stage 2: `pdf2md --fortschritt` streams versioned JSON events, specified in [cli-contract.md](cli-contract.md). Stage 1 still prints human text only; the plugin reads two pinned message lines from it (same document).
 
 ### B · Sidecar Daemon
 
@@ -47,7 +47,7 @@ and served via `fetch`.
 
 ## What is Already Plugin-Ready
 
-- `pdf2md.py` already writes frontmatter containing `seiten-textlayer` / `seiten-ocr` / `seiten-diagramm` and a `Quelle:` link — exactly the metadata model that a plugin UI would display (see [ocr-vorschau.md](ocr-vorschau.md)).
+- `pdf2md.py` already writes frontmatter containing `seiten-textlayer` / `seiten-ocr` / `seiten-diagramm` and a `Quelle:` link — exactly the metadata model that a plugin UI would display (see [ocr-preview.md](ocr-preview.md)).
 - `--out <folder>` already exists, making the target folder configurable.
 - The separation "Preview Folder ≠ Wiki" is already designed and documented.
 - Diagram pages are output as image + collapsed callout — native Obsidian syntax, no custom rendering needed.
@@ -104,7 +104,7 @@ The sequence below lists the plugin skeleton as **Step 5**. However, a different
 - **Architecture:** The view uses **Approach A without the spawn component** — calling Obsidian's built-in PDF.js library (`loadPdfJs`) without child processes. The A/B/C architectural decision remains unchanged.
 - **The three interface tasks remain open:** Machine-readable progress, exit codes, preflight checks — none were completed or rendered obsolete by this view. They remain pending for the core plugin implementation (Step 5).
 
-Sole interaction with the pipeline: `pdf2md.py` now writes page provenance into markers (contract: `docs/ocr-vorschau.md`, "Marker Grammar"). Non-breaking change — legacy `%% S. n %%` markers continue to be supported.
+Sole interaction with the pipeline: `pdf2md.py` now writes page provenance into markers (contract: [preview-format.md](preview-format.md), "Page Markers"). Non-breaking change — legacy `%% S. n %%` markers continue to be supported.
 
 ## Built Next: Conversion Command (v0.2)
 

@@ -15,12 +15,12 @@ from conversion import (INPUT_SUFFIXES, ConversionRequest, PreviewFormatError,
 from ocr import TOKEN_MAX
 from page_range import PageRangeError, parse_page_range
 
-BENCH = Path(__file__).resolve().parent
-OUT = BENCH / "out-C"
+SCRIPT_DIR = Path(__file__).resolve().parent
+# Default --out for manual runs; git-ignored. The plugin always passes --out.
+OUT = SCRIPT_DIR / "out-C"
 MODEL = os.environ.get("MLX_OCR_MODEL", "mlx-community/PaddleOCR-VL-1.5-4bit")
 PROMPT = "Parse this document page to Markdown."
 TILE_THRESHOLD = 3000
-KACHEL_AB = TILE_THRESHOLD
 EXIT_USAGE = 2  # argparse
 EXIT_CHECK = 4
 # Cancellation (Issues #25, #105): a partial file was written, or none was.

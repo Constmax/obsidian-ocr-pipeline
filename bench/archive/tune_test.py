@@ -13,7 +13,7 @@ from pathlib import Path
 import fitz
 from PIL import Image
 
-OUT = Path(__file__).parent / "speed"
+OUT = Path(__file__).resolve().parents[1] / "speed"  # archived: bench/archive/
 OUT.mkdir(exist_ok=True)
 MODEL = "mlx-community/PaddleOCR-VL-1.5-4bit"
 PROMPT = "Parse this document page to Markdown."

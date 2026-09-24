@@ -12,7 +12,10 @@ man beides nebeneinander legt.
 Argument ist die Seitennummer im Sammel-PDF `bench-lauf/bench-seiten.pdf`.
 """
 import sys
+from pathlib import Path
 
+# Archived (Issue #107): the shared bench modules live one folder up.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from paths import BENCH
 import pdf2md as M
 import ocr as O

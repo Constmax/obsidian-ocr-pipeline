@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import fitz
+import pytest
 
 import page_cache
 import pdf2md as pdf2md_cli
@@ -93,6 +94,7 @@ def test_incomplete_entry_is_a_miss(tmp_path):
     assert page_cache.read_page(directory, 1, "expected") is None
 
 
+@pytest.mark.slow
 def test_cli_reuses_cache_and_reassembles_identical_markdown(tmp_path):
     pdf = tmp_path / "source.pdf"
     out = tmp_path / "out"
@@ -114,6 +116,7 @@ def test_cli_reuses_cache_and_reassembles_identical_markdown(tmp_path):
     assert _without_timestamp(resumed) == _without_timestamp(original)
 
 
+@pytest.mark.slow
 def test_cached_ocr_page_does_not_import_model(tmp_path, monkeypatch):
     pdf = tmp_path / "scan.pdf"
     out = tmp_path / "out"
@@ -161,6 +164,7 @@ def test_cached_ocr_page_does_not_import_model(tmp_path, monkeypatch):
     assert "Cached OCR text" in (out / "scan.md").read_text(encoding="utf-8")
 
 
+@pytest.mark.slow
 def test_cli_refreshes_only_requested_page(tmp_path):
     pdf = tmp_path / "source.pdf"
     out = tmp_path / "out"
@@ -176,6 +180,7 @@ def test_cli_refreshes_only_requested_page(tmp_path):
     assert "p.2:" in result.stdout
 
 
+@pytest.mark.slow
 def test_parameter_and_pdf_content_changes_invalidate_cache(tmp_path):
     pdf = tmp_path / "source.pdf"
     out = tmp_path / "out"
@@ -195,6 +200,7 @@ def test_parameter_and_pdf_content_changes_invalidate_cache(tmp_path):
     assert "page(s) reused" not in pdf_changed.stdout
 
 
+@pytest.mark.slow
 def test_refresh_without_range_recalculates_all_selected_pages(tmp_path):
     pdf = tmp_path / "source.pdf"
     out = tmp_path / "out"

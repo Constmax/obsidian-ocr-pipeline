@@ -17,7 +17,7 @@ from pathlib import Path
 import fitz
 import numpy as np
 
-VAULT = Path(__file__).resolve().parent.parent
+VAULT = Path(__file__).resolve().parents[2]  # archived: bench/archive/
 
 
 # --- Kästen ---------------------------------------------------------------

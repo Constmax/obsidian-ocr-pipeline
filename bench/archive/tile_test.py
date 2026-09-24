@@ -13,7 +13,7 @@ from pathlib import Path
 
 import sys
 
-BENCH = Path(__file__).resolve().parent
+BENCH = Path(__file__).resolve().parents[1]  # archived: bench/archive/
 PAGE = sys.argv[1] if len(sys.argv) > 1 else "02-zweispalter-dicht"
 SRC = BENCH / f"{PAGE}.png"
 PROMPT = "Parse this document page to Markdown."

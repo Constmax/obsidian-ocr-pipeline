@@ -11,6 +11,9 @@ from conversion import (INPUT_SUFFIXES, ConversionRequest, UnsupportedInput,
                         analyze_pages, convert_document, ensure_supported_input,
                         open_document, page_image_dpi)
 
+
+pytestmark = pytest.mark.slow  # end-to-end runs; `make test-fast` skips them
+
 REPOSITORY = Path(__file__).resolve().parent.parent.parent
 PDF2MD_PY = REPOSITORY / "pdf2md" / "pdf2md.py"
 
