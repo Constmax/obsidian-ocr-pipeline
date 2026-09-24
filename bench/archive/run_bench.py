@@ -10,8 +10,8 @@ und eine Zeile je Lauf in ergebnisse.csv.
 import argparse, csv, os, resource, sys, time
 from pathlib import Path
 
-BENCH = Path(__file__).resolve().parent
-CSV = BENCH / "ergebnisse.csv"
+BENCH = Path(__file__).resolve().parents[1]  # archived: bench/archive/
+CSV = Path(__file__).resolve().parent / "ergebnisse.csv"
 
 # Reihenfolge nach Haertegrad — leicht zuerst, damit frueh klar wird wo es bricht
 ORDER = [

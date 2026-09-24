@@ -20,14 +20,25 @@ bench/pages.json
 
 # Arbeitsverzeichnisse der Mess- und Diagnoseskripte. Enthalten Seitenbilder
 # und Modellausgaben aus demselben geschützten Kursmaterial; erzeugt von
-# bench_ocr.py, bench_defekt.py, nachspiel.py, reading_order.py und den
-# *_debug.py-Skripten.
+# bench_ocr.py, reading_order.py, randlabel_debug.py und den Archiv-Skripten
+# unter bench/archive/ (bench_defekt, nachspiel, kachel_debug, speed/tune_test),
+# die weiter nach bench/ schreiben.
 bench/bench-lauf/
 bench/reading-order-lauf/
 bench/defekt-lauf/
 bench/nachspiel-lauf/
 bench/kachel-debug/
 bench/randlabel-debug/
+bench/speed/
+
+# Default output of a manual `pdf2md` run without --out (pdf2md.py OUT)
+pdf2md/out-C/
+
+# Finder/iCloud conflict copies of scripts ("pdf-lib 2.sh"): never ours to
+# commit or lint
+* [2-9].sh
+* [2-9].py
+* [2-9].ts
 
 # Pipeline-Temporärdateien
 _tmp_ocr/

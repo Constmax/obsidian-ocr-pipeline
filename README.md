@@ -9,19 +9,20 @@ Entstanden als Werkzeugkasten innerhalb eines Jura-Vaults, hier herausgelöst,
 weil es Code ist und in ein Notizen-Repo nicht gehört. **Fernziel: ein
 Obsidian-Plugin** — siehe [docs/plugin-roadmap.md](docs/plugin-roadmap.md).
 
-## Zwei Stufen
+## Drei Stufen
 
-| | Stufe 1 — `bin/` | Stufe 2 — `pdf2md/` |
-|---|---|---|
-| Ausgabe | durchsuchbares PDF (Textlayer) | Markdown |
-| Engine | Tesseract / Apple Vision (via ocrmypdf) | PaddleOCR-VL 1.5 4bit via MLX |
-| Zustand | **stabil, im täglichen Einsatz** | funktioniert, Zusammenbau-Schicht jung |
-| Laufzeit | Sekunden bis Minuten/Datei | 15–60 s/Seite auf M1 |
-| Plattform | macOS + Linux (Apple-Engine nur macOS) | Apple Silicon (MLX) |
+| | Stufe 1 — `bin/` | Stufe 2 — `pdf2md/` | Stufe 3 — `plugin/` |
+|---|---|---|---|
+| Ergebnis | durchsuchbares PDF (Textlayer) | Markdown | Begutachtung im Vault |
+| Engine | Tesseract / Apple Vision (via ocrmypdf) | PaddleOCR-VL 1.5 4bit via MLX | ruft Stufe 1 und 2 auf |
+| Zustand | **stabil, im täglichen Einsatz** | funktioniert, Zusammenbau-Schicht jung | benutzbar, in Entwicklung |
+| Laufzeit | Sekunden bis Minuten/Datei | 15–60 s/Seite auf M1 | — |
+| Plattform | macOS + Linux (Apple-Engine nur macOS) | Apple Silicon (MLX) | Obsidian Desktop |
 
-Die Stufen sind unabhängig. Stufe 1 macht Scans durchsuchbar und archivfähig,
-Stufe 2 macht sie **lesbar in Obsidian**. Für das Plugin ist Stufe 2 der
-interessante Teil.
+Stufe 1 und 2 sind unabhängig. Stufe 1 macht Scans durchsuchbar und
+archivfähig, Stufe 2 macht sie **lesbar in Obsidian**. Stufe 3 ist ein dünner
+Client: das Plugin startet die installierten CLIs und liest ihre Ausgabe nach
+dem Vertrag in [docs/cli-contract.md](docs/cli-contract.md).
 
 ## Stufe 1 — PDF → durchsuchbares PDF
 
@@ -187,13 +188,13 @@ pdf-combine ~/scans/skript skript-arbeitsrecht --split-columns
 reprocess-raw "raw/StR/Rep-Faelle/fall-01.pdf" --force-ocr --split-columns
 
 # PDF → Markdown
-pdf2md "raw/ZR/skript.pdf" --out _ocr-vorschau
+pdf2md "raw/ZR/skript.pdf" --out _ocr-preview
 
 # PDF → Markdown, nur bestimmte Seiten
-pdf2md "raw/ZR/skript.pdf" --seiten "1,3-5,8" --out _ocr-vorschau
+pdf2md "raw/ZR/skript.pdf" --seiten "1,3-5,8" --out _ocr-preview
 
 # Passende Seitenergebnisse werden automatisch wiederverwendet; Seite 12 neu rechnen
-pdf2md "raw/ZR/skript.pdf" --out _ocr-vorschau --neu 12
+pdf2md "raw/ZR/skript.pdf" --out _ocr-preview --neu 12
 ```
 
 Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
@@ -210,16 +211,20 @@ Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
 ## Repo-Aufbau
 
 ```
-bin/         Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
-pdf2md/      Stufe 2 — pdf2md.py (CLI) + conversion.py (Runner) + layout.py
-             + ocr.py + assembly.py + dictionary.py + page_cache.py,
-             Testsuite in pdf2md/test/
-bench/       Benchmark-Harness und Messergebnisse
-plugin/      Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
-docs/        Installation, Flag-Referenz, Bugreport, Vault-Integration
-skill/       Claude-Code-Skill (SKILL.md) zum Einbinden in einen Vault
-setup.sh     Einmal-Setup (Einstiegstür): Brewfile + venvs + Links + Plugin
-Brewfile     Systempakete für das Setup (brew bundle)
+bin/             Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
+ocrmypdf_paddle/ Stufe 1 — OCRmyPDF-Engine-Plugin mit PaddleOCR (RapidOCR),
+                 noch nicht von setup.sh installiert (docs/paddle-textlayer.md)
+pdf2md/          Stufe 2 — pdf2md.py (CLI) + conversion.py (Runner) + layout.py
+                 + ocr.py + assembly.py + dictionary.py + page_cache.py,
+                 Testsuite in pdf2md/test/
+plugin/          Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
+contracts/       CLI-Vertrag zwischen den Stufen und dem Plugin (docs/cli-contract.md)
+bench/           Benchmark-Harness und Messergebnisse; alte Experimente in bench/archive/
+docs/            Installation, Flag-Referenz, Formate, Vault-Integration
+skill/           Claude-Code-Skill (SKILL.md) zum Einbinden in einen Vault
+setup.sh         Einmal-Setup (Einstiegstür): Brewfile + venvs + Links + Plugin
+Brewfile         Systempakete für das Setup (brew bundle)
+Makefile         make check / make test-fast — dieselben Schritte wie die CI
 ```
 
 Die Benchmark-**Seitenbilder** liegen bewusst nicht im Repo: sie sind Scans aus
@@ -230,25 +235,33 @@ eigenen Bestand reproduzierbar. Die unterstützten Befehle stehen in
 
 ## CI
 
-Jeder Pull Request und jeder Push auf `main` läuft durch drei unabhängige Jobs
-(`.github/workflows/ci.yml`). Feature-Branches laufen über ihren PR — ein
-unbeschränktes `push` würde jeden Job doppelt starten.
+Ein Befehl prüft alles, was auch die CI prüft:
 
-- **plugin** — `npm ci`, tsc, eslint, Tests, Build und der Kern: `main.js` muss
-  versioniert sein *und* dem Build aus `src/` entsprechen. Ein PR, der `src/`
-  ändert ohne neu zu bauen, wird damit rot — ebenso einer, der `main.js` aus
-  der Versionierung nimmt.
-- **shell** — shellcheck (feste Version) über alle neun Shell-Skripte
-  (`setup.sh`, `install.sh`, `bin/*.sh`, `bin/pdf2md`,
-  `plugin/install-plugin.sh`).
-- **python** — `pytest pdf2md/test`: Nahtentdopplung, Randmarken,
-  Schleifenerkennung, Wörterbuchabgleich und der Golden-Snapshot aus Issue #8
-  — ohne Modell, ohne Vault-Bestand.
+```bash
+make check      # Plugin (tsc, eslint, Tests, Build, main.js), shellcheck, pytest, OCRmyPDF-Tests
+make test-fast  # nur die schnellen Tests (pytest -m "not slow" + Plugin-Tests), wenige Sekunden
+```
 
-Lokal genügt für den Plugin-Teil `npm run lint && npm run check && npm test &&
-npm run build`, für die Skripte `shellcheck -x -P bin setup.sh install.sh
-bin/*.sh bin/pdf2md plugin/install-plugin.sh` und für Python
-`python3 -m pytest pdf2md/test`.
+Jeder Pull Request und jeder Push auf `main` läuft durch vier Jobs in
+`.github/workflows/ci.yml`; jeder ruft ein `make`-Ziel auf, die CI installiert
+nur die Werkzeuge. Feature-Branches laufen über ihren PR — ein unbeschränktes
+`push` würde jeden Job doppelt starten.
+
+- **plugin** (`make plugin`) — `npm ci`, tsc, eslint, Tests, Build und der
+  Kern: `main.js` muss versioniert sein *und* dem Build aus `src/` entsprechen.
+  Ein PR, der `src/` ändert ohne neu zu bauen, wird damit rot — ebenso einer,
+  der `main.js` aus der Versionierung nimmt.
+- **shell** (`make shellcheck`) — shellcheck (feste Version) über alle
+  versionierten Shell-Skripte (`setup.sh`, `install.sh`, `bin/*.sh`,
+  `bin/pdf2md`, `plugin/install-plugin.sh`).
+- **python** (`make test-py`) — `pytest pdf2md/test bin/test`: Stufe 2 ohne
+  Modell und ohne Vault-Bestand (Nahtentdopplung, Randmarken, Schleifen,
+  Wörterbuch, Golden-Snapshot, CLI-Vertrag) und Stufe 1 mit gestubbten
+  Werkzeugen; dazu der Import-Smoke-Test der Benchmark-Einstiegspunkte.
+- **ocrmypdf** (`make test-ocrmypdf`) — mit dem gepinnten ocrmypdf 17.8.0: die
+  hOCR-Textlayer-Reihenfolge und das PaddleOCR-Engine-Plugin
+  (`ocrmypdf_paddle/test`, ohne RapidOCR und Modelle). Lokal nimmt `make` dafür
+  `~/.venvs/ocrmypdf`; ohne ocrmypdf werden diese Tests übersprungen.
 
 ## Stand
 

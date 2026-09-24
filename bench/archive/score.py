@@ -13,7 +13,7 @@ import argparse, re, sys
 from collections import Counter
 from pathlib import Path
 
-BENCH = Path(__file__).resolve().parent
+BENCH = Path(__file__).resolve().parents[1]  # archived: bench/archive/
 
 # § 823, §§ 280 I, § 326 V, Art. 4 Abs. 2, § 45 Nr. 2, § 3a I VwVfG
 NORM = re.compile(r"(?:§§?|Art\.?)\s*\d+[a-z]?(?:\s*(?:[IVXLC]+|Abs\.?\s*\d+|Nr\.?\s*\d+|S\.?\s*\d+))*")

@@ -20,6 +20,8 @@ Die Wahrheit kommt wie im grossen Benchmark aus dem Textlayer derselben Seiten.
 import json, subprocess, sys
 from pathlib import Path
 
+# Archived (Issue #107): the shared bench modules live one folder up.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from paths import BENCH, PDF2MD_PY
 from bench_ocr import seiten_trennen, vergleiche
 
