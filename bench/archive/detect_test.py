@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Spaltenerkennung isoliert testen — ohne Inferenz, Sekundenbruchteile.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/detect_test.py <pdf> [...]
+  source .venv-mlxocr/bin/activate && python bench/archive/detect_test.py <pdf> [...]
 """
 import sys
 from pathlib import Path

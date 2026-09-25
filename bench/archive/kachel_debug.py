@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Eine Seite kachelweise aufschluesseln: Tinte, Erwartung, Budget, Ausbeute.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/kachel_debug.py 35
+  source .venv-mlxocr/bin/activate && python bench/archive/kachel_debug.py 35
 
 Warum es das braucht: im 40-Seiten-Lauf verliert `ZR_LH_30_01` S. 9 ein Drittel
 des Textes, ohne dass `entgleist()` anschlaegt. Auf Seitenebene ist das nicht

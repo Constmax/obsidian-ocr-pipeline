@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Einzelne Benchmark-Seiten noch einmal — diesmal mit sichtbarem Protokoll.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/nachspiel.py 9 23 35 12
+  source .venv-mlxocr/bin/activate && python bench/archive/nachspiel.py 9 23 35 12
 
 bench_ocr.py wirft pdf2mds stdout weg (`stdout=DEVNULL`), damit die Messtabelle
 lesbar bleibt. Fuer die Frage, WARUM eine Seite zurueckgegangen ist, ist genau

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Nur die entgleisten Seiten — vorher/nachher, ohne die 34 gesunden mitzurechnen.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/bench_defekt.py
+  source .venv-mlxocr/bin/activate && python bench/archive/bench_defekt.py
 
 Der volle Benchmark braucht 21 min. Fuer die Frage, ob die Reparatur greift,
 reichen die sechs Seiten, an denen sie ueberhaupt ansetzt — das ist ein

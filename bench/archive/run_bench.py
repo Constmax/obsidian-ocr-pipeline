@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Benchmark-Runner. Wird IM jeweiligen venv aufgerufen:
 
-  source .venv-paddleocr/bin/activate && python .ocr-bench/run_bench.py --path A --smoke
-  source .venv-mlxocr/bin/activate     && python .ocr-bench/run_bench.py --path B --smoke
+  source .venv-paddleocr/bin/activate && python bench/archive/run_bench.py --path A --smoke
+  source .venv-mlxocr/bin/activate     && python bench/archive/run_bench.py --path B --smoke
 
 Misst pro Seite Wandzeit und Peak-RSS, schreibt Markdown nach out-<Pfad>/
 und eine Zeile je Lauf in ergebnisse.csv.
