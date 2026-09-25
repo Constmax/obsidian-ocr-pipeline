@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stellschrauben einzeln pruefen — Geschwindigkeit UND Qualitaet.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/tune_test.py <pdf> <seite>
+  source .venv-mlxocr/bin/activate && python bench/archive/tune_test.py <pdf> <seite>
 
 Eine Beschleunigung, die Zeichen frisst, ist keine. Darum zu jeder Variante ein
 Wortabgleich gegen den vorhandenen Textlayer: Multimengen-Schnitt, damit die

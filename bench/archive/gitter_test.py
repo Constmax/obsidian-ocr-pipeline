@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Linierte Tabellen in Rasterscans finden — ohne Inferenz.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/gitter_test.py [--stichprobe N]
+  source .venv-mlxocr/bin/activate && python bench/archive/gitter_test.py [--stichprobe N]
 
 Sucht lange dunkle Geraden im gerenderten Bild. Das ist dieselbe Grundlage, die
 PyMuPDF fuer vektorielle Seiten benutzt (strategy="lines_strict") — nur aus

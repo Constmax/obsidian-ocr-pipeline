@@ -9,20 +9,20 @@ Entstanden als Werkzeugkasten innerhalb eines Jura-Vaults, hier herausgelöst,
 weil es Code ist und in ein Notizen-Repo nicht gehört. **Fernziel: ein
 Obsidian-Plugin** — siehe [docs/plugin-roadmap.md](docs/plugin-roadmap.md).
 
-## Drei Stufen
+## Three Stages
 
-| | Stufe 1 — `bin/` | Stufe 2 — `pdf2md/` | Stufe 3 — `plugin/` |
+| | Stage 1 — `bin/` | Stage 2 — `pdf2md/` | Stage 3 — `plugin/` |
 |---|---|---|---|
-| Ergebnis | durchsuchbares PDF (Textlayer) | Markdown | Begutachtung im Vault |
-| Engine | Tesseract / Apple Vision (via ocrmypdf) | PaddleOCR-VL 1.5 4bit via MLX | ruft Stufe 1 und 2 auf |
-| Zustand | **stabil, im täglichen Einsatz** | funktioniert, Zusammenbau-Schicht jung | benutzbar, in Entwicklung |
-| Laufzeit | Sekunden bis Minuten/Datei | 15–60 s/Seite auf M1 | — |
-| Plattform | macOS + Linux (Apple-Engine nur macOS) | Apple Silicon (MLX) | Obsidian Desktop |
+| Output | searchable PDF (text layer) | Markdown | review inside the vault |
+| Engine | Tesseract / Apple Vision (via ocrmypdf) | PaddleOCR-VL 1.5 4bit via MLX | calls Stage 1 and 2 |
+| State | **stable, in daily use** | works, assembly layer is young | usable, in development |
+| Runtime | seconds to minutes per file | 15–60 s/page on M1 | — |
+| Platform | macOS + Linux (Apple engine macOS only) | Apple Silicon (MLX) | Obsidian desktop |
 
-Stufe 1 und 2 sind unabhängig. Stufe 1 macht Scans durchsuchbar und
-archivfähig, Stufe 2 macht sie **lesbar in Obsidian**. Stufe 3 ist ein dünner
-Client: das Plugin startet die installierten CLIs und liest ihre Ausgabe nach
-dem Vertrag in [docs/cli-contract.md](docs/cli-contract.md).
+Stages 1 and 2 are independent. Stage 1 makes scans searchable and
+archivable, Stage 2 makes them **readable in Obsidian**. Stage 3 is a thin
+client: the plugin starts the installed CLIs and reads their output according
+to the contract in [docs/cli-contract.md](docs/cli-contract.md).
 
 ## Stufe 1 — PDF → durchsuchbares PDF
 
@@ -235,33 +235,34 @@ eigenen Bestand reproduzierbar. Die unterstützten Befehle stehen in
 
 ## CI
 
-Ein Befehl prüft alles, was auch die CI prüft:
+One command checks everything CI checks:
 
 ```bash
-make check      # Plugin (tsc, eslint, Tests, Build, main.js), shellcheck, pytest, OCRmyPDF-Tests
-make test-fast  # nur die schnellen Tests (pytest -m "not slow" + Plugin-Tests), wenige Sekunden
+make check      # plugin (tsc, eslint, tests, build, main.js), shellcheck, pytest, OCRmyPDF tests
+make test-fast  # fast tests only (pytest -m "not slow" + plugin tests), a few seconds
 ```
 
-Jeder Pull Request und jeder Push auf `main` läuft durch vier Jobs in
-`.github/workflows/ci.yml`; jeder ruft ein `make`-Ziel auf, die CI installiert
-nur die Werkzeuge. Feature-Branches laufen über ihren PR — ein unbeschränktes
-`push` würde jeden Job doppelt starten.
+Every pull request and every push to `main` runs four jobs in
+`.github/workflows/ci.yml`; each calls one `make` target, and CI only installs
+the tools. Feature branches run through their PR — an unrestricted `push`
+would start every job twice.
 
-- **plugin** (`make plugin`) — `npm ci`, tsc, eslint, Tests, Build und der
-  Kern: `main.js` muss versioniert sein *und* dem Build aus `src/` entsprechen.
-  Ein PR, der `src/` ändert ohne neu zu bauen, wird damit rot — ebenso einer,
-  der `main.js` aus der Versionierung nimmt.
-- **shell** (`make shellcheck`) — shellcheck (feste Version) über alle
-  versionierten Shell-Skripte (`setup.sh`, `install.sh`, `bin/*.sh`,
-  `bin/pdf2md`, `plugin/install-plugin.sh`).
-- **python** (`make test-py`) — `pytest pdf2md/test bin/test`: Stufe 2 ohne
-  Modell und ohne Vault-Bestand (Nahtentdopplung, Randmarken, Schleifen,
-  Wörterbuch, Golden-Snapshot, CLI-Vertrag) und Stufe 1 mit gestubbten
-  Werkzeugen; dazu der Import-Smoke-Test der Benchmark-Einstiegspunkte.
-- **ocrmypdf** (`make test-ocrmypdf`) — mit dem gepinnten ocrmypdf 17.8.0: die
-  hOCR-Textlayer-Reihenfolge und das PaddleOCR-Engine-Plugin
-  (`ocrmypdf_paddle/test`, ohne RapidOCR und Modelle). Lokal nimmt `make` dafür
-  `~/.venvs/ocrmypdf`; ohne ocrmypdf werden diese Tests übersprungen.
+- **plugin** (`make plugin`) — `npm ci`, tsc, eslint, tests, build and the
+  core check: `main.js` must be versioned *and* match the build from `src/`.
+  A PR that changes `src/` without rebuilding turns red, as does one that
+  removes `main.js` from version control.
+- **shell** (`make shellcheck`) — shellcheck (pinned version) over all
+  tracked shell scripts (`setup.sh`, `install.sh`, `bin/*.sh`, `bin/pdf2md`,
+  `plugin/install-plugin.sh`).
+- **python** (`make test-py`) — `pytest pdf2md/test bin/test`: Stage 2
+  without a model or vault material (seam deduplication, margin marks, loops,
+  dictionary, golden snapshot, CLI contract) and Stage 1 with stubbed tools;
+  plus the import smoke test of the benchmark entry points.
+- **ocrmypdf** (`make test-ocrmypdf`) — with the pinned ocrmypdf 17.8.0: the
+  hOCR text-layer order and the PaddleOCR engine plugin
+  (`ocrmypdf_paddle/test`, without RapidOCR or models). Locally `make` uses
+  `~/.venvs/ocrmypdf` once pytest is installed there; otherwise these tests
+  are skipped.
 
 ## Stand
 

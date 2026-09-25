@@ -6,7 +6,7 @@ Spaltenhaelfte geschnitten — je ~3.500 Zeichen, also in den Bereich, in dem
 Seite 04 (2.707 Z.) sauber lief. Haelt die Hypothese, ist die bestehende
 column_tools.py-Infrastruktur die Loesung fuer das Dichte-Limit.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/tile_test.py
+  source .venv-mlxocr/bin/activate && python bench/archive/tile_test.py
 """
 import time
 from pathlib import Path

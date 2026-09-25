@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Objektive Auswertung (Phase 4): Normzitat-Treue + Zeichenausbeute.
 
-  python3 .ocr-bench/score.py            # alle Pfade
-  python3 .ocr-bench/score.py --pfad A
+  python3 bench/archive/score.py            # alle Pfade
+  python3 bench/archive/score.py --pfad A
 
 Normzitat-Treue ist das harte Kriterium: ein verlorenes oder verfaelschtes
 '§ 326 V' ist teurer als zwanzig Tippfehler, weil es beim Lernen unauffaellig

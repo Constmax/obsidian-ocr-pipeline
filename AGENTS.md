@@ -85,7 +85,7 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   scripts), `test-py` (`pytest pdf2md/test bin/test` — `bin/test` holds Stage-1
   behavioral tests with stubbed tools — plus the bench entry-point smoke test)
   and `test-ocrmypdf` (pinned ocrmypdf: hOCR text-layer order,
-  `ocrmypdf_paddle/test`; locally via `~/.venvs/ocrmypdf`, skipped without it).
+  `ocrmypdf_paddle/test`; locally via `~/.venvs/ocrmypdf` once pytest is installed there, otherwise skipped).
 
 ## Docs
 

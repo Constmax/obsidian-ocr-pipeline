@@ -8,7 +8,9 @@
 PYTHON ?= python3
 VENV_ROOT ?= $(HOME)/.venvs
 # The pinned OCRmyPDF lives in its own venv (setup.sh); CI passes its python.
-OCRMYPDF_PYTHON ?= $(firstword $(wildcard $(VENV_ROOT)/ocrmypdf/bin/python) $(PYTHON))
+# setup.sh installs no pytest there, so the venv is used only if it has one.
+OCRMYPDF_VENV_PYTHON := $(VENV_ROOT)/ocrmypdf/bin/python
+OCRMYPDF_PYTHON ?= $(firstword $(shell "$(OCRMYPDF_VENV_PYTHON)" -c 'import pytest' 2>/dev/null && echo "$(OCRMYPDF_VENV_PYTHON)") $(PYTHON))
 NPM ?= npm
 
 # Tracked scripts only: an untracked Finder copy ("pdf-lib 2.sh") is not ours to lint.
@@ -21,9 +23,8 @@ NODE_MODULES := plugin/node_modules/.package-lock.json
 
 check: plugin shellcheck test-py test-ocrmypdf
 
-test-fast: $(NODE_MODULES)
+test-fast: test-plugin
 	$(PYTHON) -m pytest $(PY_TESTS) -q -m "not slow"
-	cd plugin && $(NPM) test
 
 plugin: lint-plugin test-plugin build-plugin
 
@@ -41,7 +42,7 @@ build-plugin: $(NODE_MODULES)
 	cd plugin && $(NPM) run build
 	@git ls-files --error-unmatch plugin/main.js >/dev/null 2>&1 || \
 		{ echo "!! plugin/main.js is not versioned: the committed build is what ships (AGENTS.md)."; exit 1; }
-	@git diff --quiet -- plugin/main.js || \
+	@git --no-pager diff --exit-code -- plugin/main.js || \
 		{ echo "!! plugin/main.js differs from src/: commit the rebuilt main.js."; exit 1; }
 	@echo "ok  plugin/main.js is versioned and matches src/"
 

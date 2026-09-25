@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Wo gehen die 33 s/Seite hin? Prefill, Decode oder Python-Overhead?
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/speed_test.py <pdf> <seite>
+  source .venv-mlxocr/bin/activate && python bench/archive/speed_test.py <pdf> <seite>
 
 Misst pro Inferenzaufruf getrennt: Bildtokens (prompt_tokens), Prefill-Zeit,
 Decode-Zeit, Ausgabezeichen. Dazu den Nicht-Inferenz-Anteil (Rendern, Kacheln,
