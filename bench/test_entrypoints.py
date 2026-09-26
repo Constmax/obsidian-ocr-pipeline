@@ -18,6 +18,7 @@ SUPPORTED_ENTRYPOINTS = (
     "regress_randmarke.py",
     "randlabel_debug.py",
     "reading_order.py",
+    "spike_docling.py",
 )
 
 
