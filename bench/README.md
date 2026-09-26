@@ -38,15 +38,24 @@ CI imports every supported entry point without loading the ML model or reading
 vault assets. This catches renamed or deleted internal modules while keeping
 the smoke check cheap.
 
-## Historical investigations
+## Historical investigations (`bench/archive/`)
 
-The remaining Python files are retained as records of specific experiments,
-including the original PaddleOCR/MLX candidate comparison, derailment tuning,
-tiling diagnostics, diagram and grid experiments, the optional layout-model
-evaluation, and the Stage-1 RapidOCR runtime spike (`spike_rapidocr.py`, issue
-#62). They are not supported command-line interfaces and are excluded
-from the CI smoke check. Promote a script to the table above before relying on
-it as part of the regular benchmark workflow.
+`bench/archive/` keeps the scripts of finished experiments as records: the
+original PaddleOCR/MLX candidate comparison (`run_bench.py`, `score.py`,
+`ergebnisse.csv`), derailment tuning and replays (`bench_defekt.py`,
+`nachspiel.py`, `tune_test.py`, `speed_test.py`), tiling diagnostics
+(`kachel_debug.py`, `tile_test.py`), diagram, grid and column-detection
+experiments (`diagramm_test.py`, `gitter_test.py`, `detect_test.py`), the
+parallel-worker spike (`par_worker.py`, formerly in `pdf2md/`) and the Stage-1
+RapidOCR runtime spike (`spike_rapidocr.py`, issue #62). They are not supported
+command-line interfaces and are excluded from the CI smoke check; their paths
+still resolve against `bench/`, so their working folders stay git-ignored.
+Promote a script to the table above before relying on it as part of the
+regular benchmark workflow.
+
+`layoutmodell_test.py` (the optional layout-model evaluation, see
+[LAYOUTMODELL.md](LAYOUTMODELL.md)) stays in `bench/`:
+`pdf2md/test/test_layout_model.py` imports its region-to-column conversion.
 
 Benchmark results and methodology live in [ERGEBNIS.md](ERGEBNIS.md). The
 reproducible six-page source manifest lives in

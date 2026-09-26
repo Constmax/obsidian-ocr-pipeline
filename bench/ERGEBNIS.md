@@ -1590,7 +1590,7 @@ Modelle (von RapidOCR beim ersten Start aus seinem ModelScope-Repo `RapidAI/Rapi
 
 Das Detektionsmodell heißt bei RapidOCR `ch_…`, ist aber das eine mehrsprachige PP-OCRv5-Detektionsmodell. Deutsch erkennt das lateinische Erkennungsmodell; einen eigenen `de`-Schalter gibt es nicht. Cache-Pfad: `Global.model_root_dir` (im Spike ein eigenes `models/`).
 
-Messskript: `bench/spike_rapidocr.py` (ein Prozess je Konfiguration, damit Peak-RSS eindeutig zuordenbar ist).
+Messskript: `bench/archive/spike_rapidocr.py` (ein Prozess je Konfiguration, damit Peak-RSS eindeutig zuordenbar ist).
 
 ### Testseiten
 

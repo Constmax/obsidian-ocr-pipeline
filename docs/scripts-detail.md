@@ -273,7 +273,7 @@ With automated MediaBox Fix, large scans remain RAM-safe:
 | Image | `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.bmp` |
 
 ```bash
-pdf2md raw/ZR/scan.png --out _ocr-vorschau
+pdf2md raw/ZR/scan.png --out _ocr-preview
 ```
 
 An image is normalized into a one-page PDF at the input boundary
@@ -411,7 +411,7 @@ The accompanying `.aff` file is required: `SET` header defines encoding (`de_DE_
 Convert selected pages only. Format as comma-separated list with page ranges (e.g. `1,3-5,8`). Omit or leave empty for all pages.
 
 ```bash
-python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
+python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-preview
 ```
 
 - Page numbers are 1-based matching original PDF. Image input has exactly one
@@ -446,13 +446,13 @@ boxes, and older-schema entries are likewise recalculated.
 
 ```bash
 # Resume automatically, reusing every matching page
-pdf2md raw/ZR/skript.pdf --out _ocr-vorschau
+pdf2md raw/ZR/skript.pdf --out _ocr-preview
 
 # Recalculate every selected page
-pdf2md raw/ZR/skript.pdf --out _ocr-vorschau --neu
+pdf2md raw/ZR/skript.pdf --out _ocr-preview --neu
 
 # Recalculate only pages 12-14; reuse all other matching pages
-pdf2md raw/ZR/skript.pdf --out _ocr-vorschau --neu "12-14"
+pdf2md raw/ZR/skript.pdf --out _ocr-preview --neu "12-14"
 ```
 
 `--refresh-cache` is the English alias of `--neu`. The optional range uses the

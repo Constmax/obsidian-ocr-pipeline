@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Kästen und Diagrammseiten erkennen — ohne Inferenz.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/diagramm_test.py [pdf ...]
-  source .venv-mlxocr/bin/activate && python .ocr-bench/diagramm_test.py --bestand
+  source .venv-mlxocr/bin/activate && python bench/archive/diagramm_test.py [pdf ...]
+  source .venv-mlxocr/bin/activate && python bench/archive/diagramm_test.py --bestand
 
 Der Unterschied, auf den alles ankommt:
 
@@ -17,7 +17,7 @@ from pathlib import Path
 import fitz
 import numpy as np
 
-VAULT = Path(__file__).resolve().parent.parent
+VAULT = Path(__file__).resolve().parents[2]  # archived: bench/archive/
 
 
 # --- Kästen ---------------------------------------------------------------

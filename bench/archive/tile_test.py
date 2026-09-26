@@ -6,14 +6,14 @@ Spaltenhaelfte geschnitten — je ~3.500 Zeichen, also in den Bereich, in dem
 Seite 04 (2.707 Z.) sauber lief. Haelt die Hypothese, ist die bestehende
 column_tools.py-Infrastruktur die Loesung fuer das Dichte-Limit.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/tile_test.py
+  source .venv-mlxocr/bin/activate && python bench/archive/tile_test.py
 """
 import time
 from pathlib import Path
 
 import sys
 
-BENCH = Path(__file__).resolve().parent
+BENCH = Path(__file__).resolve().parents[1]  # archived: bench/archive/
 PAGE = sys.argv[1] if len(sys.argv) > 1 else "02-zweispalter-dicht"
 SRC = BENCH / f"{PAGE}.png"
 PROMPT = "Parse this document page to Markdown."

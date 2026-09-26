@@ -21,7 +21,8 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   the benchmark retains it; tests need the pinned ocrmypdf but no RapidOCR or
   models (`python3 -m pytest ocrmypdf_paddle/test`).
 - `bench/` — benchmark harness; page images are copyrighted scans, NOT in the
-  repo, reproducible via `bench/build_bench.py` from the user's vault.
+  repo, reproducible via `bench/build_bench.py` from the user's vault. Finished
+  experiments live in `bench/archive/` (not supported, not smoke-tested).
 - `contracts/` — the CLI contract with the plugin (progress events, exit
   codes, Stage-1 message lines, input formats, preview format version; see
   `docs/cli-contract.md`). Python and TypeScript tests both read it: change
@@ -75,9 +76,16 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   vault-local `pdf2md/setup.sh` (venvs `.venv-mlxocr` / `.venv-paddleocr` in
   the vault) is deleted — history in git, Gate-1 measurements in
   `bench/ERGEBNIS.md`.
-- CI (`.github/workflows/ci.yml`, on every PR and push to `main`):
-  Job `plugin` (npm ci → check → lint → test → build → `main.js` is versioned *and* identical to `src/`), Job `shell` (shellcheck over all scripts) and Job `python` (`pytest pdf2md/test bin/test`).
-  Locally: plugin with lint → check → test → build; Stage-1 scripts with `shellcheck -x -P bin`; Python with `python3 -m pytest pdf2md/test bin/test` (`bin/test` holds Stage-1 behavioral tests with stubbed tools).
+- **`make check`** runs everything CI runs; **`make test-fast`** runs only
+  the unit tests (`pytest -m "not slow"` + plugin tests, a few seconds). Mark
+  a new test `@pytest.mark.slow` when it runs a CLI or pipeline end to end.
+  CI (`.github/workflows/ci.yml`, every PR and push to `main`) calls the same
+  targets, one per job: `plugin` (npm ci → check → lint → test → build →
+  `main.js` is versioned *and* identical to `src/`), `shellcheck` (tracked
+  scripts), `test-py` (`pytest pdf2md/test bin/test` — `bin/test` holds Stage-1
+  behavioral tests with stubbed tools — plus the bench entry-point smoke test)
+  and `test-ocrmypdf` (pinned ocrmypdf: hOCR text-layer order,
+  `ocrmypdf_paddle/test`; locally via `~/.venvs/ocrmypdf` once pytest is installed there, otherwise skipped).
 
 ## Docs
 

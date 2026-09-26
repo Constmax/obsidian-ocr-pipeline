@@ -11,6 +11,7 @@ from conversion import (INPUT_SUFFIXES, ConversionRequest, UnsupportedInput,
                         analyze_pages, convert_document, ensure_supported_input,
                         open_document, page_image_dpi)
 
+
 REPOSITORY = Path(__file__).resolve().parent.parent.parent
 PDF2MD_PY = REPOSITORY / "pdf2md" / "pdf2md.py"
 
@@ -75,6 +76,7 @@ def test_unsupported_suffixes_are_rejected_by_name(name):
     assert ".pdf" in str(error.value)
 
 
+@pytest.mark.slow
 def test_unsupported_suffix_exits_with_a_message_not_a_traceback(tmp_path):
     source = tmp_path / "scan.webp"
     source.write_bytes(b"not an image")
@@ -114,6 +116,7 @@ def test_a_multi_frame_tiff_without_resolution_is_rejected_not_truncated(tmp_pat
     assert "4 frames" in str(error.value)
 
 
+@pytest.mark.slow
 def test_a_multi_frame_tiff_exits_with_a_message_not_a_traceback(tmp_path):
     source = _write_multi_frame_tiff(tmp_path / "stapel.tif", frames=3, dpi=96)
 
@@ -133,6 +136,7 @@ def test_a_single_frame_tiff_is_unaffected(tmp_path):
         assert document.page_count == 1
 
 
+@pytest.mark.slow
 def test_image_input_lands_on_the_ocr_branch_as_one_page(tmp_path):
     source = _write_page_image(tmp_path / "scan.png")
     request = ConversionRequest(pdf=source, output_dir=tmp_path / "out",
@@ -148,6 +152,7 @@ def test_image_input_lands_on_the_ocr_branch_as_one_page(tmp_path):
     assert pages[0].text_characters == 0
 
 
+@pytest.mark.slow
 def test_the_page_image_keeps_the_source_resolution(tmp_path):
     """A 300 dpi scan must not be resampled down to --dpi (150)."""
     source = _write_page_image(tmp_path / "scan.png", dpi=300)
@@ -183,6 +188,7 @@ def test_an_image_without_resolution_metadata_is_laid_out_on_a_page(tmp_path):
         assert page_image_dpi(document, page) == pytest.approx(300, rel=0.02)
 
 
+@pytest.mark.slow
 def test_a_png_converts_to_markdown_through_the_model(tmp_path):
     source = _write_page_image(tmp_path / "scan.png")
     seen = []
@@ -205,6 +211,7 @@ def test_a_png_converts_to_markdown_through_the_model(tmp_path):
     assert seen and seen[0].suffix == ".png"
 
 
+@pytest.mark.slow
 def test_a_jpg_converts_to_markdown_through_the_model(tmp_path):
     source = _write_page_image(tmp_path / "scan.jpg", format="JPEG", quality=85)
 
@@ -231,6 +238,7 @@ def _two_column_pixmap(dpi=200):
         return page.get_pixmap(dpi=dpi)
 
 
+@pytest.mark.slow
 def test_tiles_of_a_two_column_image_stay_beside_the_temporary_copy(tmp_path):
     """`tile_vertically()` writes beside the page image — never beside the input."""
     source = tmp_path / "scan.jpg"
@@ -269,6 +277,7 @@ def _sideways_two_column_jpeg(path: Path, dpi=None):
     return upright.size
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("dpi", [200, None])
 def test_a_sideways_phone_photo_is_tiled_upright(tmp_path, dpi):
     """fitz lays the page out upright by EXIF; the tilers must see it the same way."""
@@ -306,6 +315,7 @@ def test_a_sideways_phone_photo_is_tiled_upright(tmp_path, dpi):
         assert height > width  # a column, not a sideways strip
 
 
+@pytest.mark.slow
 def test_a_cmyk_jpeg_can_be_tiled(tmp_path):
     """The tilers save PNG crops, and PIL cannot write CMYK as PNG."""
     from PIL import Image

@@ -39,21 +39,25 @@ Rules for everyone who generates **or reads** these files:
 Files move between three flat sibling folders — the folder location **is** the status:
 
 ```
-_ocr-vorschau/              open (awaiting review)
-_ocr-vorschau/.cache/       resumable per-page OCR results (generated, Issue #11)
-_ocr-vorschau/_akzeptiert/    accepted
-_ocr-vorschau/_abgelehnt/     rejected (nothing is ever deleted)
+_ocr-preview/              open (awaiting review)
+_ocr-preview/.cache/       resumable per-page OCR results (generated, Issue #11)
+_ocr-preview/_accepted/    accepted
+_ocr-preview/_rejected/    rejected (nothing is ever deleted)
 ```
+
+These are the plugin's default folder names; all three are settings. A vault
+set up before the rename keeps its `_ocr-vorschau/` folders
+([installation.md](installation.md)).
 
 `review-status.json` in the same folder is merely an **annotation cache**
 (`notiz`, `geprüft-bis`, manual PDF mapping) and can be safely deleted at any time. Details on reconciliation rules: [review-view.md](review-view.md).
 
-`_ocr-vorschau/.cache/` is likewise generated state, not review content: it is
+`_ocr-preview/.cache/` is likewise generated state, not review content: it is
 safe to delete, is ignored by Git, and has no bearing on the three-folder model
 above. See [scripts-detail.md](scripts-detail.md#page-cache-and---neu-stage-2)
 for its lifecycle and the `--neu` flag.
 
-`_ocr-vorschau/assets/` remains where it is: All three folders share the diagram images (`![[…png]]`); they are **not** moved alongside.
+`_ocr-preview/assets/` remains where it is: All three folders share the diagram images (`![[…png]]`); they are **not** moved alongside.
 
 ## Frontmatter Fields
 
@@ -72,13 +76,13 @@ When `seiten-ocr > 0`, the `Quelle:` link to the original serves as safety net: 
 ## Re-generating
 
 ```
-pdf2md "raw/ZR/…/file.pdf" --out _ocr-vorschau
+pdf2md "raw/ZR/…/file.pdf" --out _ocr-preview
 ```
 
 If a tile derails (repetition loop, exploding count, abort), it is re-calculated with finer slicing. Every such occurrence is listed as a `⚠` line in the run log — even when repair was *not* successful. If you only want detection without re-calculation:
 
 ```
-pdf2md "raw/…/file.pdf" --out _ocr-vorschau --neuversuche 0
+pdf2md "raw/…/file.pdf" --out _ocr-preview --neuversuche 0
 ```
 
 Dictionary checking: Enabled by default in reporting mode. Replace clear-cut cases with `--woerterbuch-korrigieren`, disable with `--kein-woerterbuch`. Sources and limits: [scripts-detail.md](scripts-detail.md).
