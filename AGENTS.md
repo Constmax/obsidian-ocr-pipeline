@@ -39,9 +39,13 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 
 ## Pinned toolchain (do not bump casually)
 
-- ocrmypdf pinned `17.8.0` in `setup.sh`: `bin/` scripts use the old CLI flag
-  `--engine apple|tesseract|auto`. ocrmypdf ≥17.10 renamed it to `--ocr-engine`
-  and would break every script. Upgrade path: migrate scripts, then unpin.
+- ocrmypdf pinned `17.8.0` in `setup.sh`: `bin/` selects engines by plugin
+  (`--plugin ocrmypdf_appleocr` / `ocrmypdf_paddle`) and leaves ocrmypdf's own
+  `--ocr-engine` at `auto`, which is how both plugins activate
+  (`ocrmypdf_paddle._selected`). Check that before upgrading. The CLIs'
+  `--engine auto|apple|tesseract|paddle` is resolved once by `resolve_engine`
+  in `pdf-lib.sh` into `RESOLVED_ENGINE`; OCR args and the fallback matrix
+  derive from that value (no per-engine booleans).
 - ocrmypdf-appleocr pinned `0.3.4` (≥0.4.0 self-registers via entry point,
   colliding with the `--plugin` check in `install.sh`).
 

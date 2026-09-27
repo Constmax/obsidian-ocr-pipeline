@@ -14,7 +14,9 @@ if [ $# -lt 2 ]; then
 Usage: $(basename "$0") <folder> <output-name> [options]
 
 Options:
-   --engine auto|apple|tesseract   OCR engine (Default: auto)
+   --engine auto|apple|tesseract|paddle
+                                   OCR engine (Default: auto; paddle only explicitly)
+   --paddle-mode accurate|fast     PaddleOCR mode (Default: accurate; fast needs macOS 13+)
    --dpi N                         Downscale target (Default: $DEFAULT_DPI, 0 = off)
    --jobs N                        Parallel OCR workers (Default: by RAM, 1–4)
    --force-ocr                     Force OCR even if text layer exists
@@ -41,7 +43,7 @@ fi
 
 OUTPUT_FILE="${INPUT_DIR}/${OUTPUT_NAME}.pdf"
 
-# Common options (--engine, --dpi, --jobs, split flags, --no-quality-gate)
+# Common options (--engine, --paddle-mode, --dpi, --jobs, split flags, --no-quality-gate)
 # are parsed and validated by parse_common_option in pdf-lib.sh.
 FORCE_OCR=false
 while [ $# -gt 0 ]; do
@@ -109,7 +111,7 @@ echo "════════════════════════�
 echo "✅ Done!"
 echo "═══════════════════════════════════════════"
 echo "📄 File:     $OUTPUT_FILE"
-echo "🧠 Engine:   $ENGINE_DESC"
+echo "🧠 Engine:   $OCR_RESULT_DESC"
 echo "📊 Pages:    $PIPELINE_PAGES"
 echo "📊 Before:   $ORIGINAL_SIZE → After: $FINAL_SIZE"
 
