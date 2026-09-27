@@ -183,6 +183,35 @@ def test_engine_hocr_parses_and_renders_in_line_order(tmp_path, ocrmypdf, plugin
     assert raw_words(pdftotext, pdf) == expected_words() + ["schief", "gedruckt"]
 
 
+def test_touching_word_boxes_render_as_separate_words(tmp_path, ocrmypdf, plugin, pdftotext):
+    """Recognizers box words up to their neighbours; pdftotext must still split them."""
+    from ocrmypdf.font import MultiFontManager
+    from ocrmypdf.fpdf_renderer import Fpdf2PdfRenderer
+    from ocrmypdf.hocrtransform.hocr_parser import HocrParser
+
+    from ocrmypdf_paddle.hocr import TextLine, Word, render_page
+
+    def line(y, slope):
+        pieces, x = [], 200
+        for token in "Dabei ist der Verein gegründet".split():
+            x1 = x + 22 * len(token)
+            pieces.append(Word(token, ((x, y + slope * x), (x1, y + slope * x1),
+                                       (x1, y + 60 + slope * x1), (x, y + 60 + slope * x)), 0.9))
+            x = x1  # the next word's box starts where this one ends
+        return TextLine("Dabei ist der Verein gegründet",
+                        (pieces[0].polygon[0], pieces[-1].polygon[1], pieces[-1].polygon[2],
+                         pieces[0].polygon[3]), 0.9, tuple(pieces))
+
+    hocr = tmp_path / "page.hocr"
+    hocr.write_text(render_page([line(400, 0), line(600, 0.02)], REF_W, REF_H)[0],
+                    encoding="utf-8")
+    pdf = tmp_path / "page.pdf"
+    fonts = MultiFontManager(Path(ocrmypdf.__file__).parent / "data")
+    Fpdf2PdfRenderer(page=HocrParser(hocr).parse(), dpi=300, multi_font_manager=fonts,
+                     invisible_text=True).render(pdf)
+    assert raw_words(pdftotext, pdf) == "Dabei ist der Verein gegründet".split() * 2
+
+
 # ── Full OCRmyPDF pipeline ─────────────────────────────────────────────────
 
 
@@ -364,8 +393,9 @@ def test_fast_mode_without_vision_stops_before_any_page(monkeypatch, plugin):
     monkeypatch.setattr(plugin.apple, "missing_vision",
                         lambda: ["fast mode needs Apple Vision, which exists only on macOS"])
 
-    with pytest.raises(MissingDependencyError, match="exists only on macOS"):
+    with pytest.raises(MissingDependencyError, match="exists only on macOS") as raised:
         plugin.check_options(options(paddle_mode="fast"))
+    assert "Model files" not in str(raised.value)  # the models are fine
     plugin.check_options(options(paddle_mode="accurate"))  # Vision is not consulted
 
 

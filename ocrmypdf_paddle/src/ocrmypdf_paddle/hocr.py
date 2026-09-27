@@ -18,6 +18,16 @@ from html import escape
 Point = tuple[float, float]
 Box = tuple[int, int, int, int]
 
+#: Recognizers box a word up to its neighbours: Apple Vision's boxes reach
+#: into half the space on either side, and accurate mode's text layer glues
+#: RapidOCR's words the same way ("Dabeiistder Verein", bench/ERGEBNIS.md).
+#: With touching boxes OCRmyPDF's renderer leaves pdftotext no gap to break
+#: at. Each recognizer word box is therefore trimmed at both ends by this
+#: share of the line height, but by at most WORD_TRIM_MAX of its own width.
+#: On Vision's boxes all words of eight truth pages then came out separate.
+WORD_TRIM = 0.25
+WORD_TRIM_MAX = 0.3
+
 
 @dataclass(frozen=True)
 class Word:
@@ -137,7 +147,7 @@ def render_page(
             f'<span class="ocrx_word" id="word_{n}_{i}" title="{_bbox(word_box)}; '
             f'x_wconf {confidence}">{escape(text)}</span>'
             for i, (text, word_box, confidence) in enumerate(
-                _placed_words(line, tokens, box, width, height)
+                _placed_words(line, tokens, box, line_height(polygon), width, height)
             )
         )
         blocks.append(
@@ -156,20 +166,36 @@ def _bbox(box: Box) -> str:
     return f"bbox {box[0]} {box[1]} {box[2]} {box[3]}"
 
 
+def line_height(polygon: Sequence[Point]) -> float:
+    """Height of a line quadrilateral: the mean of its two shorter edges."""
+    edges = sorted(math.dist(a, b) for a, b in zip(polygon, (*polygon[1:], polygon[0])))
+    return (edges[0] + edges[1]) / 2
+
+
+def trim_word_box(box: Box, height: float) -> Box:
+    """A word box shortened at both ends (WORD_TRIM), keeping at least one pixel."""
+    x0, top, x1, bottom = box
+    cut = min(WORD_TRIM * height, WORD_TRIM_MAX * (x1 - x0))
+    left = round(x0 + cut)
+    return (left, top, max(left + 1, round(x1 - cut)), bottom)
+
+
 def _placed_words(
-    line: TextLine, tokens: list[str], box: Box, width: int, height: int
+    line: TextLine, tokens: list[str], box: Box, height: float, width: int, page_height: int
 ) -> list[tuple[str, Box, int]]:
     """The line's words with their boxes and x_wconf.
 
     Uses the recognizer's pieces when they spell the words exactly, merging
-    character pieces per word. Otherwise the words are spread across the line
-    box by character count; the spike (#62) showed that spread words glue
-    together on skewed lines, so this is only the fallback for results
+    character pieces per word and trimming each word box (WORD_TRIM).
+    Otherwise the words are spread across the line box by character count,
+    which leaves a gap between them; the spike (#62) showed that spread words
+    glue together on skewed lines, so this is only the fallback for results
     without usable pieces.
     """
-    grouped = _group_pieces(line.words, tokens, width, height)
+    grouped = _group_pieces(line.words, tokens, width, page_height)
     if grouped is not None:
-        return grouped
+        return [(text, trim_word_box(word_box, height), confidence)
+                for text, word_box, confidence in grouped]
     return _spread_evenly(tokens, box, wconf(line.confidence))
 
 

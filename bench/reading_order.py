@@ -13,7 +13,8 @@ this order:
 All commands need the pinned OCRmyPDF environment (img2pdf, pikepdf).
 `recognize` and the Paddle workflows also need rapidocr, onnxruntime and
 OCRMYPDF_PADDLE_MODEL_DIR (docs/paddle-textlayer.md, step 2), and
-`unsplit-paddle-fast` also pyobjc-framework-Vision on macOS; the Apple and
+`unsplit-paddle-fast` also pyobjc-framework-Vision on macOS 13 or later, so
+`run` starts it only when named; the Apple and
 Tesseract workflows run bin/pdf-auto.sh and need `ocrmypdf` on PATH.
 
 The truth (bench/reading_order_truth.json) names each source page and lists
@@ -86,6 +87,9 @@ SHELL_WORKFLOWS = {
 PADDLE_WORKFLOWS = {"split-paddle": (True, "accurate"), "unsplit-paddle": (False, "accurate"),
                     "unsplit-paddle-fast": (False, "fast")}
 WORKFLOWS = [*SHELL_WORKFLOWS, *PADDLE_WORKFLOWS]
+#: Workflows `run` starts only when named, because they need Apple Vision.
+OPT_IN_WORKFLOWS = ("unsplit-paddle-fast",)
+DEFAULT_WORKFLOWS = [name for name in WORKFLOWS if name not in OPT_IN_WORKFLOWS]
 SPLIT_BASELINES = ("split-apple", "split-tesseract")
 CANDIDATE = "unsplit-paddle"
 #: Line orders computed from the truth lines without OCRmyPDF, for reference.
@@ -474,7 +478,7 @@ def _log(args, name):
 def run(args):
     specs = load_truth(args.truth)
     pages = _pages_dir(args)
-    for name in args.workflows or WORKFLOWS:
+    for name in args.workflows or DEFAULT_WORKFLOWS:
         out = args.run_dir / "runs" / name
         out.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
@@ -648,7 +652,8 @@ def main(argv=None):
     overlay_parser.add_argument("pages", nargs="*")
     run_parser = commands.add_parser("run")
     run_parser.add_argument("workflows", nargs="*", metavar="WORKFLOW",
-                            help=f"default: all of {', '.join(WORKFLOWS)}")
+                            help=f"default: {', '.join(DEFAULT_WORKFLOWS)}; also "
+                                 f"{', '.join(OPT_IN_WORKFLOWS)} (Apple Vision)")
     run_parser.add_argument("--optimize", type=int, default=1,
                             help="ocrmypdf --optimize for the Paddle workflows; use the level "
                                  "pdf-auto.sh reports for the shell workflows")
