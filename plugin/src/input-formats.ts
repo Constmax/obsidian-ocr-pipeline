@@ -4,7 +4,8 @@
 // (Issue #100), so the plugin only widens its file filters — there is no
 // second conversion path here and none in the CLI either.
 //
-// Kept in sync with `INPUT_SUFFIXES` in `pdf2md/conversion.py`. WebP and HEIC
+// Same list as `INPUT_SUFFIXES` in `pdf2md/conversion.py`; both are checked
+// against contracts/cli-contract.json (Issue #55). WebP and HEIC
 // are missing on purpose: fitz does not open them.
 //
 // Stage 1 (`bin/`, the searchable copy) stays PDF-only — its column split and

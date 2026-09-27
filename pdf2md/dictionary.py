@@ -3,7 +3,7 @@
 
 After assembly, the text of each OCR page runs against a dictionary.
 What is not found there is a candidate for a reading error — measured cases
-from bench/RESULT.md: `Besitzverschaiung` (ff→i), `Rechtsbehels` (fs→s),
+from bench/ERGEBNIS.md: `Besitzverschaiung` (ff→i), `Rechtsbehels` (fs→s),
 `Schu1dverhaeltnis` (l→1), `Leistuug` (n→u).
 
 This module REPORTS such words. It corrects only if the caller explicitly

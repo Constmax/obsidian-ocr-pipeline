@@ -183,6 +183,35 @@ def test_engine_hocr_parses_and_renders_in_line_order(tmp_path, ocrmypdf, plugin
     assert raw_words(pdftotext, pdf) == expected_words() + ["schief", "gedruckt"]
 
 
+def test_touching_word_boxes_render_as_separate_words(tmp_path, ocrmypdf, plugin, pdftotext):
+    """Recognizers box words up to their neighbours; pdftotext must still split them."""
+    from ocrmypdf.font import MultiFontManager
+    from ocrmypdf.fpdf_renderer import Fpdf2PdfRenderer
+    from ocrmypdf.hocrtransform.hocr_parser import HocrParser
+
+    from ocrmypdf_paddle.hocr import TextLine, Word, render_page
+
+    def line(y, slope):
+        pieces, x = [], 200
+        for token in "Dabei ist der Verein gegründet".split():
+            x1 = x + 22 * len(token)
+            pieces.append(Word(token, ((x, y + slope * x), (x1, y + slope * x1),
+                                       (x1, y + 60 + slope * x1), (x, y + 60 + slope * x)), 0.9))
+            x = x1  # the next word's box starts where this one ends
+        return TextLine("Dabei ist der Verein gegründet",
+                        (pieces[0].polygon[0], pieces[-1].polygon[1], pieces[-1].polygon[2],
+                         pieces[0].polygon[3]), 0.9, tuple(pieces))
+
+    hocr = tmp_path / "page.hocr"
+    hocr.write_text(render_page([line(400, 0), line(600, 0.02)], REF_W, REF_H)[0],
+                    encoding="utf-8")
+    pdf = tmp_path / "page.pdf"
+    fonts = MultiFontManager(Path(ocrmypdf.__file__).parent / "data")
+    Fpdf2PdfRenderer(page=HocrParser(hocr).parse(), dpi=300, multi_font_manager=fonts,
+                     invisible_text=True).render(pdf)
+    assert raw_words(pdftotext, pdf) == "Dabei ist der Verein gegründet".split() * 2
+
+
 # ── Full OCRmyPDF pipeline ─────────────────────────────────────────────────
 
 
@@ -309,3 +338,70 @@ def test_debug_artifact_records_the_recognized_lines(tmp_path, monkeypatch, plug
     assert record["order"] == COLUMN_ORDER
     assert (tmp_path / "p.txt").read_text(encoding="utf-8").splitlines() == [
         COLUMN_LINES[i][0] for i in COLUMN_ORDER]
+
+
+# ── --paddle-mode ──────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def fast_ready(monkeypatch, plugin, ready):
+    """Like `ready`, plus Apple Vision; each mode has its own fake recognizer."""
+    monkeypatch.setattr(plugin.apple, "missing_vision", lambda: [])
+    fast = FakeRecognizer(plugin)
+    monkeypatch.setattr(plugin, "_fast_recognizer", fast)
+    return fast
+
+
+@pytest.mark.parametrize("mode, used", [("accurate", "accurate"), ("fast", "fast"),
+                                        (None, "accurate")])
+def test_the_mode_selects_the_recognizer(tmp_path, plugin, ready, fast_ready, mode, used):
+    from PIL import Image
+
+    image = tmp_path / "000001_ocr.png"
+    Image.new("L", (1240, 1754), 255).save(image)
+    plugin.PaddleOcrEngine.generate_hocr(image, tmp_path / "p.hocr", tmp_path / "p.txt",
+                                         options(paddle_mode=mode))
+
+    calls = {"accurate": ready.threads, "fast": fast_ready.threads}
+    assert {name for name, threads in calls.items() if threads} == {used}
+    assert (tmp_path / "p.txt").read_text(encoding="utf-8").splitlines() == [
+        COLUMN_LINES[i][0] for i in COLUMN_ORDER]
+
+
+def test_pipeline_switches_modes_through_the_api(tmp_path, ocrmypdf, plugin, ready, fast_ready,
+                                                 pdftotext, tesseract_binary):
+    import pikepdf
+
+    for mode, recognizer, other in (("fast", fast_ready, ready), ("accurate", ready, fast_ready)):
+        recognizer.threads.clear()
+        other.threads.clear()
+        output = tmp_path / f"{mode}.pdf"
+        assert run_ocr(ocrmypdf, blank_pdf(tmp_path / "blank.pdf"), output,
+                       paddle_mode=mode) == 0
+        assert recognizer.threads and not other.threads
+        assert raw_words(pdftotext, output) == expected_column_words()
+        with pikepdf.open(output) as pdf:
+            creator = str(pdf.docinfo.get("/Creator", ""))
+        assert ("fast (Apple Vision" in creator) is (mode == "fast")
+
+
+def test_fast_mode_without_vision_stops_before_any_page(monkeypatch, plugin):
+    from ocrmypdf.exceptions import MissingDependencyError
+
+    monkeypatch.setattr(plugin.runtime, "missing_runtime", lambda: [])
+    monkeypatch.setattr(plugin.runtime, "check_models", lambda directory: [])
+    monkeypatch.setattr(plugin.apple, "missing_vision",
+                        lambda: ["fast mode needs Apple Vision, which exists only on macOS"])
+
+    with pytest.raises(MissingDependencyError, match="exists only on macOS") as raised:
+        plugin.check_options(options(paddle_mode="fast"))
+    assert "Model files" not in str(raised.value)  # the models are fine
+    plugin.check_options(options(paddle_mode="accurate"))  # Vision is not consulted
+
+
+def test_an_unknown_mode_is_rejected(plugin, ready):
+    from ocrmypdf.exceptions import BadArgsError
+
+    with pytest.raises(BadArgsError, match="--paddle-mode must be one of accurate, fast, "
+                                           "not 'quick'"):
+        plugin.check_options(options(paddle_mode="quick"))
