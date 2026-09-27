@@ -309,3 +309,69 @@ def test_debug_artifact_records_the_recognized_lines(tmp_path, monkeypatch, plug
     assert record["order"] == COLUMN_ORDER
     assert (tmp_path / "p.txt").read_text(encoding="utf-8").splitlines() == [
         COLUMN_LINES[i][0] for i in COLUMN_ORDER]
+
+
+# ── --paddle-mode ──────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def fast_ready(monkeypatch, plugin, ready):
+    """Like `ready`, plus Apple Vision; each mode has its own fake recognizer."""
+    monkeypatch.setattr(plugin.apple, "missing_vision", lambda: [])
+    fast = FakeRecognizer(plugin)
+    monkeypatch.setattr(plugin, "_fast_recognizer", fast)
+    return fast
+
+
+@pytest.mark.parametrize("mode, used", [("accurate", "accurate"), ("fast", "fast"),
+                                        (None, "accurate")])
+def test_the_mode_selects_the_recognizer(tmp_path, plugin, ready, fast_ready, mode, used):
+    from PIL import Image
+
+    image = tmp_path / "000001_ocr.png"
+    Image.new("L", (1240, 1754), 255).save(image)
+    plugin.PaddleOcrEngine.generate_hocr(image, tmp_path / "p.hocr", tmp_path / "p.txt",
+                                         options(paddle_mode=mode))
+
+    calls = {"accurate": ready.threads, "fast": fast_ready.threads}
+    assert {name for name, threads in calls.items() if threads} == {used}
+    assert (tmp_path / "p.txt").read_text(encoding="utf-8").splitlines() == [
+        COLUMN_LINES[i][0] for i in COLUMN_ORDER]
+
+
+def test_pipeline_switches_modes_through_the_api(tmp_path, ocrmypdf, plugin, ready, fast_ready,
+                                                 pdftotext, tesseract_binary):
+    import pikepdf
+
+    for mode, recognizer, other in (("fast", fast_ready, ready), ("accurate", ready, fast_ready)):
+        recognizer.threads.clear()
+        other.threads.clear()
+        output = tmp_path / f"{mode}.pdf"
+        assert run_ocr(ocrmypdf, blank_pdf(tmp_path / "blank.pdf"), output,
+                       paddle_mode=mode) == 0
+        assert recognizer.threads and not other.threads
+        assert raw_words(pdftotext, output) == expected_column_words()
+        with pikepdf.open(output) as pdf:
+            creator = str(pdf.docinfo.get("/Creator", ""))
+        assert ("fast (Apple Vision" in creator) is (mode == "fast")
+
+
+def test_fast_mode_without_vision_stops_before_any_page(monkeypatch, plugin):
+    from ocrmypdf.exceptions import MissingDependencyError
+
+    monkeypatch.setattr(plugin.runtime, "missing_runtime", lambda: [])
+    monkeypatch.setattr(plugin.runtime, "check_models", lambda directory: [])
+    monkeypatch.setattr(plugin.apple, "missing_vision",
+                        lambda: ["fast mode needs Apple Vision, which exists only on macOS"])
+
+    with pytest.raises(MissingDependencyError, match="exists only on macOS"):
+        plugin.check_options(options(paddle_mode="fast"))
+    plugin.check_options(options(paddle_mode="accurate"))  # Vision is not consulted
+
+
+def test_an_unknown_mode_is_rejected(plugin, ready):
+    from ocrmypdf.exceptions import BadArgsError
+
+    with pytest.raises(BadArgsError, match="--paddle-mode must be one of accurate, fast, "
+                                           "not 'quick'"):
+        plugin.check_options(options(paddle_mode="quick"))

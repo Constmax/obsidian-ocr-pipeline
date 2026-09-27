@@ -6,6 +6,7 @@ not? This measures the same Vision models on this Mac, on the existing truth
 sets, with the existing scoring:
 
   python bench/apple_vision.py words     # 40 vector pages of bench_ocr.py
+  python bench/apple_vision.py textlayer --python <OCRmyPDF Python with the plugin>
   python bench/apple_vision.py order --truth bench/reading_order_truth.json \\
       --run-dir <reading_order run dir with pages/ and truth-lines/>
 
@@ -22,6 +23,11 @@ Engines, each on the same 300-dpi page image, one page at a time:
 text-layer truth wahr/bench-seiten.md and herkunft.json) and scores word
 accuracy, word order and citation fidelity as bench_ocr.py does. Its Stage-2
 output ocr/bench-seiten.md is listed for reference, without timing.
+
+`textlayer` runs the same 40 pages through OCRmyPDF with the PaddleOCR
+plugin, once per --paddle-mode (accurate, fast), with --force-ocr, and scores
+each page's `pdftotext -raw` text like `words`: the text layer as the PDF
+carries it, including hOCR rendering. Seconds are the whole run per mode.
 
 `order` reads a reading_order.py run directory and scores reading order as
 reading_order.py does. The truth lines are RapidOCR's own lines, so rapidocr
@@ -206,6 +212,44 @@ def words(args):
                                     encoding="utf-8")
 
 
+def textlayer(args):
+    """Word accuracy and citation fidelity of the plugin's PDF text layer, per mode."""
+    from bench_ocr import seiten_trennen, vergleiche
+
+    out = args.out or RUN_DIR / "textlayer"
+    out.mkdir(parents=True, exist_ok=True)
+    origin = json.loads((BENCH_RUN / "herkunft.json").read_text(encoding="utf-8"))
+    truth = seiten_trennen(BENCH_RUN / "wahr" / "bench-seiten.md")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(PADDLE_SRC), env.get("PYTHONPATH")]))
+    print("| Modus | Seiten | Wortgenauigkeit | Reihenfolge (Median) | Zitattreue | "
+          "Sek. gesamt | Sek./Seite |")
+    print("|---|---:|---:|---:|---:|---:|---:|")
+    for mode in args.modes:
+        pdf = out / f"{mode}.pdf"
+        started = time.monotonic()
+        subprocess.run([args.python, "-m", "ocrmypdf", "--plugin", "ocrmypdf_paddle",
+                        "--paddle-mode", mode, "-l", "deu", "--force-ocr", "--optimize", "0",
+                        "--output-type", "pdf", str(BENCH_RUN / "bench-seiten.pdf"), str(pdf)],
+                       env=env, check=True)
+        seconds = time.monotonic() - started
+        rows = []
+        for entry in origin:
+            n = entry["seite"]
+            text = subprocess.run(["pdftotext", "-raw", "-f", str(n), "-l", str(n), str(pdf),
+                                   "-"], capture_output=True, text=True, check=True).stdout
+            row = vergleiche(truth[n], text) if n in truth else None
+            if row:
+                rows.append(row)
+        total = sum(r["woerter"] for r in rows)
+        hit = sum(r["wortgenauigkeit"] * r["woerter"] for r in rows)
+        citations = sum(r["zitate"] for r in rows)
+        kept = sum((r["zitattreue"] or 0) * r["zitate"] for r in rows)
+        order = statistics.median(r["reihenfolge"] for r in rows)
+        print(f"| `{mode}` | {len(rows)} | {hit / total:.1%} | {order:.1%} | "
+              f"{kept / citations:.1%} | {seconds:.0f} | {seconds / len(origin):.2f} |")
+
+
 def order(args):
     """Reading order on a reading_order.py truth set."""
     import reading_order as ro
@@ -271,11 +315,19 @@ def main(argv=None):
                                            help="reading_order.py run with pages/, truth-lines/")
     commands.choices["order"].add_argument("--python", default=sys.executable,
                                            help="Python for reading_order page checks")
+    layer = commands.add_parser("textlayer")
+    layer.add_argument("--out", type=Path, help=f"default: below {RUN_DIR}")
+    layer.add_argument("--modes", nargs="+", choices=("accurate", "fast"),
+                       default=["accurate", "fast"])
+    layer.add_argument("--python", default=sys.executable,
+                       help="Python with ocrmypdf 17.8.0, rapidocr, onnxruntime and, for fast, "
+                            "pyobjc-framework-Vision (default: this one)")
     internal = commands.add_parser("_rapidocr")
     internal.add_argument("out", type=Path)
     internal.add_argument("images", type=Path, nargs="+")
     args = parser.parse_args(argv)
-    {"words": words, "order": order, "_rapidocr": _rapidocr}[args.command](args)
+    {"words": words, "textlayer": textlayer, "order": order,
+     "_rapidocr": _rapidocr}[args.command](args)
 
 
 if __name__ == "__main__":
