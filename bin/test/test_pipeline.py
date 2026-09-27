@@ -45,7 +45,7 @@ printf 'ocr(%s)' "$(cat "$in")" > "$out"
 
 # qpdf --empty --pages a b -- out, or qpdf --show-npages f
 QPDF = '''
-if [ "$1" = "--show-npages" ]; then echo 1; exit 0; fi
+if [ "$1" = "--show-npages" ]; then echo 1; exit "${FAKE_NPAGES_RC:-0}"; fi
 echo "qpdf $*" >> "$FAKE_LOG"
 shift 2
 parts=()
@@ -177,6 +177,17 @@ def test_single_output_ocr_flags(box, script, flags):
     box.run(script, "out")
 
     assert [_ocr_flags(c) for c in box.calls("ocrmypdf")] == [flags]
+
+
+@pytest.mark.parametrize("rc,shown", [("0", "1"), ("3", "1"), ("2", "?")])
+def test_combine_page_count_survives_qpdf_warnings(box, rc, shown):
+    """qpdf exits 3 when it printed the count with warnings."""
+    _write(box.work, {"a.pdf": "a"})
+
+    result = box.run("pdf-combine.sh", "out", npages_rc=rc)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"Pages:    {shown}\n" in result.stdout, result.stdout
 
 
 def test_combine_force_ocr(box):
