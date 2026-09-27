@@ -345,9 +345,11 @@ the result explicitly says either “keep split mode” or “unsplit is support
   one line height and 1.5 times the usual leading, in the top 22 % or bottom
   12 % of the page. A gutter lies between 30 % and 70 % of the text width,
   almost no narrow line crosses it, and lines stand side by side on both
-  sides. Lines in the top 22 % and bottom 12 % do not count as crossing, so a
+  sides. At most 5 % of all narrow lines may cross it, but crossings are
+  counted only on lines between the top 22 % and the bottom 12 %, so a
   running header or footer that no gap cuts off does not hide the gutter
-  (#114). A line crossing the gutter with no column line beside it separates
+  (#114). A page with fewer than 8 narrow lines there counts crossings on
+  all narrow lines. A line crossing the gutter with no column line beside it separates
   sections; each section is read left column, then right. Within a column,
   lines are read in rows, and short lines standing in the margin follow their
   column. The debug JSON lists the chosen order.
@@ -437,7 +439,8 @@ supported command. Numbers, pinned versions and commands are in
   the gutter often enough to exceed the 5 % tolerance, and the page was
   read row by row.
 - **Fix:** `_gutter()` counts crossings only on narrow lines between the
-  top 22 % and the bottom 12 % of the page.
+  top 22 % and the bottom 12 % of the page (all narrow lines when fewer than
+  8 lie there). The tolerance stays 5 % of all narrow lines.
 - **Validation set:** `bench/reading_order_holdout3.json`, 13 two-column
   pages from documents outside the earlier sets, chosen after the fix was
   committed. One of them (q11) has the m06 failure and is read correctly.

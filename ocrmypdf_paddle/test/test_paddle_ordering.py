@@ -70,6 +70,21 @@ def test_full_width_heading_between_column_regions():
     )
 
 
+def test_four_full_width_headings_between_column_regions():
+    # Four centred headings cross the gutter, just under 5 % of the 84 narrow
+    # lines. Leaving the header and footer shares out of the crossing count
+    # must not shrink that tolerance.
+    lines, expected = [], []
+    for k in range(5):
+        top = 300 + k * 600
+        lines += column(f"L{k}_", LEFT, top, 8) + column(f"R{k}_", RIGHT, top, 8)
+        expected += names(f"L{k}_", 8) + names(f"R{k}_", 8)
+        if k < 4:
+            lines.append(box(f"Titel{k}", 900, top + 500, 1580, height=50))
+            expected.append(f"Titel{k}")
+    assert texts(order_lines(as_recognized(lines), W, H)) == expected
+
+
 def test_single_column_paragraph_above_two_columns():
     intro = column("S", (200, 2280), 400, 6)
     columns = column("L", LEFT, 780, 15) + column("R", RIGHT, 780, 15)

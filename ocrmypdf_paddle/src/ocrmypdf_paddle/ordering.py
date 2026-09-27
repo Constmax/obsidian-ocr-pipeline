@@ -15,8 +15,9 @@ geometry alone:
    header and footer shares of the page do not count as crossing. On such a
    page the columns begin at the first column pair, so a running header
    closer above them than a gap still belongs to the header when it spans
-   the gutter or stands apart by more than the line pitch, and footer rows paired across the gutter (footnotes, even
-   half a line offset) go back to their columns.
+   the gutter or stands apart by more than the line pitch, and footer rows
+   paired across the gutter (footnotes, even half a line offset) go back to
+   their columns.
 4. A line crossing the gutter with no column line beside it is full width
    (a heading, a single-column paragraph, a footer) and separates the page
    into sections. A crossing line beside column lines (a note written into
@@ -335,12 +336,13 @@ def _beside(a: _Box, b: _Box) -> bool:
 def _gutter(boxes: list[_Box], height: int, h: float) -> float | None:
     """x position of a two-column gutter, or None for a single column.
 
-    Almost no narrow line may cross the gutter: at most 5 % of those between
-    the top HEADER_SHARE and the bottom FOOTER_SHARE of the page. A running
-    header or footer that _bands() could not cut off (touching boxes of
-    large type, m06) crosses it too, but stands in those shares and does not
-    count, however few lines the page has. A page with too few narrow lines
-    between those shares counts all of them.
+    Almost no narrow line may cross the gutter: at most 5 % of all narrow
+    lines, counting crossings only between the top HEADER_SHARE and the
+    bottom FOOTER_SHARE of the page. A running header or footer that
+    _bands() could not cut off (touching boxes of large type, m06) crosses
+    it too, but stands in those shares and does not count, however few lines
+    the page has. A page with too few narrow lines between those shares
+    counts crossings on all of them.
     """
     if len(boxes) < 2 * MIN_COLUMN_LINES:
         return None
@@ -366,7 +368,7 @@ def _gutter(boxes: list[_Box], height: int, h: float) -> float | None:
         coverage.append(running)
     lo, hi = int(0.3 * GUTTER_BINS), int(0.7 * GUTTER_BINS)
     fewest = min(coverage[lo:hi])
-    if fewest > max(1, 0.05 * len(inner)):
+    if fewest > max(1, 0.05 * len(narrow)):
         return None
     widest, start = (0, 0), None
     for i in range(lo, hi + 1):
