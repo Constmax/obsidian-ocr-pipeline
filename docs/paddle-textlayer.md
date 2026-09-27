@@ -345,7 +345,11 @@ the result explicitly says either “keep split mode” or “unsplit is support
   one line height and 1.5 times the usual leading, in the top 22 % or bottom
   12 % of the page. A gutter lies between 30 % and 70 % of the text width,
   almost no narrow line crosses it, and lines stand side by side on both
-  sides. A line crossing the gutter with no column line beside it separates
+  sides. At most 5 % of all narrow lines may cross it, but crossings are
+  counted only on lines between the top 22 % and the bottom 12 %, so a
+  running header or footer that no gap cuts off does not hide the gutter
+  (#114). A page with fewer than 8 narrow lines there counts crossings on
+  all narrow lines. A line crossing the gutter with no column line beside it separates
   sections; each section is read left column, then right. Within a column,
   lines are read in rows, and short lines standing in the margin follow their
   column. The debug JSON lists the chosen order.
@@ -427,6 +431,25 @@ supported command. Numbers, pinned versions and commands are in
 - **Next attempt:** search the leading footer rows for a pair as a whole
   rather than row by row. That change was found on a validation page, so it
   needs further unseen pages before the gate can pass.
+
+**Follow-up** in #114 (`bench/ERGEBNIS.md`, Nachtrag 24):
+
+- **Cause:** on pages whose line boxes touch (large type, m06) `_bands()`
+  cuts off neither the running header nor the footer. Their lines crossed
+  the gutter often enough to exceed the 5 % tolerance, and the page was
+  read row by row.
+- **Fix:** `_gutter()` counts crossings only on narrow lines between the
+  top 22 % and the bottom 12 % of the page (all narrow lines when fewer than
+  8 lie there). The tolerance stays 5 % of all narrow lines.
+- **Validation set:** `bench/reading_order_holdout3.json`, 13 two-column
+  pages from documents outside the earlier sets, chosen after the fix was
+  committed. One of them (q11) has the m06 failure and is read correctly.
+- **Result on the new pages:** **keep split mode.** The median is 100.0 %
+  against 94.9 % for the best split baseline, and no full-width line is
+  missing, but two rubric lines are read as the first line of the right
+  column (#124) and one page with one-column footnotes and no footer is
+  interleaved (#125). A full-width heading between column regions was not
+  found in the corpus (#120).
 
 ### 3a. Fast mode: Apple Vision lines, citations re-read
 
