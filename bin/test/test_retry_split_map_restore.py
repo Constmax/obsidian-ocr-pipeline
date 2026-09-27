@@ -59,11 +59,10 @@ exit 1
 set -euo pipefail
 SCRIPT_DIR="{BIN}"
 source "{BIN}/pdf-lib.sh"
-USE_APPLE=false; SPLIT_COLUMNS=false; ENGINE_DESC="Tesseract"
+RESOLVED_ENGINE=tesseract; APPLE_AVAILABLE=true; SPLIT_COLUMNS=false; ENGINE_DESC="Tesseract"
 PYTHON_BIN="{python_bin}"
 WORK_DIR="$PWD"
 ocr_args=(-l deu --deskew)
-resolve_engine() {{ USE_APPLE=true; ENGINE_DESC="Apple Vision"; }}
 # Only the engine switch rebuilds its args with --force-ocr.
 run_ocr() {{
     local args="$3[*]"
@@ -72,7 +71,7 @@ run_ocr() {{
         *) echo bad > "$2" ;;
     esac
 }}
-rc=0; ocr_with_retry in.pdf out.pdf apple ocr_args || rc=$?
+rc=0; ocr_with_retry in.pdf out.pdf ocr_args || rc=$?
 echo "rc=$rc map=[$SPLIT_MAP]"
 '''
     result = subprocess.run(

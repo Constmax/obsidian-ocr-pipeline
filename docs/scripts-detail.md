@@ -6,7 +6,8 @@ All three scripts share these flags:
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--engine auto\|apple\|tesseract` | `auto` | OCR engine selection |
+| `--engine auto\|apple\|tesseract\|paddle` | `auto` | OCR engine selection |
+| `--paddle-mode accurate\|fast` | `accurate` | PaddleOCR mode; only with `--engine paddle` |
 | `--dpi N` | `300` | Pre-OCR downscaling (0 = disabled) |
 | `--jobs N` | by RAM (1–4) | Parallel OCR workers |
 | `--split-columns` | off | Automatically detect two-column pages, split, then re-merge back into original page layout |
@@ -26,6 +27,9 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 - `auto`: Uses Apple Vision if `ocrmypdf-appleocr` is installed, otherwise Tesseract
 - `apple`: Forces Apple Vision (fails with error if plugin is missing)
 - `tesseract`: Forces Tesseract (automatically applies `--tesseract-pagesegmode 1` for column detection and `--clean` when `unpaper` is available)
+- `paddle`: PaddleOCR PP-OCRv5 through the `ocrmypdf_paddle` plugin (fails with an error if the plugin does not load). Never chosen by `auto` until the Stage-1 benchmark (#71) retains it. Runs one OCR job whatever `--jobs` says (`--jobs` still applies to a fallback engine). `--paddle-mode fast` lets Apple Vision read the lines and PP-OCRv5 re-read only citation lines (macOS 13+, see [paddle-textlayer.md](paddle-textlayer.md)). The plugin is not installed by `setup.sh`; run the CLIs with its venv first on `PATH`, e.g. `PATH="<paddle-venv>/bin:$PATH" pdf-combine … --engine paddle` ([installation.md](installation.md)).
+
+`resolve_engine` in `pdf-lib.sh` turns the requested engine into one resolved value (`apple`, `tesseract` or `paddle`); the OCR arguments and the fallbacks below are derived from that value alone.
 
 ### DPI Tuning
 
@@ -73,7 +77,15 @@ After every OCR run, the pipeline automatically validates:
 
 Threshold 0.40 instead of 0.30: Tolerates unavoidable OCR artifacts in older Hemmer scans (e.g., "eaglen" for "hemmer") while reliably catching structural failures.
 
-On failure: Auto-retry with column split (when using Tesseract and `pikepdf` is available, including re-merge to original format), followed by retry with alternative engine (apple ↔ tesseract).
+On failure the gate walks a fixed fallback matrix:
+
+| Engine | Then | Then |
+|---|---|---|
+| Apple Vision | Tesseract | Tesseract with column split |
+| Tesseract | Tesseract with column split | Apple Vision (if installed) |
+| PaddleOCR | Apple Vision, or Tesseract without it | — |
+
+The column-split retry needs `pikepdf`, re-merges to the original format and is skipped when `--split-columns` already splits. PaddleOCR never adds an implicit split; an explicit `--split-columns` stays in force. An engine switch re-runs OCR with `--force-ocr`. Every switch is printed on stderr with its reason (`🔄 Fallback: PaddleOCR accurate → Apple Vision (quality gate failed)`), and the summary names the engine that produced the file (`pdf-auto`: per file, plus a fallback count). If every attempt fails, no file is written.
 
 ### Multi-Part File Detection
 

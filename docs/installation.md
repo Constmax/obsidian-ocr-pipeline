@@ -77,6 +77,14 @@ Apple Vision engine needs macOS. Keep the Paddle engine out of
 `~/.venvs/ocrmypdf`, so that a failed Paddle install cannot break the
 Stage-1 engines in daily use.
 
+The Stage-1 CLIs call the `ocrmypdf` first on `PATH`. To run them with
+`--engine paddle` (explicit only, never picked by `auto`), put the Paddle
+venv first: `PATH="<paddle-venv>/bin:$PATH" pdf-combine <folder> <name>
+--engine paddle`. A fallback to Apple Vision then needs `ocrmypdf-appleocr`
+in that venv too; without it the fallback is Tesseract. Without installing the
+package, `PYTHONPATH=<repo>/ocrmypdf_paddle/src` loads it from the checkout,
+as `bench/reading_order.py` does.
+
 For development, `make check` also needs Node ≥ 22 and `shellcheck`
 (`brew install node shellcheck`); neither is part of the `Brewfile`, because
 using the pipeline needs neither.

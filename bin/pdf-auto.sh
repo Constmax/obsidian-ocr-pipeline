@@ -15,7 +15,9 @@ Usage: $(basename "$0") <folder> [options]
 
 Options:
    --output-dir DIR                Output folder (Default: <input>/_processed)
-   --engine auto|apple|tesseract   OCR engine (Default: auto)
+   --engine auto|apple|tesseract|paddle
+                                   OCR engine (Default: auto; paddle only explicitly)
+   --paddle-mode accurate|fast     PaddleOCR mode (Default: accurate; fast needs macOS 13+)
    --dpi N                         Downscale target (Default: $DEFAULT_DPI, 0 = off)
    --jobs N                        Parallel OCR workers (Default: by RAM, 1–4)
    --cleanup                       Move originals to _archive/ after success
@@ -33,7 +35,7 @@ INPUT_DIR=$(cd "$1" 2>/dev/null && pwd) || {
 }
 shift
 
-# Common options (--engine, --dpi, --jobs, split flags, --no-quality-gate)
+# Common options (--engine, --paddle-mode, --dpi, --jobs, split flags, --no-quality-gate)
 # are parsed and validated by parse_common_option in pdf-lib.sh.
 OUTPUT_DIR="$INPUT_DIR/_processed"
 CLEANUP=false
@@ -112,6 +114,9 @@ process_group() {
 
     local size; size=$(du -h "$output_file" | cut -f1)
     echo "   ✅ Done: $output_file ($size)"
+    if [ "$OCR_RESULT_DESC" != "$ENGINE_DESC" ]; then
+        echo "   🔄 Engine: $OCR_RESULT_DESC"
+    fi
 
     if [ "$CLEANUP" = true ]; then
         for f in "$@"; do

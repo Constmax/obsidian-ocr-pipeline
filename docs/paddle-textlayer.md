@@ -472,8 +472,8 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
   only when a page needs it.
 - **Benchmark:** `reading_order.py run` starts `unsplit-paddle-fast` only
   when it is named, so the default run works without Apple Vision.
-- **Not wired yet:** `bin/` and the Obsidian setting do not offer PaddleOCR
-  at all until #70–#73; both modes arrive there together.
+- **Wiring:** `bin/` offers `--engine paddle --paddle-mode accurate|fast`
+  since #70 (explicit only; see step 4). The Obsidian setting follows in #73.
 
 ### 4. Replace binary engine flags with one resolved state
 
