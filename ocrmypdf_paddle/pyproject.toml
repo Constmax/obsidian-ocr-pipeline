@@ -15,6 +15,11 @@ dependencies = [
     "onnxruntime==1.26.0",
 ]
 
+[project.optional-dependencies]
+# --paddle-mode fast: Apple Vision reads the page (macOS only). The version
+# is the one ocrmypdf-appleocr 0.3.4 runs with in the Stage-1 venv.
+fast = ["pyobjc-framework-Vision==12.2.1; sys_platform == 'darwin'"]
+
 [tool.setuptools.dynamic]
 version = { attr = "ocrmypdf_paddle.__version__" }
 

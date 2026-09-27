@@ -8,6 +8,10 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 - `bin/` — Stage 1: searchable PDFs via ocrmypdf. Shared lib `pdf-lib.sh` +
   four CLIs (`pdf-auto`, `pdf-combine`, `pdf-workflow`, `reprocess-raw`) +
   Python helper `column_tools.py` (column split/merge, needs pikepdf).
+  The merge → MediaBox fix → downscale → split → OCR/quality gate →
+  re-merge → publish sequence exists once, `run_pdf_pipeline` in
+  `pdf-lib.sh`; the first three CLIs only find and group inputs. Change the
+  sequence there, and pin it in `bin/test/test_pipeline.py`.
 - `pdf2md/` — Stage 2: `pdf2md.py` (MLX/PaddleOCR-VL) PDF or page image →
   Markdown (images are normalized to a one-page PDF in `open_document()`).
   Apple-Silicon-only, ~15–60 s/page; needs `pymupdf`. `dictionary.py` (formerly `woerterbuch.py`) runs a
@@ -17,11 +21,18 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 - `ocrmypdf_paddle/` — OCRmyPDF engine plugin running PaddleOCR PP-OCRv5
   through RapidOCR (plan `docs/paddle-textlayer.md`). Reading order comes
   from line geometry in `ordering.py`, measured against the hand-checked
-  truth set of `bench/reading_order.py`. Not installed by `setup.sh` until
-  the benchmark retains it; tests need the pinned ocrmypdf but no RapidOCR or
-  models (`python3 -m pytest ocrmypdf_paddle/test`).
+  truth set of `bench/reading_order.py`. `--paddle-mode fast` (macOS) takes
+  Apple Vision's lines and re-reads only citation lines with PP-OCRv5
+  (`apple.py`; extra `[fast]` for pyobjc-framework-Vision). Not installed by
+  `setup.sh` until the benchmark retains it; tests need the pinned ocrmypdf
+  but no RapidOCR, Vision or models (`python3 -m pytest ocrmypdf_paddle/test`).
 - `bench/` — benchmark harness; page images are copyrighted scans, NOT in the
-  repo, reproducible via `bench/build_bench.py` from the user's vault.
+  repo, reproducible via `bench/build_bench.py` from the user's vault. Finished
+  experiments live in `bench/archive/` (not supported, not smoke-tested).
+- `contracts/` — the CLI contract with the plugin (progress events, exit
+  codes, Stage-1 message lines, input formats, preview format version; see
+  `docs/cli-contract.md`). Python and TypeScript tests both read it: change
+  the contract and both sides in one PR.
 - `skill/SKILL.md` — Claude skill for vault usage; contains hard-earned
   Stage-1 quirks (`pdftotext -raw` for split-merged pages, leptonica rewrites
   `/tmp` paths on macOS). Read it before touching `bin/`.
@@ -71,12 +82,20 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   vault-local `pdf2md/setup.sh` (venvs `.venv-mlxocr` / `.venv-paddleocr` in
   the vault) is deleted — history in git, Gate-1 measurements in
   `bench/ERGEBNIS.md`.
-- CI (`.github/workflows/ci.yml`, on every PR and push to `main`):
-  Job `plugin` (npm ci → check → lint → test → build → `main.js` is versioned *and* identical to `src/`), Job `shell` (shellcheck over all scripts) and Job `python` (`pytest pdf2md/test bin/test`).
-  Locally: plugin with lint → check → test → build; Stage-1 scripts with `shellcheck -x -P bin`; Python with `python3 -m pytest pdf2md/test bin/test` (`bin/test` holds Stage-1 behavioral tests with stubbed tools).
+- **`make check`** runs everything CI runs; **`make test-fast`** runs only
+  the unit tests (`pytest -m "not slow"` + plugin tests, a few seconds). Mark
+  a new test `@pytest.mark.slow` when it runs a CLI or pipeline end to end.
+  CI (`.github/workflows/ci.yml`, every PR and push to `main`) calls the same
+  targets, one per job: `plugin` (npm ci → check → lint → test → build →
+  `main.js` is versioned *and* identical to `src/`), `shellcheck` (tracked
+  scripts), `test-py` (`pytest pdf2md/test bin/test` — `bin/test` holds Stage-1
+  behavioral tests with stubbed tools — plus the bench entry-point smoke test)
+  and `test-ocrmypdf` (pinned ocrmypdf: hOCR text-layer order,
+  `ocrmypdf_paddle/test`; locally via `~/.venvs/ocrmypdf` once pytest is installed there, otherwise skipped).
 
 ## Docs
 
 `docs/` is English: `scripts-detail.md` (flag reference), `installation.md`,
-`review-view.md`, `plugin-roadmap.md` (architecture decision: the plugin
+`review-view.md`, `cli-contract.md` (what the plugin reads from the CLIs),
+`preview-format.md`, `plugin-roadmap.md` (architecture decision: the plugin
 spawns the installed CLIs as a thin client — pipeline code is not bundled).

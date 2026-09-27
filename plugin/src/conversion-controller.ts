@@ -28,6 +28,12 @@ import {
  * (Issue #105); a quarter hour of silence leaves room for derailment retries.
  */
 export const CONVERSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+/** pdf2md exit codes the plugin tells apart; pinned in contracts/cli-contract.json. */
+export const EXIT_CODES = {
+	checkFailed: 4,
+	cancelledPartial: 6,
+	cancelledEmpty: 7,
+} as const;
 export const INDEX_WAIT_STEPS = 10;
 export const INDEX_WAIT_MS = 200;
 
@@ -162,10 +168,10 @@ export function classifyFailure(
 
 	let kind: FailureKind;
 	let codeText: string;
-	if (result.code === 6) {
+	if (result.code === EXIT_CODES.cancelledPartial) {
 		kind = "partial-output";
 		codeText = "cancelled — partial file created (incomplete)";
-	} else if (result.code === 7) {
+	} else if (result.code === EXIT_CODES.cancelledEmpty) {
 		kind = "cancelled-before-output";
 		codeText = "cancelled — before first page (no partial file)";
 	} else if (result.signal === "SIGKILL") {
@@ -180,10 +186,10 @@ export function classifyFailure(
 	} else if (result.code === null) {
 		kind = "start-error";
 		codeText = "Start error";
-	} else if (result.code === 4) {
+	} else if (result.code === EXIT_CODES.checkFailed) {
 		// pdf2md's EXIT_CHECK: a dependency check failed.
 		kind = "missing-dependency";
-		codeText = "Code 4";
+		codeText = `Code ${EXIT_CODES.checkFailed}`;
 	} else {
 		kind = "exit-code";
 		codeText = `Code ${result.code}`;

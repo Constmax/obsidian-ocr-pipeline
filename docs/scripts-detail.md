@@ -169,6 +169,15 @@ Underlying verification tool, executable independently: extracts every page via 
 
 ## Pre-OCR Pipeline (Automated)
 
+`pdf-auto` (per group), `pdf-combine` and `pdf-workflow` run one shared
+sequence, `run_pdf_pipeline` in `pdf-lib.sh`: merge the inputs, the three
+stages below, OCR with the quality gate, re-merge the halves, write the
+result. The scripts differ only in how they find their inputs and in two OCR
+flags (`pdf-combine` passes `--force-ocr` on request and never unpaper's
+`--clean`). The output file is written last and only when every step
+succeeded; on any failure the script prints a `❌` line and leaves no file at
+the output path. Intermediate files never land next to the inputs.
+
 Prior to OCR, every PDF passes through three automated stages without requiring flags:
 
 ```
@@ -273,7 +282,7 @@ With automated MediaBox Fix, large scans remain RAM-safe:
 | Image | `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.bmp` |
 
 ```bash
-pdf2md raw/ZR/scan.png --out _ocr-vorschau
+pdf2md raw/ZR/scan.png --out _ocr-preview
 ```
 
 An image is normalized into a one-page PDF at the input boundary
@@ -411,7 +420,7 @@ The accompanying `.aff` file is required: `SET` header defines encoding (`de_DE_
 Convert selected pages only. Format as comma-separated list with page ranges (e.g. `1,3-5,8`). Omit or leave empty for all pages.
 
 ```bash
-python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
+python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-preview
 ```
 
 - Page numbers are 1-based matching original PDF. Image input has exactly one
@@ -419,7 +428,10 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
 - `--diagramm-seiten` uses the same grammar. Whitespace around entries is ignored.
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
 - `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
-- Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`). Frontmatter `seiten` records count of selected pages.
+- Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`).
+- **An existing preview is merged, not replaced (Issue #106).** The selected pages replace their blocks, new ones are inserted in page order, and every other block stays verbatim, manual edits included. Without an existing preview only the selected pages are written, and `seiten` counts those.
+- The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--seiten` run adds no note, because pages it did not reach keep their previous blocks.
+- A preview without frontmatter or page markers, or with a page number twice, cannot be merged. The run stops before analysis with exit code 1 and leaves the file untouched; convert without `--seiten` to replace it.
 - Plugin queries selection via `SeitenAuswahlModal` (total page count rendered via pdf.js).
 
 ## Page Cache and `--neu` (Stage 2)
@@ -443,13 +455,13 @@ boxes, and older-schema entries are likewise recalculated.
 
 ```bash
 # Resume automatically, reusing every matching page
-pdf2md raw/ZR/skript.pdf --out _ocr-vorschau
+pdf2md raw/ZR/skript.pdf --out _ocr-preview
 
 # Recalculate every selected page
-pdf2md raw/ZR/skript.pdf --out _ocr-vorschau --neu
+pdf2md raw/ZR/skript.pdf --out _ocr-preview --neu
 
 # Recalculate only pages 12-14; reuse all other matching pages
-pdf2md raw/ZR/skript.pdf --out _ocr-vorschau --neu "12-14"
+pdf2md raw/ZR/skript.pdf --out _ocr-preview --neu "12-14"
 ```
 
 `--refresh-cache` is the English alias of `--neu`. The optional range uses the
@@ -480,22 +492,13 @@ Machine-readable progress emitted as JSON lines to stderr. Default console outpu
 
 ### Emitted Events
 
-One event object emitted per state transition. Downstream parsers must accept and ignore unknown fields.
+The events, their order, the protocol version and the exit codes are specified in [`cli-contract.md`](cli-contract.md); the canonical examples are `contracts/progress-v1.jsonl`.
 
 ```json
-{"typ":"start","datei":"…","seiten":42,"dpi":150}
-{"typ":"seite","nr":7,"von":42,"sekunden":31.2,"herkunft":"ocr","entgleist":false}
-{"typ":"seite","nr":8,"von":42,"sekunden":44.1,"herkunft":"ocr","entgleist":true,"grund":"zu lang 324%"}
-{"typ":"fertig","ziel":"…","sekunden":1284.0,"entgleist":1}
+{"typ": "start", "protokoll": 1, "datei": "…", "seiten": 42, "dpi": 150}
+{"typ": "seite", "protokoll": 1, "nr": 8, "von": 42, "sekunden": 44.1, "herkunft": "ocr", "entgleist": true, "grund": "zu lang 324%"}
+{"typ": "fertig", "protokoll": 1, "ziel": "…", "sekunden": 1284.0, "entgleist": 1}
 ```
-
-- **start** — post PDF analysis: filename, page count, DPI
-- **seite** — per page: page number, total pages, elapsed seconds, provenance (`textlayer`/`ocr`/`diagramm`), derailment flag, optional cause
-- **fertig** — post completion: total execution time, output path, total derailments
-
-### Schema Contract
-
-Additional fields may be introduced to events in future revisions. Parsers (plugins, UIs, external tools) must ignore unrecognized fields without throwing errors.
 
 ## --check (Stage 2)
 

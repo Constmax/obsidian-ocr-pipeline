@@ -84,7 +84,7 @@ a file to match JSON — doing so would silently undo a deliberate manual move.
 Six reconciliation rules (triggered on open, settings change, and debounced vault events):
 
 1. **Exact `parent.path` comparison** during listing — no `startsWith`:
-   `_akzeptiert` lives *inside* `_ocr-vorschau`; a prefix test would list accepted files as open.
+   `_accepted` lives *inside* `_ocr-preview`; a prefix test would list accepted files as open.
 2. **Folder location ≠ Status → folder location wins.** `note`,
    `checked-until`, and `manually-edited` are kept; "Status adopted from folder location" is logged once.
 3. **File without entry** → Create entry; metadata from metadata cache (frontmatter).
@@ -119,7 +119,7 @@ Documented reserve: Bundle `pdfjs-dist` and inline the worker as a Blob URL via 
   images are post-processed after rendering (image embeds via `getFirstLinkpathDest` + `<img>`). Should Obsidian resolve them natively in the future, the post-processing loop is a no-op.
 - **Block-by-block rendering instead of a single block:** Required because `%%…%%` is invisible in preview mode (no DOM node at marker); the page container acts as sync anchor. Positive side-effect: Footnote collisions across page boundaries are eliminated.
 - **12-canvas cap** (~4.5 MB per A4 canvas): Distant pages are re-rasterized when scrolling back.
-- **Zoom is layout zoom** (CSS `zoom`), not re-render: Zoomed-in pages may appear softer. For pixel-exact inspection, use "Open in PDF viewer".
+- **Zoom scales the page width** (the stack is `zoom` × the column width; not CSS `zoom`, which a `width: 100%` page cancels out). Above 100 % the column scrolls horizontally. Visible pages re-render at the new width, but the pixel scale stays capped at `pdfZoomMax`, so strongly zoomed pages may appear softer. For pixel-exact inspection, use "Open in PDF viewer".
 - **minAppVersion 1.8.7** instead of originally planned 1.5.3: `revealLeaf` and current `Notice` layout require newer versions. The original plan specified 1.5.3, but actual API surface requires more — documented transparently.
 - Code that is untestable headless (anything touching `window.pdfjsLib`, `MarkdownRenderer`, DOM) is untestable here as well — see smoke test below.
 

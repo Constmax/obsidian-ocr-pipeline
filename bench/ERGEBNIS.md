@@ -1590,7 +1590,7 @@ Modelle (von RapidOCR beim ersten Start aus seinem ModelScope-Repo `RapidAI/Rapi
 
 Das Detektionsmodell heißt bei RapidOCR `ch_…`, ist aber das eine mehrsprachige PP-OCRv5-Detektionsmodell. Deutsch erkennt das lateinische Erkennungsmodell; einen eigenen `de`-Schalter gibt es nicht. Cache-Pfad: `Global.model_root_dir` (im Spike ein eigenes `models/`).
 
-Messskript: `bench/spike_rapidocr.py` (ein Prozess je Konfiguration, damit Peak-RSS eindeutig zuordenbar ist).
+Messskript: `bench/archive/spike_rapidocr.py` (ein Prozess je Konfiguration, damit Peak-RSS eindeutig zuordenbar ist).
 
 ### Testseiten
 
@@ -2031,3 +2031,151 @@ Je Seite (`*` = Textspalten verschränkt):
 - **Metrik:** Das Artefakt der wiederholten Kurzzeilen macht diesmal 3 der 4 verschränkten Seiten aus. Die Gate-Kriterien bleiben unverändert, aber solange das Artefakt besteht, ist „keine Verschränkung“ auf zerfallenden Scans kaum erreichbar.
 - **Fehlende Seitenart:** Eine Vollbreite-Überschrift zwischen zwei Spaltenbereichen ist weiterhin nur synthetisch getestet.
 - **Laufzeit:** `unsplit-paddle` brauchte 458 s für die 13 Seiten, `split-paddle` 330 s; nur ein Richtwert, gemessen wird in Schritt 5.
+
+## Nachtrag 2026-09-27 (22): Apple Vision direkt — Geschwindigkeit, Wörter und Lesereihenfolge
+
+**Ergebnis:**
+- **Tempo:** Apple Vision ist auf dem M1 3- bis 7-mal schneller als Tesseract und RapidOCR.
+- **Wörter:** Apple erkennt die Wörter etwa so gut wie Tesseract und etwas schlechter als RapidOCR.
+- **Normzitate:** Hier liegt Apple deutlich hinter RapidOCR, erreicht aber das Zwanzigfache von Tesseract.
+- **Lesereihenfolge:** Die neue Dokument-API `RecognizeDocumentsRequest` (macOS 26) ordnet Zweispalter nicht besser als die Zeilen-API. Keine Apple-Variante ersetzt `order_lines()`.
+- **Folge:** Apple allein ersetzt PaddleOCR mit `order_lines()` nicht. Kombiniert ergibt es aber einen schnellen Modus: Apples Zeilen, geordnet mit `order_lines()`, Zitatzeilen von PP-OCRv5 neu gelesen (Abschnitt „schneller Modus im Plugin“ unten).
+
+Anlass war die Frage, warum der iPhone-Scanner schneller und genauer liest als die Engines der Pipeline. Er nutzt dieselben Vision-Modelle auf der Neural Engine. Gemessen werden sie hier direkt, ohne `ocrmypdf-appleocr`.
+
+### Aufbau
+
+`bench/apple_vision.swift` liest jedes Seitenbild mit zwei Vision-APIs:
+- **`RecognizeTextRequest`:** `accurate`, `de-DE`, mit Sprachkorrektur, Zeilen in Visions Reihenfolge. So arbeitet auch `ocrmypdf-appleocr`.
+- **`RecognizeDocumentsRequest`:** Visions eigene Dokumentstruktur mit Absätzen, Listen und Tabellen.
+
+`bench/apple_vision.py` vergleicht beide mit Tesseract (`tesseract PAGE stdout -l deu`) und RapidOCR (PP-OCRv5 über `ocrmypdf_paddle`, geordnet mit `order_lines()`). Alle Engines lesen dasselbe 300-dpi-Graustufenbild. Jede Engine liest vorher eine Aufwärmseite, gemessen wird die Wandzeit pro Seite ohne Modellladen.
+
+Bewertet wird mit den vorhandenen Funktionen:
+- **`words`:** die 40 Vektorseiten aus `bench/bench-lauf/` mit `vergleiche()` aus `bench_ocr.py`. Wahrheit ist der Textlayer der Seiten, gerendert werden sie mit 300 dpi.
+- **`order`:** die drei handgeprüften Lesereihenfolge-Sets (t: Nachtrag 19, n: Nachtrag 20, m: Nachtrag 21) mit `score_page()` aus `reading_order.py`.
+
+```text
+python bench/apple_vision.py words --rapid-python ~/.venvs/docling/bin/python
+~/.venvs/ocrmypdf/bin/python bench/apple_vision.py order --truth bench/reading_order_truth.json --run-dir <Laufverzeichnis>
+```
+
+**Umgebung:** M1, 8 GB, macOS 26.2, Swift 6.3, Tesseract 5.5.2, rapidocr 3.9.2, onnxruntime 1.26.0, Repo-Stand `df4ea21`.
+
+### Wörter und Zitate (40 Vektorseiten)
+
+| Engine | Wortgenauigkeit | Reihenfolge (Median) | Zitattreue | Sek./Seite (Median) | Sek. gesamt |
+|---|---:|---:|---:|---:|---:|
+| `apple-text` | 96,2 % | 98,2 % | 64,7 % | 0,70 | 30 |
+| `apple-documents` | 96,9 % | 98,5 % | 65,2 % | 0,61 | 27 |
+| `tesseract` | 95,5 % | 96,8 % | 3,6 % | 2,00 | 90 |
+| `rapidocr` | 97,8 % | 98,5 % | 84,4 % | 4,14 | 183 |
+| `pdf2md` (Stufe 2, Lauf vom 2026-08-17) | 98,2 % | 98,0 % | 92,0 % | – | – |
+
+**Tesseract:** liest „§“ auf allen 40 Seiten als „8“ (z. B. „8 48 V“). Die Ausgabe enthält kein einziges „§“, deshalb findet die Zitatmessung fast nichts.
+
+**Apple:** Die Fehler sind systematisch:
+- „$“ statt „§“,
+- „|“ oder „l“ statt „I“, z. B. „§ 568 | BGB“, „Il“,
+- zusammengezogene Ziffer und Gesetz, z. B. „IBGB“.
+
+Eine Korrektur mit vier regulären Ausdrücken (nur zur Abschätzung, nicht im Code) ergibt:
+
+| Engine | Zitattreue ohne Korrektur | Zitattreue mit Korrektur |
+|---|---:|---:|
+| `apple-text` | 64,7 % | 72,8 % |
+| `apple-documents` | 65,2 % | 74,1 % |
+| `rapidocr` | 84,4 % | 91,1 % |
+
+### Lesereihenfolge (42 Scanseiten)
+
+| Set | Workflow | Median | Min | verschränkte Seiten | Vollbreite falsch | nicht gefunden | Sek./Seite (Median) |
+|---|---|---:|---:|---:|---:|---:|---:|
+| t (16) | `apple-text` | 99,5 % | 86,4 % | 6 | 21 von 80 | 68 von 1351 | 0,98 |
+| t (16) | `apple-documents` | 98,9 % | 86,4 % | 7 | 27 von 80 | 69 von 1351 | 0,85 |
+| t (16) | `tesseract` | 99,0 % | 75,1 % | 6 | 11 von 80 | 51 von 1351 | 3,24 |
+| t (16) | `order_lines` | 100,0 % | 99,1 % | 0 | 1 von 80 | 0 von 1351 | – |
+| n (13) | `apple-text` | 97,8 % | 77,5 % | 4 | 28 von 79 | 118 von 1259 | 1,02 |
+| n (13) | `apple-documents` | 96,5 % | 81,9 % | 5 | 29 von 79 | 121 von 1259 | 0,93 |
+| n (13) | `tesseract` | 98,5 % | 78,9 % | 6 | 13 von 79 | 54 von 1259 | 3,51 |
+| n (13) | `order_lines` | 100,0 % | 76,0 % | 2 | 0 von 79 | 0 von 1259 | – |
+| m (13) | `apple-text` | 95,8 % | 89,6 % | 10 | 33 von 93 | 34 von 1575 | 1,12 |
+| m (13) | `apple-documents` | 95,6 % | 86,3 % | 10 | 27 von 93 | 35 von 1575 | 1,01 |
+| m (13) | `tesseract` | 96,8 % | 75,1 % | 10 | 5 von 93 | 103 von 1575 | 3,91 |
+| m (13) | `unsplit-paddle` | 99,8 % | 76,3 % | 4 | 0 von 93 | 9 von 1575 | – |
+
+**Plausibilitätsprüfung:** Im m-Set entspricht `apple-text` dem Lauf `unsplit-apple` über `ocrmypdf-appleocr` aus Nachtrag 21: Median 95,8 gegen 94,5 %, beide mit 10 verschränkten Seiten. Das Plugin verliert also nichts gegenüber dem direkten Aufruf.
+
+**Dokument-API:**
+- Sie liest zwar Absätze. Auf Zweispaltern mit Kopf, Kästen und Fußnoten wechselt sie aber genauso oft zwischen den Spalten wie die Zeilen-API.
+- Ordnet man den Text nach ihrer Absatzliste statt nach dem Gesamttext, ergibt sich derselbe Wert (t: Median 98,9 %, 7 verschränkte Seiten; m: 95,6 %, 10).
+- Tabellen und Listen hat sie auf keiner Seite erkannt.
+
+### Einschränkungen
+
+- **Heimvorteil:** Die Wahrheitszeilen der Lesereihenfolge sind RapidOCR-Zeilen. „Nicht gefunden“ bevorzugt RapidOCR und ist für die anderen Engines nur ein grobes Maß für die Erkennung.
+- **Saubere Vorlagen:** Die Vektorseiten sind digital gerendert und ohne Scanrauschen. Auf echten Scans kann der Abstand zwischen den Engines anders ausfallen.
+- **Nicht nachgebaut:** der iPhone-Scanner selbst mit mehreren Aufnahmen, Entzerrung und Bildverbesserung vor der OCR. Gemessen sind nur die Vision-Modelle auf fertigen Seitenbildern.
+- **Tesseract-Parallelität:** Tesseract lief mit seinen Standard-Threads. ocrmypdf verteilt Seiten auf Jobs, der Durchsatz ganzer Dokumente ist also ein anderes Maß als die Zeit pro Seite.
+
+### Nachtrag: schneller Modus im Plugin (`--paddle-mode fast`)
+
+**Ergebnis:**
+- **Umsetzung:** `ocrmypdf_paddle` hat zwei Modi. `accurate` (Standard) lässt RapidOCR die ganze Seite lesen. `fast` nimmt die Zeilen von Apple Vision, ordnet sie mit `order_lines()` und lässt nur Zitatzeilen von RapidOCR neu lesen.
+- **Lesereihenfolge:** Der schnelle Modus ordnet so gut wie der genaue.
+- **Tempo über den ganzen OCRmyPDF-Lauf:** 1,2- bis 1,7-mal schneller auf Scanseiten, 3,2-mal auf Vektorseiten.
+- **Neuer Befund:** Der Textlayer des genauen Modus klebt Wörter zusammen, auch mit dem Code von `main`. Er ist dadurch im fertigen PDF deutlich schlechter als der schnelle Modus.
+
+**Vorversuch ohne Plugin** (Apples Zeilen aus `apple-raw/`, 40 Vektorseiten, Rohtext):
+
+| Variante | Wortgenauigkeit | Zitattreue | Sek./Seite | neu gelesene Zeilen |
+|---|---:|---:|---:|---:|
+| Apple + `order_lines()` | 96,2 % | 64,7 % | 0,70 | 0 % |
+| Apple + `order_lines()`, Zitatzeilen neu gelesen | 96,4 % | 76,8 % | 0,84 | 8 % |
+| Apple + `order_lines()`, alle Zeilen neu gelesen | 96,4 % | 80,4 % | 2,46 | 100 % |
+
+Auf den Scanseiten ordnet `order_lines()` Apples Zeilen fast so gut wie RapidOCRs:
+
+| Set | Median | verschränkte Seiten | Vollbreite falsch |
+|---|---|---|---|
+| t | 99,5 → 100,0 % | 6 → 2 | 21 → 2 |
+| n | 97,8 → 100,0 % | 4 → 2 | 28 → 3 |
+| m | 95,8 → 99,1 % | 10 → 5 | 33 → 2 |
+
+**Wortboxen:** Visions Wortboxen reichen jeweils bis in die halbe Lücke zum Nachbarwort. Unverändert gerendert kamen auf t01, t05, t11 und n04 nur 0,3–2 % der Wörter getrennt aus `pdftotext -raw`. Jede Box wird deshalb an beiden Enden gekürzt, um 0,25 Zeilenhöhen und höchstens 30 % ihrer Breite. Damit waren es auf acht Prüfseiten 100 %.
+
+**Lesereihenfolge im echten Lauf:** `reading_order.py run unsplit-paddle unsplit-paddle-fast --optimize 3`, Python-3.12-venv mit ocrmypdf 17.8.0, rapidocr 3.9.2, onnxruntime 1.26.0 und pyobjc-framework-Vision 12.2.1.
+
+| Set | Workflow | Median | Mittel | Min | verschränkte Seiten | Vollbreite falsch / doppelt / fehlt | nicht gefunden | Seitenprüfung fehlgeschlagen | Sek. gesamt |
+|---|---|---:|---:|---:|---:|---|---:|---:|---:|
+| t (16) | `unsplit-paddle` | 100,0 % | 99,9 % | 99,1 % | 0 | 1 / 0 / 0 von 80 | 5 von 1351 | 0 | 171 |
+| t (16) | `unsplit-paddle-fast` | 100,0 % | 99,8 % | 99,1 % | 2 | 2 / 0 / 6 von 80 | 30 von 1351 | 0 | 103 |
+| n (13) | `unsplit-paddle` | 100,0 % | 99,3 % | 91,9 % | 2 | 0 / 0 / 2 von 79 | 8 von 1259 | 0 | 127 |
+| n (13) | `unsplit-paddle-fast` | 100,0 % | 98,1 % | 76,7 % | 2 | 0 / 0 / 1 von 79 | 27 von 1259 | 0 | 104 |
+| m (13) | `unsplit-paddle` | 99,8 % | 97,7 % | 76,3 % | 4 | 0 / 0 / 3 von 93 | 9 von 1575 | 0 | 145 |
+| m (13) | `unsplit-paddle-fast` | 99,6 % | 99,6 % | 98,7 % | 3 | 0 / 0 / 0 von 93 | 24 von 1575 | 0 | 87 |
+
+- **Besser im schnellen Modus:** m06 (100,0 statt 76,3 %).
+- **Schlechter im schnellen Modus:** n09 (76,7 statt 91,9 %), die Seite mit Fragekästen und durchscheinendem Text am Rand.
+- **Leichte Verschränkung:** t01 und t07 (99,5 und 99,3 %).
+- **„Nicht gefunden“:** Der höhere Wert im schnellen Modus ist wieder teils Heimvorteil, denn die Wahrheitszeilen sind RapidOCR-Zeilen.
+- **Tempo:** Der Gewinn ist auf den Scans kleiner als bei der reinen Erkennung. Mit `--optimize 3` und PDF/A kostet OCRmyPDF selbst einen festen Anteil pro Seite.
+
+**Textlayer auf den 40 Vektorseiten:** `apple_vision.py textlayer`, OCRmyPDF mit `--force-ocr --optimize 0 --output-type pdf`, bewertet wird `pdftotext -raw` je Seite.
+
+| Modus | Wortgenauigkeit | Reihenfolge (Median) | Zitattreue | Sek. gesamt | Sek./Seite |
+|---|---:|---:|---:|---:|---:|
+| `accurate` | 72,9 % | 74,7 % | 40,6 % | 225 | 5,63 |
+| `fast` | 97,0 % | 98,4 % | 81,7 % | 70 | 1,74 |
+
+**Befund zum genauen Modus:**
+- **Symptom:** Im genauen Modus fallen 51–91 % der Wörter je Seite korrekt aus, obwohl RapidOCRs Rohtext derselben Seiten 93–100 % erreicht. `pdftotext` klebt Wörter zusammen, etwa „Dabeiistder Verein“ statt „Dabei ist der Verein“.
+- **Nicht durch diese Änderung:** Mit dem unveränderten Plugin-Code von `origin/main` (`df4ea21`) ergibt dieselbe Seite denselben Text.
+- **Warum es bisher nicht auffiel:** Die Lesereihenfolge-Messung vergleicht 4-Gramme ohne Leerzeichen und sieht den Fehler deshalb nicht.
+- **Folge:** Der Fehler muss vor #71 behoben sein. Sonst misst der Benchmark den Textlayer des genauen Modus zu schlecht.
+
+Der Vergleich der Zitattreue im fertigen PDF (fast 81,7 % gegen accurate 40,6 %) sagt deshalb vorerst nichts über die Erkennung. Auf dem Rohtext liegt RapidOCR allein bei 84,4 % (siehe oben).
+
+**Folgeänderungen aus dem Review (noch nicht nachgemessen):**
+- **Wortboxen in beiden Modi:** Das Kürzen der Wortboxen ist aus `apple.py` nach `hocr.render_page()` gewandert und gilt jetzt auch für RapidOCRs Wortboxen im genauen Modus. Ein Rendertest mit aneinanderstoßenden Wortboxen durch OCRmyPDFs fpdf2-Renderer reproduziert das Kleben („Dabeiistder Verein“) und trennt die Wörter mit dem Kürzen. Die Tabelle oben ist vor dieser Änderung gemessen.
+- **Neu lesen:** Der Ausschnitt folgt jetzt der Zeile statt ihrer achsenparallelen Box. RapidOCRs Lesung ersetzt Visions Text nur ab Score 0,8 und Ähnlichkeit 0,6. Beides kann die Zitattreue des schnellen Modus leicht verschieben.

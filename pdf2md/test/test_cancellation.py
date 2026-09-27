@@ -4,6 +4,7 @@
 The handler tests run without MLX; the CLI tests replace the model with a
 fake adapter.
 """
+import json
 import os
 import re
 import signal
@@ -82,6 +83,7 @@ def _make_vector_pdf(path: Path, pages: int = 50) -> None:
     doc.close()
 
 
+@pytest.mark.slow
 def test_sigterm_before_first_page_no_partial_file():
     """Issue #25: SIGTERM during analysis (before first page) yields exit code 7 and no file."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -139,6 +141,7 @@ def test_sigterm_before_first_page_no_partial_file():
         ), "Temp folder still under pdf2md/out-C"
 
 
+@pytest.mark.slow
 def test_sigterm_during_last_page_complete():
     """Issue #25: SIGTERM during last page yields complete file."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -171,7 +174,8 @@ def test_sigterm_during_last_page_complete():
         def read_stderr():
             for line in proc.stderr:
                 stderr_lines.append(line)
-                if '"typ": "seite", "nr": 49' in line:
+                event = json.loads(line) if line.startswith("{") else {}
+                if event.get("typ") == "seite" and event.get("nr") == 49:
                     penultimate.set()
 
         thread = threading.Thread(target=read_stderr, daemon=True)
@@ -197,6 +201,7 @@ def test_sigterm_during_last_page_complete():
         )
 
 
+@pytest.mark.slow
 def test_sigint_halfway_through_run():
     """Issue #25: SIGINT mid-run yields exit code 6, a partial file with aborted note."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -342,6 +347,7 @@ class _SlowAdapter:
         return "Text der ersten Seite"
 
 
+@pytest.mark.slow
 def test_second_sigterm_during_an_ocr_page_writes_the_partial_file(
         tmp_path, monkeypatch):
     """Issue #105: a cancel during a slow OCR page ends with exit 6 and a

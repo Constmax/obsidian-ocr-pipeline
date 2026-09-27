@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stellschrauben einzeln pruefen — Geschwindigkeit UND Qualitaet.
 
-  source .venv-mlxocr/bin/activate && python .ocr-bench/tune_test.py <pdf> <seite>
+  source .venv-mlxocr/bin/activate && python bench/archive/tune_test.py <pdf> <seite>
 
 Eine Beschleunigung, die Zeichen frisst, ist keine. Darum zu jeder Variante ein
 Wortabgleich gegen den vorhandenen Textlayer: Multimengen-Schnitt, damit die
@@ -13,7 +13,7 @@ from pathlib import Path
 import fitz
 from PIL import Image
 
-OUT = Path(__file__).parent / "speed"
+OUT = Path(__file__).resolve().parents[1] / "speed"  # archived: bench/archive/
 OUT.mkdir(exist_ok=True)
 MODEL = "mlx-community/PaddleOCR-VL-1.5-4bit"
 PROMPT = "Parse this document page to Markdown."

@@ -17,6 +17,9 @@ from pathlib import Path
 import pytest
 
 
+pytestmark = pytest.mark.slow  # end-to-end runs; `make test-fast` skips them
+
+
 BIN = Path(__file__).resolve().parent.parent
 
 

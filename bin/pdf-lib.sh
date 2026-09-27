@@ -14,6 +14,7 @@
 #   - Two-column page splitting (CropBox)
 #   - OCR args construction
 #   - Post-OCR quality gate with auto-retry
+#   - run_pdf_pipeline: the merge-to-OCR sequence all three CLIs share
 # ============================================================
 
 # ── Defaults ────────────────────────────────────────────────
@@ -45,6 +46,7 @@ SPLIT_ALL_PAGES=false     # --split-columns-all flag (force --all instead of per
 KEEP_SPLIT=false          # --keep-split flag (suppress merge)
 SPLIT_MAP=""              # Path to split_map.json (set by split_two_column_pdf)
 PYTHON_BIN=""             # Python with pikepdf (set by lib_init)
+PIPELINE_PAGES=""         # Page count of the merged input (set by run_pdf_pipeline)
 
 # ════════════════════════════════════════════════════════════
 #  OPTION PARSING
@@ -686,6 +688,141 @@ ocr_with_retry() {
     fi
     [ "$own_scratch_dir" = true ] && rm -rf "$scratch_dir"
     return 1
+}
+
+# ════════════════════════════════════════════════════════════
+#  PIPELINE
+# ════════════════════════════════════════════════════════════
+
+# run_pdf_pipeline [--force-ocr] [--no-clean] <output.pdf> <input.pdf>...
+# The one merge-to-OCR sequence of pdf-auto, pdf-combine and pdf-workflow
+# (issue #50): merge the inputs in the given order, fix the MediaBox,
+# downscale, split columns (SPLIT_COLUMNS), OCR with the quality gate
+# (unless NO_QUALITY_GATE), re-merge the halves and publish the result.
+# The CLIs only find and group their inputs.
+#
+# Options are the OCR flags that differ between the CLIs: --force-ocr
+# replaces --skip-text, --no-clean leaves out unpaper's --clean.
+#
+# Temporary files: every intermediate, including the split map and the
+# quality gate's retries, lives in one run folder under $WORK_DIR (the
+# caller's, which its EXIT trap removes on interrupt). The run folder is
+# removed on every return. The result is renamed onto <output.pdf> last, so
+# <output.pdf> is the finished file or absent — never unmerged halves.
+#
+# Sets PIPELINE_PAGES to the page count of the merged input. Returns 0 when
+# <output.pdf> was written; otherwise prints a ❌ line, removes
+# <output.pdf> and returns 1. Callers run it in a condition (`if`, `||`),
+# where `set -e` is off, so every step is checked explicitly.
+run_pdf_pipeline() {
+    # Read by _pdf_pipeline_steps (bash locals are dynamically scoped).
+    local pipeline_force_ocr=false pipeline_clean=true
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --force-ocr) pipeline_force_ocr=true; shift ;;
+            --no-clean)  pipeline_clean=false; shift ;;
+            *) break ;;
+        esac
+    done
+    local output="$1"; shift
+
+    local run_dir status=0
+    run_dir=$(mktemp -d "${WORK_DIR:?}/pipeline.XXXXXX") || {
+        echo "   ❌ Cannot create a work folder in $WORK_DIR"; return 1
+    }
+    _pdf_pipeline_steps "$run_dir" "$output" "$@" || status=1
+    rm -rf "$run_dir"
+    # The map was in the run folder; the next run must not verify against it.
+    SPLIT_MAP=""
+    [ "$status" -eq 0 ] || rm -f "$output"
+    return "$status"
+}
+
+# _pdf_pipeline_steps <run_dir> <output.pdf> <input.pdf>...
+# Internal: the steps of run_pdf_pipeline, which owns cleanup.
+_pdf_pipeline_steps() {
+    local run_dir="$1" output="$2"; shift 2
+
+    # ── Merge ──
+    local merged="$run_dir/merged.pdf"
+    if [ $# -eq 1 ]; then
+        cp "$1" "$merged" || { echo "   ❌ Cannot read $1"; return 1; }
+    elif ! qpdf --empty --pages "$@" -- "$merged"; then
+        echo "   ❌ Merging $# files failed (qpdf)"; return 1
+    fi
+    local npages_status=0
+    PIPELINE_PAGES=$(qpdf --show-npages "$merged" 2>/dev/null) || npages_status=$?
+    # Exit 3: the count was printed, with warnings (common on damaged scans).
+    if [ "$npages_status" -ne 0 ] && [ "$npages_status" -ne 3 ]; then
+        PIPELINE_PAGES="?"
+    fi
+    echo "   🔗 Merged $# file(s): $PIPELINE_PAGES pages"
+
+    # ── MediaBox fix, then downscale ──
+    # The fix must come first: oversized pages rasterize at 140 MP at 300 DPI.
+    local pre_ocr="$run_dir/fixed.pdf"
+    fix_mediabox "$merged" "$pre_ocr"
+    if [ "$TARGET_DPI" -gt 0 ]; then
+        gs_downscale "$pre_ocr" "$run_dir/downscaled.pdf" "$TARGET_DPI"
+        pre_ocr="$run_dir/downscaled.pdf"
+    else
+        echo "   ⏭️  Downscaling skipped (--dpi 0)"
+    fi
+
+    # ── Column split ──
+    # --no-rotate/--no-deskew: per-half orientation detection is unreliable
+    # and a rotated half would break the re-merge.
+    local flags=()
+    if [ "$pipeline_force_ocr" = true ]; then flags+=(--force-ocr); fi
+    if [ "$pipeline_clean" = true ]; then flags+=(--clean); fi
+    if [ "$SPLIT_COLUMNS" = true ]; then
+        if ! split_two_column_pdf "$pre_ocr" "$run_dir/split.pdf"; then
+            echo "   ❌ Column split failed — no file written"; return 1
+        fi
+        pre_ocr="$run_dir/split.pdf"
+        flags+=(--no-rotate --no-deskew)
+    fi
+
+    # ── OCR with quality gate ──
+    # ocr_args is passed by name to build_ocr_args/run_ocr
+    # (pass-by-name, bash 3.2) — usage is not seen by shellcheck.
+    # shellcheck disable=SC2034
+    local ocr_args
+    build_ocr_args ocr_args ${flags[@]+"${flags[@]}"}
+    local result="$run_dir/ocr.pdf"
+    if [ "$NO_QUALITY_GATE" = true ]; then
+        echo "   🔤 OCR: $ENGINE_DESC"
+        if ! run_ocr "$pre_ocr" "$result" ocr_args; then
+            echo "   ❌ OCR failed — no file written"; return 1
+        fi
+    else
+        local alt_engine=apple
+        [ "$USE_APPLE" = true ] && alt_engine=tesseract
+        # WORK_DIR for this call only: the retries' scratch files and split
+        # map land in the run folder, not in the caller's WORK_DIR.
+        # ocr_with_retry returns 1 on a best-effort (quality-gate-failed) result.
+        if ! WORK_DIR="$run_dir" ocr_with_retry "$pre_ocr" "$result" "$alt_engine" ocr_args; then
+            echo "   ❌ Quality gate failed — no file written"; return 1
+        fi
+    fi
+
+    # ── Re-merge the halves (merge_split_pdf copies them with --keep-split) ──
+    if [ "$SPLIT_COLUMNS" = true ]; then
+        if ! merge_split_pdf "$result" "$run_dir/remerged.pdf"; then
+            # Handing off the unmerged halves would silently double the page count.
+            echo "   ❌ Re-merge failed — split result discarded, no file written"; return 1
+        fi
+        result="$run_dir/remerged.pdf"
+    fi
+
+    # ── Publish ──
+    # Moved beside the output first (the run folder may be on another
+    # volume), then renamed: <output> is never a half-copied file.
+    local staged="$output.partial"
+    if ! { mv "$result" "$staged" && mv "$staged" "$output"; }; then
+        rm -f "$staged"
+        echo "   ❌ Cannot write $output"; return 1
+    fi
 }
 
 # ════════════════════════════════════════════════════════════

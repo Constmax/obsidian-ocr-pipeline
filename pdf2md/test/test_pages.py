@@ -12,6 +12,9 @@ import fitz  # PyMuPDF
 import pytest
 
 
+pytestmark = pytest.mark.slow  # end-to-end runs; `make test-fast` skips them
+
+
 def _make_vector_pdf(path: Path, pages: int = 4) -> None:
     doc = fitz.open()
     for i in range(pages):

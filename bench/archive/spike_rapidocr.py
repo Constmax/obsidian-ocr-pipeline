@@ -2,7 +2,7 @@
 
 Run one process per configuration so the peak RSS belongs to that configuration:
 
-    python bench/spike_rapidocr.py --name v5-mobile-full-t4 --det mobile \
+    python bench/archive/spike_rapidocr.py --name v5-mobile-full-t4 --det mobile \
         --max-side 4000 --threads 4 --pages p1.png p2.png --repeat-page p1.png
 
 Models are downloaded by RapidOCR into --models on first use. Writes

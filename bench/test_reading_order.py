@@ -231,3 +231,18 @@ def test_gate_keeps_split_mode_on_any_failure(overrides, checks, reason):
 
 def test_gate_without_measurements_keeps_split_mode():
     assert ro.decide({"unsplit-paddle": summary(median=0.99)}, {})[0] == "keep split mode"
+
+
+def test_default_run_leaves_out_the_apple_vision_workflow(tmp_path, monkeypatch):
+    started = []
+    monkeypatch.setattr(ro, "load_truth", lambda path: [{"id": "p1"}])
+    monkeypatch.setattr(ro, "_pages_dir", lambda args: tmp_path)
+    monkeypatch.setattr(ro, "_run_paddle", lambda args, name, *rest: started.append(name))
+    monkeypatch.setattr(ro.subprocess, "run", lambda command, **kwargs: None)
+    args = ro.argparse.Namespace(truth=None, run_dir=tmp_path, workflows=[], optimize=1)
+
+    ro.run(args)
+    assert "unsplit-paddle-fast" in ro.WORKFLOWS
+    assert set(ro.DEFAULT_WORKFLOWS) == set(ro.WORKFLOWS) - {"unsplit-paddle-fast"}
+    assert started == ["split-paddle", "unsplit-paddle"]
+    assert not (tmp_path / "runs" / "unsplit-paddle-fast").exists()

@@ -1,0 +1,49 @@
+{
+  "comment": "Seam between the CLIs (Stage 1 bin/, Stage 2 pdf2md) and the Obsidian plugin (Issue #55). Both test suites read this file; docs/cli-contract.md explains it.",
+  "progress": {
+    "protocol": 1,
+    "fixture": "progress-v1.jsonl",
+    "events": {
+      "start": {
+        "required": {"typ": "string", "protokoll": "integer", "datei": "string", "seiten": "integer", "dpi": "integer"},
+        "optional": {}
+      },
+      "seite": {
+        "required": {"typ": "string", "protokoll": "integer", "nr": "integer", "von": "integer", "sekunden": "number", "herkunft": "string", "entgleist": "boolean"},
+        "optional": {"grund": "string"}
+      },
+      "fertig": {
+        "required": {"typ": "string", "protokoll": "integer", "ziel": "string", "sekunden": "number", "entgleist": "integer"},
+        "optional": {}
+      }
+    },
+    "origins": ["textlayer", "ocr", "diagramm"]
+  },
+  "exitCodes": {
+    "success": 0,
+    "error": 1,
+    "usage": 2,
+    "check-failed": 4,
+    "cancelled-partial": 6,
+    "cancelled-empty": 7
+  },
+  "inputSuffixes": [".bmp", ".jpeg", ".jpg", ".pdf", ".png", ".tif", ".tiff"],
+  "previewFormat": 1,
+  "stage1": {
+    "shortPages": {
+      "command": "column_tools.py verify-pages",
+      "minChars": 50,
+      "pages": ["Erste Seite mit genug Text, um den B5-Mindestwert zu erreichen.", "short", "Erste Seite mit genug Text, um den B5-Mindestwert zu erreichen.", ""],
+      "stderr": [
+        "   🗑️  Page 2: only 5 characters (min: 50)",
+        "   🗑️  Page 4: only 0 characters (min: 50)"
+      ],
+      "shortPageNumbers": [2, 4]
+    },
+    "failure": {
+      "command": "reprocess-raw.sh missing.pdf",
+      "stdout": ["❌ File not found: missing.pdf"],
+      "reason": "File not found: missing.pdf"
+    }
+  }
+}
