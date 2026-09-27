@@ -119,6 +119,47 @@ def test_short_line_inside_a_longer_line_keeps_its_own_copy():
     assert (scores["accuracy"], scores["interleaved_sections"], scores["duplicated"]) == (1.0, 0, 0)
 
 
+def columns(left, right):
+    return [replace(t, column="L" if t.order < len(left) else "R")
+            for t in truth(*left, *right)]
+
+
+# The right column opens with a phrase that the left column also holds, split
+# over two of its lines (issue #115, page m10).
+SPLIT_LEFT = ["Lebensgemeinschaft und", "damit auch der Schenker", "dritte Zeile links unten"]
+SPLIT_RIGHT = ["Lebensgemeinschaft und damit auch", "vierte Zeile rechts unten"]
+
+
+def test_repeated_phrase_in_correct_column_order_is_not_interleaving():
+    scores = ro.score_page(columns(SPLIT_LEFT, SPLIT_RIGHT), "\n".join(SPLIT_LEFT + SPLIT_RIGHT))
+    # The repeated keys are still handed out in text order and cost accuracy ...
+    assert scores["accuracy"] < 1.0
+    # ... but do not decide interleaving.
+    assert scores["interleaved_sections"] == 0
+
+
+def test_misread_line_leaving_its_words_free_is_not_interleaving():
+    # The left line is misread (a scan whose lines fall apart), so it is not
+    # matched and does not claim its words; the right line's words occur twice.
+    left = ["erste Zeile links oben", "Fixgeschäft liegt vor, sagt die herrschende Meinung zum Termin",
+            "letzte Zeile links unten"]
+    right = ["Fixgeschäft liegt vor", "vierte Zeile rechts unten"]
+    extracted = [left[0], "Fixgeschäft liegt vor, 5a9t d1e h3rr5ch3nd3 M31nun9 2um T3rm1n",
+                 left[2], *right]
+    scores = ro.score_page(columns(left, right), "\n".join(extracted))
+    assert scores["unmatched"] == 1
+    assert scores["interleaved_sections"] == 0
+
+
+def test_real_interleaving_is_found_next_to_repeated_keys():
+    lines = columns(SPLIT_LEFT, SPLIT_RIGHT)
+    # Read row by row across both columns.
+    rows = [SPLIT_LEFT[0], SPLIT_RIGHT[0], SPLIT_LEFT[1], SPLIT_RIGHT[1], SPLIT_LEFT[2]]
+    assert ro.score_page(lines, "\n".join(rows))["interleaved_sections"] == 1
+    # Right column first.
+    assert ro.score_page(lines, "\n".join(SPLIT_RIGHT + SPLIT_LEFT))["interleaved_sections"] == 1
+
+
 def test_short_lines_are_not_scored():
     scores = ro.score_page(truth("§ 1", "eine lange Zeile Text"), "eine lange Zeile Text § 1")
     assert (scores["lines"], scores["eligible"], scores["matched"]) == (2, 1, 1)

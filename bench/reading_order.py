@@ -33,7 +33,9 @@ is the share of matched line pairs whose extracted order agrees with the
 truth. Lines with fewer than 10 such characters are too ambiguous to place
 and are left out; unmatched lines and lines found more often than the truth
 holds them (each further copy with at least 80 % of the 4-grams) are
-reported separately.
+reported separately. Whether the text columns are interleaved is decided on
+the lines placed without ambiguity only: lines whose text occurs once in the
+truth and has exactly one such nearly complete copy in the extracted text.
 """
 import argparse
 import itertools
@@ -261,11 +263,16 @@ def score_page(truth, extracted):
     for line in eligible:
         groups[line.key].append(line)
     positions, duplicated, unmatched = {}, [], []
+    # Lines placed without ambiguity: the key occurs once in the truth, the
+    # text holds one nearly complete copy of it, and the line sits there. Only
+    # these decide interleaving (issue #115).
+    unique = set()
     # Longer lines claim their text first: a short line that also occurs inside
     # a longer line (a citation repeated in a footnote) must not take its place.
     claimed = []
     for key, members in sorted(groups.items(), key=lambda item: -len(item[0])):
-        found = [(offset, coverage) for offset, coverage in occurrences(key, index)
+        candidates = occurrences(key, index)
+        found = [(offset, coverage) for offset, coverage in candidates
                  if all(min(offset + len(key), end) - max(offset, start) <= len(key) // 2
                         for start, end in claimed)]
         if sum(coverage >= DUPLICATE_COVERAGE for _, coverage in found) > len(members):
@@ -275,12 +282,19 @@ def score_page(truth, extracted):
             positions[line.order] = offset
             claimed.append((offset, offset + len(key)))
         unmatched.extend(members[len(used):])
+        complete = [offset for offset, coverage in candidates if coverage >= DUPLICATE_COVERAGE]
+        if len(members) == 1 and complete == [positions.get(members[0].order)]:
+            unique.add(members[0].order)
 
     by_order = {line.order: line for line in truth}
     sections = defaultdict(list)
+    # A repeated key (the same citation twice, a line fallen apart into words
+    # that recur elsewhere) is handed out in text order and can land in the
+    # other column; one such line fakes two column switches. Its order still
+    # counts for accuracy, but not for interleaving.
     for order, offset in positions.items():
         line = by_order[order]
-        if line.column and line.role in ("body", "footnote"):
+        if order in unique and line.column and line.role in ("body", "footnote"):
             sections[line.section].append((offset, line.column))
     interleaved = 0
     for items in sections.values():
