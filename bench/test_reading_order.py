@@ -160,6 +160,51 @@ def test_real_interleaving_is_found_next_to_repeated_keys():
     assert ro.score_page(lines, "\n".join(SPLIT_RIGHT + SPLIT_LEFT))["interleaved_sections"] == 1
 
 
+NOISY_LEFT = [
+    "Der Anspruch aus Vertrag setzt voraus, dass",
+    "ein wirksamer Vertrag geschlossen wurde und",
+    "keine rechtshindernden Einwendungen bestehen.",
+    "Hier fehlt es an einer Willenserklärung des",
+    "Beklagten, weil er die Erklärung nicht kannte",
+    "und sie ihm auch nicht zugerechnet werden kann.",
+]
+NOISY_RIGHT = [
+    "Fraglich ist, ob die Anfechtung wegen Irrtums",
+    "rechtzeitig erklärt wurde, also unverzüglich",
+    "nach Kenntnis vom Anfechtungsgrund im Sinne",
+    "der gesetzlichen Frist. Das Gericht hat dies",
+    "zutreffend verneint, weil zwischen Kenntnis",
+    "und Erklärung mehr als drei Wochen vergingen.",
+]
+
+
+def noisy(text, every=10):
+    # About two misread characters in a 40-character line: below the 80 % bound.
+    return "".join("x" if i % every == every // 2 and c.isalpha() else c
+                   for i, c in enumerate(text))
+
+
+def test_noisy_column_read_row_by_row_stays_interleaved():
+    lines = columns(NOISY_LEFT, NOISY_RIGHT)
+    right = [noisy(text) for text in NOISY_RIGHT]
+    rows = [text for pair in zip(NOISY_LEFT, right) for text in pair]
+    scores = ro.score_page(lines, "\n".join(rows))
+    assert scores["matched"] == 12
+    assert scores["fallback_sections"] == 1
+    assert scores["interleaved_sections"] == 1
+    # The same noisy text in column order is not interleaved.
+    scores = ro.score_page(lines, "\n".join(NOISY_LEFT + right))
+    assert (scores["fallback_sections"], scores["interleaved_sections"]) == (1, 0)
+
+
+def test_duplicated_column_read_row_by_row_stays_interleaved():
+    lines = columns(NOISY_LEFT, NOISY_RIGHT)
+    rows = [text for pair in zip(NOISY_LEFT, NOISY_RIGHT) for text in pair]
+    scores = ro.score_page(lines, "\n".join(rows + NOISY_RIGHT))
+    assert scores["duplicated"] == 6
+    assert scores["interleaved_sections"] == 1
+
+
 def test_short_lines_are_not_scored():
     scores = ro.score_page(truth("§ 1", "eine lange Zeile Text"), "eine lange Zeile Text § 1")
     assert (scores["lines"], scores["eligible"], scores["matched"]) == (2, 1, 1)

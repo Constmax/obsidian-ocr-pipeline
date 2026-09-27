@@ -2180,33 +2180,45 @@ Der Vergleich der Zitattreue im fertigen PDF (fast 81,7 % gegen accurate 40,6 %)
 - **Wortboxen in beiden Modi:** Das Kürzen der Wortboxen ist aus `apple.py` nach `hocr.render_page()` gewandert und gilt jetzt auch für RapidOCRs Wortboxen im genauen Modus. Ein Rendertest mit aneinanderstoßenden Wortboxen durch OCRmyPDFs fpdf2-Renderer reproduziert das Kleben („Dabeiistder Verein“) und trennt die Wörter mit dem Kürzen. Die Tabelle oben ist vor dieser Änderung gemessen.
 - **Neu lesen:** Der Ausschnitt folgt jetzt der Zeile statt ihrer achsenparallelen Box. RapidOCRs Lesung ersetzt Visions Text nur ab Score 0,8 und Ähnlichkeit 0,6. Beides kann die Zitattreue des schnellen Modus leicht verschieben.
 
-## Nachtrag 2026-09-27 (23): Lesereihenfolge — Verschränkung nur auf eindeutig platzierten Zeilen (#115)
+## Nachtrag 2026-09-27 (23): Lesereihenfolge — Verschränkung auf eindeutig platzierten Zeilen (#115)
 
-**Ergebnis: keep split mode.** Die neue Verschränkungsprüfung beseitigt das Artefakt der wiederholten Schlüssel: Für `unsplit-paddle` gelten n04, n09, m07, m10 und m11 nicht mehr als verschränkt, m06 bleibt es. Das Gate scheitert jetzt auf den Prüfseiten aus Nachtrag 20 nur noch an 2 nicht gefundenen Vollbreite-Zeilen, auf denen aus Nachtrag 21 an 3 nicht gefundenen Vollbreite-Zeilen und an m06. Die Gate-Kriterien in `decide()` sind unverändert.
+**Ergebnis: keep split mode.** Die neue Verschränkungsprüfung beseitigt das Artefakt der wiederholten Schlüssel auf n04, m07, m10 und m11. m06 bleibt verschränkt. n09 bleibt ebenfalls verschränkt, dort aber als bekannter Fehlalarm: Die rechte Spalte besteht zu mehr als der Hälfte aus wiederholten Fundstellen, und die Prüfung fällt für diese Seite auf die alte Regel zurück. Das Gate scheitert damit auf den Prüfseiten aus Nachtrag 20 an 2 nicht gefundenen Vollbreite-Zeilen und an n09, auf denen aus Nachtrag 21 an 3 nicht gefundenen Vollbreite-Zeilen und an m06. Die Gate-Kriterien in `decide()` sind unverändert.
 
 Vorgänger: Nachtrag 20 und 21 (Befund), Issue #115.
 
 ### Änderung der Metrik
 
-**Befund:** `score_page()` vergibt gleiche oder mehrfach vorkommende Schlüssel der Reihe nach. Ein Schlüssel, der im Text zweimal steht, landet dabei oft in der anderen Spalte, und eine einzige solche Zeile ergibt zwei scheinbare Spaltenwechsel. Drei Wege dahin:
+**Befund:** `score_page()` vergibt gleiche oder mehrfach vorkommende Schlüssel der Reihe nach. Ein Schlüssel, der im Text zweimal steht, landet dabei oft in der anderen Spalte. Eine einzige solche Zeile ergibt zwei scheinbare Spaltenwechsel. Drei Wege dahin:
 - **Wiederholte Fundstellen:** „Hemmer/Wüst, Basics Zivilrecht, Band 1“ auf n09, „§ 313 BGB, vgl. auch BGH …“ auf m11, „§ 644 I S. 1 BGB?“ auf t07.
-- **Phrase über eine Zeilengrenze:** Auf m10 beginnt eine rechte Zeile mit „Lebensgemeinschaft und damit auch“, links steht dieselbe Folge über zwei Zeilen verteilt. Die Normalisierung entfernt Zeilenumbrüche, der längere rechte Schlüssel greift zuerst und nimmt die linke Stelle. Deshalb waren m07 und m10 auch in `order_lines` auf der Wahrheitsgeometrie und in allen Split-Workflows verschränkt, obwohl dort keine Zeile zerfällt.
-- **Falsch gelesene oder zerfallene Zeilen:** Wird eine lange Zeile nicht gefunden, beansprucht sie ihre Stelle nicht, und kürzere Schlüssel mit denselben Wörtern greifen dorthin („Fixgeschäft“ auf n04). Auf t01 im schnellen Modus passt eine linke Fußnote nur zu 64 % auf ein ähnliches Zitat der rechten Spalte.
+- **Phrase über eine Zeilengrenze:** Auf m10 beginnt eine rechte Zeile mit „Lebensgemeinschaft und damit auch“, links steht dieselbe Folge über zwei Zeilen verteilt. Die Normalisierung entfernt Zeilenumbrüche. Der längere rechte Schlüssel greift zuerst und nimmt die linke Stelle. Deshalb waren m07 und m10 auch in `order_lines` auf der Wahrheitsgeometrie und in allen Split-Workflows verschränkt, obwohl dort keine Zeile zerfällt.
+- **Falsch gelesene oder zerfallene Zeilen:** Wird eine lange Zeile nicht gefunden, beansprucht sie ihre Stelle nicht. Kürzere Schlüssel mit denselben Wörtern greifen dann dorthin („Fixgeschäft“ auf n04). Auf t01 im schnellen Modus passt eine linke Fußnote nur zu 64 % auf ein ähnliches Zitat der rechten Spalte.
 
-**Neue Regel:** Über Verschränkung entscheiden nur Zeilen, deren Platz eindeutig ist:
+**Neue Regel:** Über Verschränkung entscheiden die Zeilen, deren Platz eindeutig ist:
 - der Schlüssel kommt in der Wahrheit einmal vor,
 - der Text enthält genau eine fast vollständige Kopie davon (mindestens 80 % der 4-Gramme, dieselbe Schwelle wie für „doppelt“),
-- und die Zeile wurde dieser Kopie zugeordnet.
+- die Zeile wurde dieser Kopie zugeordnet.
 
-Alle übrigen Zeilen zählen weiter für die Ordnungsgenauigkeit, „nicht gefunden“ und „doppelt“. Median, Mittel, Min und alle Vollbreite-Werte bleiben auf jeder Seite unverändert, geändert hat sich nur „verschränkte Seiten“.
+**Rückfall:** Behält eine Spalte eines Abschnitts weniger als die Hälfte ihrer gefundenen Zeilen als eindeutig, wird der Abschnitt wie bisher auf allen gefundenen Zeilen geprüft (`fallback_sections` in `score.json`).
+- **Anlass:** Das Review von PR #122 zeigte die Lücke ohne Rückfall. Eine Spalte mit etwa zwei Lesefehlern je 40 Zeichen fällt ganz unter die 80-%-Schwelle. Ohne Rückfall entschieden dann nur die Zeilen der sauberen Spalte, und eine zeilenweise gelesene Seite galt als nicht verschränkt. Dasselbe gilt für eine doppelt ausgegebene Spalte, deren Zeilen alle zwei vollständige Kopien haben.
+- **Folge:** Mit dem Rückfall ist ein Fehlalarm möglich, eine übersehene Verschränkung nicht.
+- **Warum nicht „nicht prüfbar“:** Die Alternative wäre, solche Seiten als „nicht prüfbar“ zu markieren und in `decide()` als Fehlschlag zu werten. Das hätte `decide()` geändert. Der Rückfall lässt `decide()` unberührt und wirkt im Gate gleich streng.
+- **Grenze der Hälfte:** Die Hälfte wurde vor dem Neubewerten festgelegt und nicht nachjustiert.
 
-**Warum diese Regel:** Sie braucht nur, was `score` ohnehin hat, den Text und die Wahrheit. Eine Prüfung der Regionsreihenfolge bräuchte die Zeilengeometrie des echten Laufs, die im Ausgabe-PDF nicht als Regionen vorliegt. Ein erster Versuch zählte jeden Treffer ab 50 % als Mehrdeutigkeit. Er schloss auch Zeilen mit gemeinsamer Formulierung aus („erste Zeile links oben“ / „zweite Zeile links unten“) und übersah damit echte Verschränkungen in den synthetischen Tests.
+**Beibehalten:** Alle Zeilen zählen weiter für die Ordnungsgenauigkeit, „nicht gefunden“ und „doppelt“. Median, Mittel, Min und alle Vollbreite-Werte bleiben auf jeder Seite unverändert, geändert hat sich nur „verschränkte Seiten“.
 
-**Tests:** `bench/test_reading_order.py` prüft eine über zwei Zeilen verteilte Phrase und eine falsch gelesene Zeile bei richtiger Spaltenfolge (nicht verschränkt; beide Tests scheitern mit der alten Metrik). Dieselbe Phrase bei zeilenweisem Lesen und bei rechter Spalte zuerst gilt weiter als verschränkt.
+**Warum diese Regel:** Sie braucht nur, was `score` ohnehin hat, den Text und die Wahrheit. Eine Prüfung der Regionsreihenfolge bräuchte die Zeilengeometrie des echten Laufs, die im Ausgabe-PDF nicht als Regionen vorliegt. Zwei einfachere Varianten scheitern:
+- **Jeder Treffer ab 50 % als Mehrdeutigkeit:** Diese Variante schloss auch Zeilen mit gemeinsamer Formulierung aus („erste Zeile links oben“ / „zweite Zeile links unten“) und übersah echte Verschränkungen in den synthetischen Tests.
+- **Laut Review jede Zeile mit höchstens einer vollständigen Kopie zulassen:** Damit kommen Artefakte zurück, `unsplit-paddle` im m-Set auf 2 Seiten und `split-tesseract` auf 1 Seite.
+
+**Tests:** `bench/test_reading_order.py` prüft:
+- **Richtige Spaltenfolge:** eine über zwei Zeilen verteilte Phrase und eine falsch gelesene Zeile, beide nicht verschränkt. Beide Tests scheitern mit der alten Metrik.
+- **Echte Verschränkung:** dieselbe Phrase, zeilenweise gelesen oder mit der rechten Spalte zuerst.
+- **Verrauschte rechte Spalte:** zeilenweise gelesen verschränkt (Rückfall), in Spaltenfolge nicht verschränkt.
+- **Doppelt ausgegebene rechte Spalte:** zeilenweise gelesen verschränkt.
 
 ### Neu bewertete Läufe
 
-Keine Seite neu gelaufen. `score` mit alter und neuer Metrik auf den vorhandenen Ausgabe-PDFs und Wahrheitszeilen, Repo-Stand `2003574` plus diese Änderung, `score` in `~/.venvs/docling`:
+Keine Seite ist neu gelaufen. `score` bewertete die vorhandenen Ausgabe-PDFs und Wahrheitszeilen mit alter und neuer Metrik, Repo-Stand `2003574` plus diese Änderung, `score` in `~/.venvs/docling`:
 - **t (16 Seiten) und n (13 Seiten):** die Läufe `unsplit-paddle` und `unsplit-paddle-fast` aus Nachtrag 22.
 - **m (13 Seiten):** alle Workflows aus Nachtrag 21, dazu `unsplit-paddle-fast` aus Nachtrag 22.
 
@@ -2220,8 +2232,8 @@ Verschränkte Seiten, alte → neue Metrik:
 | t | `unsplit-paddle-fast` | 2 | 0 | t01, t07 | – |
 | t | `rapidocr-order` | 10 | 10 | – | t01–t10 |
 | t | `order_lines` | 0 | 0 | – | – |
-| n | `unsplit-paddle` | 2 | 0 | n04, n09 | – |
-| n | `unsplit-paddle-fast` | 2 | 1 | n04 | n09 |
+| n | `unsplit-paddle` | 2 | 1 | n04 | n09 (Rückfall) |
+| n | `unsplit-paddle-fast` | 2 | 1 | n04 | n09 (Rückfall) |
 | n | `rapidocr-order` | 10 | 10 | – | wie bisher |
 | n | `order_lines` | 2 | 2 | – | n04, n09 |
 | m | `split-apple` | 2 | 0 | m07, m10 | – |
@@ -2235,24 +2247,31 @@ Verschränkte Seiten, alte → neue Metrik:
 | m | `rapidocr-order` | 13 | 13 | – | alle |
 | m | `order_lines` | 4 | 2 | m07, m10 | m03, m06 |
 
-**Was weiter als verschränkt gilt, ist echt:**
-- **m06 (`unsplit-paddle`, `order_lines`):** die ganze Seite zeilenweise über beide Spalten, Ursache in Nachtrag 21 (#114). Mit neuer Metrik weiter erkannt.
-- **n07 vor der #94-Korrektur:** `order_lines` von `23bb560^1` auf der Wahrheitsgeometrie ergibt 97,7 %, mit neuer Metrik weiter verschränkt. Die PDFs des echten Laufs aus Nachtrag 20 lagen nicht mehr vor; der Lauf aus Nachtrag 22 enthält die Korrektur, dort ist n07 mit beiden Metriken nicht verschränkt.
-- **n09 im schnellen Modus:** Fragezeilen der rechten Spalte stehen eindeutig zugeordnet zwischen Zeilen der linken (76,7 %, Nachtrag 22).
-- **n04, n09 und m03 in `order_lines` auf der Wahrheitsgeometrie:** kein Steg auf dem nicht entzerrten Bild, wie in Nachtrag 20 und 21 beschrieben.
+**Rückfall:** Er greift nur auf n09, in jedem Workflow, auch in `order_lines` auf der Wahrheitsgeometrie. Die rechte Spalte hat dort 17 gefundene Zeilen, davon 8 eindeutig. Die übrigen sind Fundstellen, die in der Spalte mehrfach vollständig stehen. Auf n09 bleibt es also beim Fehlalarm aus Nachtrag 20: Die Debug-Reihenfolge des echten Laufs ist dort regionsweise richtig. Im m- und im t-Set greift der Rückfall auf keiner Seite.
 
-**Neu erkannte Artefakte:** t01 und t07 im schnellen Modus, in Nachtrag 22 noch als „leichte Verschränkung“ geführt, gehen auf dieselben Muster zurück (t01: linke Fußnote zu 64 % auf ein ähnliches Zitat rechts gelegt; t07: „§ 644 I S. 1 BGB?“ steht zweimal vollständig im Text).
+**Was weiter als verschränkt gilt:**
+- **m06 (`unsplit-paddle`, `order_lines`):** echt, die ganze Seite wird zeilenweise über beide Spalten gelesen (Ursache in Nachtrag 21, #114).
+- **n07 vor der #94-Korrektur:** echt. `order_lines` von `23bb560^1` auf der Wahrheitsgeometrie ergibt 97,7 % und bleibt mit neuer Metrik verschränkt. Die PDFs des echten Laufs aus Nachtrag 20 lagen nicht mehr vor. Der Lauf aus Nachtrag 22 enthält die Korrektur, dort ist n07 mit beiden Metriken nicht verschränkt.
+- **n09:** Fehlalarm über den Rückfall (siehe oben). Im schnellen Modus stehen dort zusätzlich Fragezeilen der rechten Spalte eindeutig zugeordnet zwischen Zeilen der linken (76,7 %, Nachtrag 22). Das ist dort ein echter Fehler.
+- **n04, n09 und m03 in `order_lines` auf der Wahrheitsgeometrie:** echt, kein Steg auf dem nicht entzerrten Bild (Nachtrag 20 und 21).
+
+**Neu erkannte Artefakte:** t01 und t07 im schnellen Modus, in Nachtrag 22 noch als „leichte Verschränkung“ geführt, gehen auf dieselben Muster zurück:
+- **t01:** Eine linke Fußnote passt nur zu 64 % auf ein ähnliches Zitat der rechten Spalte und wurde dort platziert.
+- **t07:** „§ 644 I S. 1 BGB?“ steht zweimal vollständig im Text.
 
 ### Gate für `unsplit-paddle` mit neuer Metrik
 
 | Set | Median | beste Split-Baseline | verschränkte Seiten | Vollbreite falsch / doppelt / fehlt | Seitenprüfung | Entscheidung |
 |---|---:|---:|---:|---|---:|---|
-| n (13) | 100,0 % | 94,8 % | 0 | 0 / 0 / 2 von 79 | 0 | keep split mode (2 Vollbreite-Zeilen nicht gefunden) |
+| n (13) | 100,0 % | 94,8 % | 1 (n09) | 0 / 0 / 2 von 79 | 0 | keep split mode (2 nicht gefunden, n09 verschränkt) |
 | m (13) | 99,8 % | 95,8 % | 1 (m06) | 0 / 0 / 3 von 93 | 0 | keep split mode (3 nicht gefunden, m06 verschränkt) |
 
-Das t-Set ist die Entwicklungsmenge und entscheidet nicht; dort bleibt 1 Vollbreite-Zeile falsch (Lauf aus Nachtrag 22).
+Das t-Set ist die Entwicklungsmenge und entscheidet nicht. Dort bleibt 1 Vollbreite-Zeile falsch (Lauf aus Nachtrag 22).
 
 ### Einschränkungen
 
-- **Weniger Prüfzeilen:** Mehrdeutige Zeilen fehlen jetzt in der Verschränkungsprüfung. Stünde eine einzelne solche Zeile wirklich in der falschen Spalte, fiele das nicht mehr als Verschränkung auf, nur noch in der Genauigkeit. Echte Ordnungsfehler betreffen bisher immer viele Zeilen (m06, n07, n09 schnell) und bleiben erkannt.
+- **Einzelne mehrdeutige Zeilen:** Eine einzelne mehrdeutige Zeile, die wirklich in der falschen Spalte steht, fällt nicht mehr als Verschränkung auf, nur noch in der Genauigkeit. Das gilt, solange ihre Spalte mindestens zur Hälfte aus eindeutigen Zeilen besteht. Verrauschte oder doppelt ausgegebene Spalten fallen auf die alte Regel zurück und werden weiter erkannt.
+- **Kurze Zeilen in längeren:** Eine kurze Zeile, deren Text auch in einer längeren Zeile steht, entscheidet nie mit. Ihre zweite Kopie zählt, auch wenn die längere Zeile sie beansprucht.
+- **Doppelte Ausgabe:** Eine doppelt ausgegebene Spalte zählt weiter unter „doppelt“. Als verschränkt gilt sie nur, wenn die Prüfung auf allen Zeilen einen Spaltenwechsel findet. `decide()` wertet „doppelt“ nur für Vollbreite-Zeilen.
+- **Fehlalarm auf n09:** Seiten, deren Spalte überwiegend aus wiederholten Fundstellen besteht, sind mit dieser Metrik nicht entscheidbar und fallen auf den alten Fehlalarm zurück.
 - **Nicht gefunden bleibt:** Die fehlenden Vollbreite-Zeilen sind Erkennungsunterschiede des echten Laufs (Nachtrag 20 und 21) und von dieser Änderung nicht berührt.
