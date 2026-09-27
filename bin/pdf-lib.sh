@@ -750,7 +750,12 @@ _pdf_pipeline_steps() {
     elif ! qpdf --empty --pages "$@" -- "$merged"; then
         echo "   ❌ Merging $# files failed (qpdf)"; return 1
     fi
-    PIPELINE_PAGES=$(qpdf --show-npages "$merged" 2>/dev/null) || PIPELINE_PAGES="?"
+    local npages_status=0
+    PIPELINE_PAGES=$(qpdf --show-npages "$merged" 2>/dev/null) || npages_status=$?
+    # Exit 3: the count was printed, with warnings (common on damaged scans).
+    if [ "$npages_status" -ne 0 ] && [ "$npages_status" -ne 3 ]; then
+        PIPELINE_PAGES="?"
+    fi
     echo "   🔗 Merged $# file(s): $PIPELINE_PAGES pages"
 
     # ── MediaBox fix, then downscale ──
