@@ -84,7 +84,7 @@ a file to match JSON — doing so would silently undo a deliberate manual move.
 Six reconciliation rules (triggered on open, settings change, and debounced vault events):
 
 1. **Exact `parent.path` comparison** during listing — no `startsWith`:
-   `_akzeptiert` lives *inside* `_ocr-vorschau`; a prefix test would list accepted files as open.
+   `_accepted` lives *inside* `_ocr-preview`; a prefix test would list accepted files as open.
 2. **Folder location ≠ Status → folder location wins.** `note`,
    `checked-until`, and `manually-edited` are kept; "Status adopted from folder location" is logged once.
 3. **File without entry** → Create entry; metadata from metadata cache (frontmatter).

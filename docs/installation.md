@@ -61,6 +61,26 @@ The sections correspond to the script's execution blocks.
   installed. Start Obsidian once (creates `.obsidian/`), then re-run
   `./setup.sh`.
 
+## Which Environment Holds Which Engine
+
+All venvs live under `$VENV_ROOT` (default `~/.venvs`, see `setup.sh`). Each
+OCR engine runs from exactly one of them:
+
+| Environment | Created by | Engine | Packages | Used by |
+|---|---|---|---|---|
+| `~/.venvs/ocrmypdf` (Python 3.12 via uv) | `setup.sh` ③ | Stage 1: Tesseract and Apple Vision through OCRmyPDF | `ocrmypdf==17.8.0`, `ocrmypdf-appleocr==0.3.4` | `pdf-auto`, `pdf-combine`, `pdf-workflow`, `reprocess-raw` (via `~/bin/ocrmypdf`) |
+| `~/.venvs/mlxocr` (Python 3.12 via uv) | `setup.sh` ⑥, Apple Silicon only | Stage 2: PaddleOCR-VL 1.5 through MLX | `pdf2md/requirements.txt` (`mlx-vlm`, `pymupdf`, `pikepdf`, `pillow`, `numpy`) | `pdf2md` wrapper, plugin conversion |
+| your own venv (Python ≥ 3.12) | by hand, **not** `setup.sh` | Stage 1 candidate: PaddleOCR PP-OCRv5 through RapidOCR/ONNX Runtime | `pip install ./ocrmypdf_paddle` (pins `ocrmypdf==17.8.0`, `rapidocr==3.9.2`, `onnxruntime==1.26.0`) | benchmarks only, until [paddle-textlayer.md](paddle-textlayer.md) retains the engine |
+
+Tesseract itself comes from Homebrew (`tesseract-lang` in the `Brewfile`); the
+Apple Vision engine needs macOS. Keep the Paddle engine out of
+`~/.venvs/ocrmypdf`, so that a failed Paddle install cannot break the
+Stage-1 engines in daily use.
+
+For development, `make check` also needs Node ≥ 22 and `shellcheck`
+(`brew install node shellcheck`); neither is part of the `Brewfile`, because
+using the pipeline needs neither.
+
 ## Python 3.12 expat Bug
 
 Homebrew builds of ocrmypdf sometimes link against a Python with broken
