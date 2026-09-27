@@ -169,6 +169,15 @@ Underlying verification tool, executable independently: extracts every page via 
 
 ## Pre-OCR Pipeline (Automated)
 
+`pdf-auto` (per group), `pdf-combine` and `pdf-workflow` run one shared
+sequence, `run_pdf_pipeline` in `pdf-lib.sh`: merge the inputs, the three
+stages below, OCR with the quality gate, re-merge the halves, write the
+result. The scripts differ only in how they find their inputs and in two OCR
+flags (`pdf-combine` passes `--force-ocr` on request and never unpaper's
+`--clean`). The output file is written last and only when every step
+succeeded; on any failure the script prints a `❌` line and leaves no file at
+the output path. Intermediate files never land next to the inputs.
+
 Prior to OCR, every PDF passes through three automated stages without requiring flags:
 
 ```
