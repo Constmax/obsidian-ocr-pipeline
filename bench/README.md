@@ -43,8 +43,9 @@ the smoke check cheap.
 The remaining Python files are retained as records of specific experiments,
 including the original PaddleOCR/MLX candidate comparison, derailment tuning,
 tiling diagnostics, diagram and grid experiments, the optional layout-model
-evaluation, and the Stage-1 RapidOCR runtime spike (`spike_rapidocr.py`, issue
-#62). They are not supported command-line interfaces and are excluded
+evaluation, the Stage-1 RapidOCR runtime spike (`spike_rapidocr.py`, issue
+#62), and the direct Apple Vision comparison (`apple_vision.py` with
+`apple_vision.swift`, ERGEBNIS.md addendum 22). They are not supported command-line interfaces and are excluded
 from the CI smoke check. Promote a script to the table above before relying on
 it as part of the regular benchmark workflow.
 
