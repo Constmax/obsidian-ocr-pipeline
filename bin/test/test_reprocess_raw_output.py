@@ -25,6 +25,9 @@ from types import SimpleNamespace
 import pytest
 
 
+pytestmark = pytest.mark.slow  # end-to-end runs; `make test-fast` skips them
+
+
 BIN = Path(__file__).resolve().parent.parent
 LONG = "x" * 60
 

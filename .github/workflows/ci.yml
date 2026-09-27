@@ -1,5 +1,7 @@
 name: CI
 
+# Every job calls a Makefile target, so `make check` runs locally what CI runs
+# (Issue #107). Only toolchain installation lives here.
 on:
   # push nur auf main: Feature-Branches laufen ueber ihren Pull Request.
   # Unbeschraenktes 'push' wuerde bei jedem Branch mit offenem PR jeden Job
@@ -12,9 +14,6 @@ jobs:
   plugin:
     name: Plugin (check, lint, test, main.js-vergleich)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: plugin
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,30 +21,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: plugin/package-lock.json
-      - name: Abhaengigkeiten (reproduzierbar aus package-lock.json)
-        run: npm ci
-      - name: Typecheck
-        run: npm run check
-      - name: Lint
-        run: npm run lint
-      - name: Tests
-        run: npm test
-      - name: Build
-        run: npm run build
-      - name: Eingecheckten Build verifizieren
-        run: |
-          # Erst die Versionierung pruefen: 'git diff' meldet fuer eine
-          # unversionierte Datei keinen Unterschied, ein PR, der main.js
-          # aus dem Index nimmt oder ignoriert, kaeme sonst gruen durch.
-          if ! git ls-files --error-unmatch main.js >/dev/null 2>&1; then
-            echo "!! main.js ist nicht versioniert: der eingecheckte Build ist die Auslieferung (siehe AGENTS.md)."
-            exit 1
-          fi
-          if ! git diff --exit-code -- main.js; then
-            echo "!! main.js weicht von src/ ab: 'npm run build' ausfuehren und main.js mitcommitten."
-            exit 1
-          fi
-          echo "ok  main.js ist versioniert und entspricht src/"
+      - name: Typecheck, lint, test, build, main.js matches src/
+        # npm ci (reproducible from package-lock.json) runs as a make prerequisite.
+        run: make plugin
 
   shell:
     name: Shell (shellcheck)
@@ -64,7 +42,7 @@ jobs:
           sudo install "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
           shellcheck --version
       - name: Shell-Skripte pruefen
-        run: shellcheck -x -P bin setup.sh install.sh bin/*.sh bin/pdf2md plugin/install-plugin.sh
+        run: make shellcheck
 
   python:
     name: Python (pytest, Golden-Snapshot)
@@ -83,10 +61,8 @@ jobs:
         # Die Scan-Strecke (detect_layout, _ink_amount) braucht beide. Ohne sie
         # decken die Konvertierungstests nur vektorielle Seiten ab.
         run: pip install numpy pillow
-      - name: Tests (Nahtentdopplung, Randmarken, Schleifen, Golden-Snapshot)
-        run: python -m pytest pdf2md/test bin/test -q
-      - name: Benchmark entry point smoke test und Lesereihenfolge-Metrik
-        run: python -m pytest bench/test_entrypoints.py bench/test_reading_order.py -q
+      - name: pdf2md, Stage 1 and benchmark entry points
+        run: make test-py PYTHON=python
 
   ocrmypdf:
     name: OCRmyPDF-Textlayer (gepinnt 17.8.0)
@@ -105,14 +81,10 @@ jobs:
         # Dieselbe Version wie in setup.sh: der Test ruft den fpdf2-Renderer
         # direkt auf, und der ist keine oeffentliche API.
         run: pip install pytest "ocrmypdf==17.8.0"
-      - name: Textlayer folgt der hOCR-Elementreihenfolge
+      - name: hOCR text-layer order and the PaddleOCR engine plugin
+        # ocrmypdf_paddle imports ocrmypdf and therefore runs here, not in the
+        # python job; recognition is replaced in its tests.
         env:
           # Fehlende Voraussetzungen sind in diesem Job ein Fehler, kein Skip.
           REQUIRE_OCRMYPDF: "1"
-        run: python -m pytest bin/test/test_hocr_text_layer_order.py -q
-      - name: PaddleOCR-Engine-Plugin (ohne RapidOCR und Modelle)
-        # Das Paket importiert ocrmypdf und laeuft deshalb hier, nicht im
-        # Job python. Die Erkennung ist in den Tests ersetzt.
-        env:
-          REQUIRE_OCRMYPDF: "1"
-        run: python -m pytest ocrmypdf_paddle/test -q
+        run: make test-ocrmypdf OCRMYPDF_PYTHON=python

@@ -9,6 +9,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
+
+pytestmark = pytest.mark.slow  # end-to-end runs; `make test-fast` skips them
+
 
 REPO = Path(__file__).resolve().parent.parent.parent
 PDF2MD = REPO / "pdf2md" / "pdf2md.py"
