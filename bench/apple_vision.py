@@ -35,8 +35,10 @@ is not listed there; `order_lines` on the truth lines is its ordering.
 
 Seconds are wall time per page on the page image, model loading excluded
 (every engine first reads one warm-up page). The Swift tool is compiled on
-first use with swiftc (Xcode command-line tools, macOS 26 SDK). Outputs stay
-in bench/apple-vision-lauf/: page images and text are course material.
+first use with swiftc (Xcode command-line tools, macOS 26 SDK) and runs only
+the requested Vision requests: apple-text needs macOS 15, apple-documents
+macOS 26. Outputs stay in bench/apple-vision-lauf/: page images and text are
+course material.
 """
 import argparse
 import json
@@ -68,21 +70,31 @@ def _swift_tool():
     return binary
 
 
-def run_apple(images, out):
-    """apple-text and apple-documents texts and seconds per page."""
+#: Engine -> the Swift tool's request name and the page text from its record.
+APPLE_REQUESTS = {
+    "apple-text": ("text", lambda r: "\n".join(line["text"] for line in r["lines"])),
+    "apple-documents": ("documents",
+                        lambda r: "\n".join(d["transcript"] for d in r["documents"])),
+}
+
+
+def run_apple(images, out, engines):
+    """Texts and seconds per page for the requested Apple engines only."""
+    wanted = [engine for engine in APPLE_REQUESTS if engine in engines]
+    requests = ",".join(APPLE_REQUESTS[engine][0] for engine in wanted)
     raw = out / "apple-raw"
     binary = _swift_tool()
-    subprocess.run([str(binary), str(out / "warm-up"), str(images[0])], check=True,
+    subprocess.run([str(binary), requests, str(out / "warm-up"), str(images[0])], check=True,
                    stdout=subprocess.DEVNULL)
-    subprocess.run([str(binary), str(raw), *map(str, images)], check=True)
-    texts, seconds = {"apple-text": {}, "apple-documents": {}}, {"apple-text": {}, "apple-documents": {}}
+    subprocess.run([str(binary), requests, str(raw), *map(str, images)], check=True)
+    texts = {engine: {} for engine in wanted}
+    seconds = {engine: {} for engine in wanted}
     for image in images:
         record = json.loads((raw / f"{image.stem}.json").read_text(encoding="utf-8"))
-        texts["apple-text"][image.stem] = "\n".join(l["text"] for l in record["text"]["lines"])
-        seconds["apple-text"][image.stem] = record["text"]["seconds"]
-        texts["apple-documents"][image.stem] = "\n".join(
-            d["transcript"] for d in record["documents"]["documents"])
-        seconds["apple-documents"][image.stem] = record["documents"]["seconds"]
+        for engine in wanted:
+            request, text = APPLE_REQUESTS[engine]
+            texts[engine][image.stem] = text(record[request])
+            seconds[engine][image.stem] = record[request]["seconds"]
     return texts, seconds
 
 
@@ -138,7 +150,7 @@ def _rapidocr(args):
 
 def recognize_all(images, out, engines, rapid_python):
     texts, seconds = {}, {}
-    for name, step in (("apple", lambda: run_apple(images, out)),
+    for name, step in (("apple", lambda: run_apple(images, out, engines)),
                        ("tesseract", lambda: run_tesseract(images)),
                        ("rapidocr", lambda: run_rapidocr(images, out, rapid_python))):
         if not any(engine.startswith(name) for engine in engines):
@@ -159,6 +171,16 @@ def _speed(values):
     if not values:
         return "–", "–"
     return f"{statistics.median(values):.2f}", f"{sum(values):.0f}"
+
+
+def _scores(rows):
+    """Word accuracy, median word order and citation fidelity over `rows` of vergleiche()."""
+    total = sum(r["woerter"] for r in rows)
+    hit = sum(r["wortgenauigkeit"] * r["woerter"] for r in rows)
+    citations = sum(r["zitate"] for r in rows)
+    kept = sum((r["zitattreue"] or 0) * r["zitate"] for r in rows)
+    order = statistics.median(r["reihenfolge"] for r in rows)
+    return f"{hit / total:.1%}", f"{order:.1%}", f"{kept / citations:.1%}"
 
 
 # ── Commands ───────────────────────────────────────────────────────────────
@@ -199,14 +221,10 @@ def words(args):
                 row = vergleiche(truth[n], pages[page])
                 if row:
                     rows.append(row | {"page": page})
-        total = sum(r["woerter"] for r in rows)
-        hit = sum(r["wortgenauigkeit"] * r["woerter"] for r in rows)
-        citations = sum(r["zitate"] for r in rows)
-        kept = sum((r["zitattreue"] or 0) * r["zitate"] for r in rows)
-        order = statistics.median(r["reihenfolge"] for r in rows)
+        accuracy, order, fidelity = _scores(rows)
         median, whole = _speed(list(seconds.get(engine, {}).values()))
-        print(f"| `{engine}` | {len(rows)} | {hit / total:.1%} | {order:.1%} | "
-              f"{kept / citations:.1%} | {median} | {whole} |")
+        print(f"| `{engine}` | {len(rows)} | {accuracy} | {order} | {fidelity} | "
+              f"{median} | {whole} |")
         report[engine] = rows
     (out / "words.json").write_text(json.dumps(report, ensure_ascii=False, indent=1),
                                     encoding="utf-8")
@@ -241,13 +259,9 @@ def textlayer(args):
             row = vergleiche(truth[n], text) if n in truth else None
             if row:
                 rows.append(row)
-        total = sum(r["woerter"] for r in rows)
-        hit = sum(r["wortgenauigkeit"] * r["woerter"] for r in rows)
-        citations = sum(r["zitate"] for r in rows)
-        kept = sum((r["zitattreue"] or 0) * r["zitate"] for r in rows)
-        order = statistics.median(r["reihenfolge"] for r in rows)
-        print(f"| `{mode}` | {len(rows)} | {hit / total:.1%} | {order:.1%} | "
-              f"{kept / citations:.1%} | {seconds:.0f} | {seconds / len(origin):.2f} |")
+        accuracy, order, fidelity = _scores(rows)
+        print(f"| `{mode}` | {len(rows)} | {accuracy} | {order} | {fidelity} | "
+              f"{seconds:.0f} | {seconds / len(origin):.2f} |")
 
 
 def order(args):
@@ -313,8 +327,6 @@ def main(argv=None):
     commands.choices["order"].add_argument("--truth", type=Path, required=True)
     commands.choices["order"].add_argument("--run-dir", type=Path, required=True,
                                            help="reading_order.py run with pages/, truth-lines/")
-    commands.choices["order"].add_argument("--python", default=sys.executable,
-                                           help="Python for reading_order page checks")
     layer = commands.add_parser("textlayer")
     layer.add_argument("--out", type=Path, help=f"default: below {RUN_DIR}")
     layer.add_argument("--modes", nargs="+", choices=("accurate", "fast"),

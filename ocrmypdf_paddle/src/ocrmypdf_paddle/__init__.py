@@ -42,7 +42,8 @@ MODES = ("accurate", "fast")
 DEFAULT_MODE = "accurate"
 
 _recognizer = runtime.Recognizer()
-_fast_recognizer = apple.FastRecognizer()
+# Both modes share one RapidOCR pipeline; fast mode only re-reads lines.
+_fast_recognizer = apple.FastRecognizer(reader=_recognizer)
 
 
 def _selected(options) -> bool:
@@ -92,14 +93,17 @@ def check_options(options):
             "PaddleOCR engine runs one OCR job; ignoring --jobs %d.", options.jobs
         )
     options.jobs = 1
-    problems = runtime.missing_runtime() + runtime.check_models(runtime.model_dir())
+    model_problems = runtime.check_models(runtime.model_dir())
+    problems = runtime.missing_runtime() + model_problems
     if mode == "fast":
         problems += apple.missing_vision()
     if problems:
+        hint = ""
+        if model_problems:
+            hint = (f"\nModel files are read from {runtime.MODEL_DIR_ENV} "
+                    f"(default {runtime.model_dir()}).")
         raise MissingDependencyError(
-            "PaddleOCR engine is not ready:\n  " + "\n  ".join(problems)
-            + f"\nModel files are read from {runtime.MODEL_DIR_ENV} "
-            f"(default {runtime.model_dir()})."
+            "PaddleOCR engine is not ready:\n  " + "\n  ".join(problems) + hint
         )
 
 

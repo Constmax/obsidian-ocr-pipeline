@@ -446,20 +446,32 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
 - **Pipeline per page:** Vision's `VNRecognizeTextRequest` (accurate,
   `de-DE`, language correction) returns lines as quadrilaterals with word
   boxes. Lines matching `CITATION_HINT` (a "§", "$", "Art." or a number
-  followed by a Roman numeral) are cropped with a 15 % margin and read again
-  by RapidOCR's recognizer alone, without detection (about 8 % of the lines).
-  Then `order_lines()` and `render_page()` run as in accurate mode.
+  followed by a Roman numeral) are read again by RapidOCR's recognizer alone,
+  without detection (about 8 % of the lines). The crop follows the line's own
+  edges with a 15 % margin and is straightened, so a skewed line does not
+  bring its neighbours along. Then `order_lines()` and `render_page()` run as
+  in accurate mode.
+- **Accepting a re-reading:** RapidOCR's text replaces Vision's only with a
+  recognition score of at least 0.8 and a `difflib` similarity to Vision's
+  text of at least 0.6; the line then carries RapidOCR's score. A citation
+  fix changes a few characters, a reading of noise or of a neighbouring line
+  most of them. Both thresholds are not calibrated yet (#71).
 - **Word boxes:** Vision's word boxes reach into half the space on either
   side. Rendered unchanged, `pdftotext` glues the words of a line together
-  (0.3–2 % of the words survived on four truth pages). Each box is trimmed at
-  both ends by a quarter of the line height, at most 30 % of its width. A
-  re-read line keeps Vision's word boxes when it has the same number of words,
-  otherwise the words are spread across the line box.
-- **Dependencies:** macOS with `pyobjc-framework-Vision` (extra `[fast]`)
-  plus everything accurate mode needs, because the models re-read lines.
-  `check_options` refuses fast mode before the first page when Vision is
-  missing or cannot read German; there is no silent fallback to accurate.
-  RapidOCR is created only when a page has a citation line.
+  (0.3–2 % of the words survived on four truth pages). Accurate mode's text
+  layer glues RapidOCR's words the same way. `render_page()` therefore trims
+  every recognizer word box at both ends by a quarter of the line height, at
+  most 30 % of its width, in both modes. A re-read line keeps Vision's word
+  boxes when it has the same number of words, otherwise the words are spread
+  across the line box.
+- **Dependencies:** macOS 13 or later with `pyobjc-framework-Vision` (extra
+  `[fast]`) plus everything accurate mode needs, because the models re-read
+  lines. `check_options` refuses fast mode before the first page when Vision
+  is missing, the macOS is too old, or Vision cannot read German; there is no
+  silent fallback to accurate. Both modes share one RapidOCR pipeline, created
+  only when a page needs it.
+- **Benchmark:** `reading_order.py run` starts `unsplit-paddle-fast` only
+  when it is named, so the default run works without Apple Vision.
 - **Not wired yet:** `bin/` and the Obsidian setting do not offer PaddleOCR
   at all until #70–#73; both modes arrive there together.
 

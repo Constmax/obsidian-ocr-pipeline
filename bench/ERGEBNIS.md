@@ -2103,3 +2103,7 @@ Auf den Scanseiten ordnet `order_lines()` Apples Zeilen fast so gut wie RapidOCR
 - **Folge:** Der Fehler muss vor #71 behoben sein. Sonst misst der Benchmark den Textlayer des genauen Modus zu schlecht.
 
 Der Vergleich der Zitattreue im fertigen PDF (fast 81,7 % gegen accurate 40,6 %) sagt deshalb vorerst nichts über die Erkennung. Auf dem Rohtext liegt RapidOCR allein bei 84,4 % (siehe oben).
+
+**Folgeänderungen aus dem Review (noch nicht nachgemessen):**
+- **Wortboxen in beiden Modi:** Das Kürzen der Wortboxen ist aus `apple.py` nach `hocr.render_page()` gewandert und gilt jetzt auch für RapidOCRs Wortboxen im genauen Modus. Ein Rendertest mit aneinanderstoßenden Wortboxen durch OCRmyPDFs fpdf2-Renderer reproduziert das Kleben („Dabeiistder Verein“) und trennt die Wörter mit dem Kürzen. Die Tabelle oben ist vor dieser Änderung gemessen.
+- **Neu lesen:** Der Ausschnitt folgt jetzt der Zeile statt ihrer achsenparallelen Box. RapidOCRs Lesung ersetzt Visions Text nur ab Score 0,8 und Ähnlichkeit 0,6. Beides kann die Zitattreue des schnellen Modus leicht verschieben.

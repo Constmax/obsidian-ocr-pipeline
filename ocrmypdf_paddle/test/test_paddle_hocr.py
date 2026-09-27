@@ -12,7 +12,9 @@ from ocrmypdf_paddle.hocr import (
     baseline,
     bounding_box,
     clamp_polygon,
+    line_height,
     render_page,
+    trim_word_box,
     wconf,
 )
 
@@ -192,8 +194,9 @@ def test_word_pieces_that_spell_the_line_give_the_word_boxes():
     hocr, _ = render_page([line], W, H)
 
     words = parsed_lines(hocr)[0][1]
+    # Trimmed at both ends by a quarter of the 30 px line height.
     assert [(t, word_box(title)) for t, title in words] == [
-        ("Satz", (101, 102, 180, 128)), ("eins", (210, 101, 300, 129))]
+        ("Satz", (108, 102, 172, 128)), ("eins", (218, 101, 292, 129))]
     assert [WCONF.search(title).group(1) for _, title in words] == ["80", "60"]
 
 
@@ -206,9 +209,26 @@ def test_character_pieces_are_merged_per_word():
     hocr, _ = render_page([line], W, H)
 
     words = parsed_lines(hocr)[0][1]
+    # The unions (100-178, 180-218) nearly touch; trimming opens a gap.
     assert [(t, word_box(title)) for t, title in words] == [
-        ("Grün", (100, 100, 178, 130)), ("ab", (180, 100, 218, 130))]
+        ("Grün", (108, 100, 170, 130)), ("ab", (188, 100, 210, 130))]
     assert [WCONF.search(title).group(1) for _, title in words] == ["82", "80"]
+
+
+def test_word_boxes_are_trimmed_by_the_line_height_or_their_width():
+    assert trim_word_box((100, 0, 300, 40), 40) == (110, 0, 290, 40)
+    # "I" is narrower than two trims; at most 30 % of the width goes per side.
+    assert trim_word_box((0, 0, 20, 40), 40) == (6, 0, 14, 40)
+    assert trim_word_box((0, 0, 1, 40), 40) == (0, 0, 1, 40)
+
+
+def test_line_height_follows_a_skewed_line():
+    a = math.radians(3)
+    u, v = (math.cos(a), math.sin(a)), (-math.sin(a), math.cos(a))
+    polygon = tuple((500 + sx * 400 * u[0] + sy * 20 * v[0], 400 + sx * 400 * u[1] + sy * 20 * v[1])
+                    for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1)))
+    assert line_height(polygon) == pytest.approx(40)
+    assert line_height(rect(100, 100, 400, 130)) == pytest.approx(30)
 
 
 @pytest.mark.parametrize("pieces", [
