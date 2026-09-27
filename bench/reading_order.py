@@ -33,7 +33,11 @@ is the share of matched line pairs whose extracted order agrees with the
 truth. Lines with fewer than 10 such characters are too ambiguous to place
 and are left out; unmatched lines and lines found more often than the truth
 holds them (each further copy with at least 80 % of the 4-grams) are
-reported separately.
+reported separately. Whether the text columns are interleaved is decided on
+the lines placed without ambiguity: lines whose text occurs once in the
+truth and has exactly one such nearly complete copy in the extracted text.
+A section where a column keeps fewer than half of its matched lines that way
+(a noisy scan, a duplicated column) is checked on all its matched lines.
 """
 import argparse
 import itertools
@@ -66,6 +70,9 @@ MIN_COVERAGE = 0.5
 #: A second copy counts as a duplicate only when it is nearly complete;
 #: lines sharing a phrase ("eine lange erste/zweite Zeile") reach half.
 DUPLICATE_COVERAGE = 0.8
+#: Interleaving is decided on the unambiguously placed lines only while every
+#: column of a section keeps at least this share of its matched lines.
+MIN_DECIDED = 0.5
 MIN_PAGE_CHARS = 50  # B5 default of reprocess-raw
 GATE_POINTS = 0.01
 
@@ -261,11 +268,17 @@ def score_page(truth, extracted):
     for line in eligible:
         groups[line.key].append(line)
     positions, duplicated, unmatched = {}, [], []
+    # Lines placed without ambiguity: the key occurs once in the truth, the
+    # text holds one nearly complete copy of it, and the line sits there
+    # (issue #115). Copies inside text already claimed by a longer line count
+    # too, so a short line whose text a longer line repeats never decides.
+    unique = set()
     # Longer lines claim their text first: a short line that also occurs inside
     # a longer line (a citation repeated in a footnote) must not take its place.
     claimed = []
     for key, members in sorted(groups.items(), key=lambda item: -len(item[0])):
-        found = [(offset, coverage) for offset, coverage in occurrences(key, index)
+        candidates = occurrences(key, index)
+        found = [(offset, coverage) for offset, coverage in candidates
                  if all(min(offset + len(key), end) - max(offset, start) <= len(key) // 2
                         for start, end in claimed)]
         if sum(coverage >= DUPLICATE_COVERAGE for _, coverage in found) > len(members):
@@ -275,16 +288,33 @@ def score_page(truth, extracted):
             positions[line.order] = offset
             claimed.append((offset, offset + len(key)))
         unmatched.extend(members[len(used):])
+        complete = [offset for offset, coverage in candidates if coverage >= DUPLICATE_COVERAGE]
+        if len(members) == 1 and complete == [positions.get(members[0].order)]:
+            unique.add(members[0].order)
 
     by_order = {line.order: line for line in truth}
     sections = defaultdict(list)
     for order, offset in positions.items():
         line = by_order[order]
         if line.column and line.role in ("body", "footnote"):
-            sections[line.section].append((offset, line.column))
-    interleaved = 0
+            sections[line.section].append((offset, line.column, order in unique))
+    # A repeated key (the same citation twice, a line fallen apart into words
+    # that recur elsewhere) is handed out in text order and can land in the
+    # other column; one such line fakes two column switches. Its order still
+    # counts for accuracy, but interleaving is decided on the unique lines.
+    # When a column has too few of them (a noisy scan below the 80 % bound, a
+    # column emitted twice), the unique lines cannot tell, and the section is
+    # checked on all its matched lines as before: a false alarm is possible
+    # there, a missed interleaving is not.
+    interleaved = fallback = 0
     for items in sections.values():
-        labels = [column for _, column in sorted(items)]
+        decided = [item for item in items if item[2]]
+        if any(sum(item[2] for item in items if item[1] == column)
+               < MIN_DECIDED * sum(item[1] == column for item in items)
+               for column in {item[1] for item in items}):
+            decided = items
+            fallback += 1
+        labels = [column for _, column, _ in sorted(decided)]
         runs = 1 + sum(a != b for a, b in zip(labels, labels[1:]))
         if len(set(labels)) == 2 and (runs > 2 or labels[0] == "R"):
             interleaved += 1
@@ -307,6 +337,7 @@ def score_page(truth, extracted):
         "duplicated": len(duplicated),
         "accuracy": precedence(positions),
         "interleaved_sections": interleaved,
+        "fallback_sections": fallback,
         "full_width": len(full),
         "full_width_unmatched": sum(line.full_width for line in unmatched),
         "full_width_duplicated": sum(line.full_width for line in duplicated),
