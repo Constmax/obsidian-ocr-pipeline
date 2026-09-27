@@ -12,7 +12,8 @@ this order:
 
 All commands need the pinned OCRmyPDF environment (img2pdf, pikepdf).
 `recognize` and the Paddle workflows also need rapidocr, onnxruntime and
-OCRMYPDF_PADDLE_MODEL_DIR (docs/paddle-textlayer.md, step 2); the Apple and
+OCRMYPDF_PADDLE_MODEL_DIR (docs/paddle-textlayer.md, step 2), and
+`unsplit-paddle-fast` also pyobjc-framework-Vision on macOS; the Apple and
 Tesseract workflows run bin/pdf-auto.sh and need `ocrmypdf` on PATH.
 
 The truth (bench/reading_order_truth.json) names each source page and lists
@@ -79,9 +80,11 @@ SHELL_WORKFLOWS = {
     "unsplit-apple": ["--engine", "apple", "--no-quality-gate"],
     "unsplit-tesseract": ["--engine", "tesseract", "--no-quality-gate"],
 }
-#: PaddleOCR through the plugin, split (the supported command) or unsplit.
-#: Arguments mirror build_ocr_args in bin/pdf-lib.sh for one job.
-PADDLE_WORKFLOWS = {"split-paddle": True, "unsplit-paddle": False}
+#: PaddleOCR through the plugin, split (the supported command) or unsplit, as
+#: (split, --paddle-mode). Arguments mirror build_ocr_args in bin/pdf-lib.sh
+#: for one job. The fast mode needs Apple Vision (macOS).
+PADDLE_WORKFLOWS = {"split-paddle": (True, "accurate"), "unsplit-paddle": (False, "accurate"),
+                    "unsplit-paddle-fast": (False, "fast")}
 WORKFLOWS = [*SHELL_WORKFLOWS, *PADDLE_WORKFLOWS]
 SPLIT_BASELINES = ("split-apple", "split-tesseract")
 CANDIDATE = "unsplit-paddle"
@@ -487,14 +490,15 @@ def run(args):
         print(f"{name}: {time.monotonic() - started:.0f} s")
 
 
-def _run_paddle(args, name, split, source, out):
+def _run_paddle(args, name, workflow, source, out):
+    split, mode = workflow
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(PADDLE_SRC), env.get("PYTHONPATH")]))
     env["OCRMYPDF_PADDLE_DEBUG_DIR"] = str(out / "debug" / source.stem)
     work = out / "work"
     work.mkdir(exist_ok=True)
-    ocr = [args.python, "-m", "ocrmypdf", "--plugin", "ocrmypdf_paddle", "-l", "deu",
-           "--skip-text", "--optimize", str(args.optimize), "--jobs", "1",
+    ocr = [args.python, "-m", "ocrmypdf", "--plugin", "ocrmypdf_paddle", "--paddle-mode", mode,
+           "-l", "deu", "--skip-text", "--optimize", str(args.optimize), "--jobs", "1",
            "--max-image-mpixels", "400"]
     target = out / source.name
     with _log(args, name) as log:

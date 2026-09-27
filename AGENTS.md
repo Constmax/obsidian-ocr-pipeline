@@ -17,9 +17,11 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 - `ocrmypdf_paddle/` — OCRmyPDF engine plugin running PaddleOCR PP-OCRv5
   through RapidOCR (plan `docs/paddle-textlayer.md`). Reading order comes
   from line geometry in `ordering.py`, measured against the hand-checked
-  truth set of `bench/reading_order.py`. Not installed by `setup.sh` until
-  the benchmark retains it; tests need the pinned ocrmypdf but no RapidOCR or
-  models (`python3 -m pytest ocrmypdf_paddle/test`).
+  truth set of `bench/reading_order.py`. `--paddle-mode fast` (macOS) takes
+  Apple Vision's lines and re-reads only citation lines with PP-OCRv5
+  (`apple.py`; extra `[fast]` for pyobjc-framework-Vision). Not installed by
+  `setup.sh` until the benchmark retains it; tests need the pinned ocrmypdf
+  but no RapidOCR, Vision or models (`python3 -m pytest ocrmypdf_paddle/test`).
 - `bench/` — benchmark harness; page images are copyrighted scans, NOT in the
   repo, reproducible via `bench/build_bench.py` from the user's vault.
 - `contracts/` — the CLI contract with the plugin (progress events, exit
