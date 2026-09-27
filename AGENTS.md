@@ -8,6 +8,10 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 - `bin/` — Stage 1: searchable PDFs via ocrmypdf. Shared lib `pdf-lib.sh` +
   four CLIs (`pdf-auto`, `pdf-combine`, `pdf-workflow`, `reprocess-raw`) +
   Python helper `column_tools.py` (column split/merge, needs pikepdf).
+  The merge → MediaBox fix → downscale → split → OCR/quality gate →
+  re-merge → publish sequence exists once, `run_pdf_pipeline` in
+  `pdf-lib.sh`; the first three CLIs only find and group inputs. Change the
+  sequence there, and pin it in `bin/test/test_pipeline.py`.
 - `pdf2md/` — Stage 2: `pdf2md.py` (MLX/PaddleOCR-VL) PDF or page image →
   Markdown (images are normalized to a one-page PDF in `open_document()`).
   Apple-Silicon-only, ~15–60 s/page; needs `pymupdf`. `dictionary.py` (formerly `woerterbuch.py`) runs a
