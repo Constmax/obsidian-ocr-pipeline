@@ -70,6 +70,21 @@ def test_full_width_heading_between_column_regions():
     )
 
 
+def test_four_full_width_headings_between_column_regions():
+    # Four centred headings cross the gutter, just under 5 % of the 84 narrow
+    # lines. Leaving the header and footer shares out of the crossing count
+    # must not shrink that tolerance.
+    lines, expected = [], []
+    for k in range(5):
+        top = 300 + k * 600
+        lines += column(f"L{k}_", LEFT, top, 8) + column(f"R{k}_", RIGHT, top, 8)
+        expected += names(f"L{k}_", 8) + names(f"R{k}_", 8)
+        if k < 4:
+            lines.append(box(f"Titel{k}", 900, top + 500, 1580, height=50))
+            expected.append(f"Titel{k}")
+    assert texts(order_lines(as_recognized(lines), W, H)) == expected
+
+
 def test_single_column_paragraph_above_two_columns():
     intro = column("S", (200, 2280), 400, 6)
     columns = column("L", LEFT, 780, 15) + column("R", RIGHT, 780, 15)
@@ -157,6 +172,30 @@ def test_footnotes_offset_by_half_a_line_stay_in_their_column():
     ordered = order_lines(as_recognized(left + right + [footer]), W, H)
     assert texts(ordered) == (
         names("L", 30) + names("FL", 3) + names("R", 30) + names("FR", 2) + ["Fusszeile"]
+    )
+
+
+def test_sparse_page_with_running_header_and_footer_in_the_body_keeps_its_columns():
+    # Large type, few lines (m06): the boxes touch, so _bands() cuts off
+    # neither the running header nor the footer. The location list and the
+    # footer cross the gutter, more of them than 5 % of the narrow lines.
+    big, pitch = 64, 70
+    header = [
+        box("Logo", 180, 80, 1140, height=90),
+        *(box(f"Ort{i}", 1150, 65 + i * 40, 2410, height=75) for i in range(5)),
+        box("Rubrik", 340, 344, 700, height=68),
+        box("Titel, Seite 13", 1785, 360, 2230, height=64),
+    ]
+    left = [box(f"L{i}", 330, 432 + i * pitch, 1180, height=big) for i in range(38)]
+    right = [box(f"R{i}", 1300, 432 + i * pitch, 2200, height=big) for i in range(38)]
+    notes_left = [box(f"FL{i}", 330, 3100 + i * 90, 1180, height=70) for i in range(3)]
+    notes_right = [box(f"FR{i}", 1300, 3100 + i * 90, 2000, height=70) for i in range(2)]
+    footer = box("Fusszeile", 1177, 3397, 1354, height=48)
+    lines = header + left + right + notes_left + notes_right + [footer]
+    ordered = texts(order_lines(as_recognized(lines), W, H))
+    assert sorted(ordered[:8]) == sorted(texts(header))
+    assert ordered[8:] == (
+        names("L", 38) + names("FL", 3) + names("R", 38) + names("FR", 2) + ["Fusszeile"]
     )
 
 

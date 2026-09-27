@@ -11,11 +11,13 @@ geometry alone:
 2. Cut off a header and a footer band at a horizontal gap that no line
    crosses, near the top or the bottom of the page.
 3. Look for a gutter between 30 % and 70 % of the text width that almost no
-   narrow line crosses, with lines side by side on both sides. On such a
+   narrow line crosses, with lines side by side on both sides. Lines in the
+   header and footer shares of the page do not count as crossing. On such a
    page the columns begin at the first column pair, so a running header
    closer above them than a gap still belongs to the header when it spans
-   the gutter or stands apart by more than the line pitch, and footer rows paired across the gutter (footnotes, even
-   half a line offset) go back to their columns.
+   the gutter or stands apart by more than the line pitch, and footer rows
+   paired across the gutter (footnotes, even half a line offset) go back to
+   their columns.
 4. A line crossing the gutter with no column line beside it is full width
    (a heading, a single-column paragraph, a footer) and separates the page
    into sections. A crossing line beside column lines (a note written into
@@ -95,7 +97,7 @@ def order_lines(lines: Sequence[TextLine], width: int, height: int) -> list[Text
         return list(lines)
     h = statistics.median(box.h for box in boxes)
     header, body, footer = _bands(boxes, height, h)
-    gutter = _gutter(body, h)
+    gutter = _gutter(body, height, h)
     if gutter is None:
         middle = _column(body, h)
     else:
@@ -331,8 +333,17 @@ def _beside(a: _Box, b: _Box) -> bool:
     return _overlap(a, b) >= 0.5 * min(a.h, b.h)
 
 
-def _gutter(boxes: list[_Box], h: float) -> float | None:
-    """x position of a two-column gutter, or None for a single column."""
+def _gutter(boxes: list[_Box], height: int, h: float) -> float | None:
+    """x position of a two-column gutter, or None for a single column.
+
+    Almost no narrow line may cross the gutter: at most 5 % of all narrow
+    lines, counting crossings only between the top HEADER_SHARE and the
+    bottom FOOTER_SHARE of the page. A running header or footer that
+    _bands() could not cut off (touching boxes of large type, m06) crosses
+    it too, but stands in those shares and does not count, however few lines
+    the page has. A page with too few narrow lines between those shares
+    counts crossings on all of them.
+    """
     if len(boxes) < 2 * MIN_COLUMN_LINES:
         return None
     left_edge = min(box.x0 for box in boxes)
@@ -341,8 +352,14 @@ def _gutter(boxes: list[_Box], h: float) -> float | None:
     if span <= 0 or len(narrow) < 2 * MIN_COLUMN_LINES:
         return None
     size = span / GUTTER_BINS
+    inner = [
+        box for box in narrow
+        if HEADER_SHARE * height <= box.cy <= (1 - FOOTER_SHARE) * height
+    ]
+    if len(inner) < 2 * MIN_COLUMN_LINES:
+        inner = narrow
     delta = [0] * (GUTTER_BINS + 1)
-    for box in narrow:
+    for box in inner:
         delta[max(0, int((box.x0 - left_edge) / size))] += 1
         delta[min(GUTTER_BINS, math.ceil((box.x1 - left_edge) / size))] -= 1
     coverage, running = [], 0
