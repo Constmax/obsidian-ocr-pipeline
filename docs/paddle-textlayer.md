@@ -345,7 +345,9 @@ the result explicitly says either “keep split mode” or “unsplit is support
   one line height and 1.5 times the usual leading, in the top 22 % or bottom
   12 % of the page. A gutter lies between 30 % and 70 % of the text width,
   almost no narrow line crosses it, and lines stand side by side on both
-  sides. A line crossing the gutter with no column line beside it separates
+  sides. Lines in the top 22 % and bottom 12 % do not count as crossing, so a
+  running header or footer that no gap cuts off does not hide the gutter
+  (#114). A line crossing the gutter with no column line beside it separates
   sections; each section is read left column, then right. Within a column,
   lines are read in rows, and short lines standing in the margin follow their
   column. The debug JSON lists the chosen order.
