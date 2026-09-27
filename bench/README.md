@@ -57,6 +57,11 @@ regular benchmark workflow.
 [LAYOUTMODELL.md](LAYOUTMODELL.md)) stays in `bench/`:
 `pdf2md/test/test_layout_model.py` imports its region-to-column conversion.
 
+The direct Apple Vision comparison (`apple_vision.py` with `apple_vision.swift`,
+ERGEBNIS.md addendum 22) also stays in `bench/`, because it imports
+`reading_order.py` and `bench_ocr.py`. Like the archive, it is not a supported
+command-line interface and is excluded from the CI smoke check.
+
 Benchmark results and methodology live in [ERGEBNIS.md](ERGEBNIS.md). The
 reproducible six-page source manifest lives in
 [BENCHMARK-SET.md](BENCHMARK-SET.md).
