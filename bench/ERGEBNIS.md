@@ -1959,3 +1959,89 @@ Das Gate meldet hier „unsplit is supported“. Weil die Korrektur an diesen Se
 - **Metrik:** Kurze, im Text wiederholte Zeilen (Einzelwörter, gleiche Fundstellen) können Verschränkungen vortäuschen. Das Gate zählt sie trotzdem; die Gate-Kriterien bleiben unverändert.
 - **Fehlende Seitenart:** Eine Vollbreite-Überschrift zwischen zwei Spaltenbereichen ist weiterhin nur synthetisch getestet.
 - **Laufzeit:** `unsplit-paddle` brauchte 146 s für die 13 neuen und 182 s für die 16 alten Seiten, `split-paddle` 140 s für die neuen; nur ein Richtwert, gemessen wird in Schritt 5.
+
+## Nachtrag 2026-09-27 (22): Apple Vision direkt — Geschwindigkeit, Wörter und Lesereihenfolge
+
+**Ergebnis:**
+- **Tempo:** Apple Vision ist auf dem M1 3- bis 7-mal schneller als Tesseract und RapidOCR.
+- **Wörter:** Apple erkennt die Wörter etwa so gut wie Tesseract und etwas schlechter als RapidOCR.
+- **Normzitate:** Hier liegt Apple deutlich hinter RapidOCR, erreicht aber das Zwanzigfache von Tesseract.
+- **Lesereihenfolge:** Die neue Dokument-API `RecognizeDocumentsRequest` (macOS 26) ordnet Zweispalter nicht besser als die Zeilen-API. Keine Apple-Variante ersetzt `order_lines()`.
+- **Folge:** Stufe 1 bleibt bei PaddleOCR mit `order_lines()`. Apple bleibt ein schneller Nebenweg für einspaltige Seiten und Handschrift.
+
+Anlass war die Frage, warum der iPhone-Scanner schneller und genauer liest als die Engines der Pipeline. Er nutzt dieselben Vision-Modelle auf der Neural Engine. Gemessen werden sie hier direkt, ohne `ocrmypdf-appleocr`.
+
+### Aufbau
+
+`bench/apple_vision.swift` liest jedes Seitenbild mit zwei Vision-APIs:
+- **`RecognizeTextRequest`:** `accurate`, `de-DE`, mit Sprachkorrektur, Zeilen in Visions Reihenfolge. So arbeitet auch `ocrmypdf-appleocr`.
+- **`RecognizeDocumentsRequest`:** Visions eigene Dokumentstruktur mit Absätzen, Listen und Tabellen.
+
+`bench/apple_vision.py` vergleicht beide mit Tesseract (`tesseract PAGE stdout -l deu`) und RapidOCR (PP-OCRv5 über `ocrmypdf_paddle`, geordnet mit `order_lines()`). Alle Engines lesen dasselbe 300-dpi-Graustufenbild. Jede Engine liest vorher eine Aufwärmseite, gemessen wird die Wandzeit pro Seite ohne Modellladen.
+
+Bewertet wird mit den vorhandenen Funktionen:
+- **`words`:** die 40 Vektorseiten aus `bench/bench-lauf/` mit `vergleiche()` aus `bench_ocr.py`. Wahrheit ist der Textlayer der Seiten, gerendert werden sie mit 300 dpi.
+- **`order`:** die drei handgeprüften Lesereihenfolge-Sets (t: Nachtrag 19, n: Nachtrag 20, m: Nachtrag 21) mit `score_page()` aus `reading_order.py`.
+
+```text
+python bench/apple_vision.py words --rapid-python ~/.venvs/docling/bin/python
+~/.venvs/ocrmypdf/bin/python bench/apple_vision.py order --truth bench/reading_order_truth.json --run-dir <Laufverzeichnis>
+```
+
+**Umgebung:** M1, 8 GB, macOS 26.2, Swift 6.3, Tesseract 5.5.2, rapidocr 3.9.2, onnxruntime 1.26.0, Repo-Stand `df4ea21`.
+
+### Wörter und Zitate (40 Vektorseiten)
+
+| Engine | Wortgenauigkeit | Reihenfolge (Median) | Zitattreue | Sek./Seite (Median) | Sek. gesamt |
+|---|---:|---:|---:|---:|---:|
+| `apple-text` | 96,2 % | 98,2 % | 64,7 % | 0,70 | 30 |
+| `apple-documents` | 96,9 % | 98,5 % | 65,2 % | 0,61 | 27 |
+| `tesseract` | 95,5 % | 96,8 % | 3,6 % | 2,00 | 90 |
+| `rapidocr` | 97,8 % | 98,5 % | 84,4 % | 4,14 | 183 |
+| `pdf2md` (Stufe 2, Lauf vom 2026-08-17) | 98,2 % | 98,0 % | 92,0 % | – | – |
+
+**Tesseract:** liest „§“ auf allen 40 Seiten als „8“ (z. B. „8 48 V“). Die Ausgabe enthält kein einziges „§“, deshalb findet die Zitatmessung fast nichts.
+
+**Apple:** Die Fehler sind systematisch:
+- „$“ statt „§“,
+- „|“ oder „l“ statt „I“, z. B. „§ 568 | BGB“, „Il“,
+- zusammengezogene Ziffer und Gesetz, z. B. „IBGB“.
+
+Eine Korrektur mit vier regulären Ausdrücken (nur zur Abschätzung, nicht im Code) ergibt:
+
+| Engine | Zitattreue ohne Korrektur | Zitattreue mit Korrektur |
+|---|---:|---:|
+| `apple-text` | 64,7 % | 72,8 % |
+| `apple-documents` | 65,2 % | 74,1 % |
+| `rapidocr` | 84,4 % | 91,1 % |
+
+### Lesereihenfolge (42 Scanseiten)
+
+| Set | Workflow | Median | Min | verschränkte Seiten | Vollbreite falsch | nicht gefunden | Sek./Seite (Median) |
+|---|---|---:|---:|---:|---:|---:|---:|
+| t (16) | `apple-text` | 99,5 % | 86,4 % | 6 | 21 von 80 | 68 von 1351 | 0,98 |
+| t (16) | `apple-documents` | 98,9 % | 86,4 % | 7 | 27 von 80 | 69 von 1351 | 0,85 |
+| t (16) | `tesseract` | 99,0 % | 75,1 % | 6 | 11 von 80 | 51 von 1351 | 3,24 |
+| t (16) | `order_lines` | 100,0 % | 99,1 % | 0 | 1 von 80 | 0 von 1351 | – |
+| n (13) | `apple-text` | 97,8 % | 77,5 % | 4 | 28 von 79 | 118 von 1259 | 1,02 |
+| n (13) | `apple-documents` | 96,5 % | 81,9 % | 5 | 29 von 79 | 121 von 1259 | 0,93 |
+| n (13) | `tesseract` | 98,5 % | 78,9 % | 6 | 13 von 79 | 54 von 1259 | 3,51 |
+| n (13) | `order_lines` | 100,0 % | 76,0 % | 2 | 0 von 79 | 0 von 1259 | – |
+| m (13) | `apple-text` | 95,8 % | 89,6 % | 10 | 33 von 93 | 34 von 1575 | 1,12 |
+| m (13) | `apple-documents` | 95,6 % | 86,3 % | 10 | 27 von 93 | 35 von 1575 | 1,01 |
+| m (13) | `tesseract` | 96,8 % | 75,1 % | 10 | 5 von 93 | 103 von 1575 | 3,91 |
+| m (13) | `unsplit-paddle` | 99,8 % | 76,3 % | 4 | 0 von 93 | 9 von 1575 | – |
+
+**Plausibilitätsprüfung:** Im m-Set entspricht `apple-text` dem Lauf `unsplit-apple` über `ocrmypdf-appleocr` aus Nachtrag 21: Median 95,8 gegen 94,5 %, beide mit 10 verschränkten Seiten. Das Plugin verliert also nichts gegenüber dem direkten Aufruf.
+
+**Dokument-API:**
+- Sie liest zwar Absätze. Auf Zweispaltern mit Kopf, Kästen und Fußnoten wechselt sie aber genauso oft zwischen den Spalten wie die Zeilen-API.
+- Ordnet man den Text nach ihrer Absatzliste statt nach dem Gesamttext, ergibt sich derselbe Wert (t: Median 98,9 %, 7 verschränkte Seiten; m: 95,6 %, 10).
+- Tabellen und Listen hat sie auf keiner Seite erkannt.
+
+### Einschränkungen
+
+- **Heimvorteil:** Die Wahrheitszeilen der Lesereihenfolge sind RapidOCR-Zeilen. „Nicht gefunden“ bevorzugt RapidOCR und ist für die anderen Engines nur ein grobes Maß für die Erkennung.
+- **Saubere Vorlagen:** Die Vektorseiten sind digital gerendert und ohne Scanrauschen. Auf echten Scans kann der Abstand zwischen den Engines anders ausfallen.
+- **Nicht nachgebaut:** der iPhone-Scanner selbst mit mehreren Aufnahmen, Entzerrung und Bildverbesserung vor der OCR. Gemessen sind nur die Vision-Modelle auf fertigen Seitenbildern.
+- **Tesseract-Parallelität:** Tesseract lief mit seinen Standard-Threads. ocrmypdf verteilt Seiten auf Jobs, der Durchsatz ganzer Dokumente ist also ein anderes Maß als die Zeit pro Seite.
