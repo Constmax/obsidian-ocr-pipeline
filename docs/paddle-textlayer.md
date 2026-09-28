@@ -451,6 +451,31 @@ supported command. Numbers, pinned versions and commands are in
   interleaved (#125). A full-width heading between column regions was not
   found in the corpus (#120).
 
+**Follow-up** in #124 and #125 (`bench/ERGEBNIS.md`, Nachtrag 25):
+
+- **Causes:** a tilted rubric row whose right part sits half a line lower
+  was measured from that lower part and stayed in the columns (q07); a
+  right column recognized as single words moved `_right_edge()` into the
+  column, so the rubric's right part paired with its label as the first
+  column row (q06, real run); footnotes of one column in the footer band
+  never pair across the gutter and were read after both columns (q03).
+- **Fix:** the lowest grown header row is measured at its upper part, like
+  the first column pair; column edges (`_edge()`) and the line pitch are
+  measured on visual rows; leading footer rows go back to their column
+  when they stand on one side of the gutter, every row starts at that
+  column's text edge and one row spans a third of the column.
+- **Known limit:** a one-column running footer that starts at a column's
+  text edge and spans a third of it is now read at the end of that column.
+- **Validation set:** `bench/reading_order_holdout4.json`, 13 two-column
+  pages from documents outside the earlier sets, chosen after the fix was
+  committed. Two of them (r02, r06) had a rubric line in the right column
+  before the fix and are read correctly.
+- **Result on the new pages:** **keep split mode.** The median is 100.0 %
+  against 95.2 % for the best split baseline and no full-width line is
+  misplaced, but three location-list lines are not recognized in the real
+  run and one skewed page is interleaved: hanging footnote numerals of the
+  right column narrow the gutter below half a line height (#127).
+
 ### 3a. Fast mode: Apple Vision lines, citations re-read
 
 *Implemented outside the #74 queue* in `ocrmypdf_paddle/apple.py`. The plugin
