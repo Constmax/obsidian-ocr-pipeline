@@ -28,8 +28,13 @@ def _column_gap(with_box):
                    and min(w[1][3], z[1][3]) - max(w[1][1], z[1][1])
                    > 0.5 * height for w in type_set)
 
-    xs = sorted(z[1][0] for z in type_set)
-    starts = sorted(z[1][0] for z in type_set if not continues_row(z))
+    # A start only one line has (a centred footer, a page title) is no
+    # column edge: its gap would pass for a gutter once crossings are
+    # counted at the edge (Issue #14).
+    shared = lambda x: sum(1 for w in type_set if abs(w[1][0] - x) <= 2) >= 2
+    xs = sorted(z[1][0] for z in type_set if shared(z[1][0]))
+    starts = sorted(z[1][0] for z in type_set
+                    if not continues_row(z) and shared(z[1][0]))
     width = max(z[1][2] for z in type_set) - min(z[1][0] for z in type_set)
     if width <= 0:
         return None
@@ -43,7 +48,7 @@ def _column_gap(with_box):
         # midpoint, inside the left column's text, every left line counted
         # as a crossing (Issue #14). The split lies halfway between b and
         # the last span starting before it, so word spans left out of the
-        # starts keep their column.
+        # starts keep their column; lone starts do not move it.
         gap, probe = b - a, b - 0.5
         pos = (max(x for x in xs if x < b) + b) / 2
         n_left = sum(1 for z in with_box if z[1][0] < pos)
