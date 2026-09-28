@@ -460,12 +460,13 @@ supported command. Numbers, pinned versions and commands are in
   column row (q06, real run); footnotes of one column in the footer band
   never pair across the gutter and were read after both columns (q03).
 - **Fix:** the lowest grown header row is measured at its upper part, like
-  the first column pair; column edges (`_edge()`) and the line pitch are
-  measured on visual rows; leading footer rows go back to their column
-  when they stand on one side of the gutter, every row starts at that
-  column's text edge and one row spans a third of the column.
-- **Known limit:** a one-column running footer that starts at a column's
-  text edge and spans a third of it is now read at the end of that column.
+  the first column pair, counting only parts of a similar height; column
+  edges (`_edge()`) and the line pitch are measured on visual rows; leading
+  footer rows go back to their column when they stand on one side of the
+  gutter, open with a footnote numeral hanging left of that column's text
+  edge with its text beside it, and every row starts at that edge.
+- **Known limit:** footnotes whose numeral is merged into the text box, or
+  that have no numeral, still stay in the footer band.
 - **Validation set:** `bench/reading_order_holdout4.json`, 13 two-column
   pages from documents outside the earlier sets, chosen after the fix was
   committed. Two of them (r02, r06) had a rubric line in the right column

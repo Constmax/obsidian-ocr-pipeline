@@ -229,7 +229,9 @@ def _column_bands(
     and a page reference): otherwise they are the first body row with an
     indented right line, not a header, and stay in the columns. Like the
     first pair, the lowest grown row is measured at its upper part, so a
-    tilted row whose right part sits half a line lower keeps its distance.
+    tilted row whose right part sits half a line lower keeps its distance;
+    only parts of the same size count, so a tall heading beside a normal
+    line is measured as before.
 
     Footnotes starting at the same height in both columns leave a page-wide
     gap above them, which puts them into the footer. Leading footer rows
@@ -256,7 +258,7 @@ def _column_bands(
             lowest = max(grown, key=lambda box: box.cy, default=None)
             if lowest is not None and (
                 any(_side(box, gutter, h) is None for box in grown)
-                or start - min(box.cy for box in grown if _beside(box, lowest))
+                or start - min(box.cy for box in grown if _level(box, lowest))
                 >= 1.5 * _pitch(body, gutter, h)
             ):
                 header = header + grown
@@ -273,6 +275,11 @@ def _column_bands(
         body = body + leading
         footer = [box for row in rows[count:] for box in row]
     return header, body, footer
+
+
+def _level(box: _Box, lowest: _Box) -> bool:
+    """Whether a box stands in the row of `lowest`, with a similar height."""
+    return _beside(box, lowest) and abs(box.h - lowest.h) <= 0.25 * lowest.h
 
 
 def _pitch(boxes: list[_Box], gutter: float, h: float) -> float:
@@ -316,22 +323,26 @@ def _edge(boxes: list[_Box], side: str, gutter: float, h: float) -> float:
 def _footnotes(rows: list[list[_Box]], body: list[_Box], gutter: float, h: float) -> bool:
     """Whether footer rows are footnotes of one column.
 
-    All their lines stand on one side of the gutter, every row starts at
-    that column's text edge (a hanging numeral starts left of it), and one
-    row spans at least a third of the column. A page number, a mark in the
-    margin or a centred or right-aligned footer part does neither.
+    All their lines stand on one side of the gutter, the first line is a
+    footnote numeral hanging left of that column's text edge with its text
+    beside it (a numeral is often a little higher, so it may form its own
+    row), and every row starts at that edge. A page number, a running
+    footer or a centred or right-aligned footer part has no hanging numeral.
     """
     sides = {_side(box, gutter, h) for row in rows for box in row}
     if len(sides) != 1 or None in sides:
         return False
     (side,) = sides
-    column = [box for box in body if _side(box, gutter, h) == side]
-    if not column:
-        return False
-    width = max(box.x1 for box in column) - min(box.x0 for box in column)
     start = _edge(body, side, gutter, h)
-    return all(row[0].x0 <= start + h for row in rows) and any(
-        max(box.x1 for box in row) - row[0].x0 >= width / 3 for row in rows
+    numeral = rows[0][0]
+    return (
+        numeral.w <= h
+        and numeral.x0 <= start - h / 4
+        and any(
+            box.x0 >= numeral.x1 and box.x0 <= start + h and _overlap(box, numeral) > 0
+            for row in rows for box in row
+        )
+        and all(row[0].x0 <= start + h for row in rows)
     )
 
 
