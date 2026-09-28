@@ -28,39 +28,56 @@ def _column_gap(with_box):
                    and min(w[1][3], z[1][3]) - max(w[1][1], z[1][1])
                    > 0.5 * height for w in type_set)
 
-    # A start only one line has (a centred footer, a page title) is no
-    # column edge: its gap would pass for a gutter once crossings are
-    # counted at the edge (Issue #14).
-    shared = lambda x: sum(1 for w in type_set if abs(w[1][0] - x) <= 2) >= 2
-    xs = sorted(z[1][0] for z in type_set if shared(z[1][0]))
-    starts = sorted(z[1][0] for z in type_set
-                    if not continues_row(z) and shared(z[1][0]))
+    starts = sorted(z[1][0] for z in type_set)
     width = max(z[1][2] for z in type_set) - min(z[1][0] for z in type_set)
     if width <= 0:
         return None
     full = [z for z in with_box if z[1][2] - z[1][0] > width * 0.6]
+
+    def crossing(pos):
+        return sum(1 for z in with_box
+                   if z not in full and z[1][0] < pos < z[1][2])
+
+    def balanced(pos):
+        n_left = sum(1 for z in with_box if z[1][0] < pos)
+        return min(n_left, len(with_box) - n_left) / len(with_box) >= 0.25
+
     best = None
     for a, b in zip(starts, starts[1:]):
         if b <= a:
             continue
-        # Count crossings just left of b: every position in (a, b] splits
-        # the starts alike, and there the fewest lines run through. At the
-        # midpoint, inside the left column's text, every left line counted
-        # as a crossing (Issue #14). The split lies halfway between b and
-        # the last span starting before it, so word spans left out of the
-        # starts keep their column; lone starts do not move it.
-        gap, probe = b - a, b - 0.5
-        pos = (max(x for x in xs if x < b) + b) / 2
-        n_left = sum(1 for z in with_box if z[1][0] < pos)
-        ratio = min(n_left, len(with_box) - n_left) / len(with_box)
-        if ratio < 0.25:
+        gap, pos = b - a, (a + b) / 2
+        if not balanced(pos):
             continue
-        crossings = sum(1 for z in with_box
-                        if z not in full and z[1][0] < probe < z[1][2])
+        crossings = crossing(pos)
         clean = gap >= width * 0.08 and crossings <= 0.02 * len(with_box)
         if not (gap >= width * 0.25 or clean):
             continue
         rank = (-crossings, gap)
+        if best is None or rank > best[0]:
+            best = (rank, pos)
+
+    # A second look for a clean gutter (Issue #14). Above, crossings are
+    # counted at the midpoint between two starts, inside the left column's
+    # text, so every left line crosses; and word spans of justified lines or
+    # a centred footer chop the gutter into small gaps. Here only column
+    # edges count as starts (no word span, at least two lines), and
+    # crossings are counted just left of the right edge, where the fewest
+    # lines run through. The split lies halfway between the right edge and
+    # the last span starting before it, so word spans keep their column.
+    shared = lambda x: sum(1 for w in type_set if abs(w[1][0] - x) <= 2) >= 2
+    xs = sorted(z[1][0] for z in type_set
+                if shared(z[1][0]) or continues_row(z))
+    edges = sorted(z[1][0] for z in type_set
+                   if not continues_row(z) and shared(z[1][0]))
+    for a, b in zip(edges, edges[1:]):
+        if b - a < width * 0.08:
+            continue
+        pos = (max(x for x in xs if x < b) + b) / 2
+        crossings = crossing(b - 0.5)
+        if not balanced(pos) or crossings > 0.02 * len(with_box):
+            continue
+        rank = (-crossings, b - a)
         if best is None or rank > best[0]:
             best = (rank, pos)
     if best is None:
