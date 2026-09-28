@@ -21,7 +21,7 @@ from assembly import (AssemblyContext, PreviewFormatError, as_callout,
                       assemble_paragraphs, build_document, build_frontmatter,
                       clean_text, merge_fragments, page_marker, split_preview)
 from layout import (assign_boxes, detect_boxes, detect_layout, image_ratio,
-                    split_columns, tables_markdown)
+                    split_columns_indexed, tables_markdown)
 from ocr import (CHARACTERS_PER_INK, OVERLAP, TOKEN_MAX, _ink_amount,
                  tile_horizontally, tile_lines, tile_vertically, trim_overlap)
 
@@ -560,7 +560,8 @@ def _merged_document(request, existing, finished, cache_dir, assembly_context,
             if wordbook is None:
                 wordbook = dictionary.load(list(request.dictionaries))
             paragraphs = assemble_paragraphs(
-                entry["lines"], assembly_context).paragraphs
+                entry["lines"], assembly_context,
+                entry.get("columns")).paragraphs
             _, findings = dictionary.check(
                 paragraphs, wordbook, request.dictionary_correct)
             corrected += sum(item.count for item in findings if item.corrected)
@@ -735,8 +736,10 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 entry = cache_hit(page)
                 reused = entry is not None
 
+                columns = None
                 if reused:
                     lines = entry["lines"]
+                    columns = entry.get("columns")
                     trace = list(entry.get("trace", []))
                     source = entry["source"]
                     layout_type = entry["layout"]
@@ -746,7 +749,8 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                                      "Textlayer, without model" if source == "textlayer"
                                      else f"{layout_type}, {mode}")
                 elif page.textlayer_lines is not None:
-                    lines = split_columns(assign_boxes(page.textlayer_lines, page.boxes))
+                    lines, columns = split_columns_indexed(
+                        assign_boxes(page.textlayer_lines, page.boxes))
                     source = "textlayer"
                     layout_type, mode = page.layout_type, "textlayer"
                     source_detail = "Textlayer, without model"
@@ -788,7 +792,9 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         factor = (page.text_characters / ink
                                   if calibrated else CHARACTERS_PER_INK)
                     lines = []
-                    for part, window in tiles:
+                    # A vertical tile is a column; horizontal bands are not.
+                    columns = [] if mode != "waagerecht" else None
+                    for column, (part, window) in enumerate(tiles):
                         parsed, tile_trace = tile_lines(
                             part, ocr_adapter, not request.no_bold, factor,
                             dpi or request.dpi, calibrated,
@@ -797,11 +803,17 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         trace += tile_trace
                         if window:
                             parsed = assign_boxes(parsed, page.boxes, window)
-                        ordered = (split_columns(parsed) if len(tiles) == 1
-                                   else sorted(parsed,
-                                               key=lambda line: line[1][1]
-                                               if line[1] else 0))
-                        lines += trim_overlap(lines, ordered)
+                        if len(tiles) == 1:
+                            ordered, tile_columns = split_columns_indexed(parsed)
+                        else:
+                            ordered = sorted(parsed, key=lambda line: line[1][1]
+                                             if line[1] else 0)
+                            tile_columns = [column] * len(ordered)
+                        kept = trim_overlap(lines, ordered)
+                        lines += kept
+                        if columns is not None:
+                            # trim_overlap drops lines from the front only.
+                            columns += tile_columns[len(ordered) - len(kept):]
                     source = "ocr"
                     layout_type = page.layout_type
                     source_detail = f"{page.layout_type}, {mode}"
@@ -813,6 +825,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         "number": page.number, "source": source,
                         "characters": page.text_characters, "layout": layout_type,
                         "mode": mode, "lines": lines, "trace": trace,
+                        "columns": columns,
                     }
                     page_cache.write_page(cache_dir, write_context, cached_page)
 
@@ -821,7 +834,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                     "quelle": source if source == "textlayer" else source_detail,
                     "zeilen": lines,
                 }
-                assembled = assemble_paragraphs(lines, assembly_context)
+                assembled = assemble_paragraphs(lines, assembly_context, columns)
                 paragraphs = assembled.paragraphs
                 if source == "ocr" and lines:
                     paragraphs, findings = dictionary.check(

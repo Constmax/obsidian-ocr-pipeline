@@ -16,7 +16,20 @@ def _column_gap(with_box):
     if len(with_box) < 8:
         return None
     type_set = [z for z in with_box if not is_boilerplate(z[0], z[1][1])] or with_box
-    starts = sorted(z[1][0] for z in type_set)
+    height = statistics.median(z[1][3] - z[1][1] for z in type_set) or 10
+
+    def continues_row(z):
+        """A word span that goes on with a line on its own row.
+
+        Text layers split justified lines into spans; their starts sit
+        inside the left column and chop the gutter into small gaps.
+        """
+        return any(w is not z and w[1][2] <= z[1][0] < w[1][2] + 1.5 * height
+                   and min(w[1][3], z[1][3]) - max(w[1][1], z[1][1])
+                   > 0.5 * height for w in type_set)
+
+    xs = sorted(z[1][0] for z in type_set)
+    starts = sorted(z[1][0] for z in type_set if not continues_row(z))
     width = max(z[1][2] for z in type_set) - min(z[1][0] for z in type_set)
     if width <= 0:
         return None
@@ -25,13 +38,20 @@ def _column_gap(with_box):
     for a, b in zip(starts, starts[1:]):
         if b <= a:
             continue
-        gap, pos = b - a, (a + b) / 2
+        # Count crossings just left of b: every position in (a, b] splits
+        # the starts alike, and there the fewest lines run through. At the
+        # midpoint, inside the left column's text, every left line counted
+        # as a crossing (Issue #14). The split lies halfway between b and
+        # the last span starting before it, so word spans left out of the
+        # starts keep their column.
+        gap, probe = b - a, b - 0.5
+        pos = (max(x for x in xs if x < b) + b) / 2
         n_left = sum(1 for z in with_box if z[1][0] < pos)
         ratio = min(n_left, len(with_box) - n_left) / len(with_box)
         if ratio < 0.25:
             continue
         crossings = sum(1 for z in with_box
-                        if z not in full and z[1][0] < pos < z[1][2])
+                        if z not in full and z[1][0] < probe < z[1][2])
         clean = gap >= width * 0.08 and crossings <= 0.02 * len(with_box)
         if not (gap >= width * 0.25 or clean):
             continue
@@ -45,26 +65,52 @@ def _column_gap(with_box):
 
 def split_columns(lines, depth=0):
     """Single column → sorted by y. Two column → left column, then right column."""
+    return [z for z, _ in _split_tagged(lines, depth, ())]
+
+
+def split_columns_indexed(lines):
+    """split_columns() plus the column of every line it returns.
+
+    Columns count 0, 1, … in reading order; a full-width line (header,
+    grid row, a line across the gutter) belongs to none and gets None.
+    The assembly needs this to keep each column's footnote block apart
+    (Issue #14) instead of guessing the gutter a second time.
+    """
+    tagged = _split_tagged(lines, 0, ())
+    ids = {}
+    columns = [None if path is None else ids.setdefault(path, len(ids))
+               for _, path in tagged]
+    return [z for z, _ in tagged], columns
+
+
+def _split_tagged(lines, depth, path):
+    """split_columns() as (line, column path) pairs; None for full width."""
     with_box = [z for z in lines if z[1]]
     y = lambda z: z[1][1]
     if depth >= 2:
-        return sorted(lines, key=lambda z: z[1][1] if z[1] else 0)
+        return [(z, path) for z in
+                sorted(lines, key=lambda z: z[1][1] if z[1] else 0)]
     hit = _column_gap(with_box)
     if hit is None:
-        return sorted(lines, key=lambda z: z[1][1] if z[1] else 0) \
-            if depth or with_box else lines
+        ordered = (sorted(lines, key=lambda z: z[1][1] if z[1] else 0)
+                   if depth or with_box else lines)
+        return [(z, path) for z in ordered]
     pos, full = hit
     left = [z for z in with_box if z not in full and z[1][0] < pos]
     right = [z for z in with_box if z not in full and z[1][0] >= pos]
     header = [z for z in full if y(z) < min([y(z) for z in left + right], default=0)]
     rest_full = [z for z in full if z not in header]
+    spanning = lambda part: [(z, None) for z in part]
 
     if _column_gap(left) is None and _column_gap(right) is None:
         grid = question_answer_grid(left, right)
         if grid is not None:
-            return sorted(header, key=y) + grid + sorted(rest_full, key=y)
-    return (sorted(header, key=y) + split_columns(left, depth + 1)
-            + split_columns(right, depth + 1) + sorted(rest_full, key=y))
+            return (spanning(sorted(header, key=y)) + spanning(grid)
+                    + spanning(sorted(rest_full, key=y)))
+    return (spanning(sorted(header, key=y))
+            + _split_tagged(left, depth + 1, path + (0,))
+            + _split_tagged(right, depth + 1, path + (1,))
+            + spanning(sorted(rest_full, key=y)))
 
 
 def _is_line_start(text):

@@ -41,9 +41,7 @@ class CacheContext(TypedDict):
     parameters: CacheParameters
 
 
-class CachedPage(TypedDict):
-    """One parsed page: lines with boxes plus page metadata."""
-
+class _CachedPageRequired(TypedDict):
     number: int
     source: str
     characters: int
@@ -51,6 +49,16 @@ class CachedPage(TypedDict):
     mode: str
     lines: list[list[Any]]
     trace: list[str]
+
+
+class CachedPage(_CachedPageRequired, total=False):
+    """One parsed page: lines with boxes plus page metadata.
+
+    `columns` holds each line's column, None where unknown (Issue #14).
+    Entries written before it existed lack the key and assemble as before.
+    """
+
+    columns: list[int | None] | None
 
 
 def file_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -197,6 +205,13 @@ def _read_entry(directory: Path, page_number: int, expected_key: str | None):
         if not isinstance(page.get("mode"), str):
             return None
         if any(not _valid_line(line) for line in lines):
+            return None
+        columns = page.get("columns")
+        if columns is not None and (
+                not isinstance(columns, list) or len(columns) != len(lines)
+                or any(c is not None and (not isinstance(c, int)
+                                          or isinstance(c, bool))
+                       for c in columns)):
             return None
         if not isinstance(trace, list) or any(not isinstance(item, str)
                                               for item in trace):
