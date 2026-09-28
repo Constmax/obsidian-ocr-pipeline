@@ -28,17 +28,17 @@ def two_column_page():
     left = [z("Die Anordnung der sofortigen Vollziehung ist kein", 128, 124, 480),
             z("Verwaltungsakt.1 Sie teilt das Schicksal des Bescheids,", 128, 136, 480),
             z("der ihr zugrunde liegt, und ist daher mit ihm", 128, 148, 480)]
-    for k in range(12):
+    for k in range(40):
         left.append(z(f"Weitere Zeile {k} der linken Spalte im Blocksatz", 128,
                       160 + 12 * k, 480))
-    left += [z("aufschiebenden", 128, 304, 238), z("Wirkung", 250, 304, 310),
-             z("nicht", 322, 304, 360), z("bestandskräftig", 371, 304, 480),
-             z("zu betrachten.2 Das gilt auch hier.", 128, 316, 400),
+    left += [z("aufschiebenden", 128, 640, 238), z("Wirkung", 250, 640, 310),
+             z("nicht", 322, 640, 360), z("bestandskräftig", 371, 640, 480),
+             z("zu betrachten.2 Das gilt auch hier.", 128, 652, 400),
              z("1", 95, 896, 109), z("OVG Bremen, DVBl. 1980, 420 (422).", 128, 896, 479),
              z("2", 95, 908, 109), z("OVG Koblenz, NVwZ 1988, 478; VGH Mannheim,", 128, 908, 480),
              z("NVwZ 1995, 292 (293).", 128, 917, 300)]
     right = [z("angefochten werden. Die Begründung genügt nicht.3", 557, 124, 909)]
-    for k in range(12):
+    for k in range(40):
         right.append(z(f"Weitere Zeile {k} der rechten Spalte im Blocksatz", 557,
                        136 + 12 * k, 909))
     right += [z("3", 523, 896, 545), z("Kopp/Schenke, VwGO, Rn. 82; Rammelt/Schulz,", 557, 896, 908),
