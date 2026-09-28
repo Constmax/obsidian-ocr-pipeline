@@ -172,9 +172,14 @@ def test_engine_hocr_parses_and_renders_in_line_order(tmp_path, ocrmypdf, plugin
             yield from walk(child)
 
     parsed = [e for e in walk(page) if e.baseline is not None]
-    assert [" ".join(w.text for w in line.children) for line in parsed] == text.splitlines()
-    assert parsed[-1].baseline.slope == pytest.approx(66 / 950, abs=1e-6)
-    assert parsed[-1].children[0].confidence == pytest.approx(0.87)
+    assert [w.text for line in parsed for w in line.children] == text.split()
+    # Every line is flat; the skewed one becomes pieces stepping down its slope.
+    assert all(line.baseline.slope == 0 for line in parsed)
+    skewed_pieces = parsed[-2:]
+    assert [w.text for line in skewed_pieces for w in line.children] == ["schief", "gedruckt"]
+    first, second = (line.bbox.bottom + line.baseline.intercept for line in skewed_pieces)
+    assert second > first
+    assert skewed_pieces[0].children[0].confidence == pytest.approx(0.87)
 
     pdf = tmp_path / "page.pdf"
     fonts = MultiFontManager(Path(ocrmypdf.__file__).parent / "data")
