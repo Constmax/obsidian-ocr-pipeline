@@ -16,8 +16,10 @@ geometry alone:
    page the columns begin at the first column pair, so a running header
    closer above them than a gap still belongs to the header when it spans
    the gutter or stands apart by more than the line pitch, and footer rows
-   paired across the gutter (footnotes, even half a line offset) go back to
-   their columns.
+   paired across the gutter (footnotes, even half a line offset) or holding
+   footnotes of one column go back to their columns. Column edges and the
+   line pitch are measured on visual rows, so lines recognized as single
+   words count as whole lines.
 4. A line crossing the gutter with no column line beside it is full width
    (a heading, a single-column paragraph, a footer) and separates the page
    into sections. A crossing line beside column lines (a note written into
@@ -225,7 +227,11 @@ def _column_bands(
     a line crossing the gutter (a location list, a centred title) or stand
     at least half again the line pitch above the first column pair (a label
     and a page reference): otherwise they are the first body row with an
-    indented right line, not a header, and stay in the columns.
+    indented right line, not a header, and stay in the columns. Like the
+    first pair, the lowest grown row is measured at its upper part, so a
+    tilted row whose right part sits half a line lower keeps its distance;
+    only parts of the same size count, so a tall heading beside a normal
+    line is measured as before.
 
     Footnotes starting at the same height in both columns leave a page-wide
     gap above them, which puts them into the footer. Leading footer rows
@@ -233,9 +239,10 @@ def _column_bands(
     a column pair as a whole, so footnotes offset by half a line stay at the
     bottom of their column even though no single row pairs them; the footer
     starts at the first row crossing the gutter or pairing lines that are no
-    column rows.
+    column rows. Footnotes of one column never pair, so the leading rows also
+    go back when they are footnotes of one column (_footnotes()).
     """
-    edge = _right_edge(body, gutter, h)
+    edge = _edge(body, "R", gutter, h)
     pairs = _pairs(body, gutter, edge, h)
     if pairs:
         start = min(min(a.cy, b.cy) for a, b in pairs)
@@ -248,9 +255,11 @@ def _column_bands(
         ]
         if above:
             grown = [box for box in body if box.cy < max(above)]
-            if grown and (
+            lowest = max(grown, key=lambda box: box.cy, default=None)
+            if lowest is not None and (
                 any(_side(box, gutter, h) is None for box in grown)
-                or start - max(box.cy for box in grown) >= 1.5 * _pitch(body, gutter, h)
+                or start - min(box.cy for box in grown if _level(box, lowest))
+                >= 1.5 * _pitch(body, gutter, h)
             ):
                 header = header + grown
                 body = [box for box in body if box.cy >= max(above)]
@@ -262,15 +271,25 @@ def _column_bands(
             break
         count += 1
     leading = [box for row in rows[:count] for box in row]
-    if _pairs(leading, gutter, edge, h):
+    if _pairs(leading, gutter, edge, h) or _footnotes(rows[:count], body, gutter, h):
         body = body + leading
         footer = [box for row in rows[count:] for box in row]
     return header, body, footer
 
 
+def _level(box: _Box, lowest: _Box) -> bool:
+    """Whether a box stands in the row of `lowest`, with a similar height."""
+    return _beside(box, lowest) and abs(box.h - lowest.h) <= 0.25 * lowest.h
+
+
 def _pitch(boxes: list[_Box], gutter: float, h: float) -> float:
-    """Median distance between consecutive lines of the left column."""
-    left = sorted((box.cy for box in boxes if _side(box, gutter, h) == "L"))
+    """Median distance between consecutive rows of the left column.
+
+    Rows, not lines: a line recognized as single words would otherwise give
+    steps of a pixel between its words.
+    """
+    left = [row[0].cy for row in _row_groups(
+        [box for box in boxes if _side(box, gutter, h) == "L"], h)]
     steps = [b - a for a, b in zip(left, left[1:]) if 0 < b - a < 3 * h]
     return statistics.median(steps) if steps else h
 
@@ -284,14 +303,47 @@ def _side(box: _Box, gutter: float, h: float) -> str | None:
     return None
 
 
-def _right_edge(boxes: list[_Box], gutter: float, h: float) -> float:
-    """Where the full lines of the right column start."""
-    right = [box for box in boxes if _side(box, gutter, h) == "R"]
-    if not right:
+def _edge(boxes: list[_Box], side: str, gutter: float, h: float) -> float:
+    """Where the full lines of the left ("L") or right ("R") column start.
+
+    Measured on visual rows, so a line recognized as single words counts
+    as one full line starting at its first word.
+    """
+    rows = [
+        (row[0].x0, max(box.x1 for box in row))
+        for row in _row_groups([box for box in boxes if _side(box, gutter, h) == side], h)
+    ]
+    if not rows:
         return gutter
-    span = max(box.x1 for box in right) - min(box.x0 for box in right)
-    full = [box for box in right if box.w >= 0.7 * span] or right
-    return statistics.median(box.x0 for box in full)
+    span = max(x1 for _, x1 in rows) - min(x0 for x0, _ in rows)
+    full = [row for row in rows if row[1] - row[0] >= 0.7 * span] or rows
+    return statistics.median(x0 for x0, _ in full)
+
+
+def _footnotes(rows: list[list[_Box]], body: list[_Box], gutter: float, h: float) -> bool:
+    """Whether footer rows are footnotes of one column.
+
+    All their lines stand on one side of the gutter, the first line is a
+    footnote numeral hanging left of that column's text edge with its text
+    beside it (a numeral is often a little higher, so it may form its own
+    row), and every row starts at that edge. A page number, a running
+    footer or a centred or right-aligned footer part has no hanging numeral.
+    """
+    sides = {_side(box, gutter, h) for row in rows for box in row}
+    if len(sides) != 1 or None in sides:
+        return False
+    (side,) = sides
+    start = _edge(body, side, gutter, h)
+    numeral = rows[0][0]
+    return (
+        numeral.w <= h
+        and numeral.x0 <= start - h / 4
+        and any(
+            box.x0 >= numeral.x1 and box.x0 <= start + h and _overlap(box, numeral) > 0
+            for row in rows for box in row
+        )
+        and all(row[0].x0 <= start + h for row in rows)
+    )
 
 
 def _pairs(
