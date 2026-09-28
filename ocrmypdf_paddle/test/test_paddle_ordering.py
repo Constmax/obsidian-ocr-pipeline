@@ -266,6 +266,28 @@ def test_footnotes_of_the_left_column_without_a_footer_stay_in_their_column():
     assert texts(ordered) == names("L", 30) + ["7", "FL0", "FL1"] + names("R", 30)
 
 
+def test_tall_first_heading_beside_an_indented_right_line_is_not_a_header():
+    # The first column row pairs a tall heading with an indented right line
+    # of normal size. Only parts of the same size count as one tilted row,
+    # so the row is measured from the heading's centre and stays in the body.
+    left = [box("L0", 200, 400, 700, height=80)] + [
+        box(f"L{i}", 200, 500 + (i - 1) * STEP, 1180) for i in range(1, 20)]
+    right = [box("R0", 1500, 410, 2280)] + [
+        box(f"R{i}", 1300, 500 + (i - 1) * STEP, 2280) for i in range(1, 20)]
+    ordered = texts(order_lines(as_recognized(left + right), W, H))
+    assert ordered == names("L", 20) + names("R", 20)
+
+
+def test_left_aligned_running_footer_is_read_last():
+    # A running footer at the left column's text edge, as wide as a third of
+    # the column, has no hanging footnote numeral: it stays in the footer.
+    lines = column("L", LEFT, 1400, 30) + column("R", RIGHT, 1400, 30)
+    for footer in ([box("Kurs Strafrecht AT", 200, 3350, 800)],
+                   [box("Copyright Verlag", 200, 3300, 700), box("Kurs 2026", 200, 3350, 500)]):
+        ordered = order_lines(as_recognized(lines + footer), W, H)
+        assert texts(ordered) == names("L", 30) + names("R", 30) + texts(footer)
+
+
 def test_one_sided_footer_lines_away_from_the_column_edge_are_read_last():
     # A right-aligned footer part and a mark in the right margin do not
     # start at their column's text edge; a page number at the edge is no
