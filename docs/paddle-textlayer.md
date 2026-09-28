@@ -508,11 +508,32 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
 - **Word boxes:** Vision's word boxes reach into half the space on either
   side. Rendered unchanged, `pdftotext` glues the words of a line together
   (0.3–2 % of the words survived on four truth pages). Accurate mode's text
-  layer glues RapidOCR's words the same way. `render_page()` therefore trims
-  every recognizer word box at both ends by a quarter of the line height, at
-  most 30 % of its width, in both modes. A re-read line keeps Vision's word
-  boxes when it has the same number of words, otherwise the words are spread
-  across the line box.
+  layer glues RapidOCR's words the same way. A re-read line keeps Vision's
+  word boxes when it has the same number of words, otherwise the words are
+  spread across the line box.
+- **Selection in viewers** (both modes): trimming every word box by a
+  quarter of the line height separated the words for `pdftotext`, but in
+  Obsidian (pdf.js) a selection fell apart into one block per word, sat half
+  a line too low, and was too tall. `render_page()` now
+  - puts the baseline at 75 % of the line height instead of on the box
+    bottom (both recognizers' boxes reach below the descenders; measured
+    0.68–0.81 for Vision, 0.75 for RapidOCR);
+  - places each word's right edge so that 0.25 font sizes remain after the
+    space the renderer appends at the word's stretch: `pdftotext -raw` needs
+    about 0.12, pdf.js 4.10 keeps a line in one text item up to 0.6. The
+    line's first and last word also start and end 0.25 inside their boxes,
+    because recognizers split a printed line into touching lines; and
+  - writes every line flat. OCRmyPDF renders a line with a slope of 0.005 or
+    more rotated, and pdf.js undoes that rotation with a scale that includes
+    each word's stretch, so the words of such a line land on different
+    heights. Long one-column lines keep that much skew after deskewing, which
+    is why two-column pages looked fine. A sloped line becomes flat pieces
+    over which the baseline drifts at most 0.2 font sizes.
+
+  On five vault pages (one- and two-column, both modes) pdf.js text items
+  dropped from 3,250 to 1,198, and `pdftotext -raw` text is unchanged apart
+  from whitespace. 3 of 4,100 words newly glue to a neighbour, where two
+  recognized lines overlap (one of them a margin mark).
 - **Dependencies:** macOS 13 or later with `pyobjc-framework-Vision` (extra
   `[fast]`) plus everything accurate mode needs, because the models re-read
   lines. `check_options` refuses fast mode before the first page when Vision
