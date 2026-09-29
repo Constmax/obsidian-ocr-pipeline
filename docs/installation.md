@@ -221,8 +221,9 @@ the toolchain `make check` needs, with the same pins as CI: apt packages
 3.12 venvs `$VENV_ROOT/dev` (pytest, pyyaml, pymupdf, numpy, pillow, pikepdf;
 put first on `PATH` for the session) and `$VENV_ROOT/ocrmypdf` (ocrmypdf
 `17.8.0` + pytest, which the Makefile picks up by itself), and `npm ci` in
-`plugin/`. It runs only when `CLAUDE_CODE_REMOTE=true` and skips steps that are
-already done. The hook is async: the session starts at once while the install
+`plugin/`. It runs only when `CLAUDE_CODE_REMOTE=true`, on `startup` and
+`resume` (a resumed session may land in a fresh container), and skips steps
+that are already done. The hook is async: the session starts at once while the install
 runs in the background (about 30 s in a fresh container). It is finished when
 `$VENV_ROOT/.session-start.done` exists; its output goes to
 `$VENV_ROOT/.session-start.log`, where a failed step also shows up. Stage 2 (MLX) and Apple Vision cannot run there; their tests use
