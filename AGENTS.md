@@ -122,3 +122,17 @@ what is done):
 
 Open bugs and the work order live in GitHub issues, not in the docs. Flags in
 docs use the English option names; the German aliases still work.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `Constmax/obsidian-ocr-pipeline` (via `gh`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/` (created lazily). See `docs/agents/domain.md`.
