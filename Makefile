@@ -41,7 +41,7 @@ test-plugin: $(NODE_MODULES)
 build-plugin: $(NODE_MODULES)
 	cd plugin && $(NPM) run build
 	@git ls-files --error-unmatch plugin/main.js >/dev/null 2>&1 || \
-		{ echo "!! plugin/main.js is not versioned: the committed build is what ships (AGENTS.md)."; exit 1; }
+		{ echo "!! plugin/main.js is not versioned: the committed build is what ships (plugin/AGENTS.md)."; exit 1; }
 	@git --no-pager diff --exit-code -- plugin/main.js || \
 		{ echo "!! plugin/main.js differs from src/: commit the rebuilt main.js."; exit 1; }
 	@echo "ok  plugin/main.js is versioned and matches src/"
