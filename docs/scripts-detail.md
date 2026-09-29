@@ -542,7 +542,7 @@ pdf2md.py --check --out _ocr-preview
 # fehlgeschlagen
 ```
 
-`--check --progress` (or `--check --progress`) outputs the same as a single JSON document on stdout:
+`--check --progress` (German alias `--fortschritt`) outputs the same as a single JSON document on stdout:
 
 ```json
 {"typ":"check","ok":false,"checks":[{"name":"python","ok":true,"detail":"3.12.4"},…],"warnungen":["speicher: …"]}
