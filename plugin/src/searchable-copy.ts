@@ -104,8 +104,8 @@ async function usableEngine(engine: OcrEngine, host: SearchableCopyHost): Promis
 	const problem = await host.checkEngine(engine);
 	if (problem === null) return engine;
 	host.notify(
-		`OCR Preview: PaddleOCR is not usable here (${problem}). ` +
-			"This copy uses Automatic instead; choose another engine in the settings.",
+		`OCR Preview: This copy uses Automatic, because PaddleOCR cannot run here — ${problem.replace(/\.$/, "")}. ` +
+			"Choose another engine in the settings.",
 	);
 	return "auto";
 }

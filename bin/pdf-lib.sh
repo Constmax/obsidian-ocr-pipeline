@@ -169,8 +169,8 @@ detect_paddle_ocr() {
     case "$rc" in
         0) PADDLE_AVAILABLE=true; PADDLE_PROBLEM="" ;;
         # argparse: an ocrmypdf_paddle from before --paddle-check.
-        2) PADDLE_PROBLEM="The installed ocrmypdf_paddle is too old for this pipeline (no --paddle-check).
-   Reinstall it from this repo: ./setup.sh (docs/installation.md)" ;;
+        2) PADDLE_PROBLEM="The ocrmypdf_paddle that ocrmypdf loads is too old for this pipeline (no --paddle-check).
+   Update it: git pull in the checkout of an editable install, or pip install <repo>/ocrmypdf_paddle (docs/installation.md)" ;;
         *) [ -n "$PADDLE_PROBLEM" ] || PADDLE_PROBLEM="PaddleOCR engine readiness check failed" ;;
     esac
     return 0
@@ -970,8 +970,9 @@ require_paddle_engine_for_mode() {
 }
 
 # check_engine <engine>
-# `reprocess-raw --check-engine`: resolves <engine> exactly as lib_init
-# would and exits without touching a file: 0 if a run would start on it,
+# `reprocess-raw --check-engine`: resolves <engine> with the same checks as
+# lib_init (tools, Apple Vision, PaddleOCR readiness; not pikepdf, which only
+# --split-columns needs) and exits without touching a file: 0 if a run would start on it,
 # 4 (`check-failed`, contracts/cli-contract.json) with the reason on stderr
 # otherwise. The plugin asks this before it offers an engine.
 check_engine() {
