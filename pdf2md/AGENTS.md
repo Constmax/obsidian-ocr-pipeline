@@ -28,3 +28,23 @@ contract: change the producer and the plugin in one PR.
   recording (`test/data/snapshot.json`). An intended assembly change
   regenerates it with `python3 pdf2md/test/generate_snapshot.py`; the PR
   names each changed entry and why it changed.
+
+## Page cases
+
+A page case is a page the user marked as wrong in the review view, kept with
+the page block Stage 2 produced and the one the user expects (terms:
+`CONTEXT.md`). Cases live in the vault under `<preview folder>/.cases/`,
+hold page text, and stay out of the repo.
+
+For a Stage-2 assembly fix:
+
+1. Before changing code, run `make check-cases` (`ISSUE=<n>` when the issue
+   names cases; needs `VAULT_ROOT`) and note the open cases.
+2. The fix is done when its page cases replay as matching and no fixed case
+   differs. Synthetic fixtures in `pdf2md/test` are welcome beside them.
+3. The PR states the open cases before → after and which ones now match.
+   Issues and PRs name cases by id (`<stem>/pNNN`).
+
+Cases with fault stage `upstream` (recognition, tiling or ordering) are
+counted but not replayed; a fix there names its measurement per the root
+`AGENTS.md`.
