@@ -1,7 +1,11 @@
 # Safe Stage-1 OCR from the Obsidian review view
 
-**Status:** Plan; independently shippable with the existing Apple and Tesseract
-engines.
+**Status:** Implemented (#63 `reprocess-raw --output`, #64 process module, #65
+settings, #66 action and entry points, #67 page exemptions). Kept as the design
+record: the steps below describe the intent, and the *Implemented in* notes
+say where the code landed. Current behavior is documented in
+[`review-view.md`](review-view.md) and [`scripts-detail.md`](scripts-detail.md).
+Open: offering PaddleOCR in the engine setting (#73).
 
 ## Goal
 

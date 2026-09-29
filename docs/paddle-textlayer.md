@@ -1,6 +1,13 @@
 # PaddleOCR as a third Stage-1 engine
 
-**Status:** Plan; implementation starts only after the runtime spike passes.
+**Status:** Steps 0–3 are done (hOCR order #61, runtime spike #62 with a go,
+adapter #68, reading order #69 with follow-ups #87, #94, #114, #124, #125) and
+fast mode (3a) is merged (#118). The gate result is still **keep split mode**.
+Open: the resolved engine value (step 4, #70, PR #121), the retain/discard
+benchmark (step 5, #71) and installation (step 6, #72). Issue #133 proposes
+removing OCRmyPDF from Stage 1, which would rework steps 4 and 6. Until step 5
+retains it, `setup.sh` does not install the plugin and `bin/` does not offer
+`--engine paddle`.
 
 ## Goal
 
@@ -479,7 +486,7 @@ supported command. Numbers, pinned versions and commands are in
 
 ### 3a. Fast mode: Apple Vision lines, citations re-read
 
-*Implemented outside the #74 queue* in `ocrmypdf_paddle/apple.py`. The plugin
+*Implemented outside the #74 queue* in `ocrmypdf_paddle/src/ocrmypdf_paddle/apple.py`. The plugin
 takes `--paddle-mode accurate|fast` (default `accurate`, also as the API
 argument `paddle_mode`):
 
