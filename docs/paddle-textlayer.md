@@ -521,8 +521,11 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
   - places each word's right edge so that 0.25 font sizes remain after the
     space the renderer appends at the word's stretch: `pdftotext -raw` needs
     about 0.12, pdf.js 4.10 keeps a line in one text item up to 0.6. The
-    line's first and last word also start and end 0.25 inside their boxes,
-    because recognizers split a printed line into touching lines; and
+    line's first and last word also start and end 0.25 (at most 30 % of the
+    word's width) inside their boxes, because recognizers split a printed
+    line into touching lines. The stretch counts narrow characters (`i`, `l`,
+    `t`, `f`, punctuation) at 0.3 em and the others at 0.6, so narrow words
+    like "ist" keep their room; and
   - writes every line flat. OCRmyPDF renders a line with a slope of 0.005 or
     more rotated, and pdf.js undoes that rotation with a scale that includes
     each word's stretch, so the words of such a line land on different
