@@ -31,10 +31,20 @@ Box = tuple[int, int, int, int]
 #: this much room remains after its space.
 WORD_ROOM = 0.25
 
+#: The line's first word starts and its last word ends WORD_ROOM inside their
+#: boxes, but by at most this share of the word's width, so a short word on
+#: its own ("I", "§") keeps most of its box.
+EDGE_ROOM_MAX = 0.3
+
 #: Advance widths in em of NotoSans, OCRmyPDF's Latin text-layer font, for
-#: the stretch above: a flat average over German prose, and the space. On a
-#: one-column page the font's real widths placed the words no better.
-AVERAGE_ADVANCE = 0.55
+#: the stretch above: the narrow characters (0.22-0.38 em), an average for
+#: the others, and the space. Over German prose the mean stays near a flat
+#: 0.55; on a one-column page the font's real widths placed the words no
+#: better. With the flat mean alone, narrow words ("ist", "fit") stretched
+#: further than modeled and their wider space left pdftotext no room.
+NARROW = frozenset("fijltIJ!'(),-.:;[]")
+NARROW_ADVANCE = 0.3
+AVERAGE_ADVANCE = 0.6
 SPACE_ADVANCE = 0.26
 
 #: Where the baseline lies in a recognizer's line box, as a share of the line
@@ -145,6 +155,12 @@ class LineGeometry:
         by_x = sorted(polygon)
         (self._tl, self._bl) = sorted(by_x[:2], key=lambda point: point[1])
         (self._tr, self._br) = sorted(by_x[2:], key=lambda point: point[1])
+        # A sliver clipped at the page edge can pair its corners so that the
+        # edges cross; its bounding box then stands in (at least 1 px high).
+        left, right = by_x[0][0], by_x[-1][0]
+        if min(self.bottom(left) - self.top(left), self.bottom(right) - self.top(right)) < 1:
+            x0, y0, x1, y1 = bounding_box(polygon)
+            self._tl, self._bl, self._tr, self._br = (x0, y0), (x0, y1), (x1, y0), (x1, y1)
 
     @staticmethod
     def _at(start: Point, end: Point, x: float) -> float:
@@ -246,6 +262,11 @@ def _bbox(box: Box) -> str:
     return f"bbox {box[0]} {box[1]} {box[2]} {box[3]}"
 
 
+def advance(text: str) -> float:
+    """Estimated advance width of `text` in em (NARROW_ADVANCE, AVERAGE_ADVANCE)."""
+    return sum(NARROW_ADVANCE if char in NARROW else AVERAGE_ADVANCE for char in text)
+
+
 def spaced_word_boxes(placed: Sequence[tuple[str, Box]], font_size: float) -> list[Box]:
     """Word boxes of one line that leave WORD_ROOM after each word.
 
@@ -253,24 +274,34 @@ def spaced_word_boxes(placed: Sequence[tuple[str, Box]], font_size: float) -> li
     that the space appended at the word's stretch ends WORD_ROOM font sizes
     before the next word. Recognizers also split a printed line into lines
     that touch or overlap on one baseline, so the line's first word starts
-    and its last word ends WORD_ROOM inside their boxes. A word never passes
-    the recognizer's own right edge, so a real gap stays a gap, and keeps at
-    least one pixel.
+    and its last word ends WORD_ROOM (at most EDGE_ROOM_MAX of the word's
+    width) inside their boxes. A word never passes the recognizer's own right
+    edge, so a real gap stays a gap, and keeps at least one pixel; a word too
+    short for its space pushes the next word's left edge on instead.
     """
     if not placed:
         return []
     room, space = WORD_ROOM * font_size, SPACE_ADVANCE * font_size
-    (first, (x0, top, x1, bottom)), *rest = placed
-    placed = [(first, (min(math.ceil(x0 + room), x1 - 1), top, x1, bottom)), *rest]
-    ends = []
-    for (text, (x0, _, x1, _)), (_, following) in zip(placed, placed[1:]):
-        natural = AVERAGE_ADVANCE * len(text) * font_size
-        # right + space * (right - x0) / natural = following[0] - room
-        ends.append(min(x1, (following[0] - room + space * x0 / natural)
-                        / (1 + space / natural)))
-    ends.append(placed[-1][1][2] - room)
-    return [(x0, top, max(x0 + 1, math.floor(right)), bottom)
-            for (_, (x0, top, _, bottom)), right in zip(placed, ends)]
+    lefts = [word_box[0] for _, word_box in placed]
+    x0, _, x1, _ = placed[0][1]
+    lefts[0] = min(math.ceil(x0 + min(room, EDGE_ROOM_MAX * (x1 - x0))), x1 - 1)
+    boxes = []
+    for i, (text, (original, top, x1, bottom)) in enumerate(placed):
+        x0 = lefts[i]
+        if i + 1 == len(placed):
+            end = x1 - min(room, EDGE_ROOM_MAX * (x1 - original))
+            boxes.append((x0, top, max(x0 + 1, math.floor(end)), bottom))
+            break
+        natural = advance(text) * font_size
+        # right + space * (right - x0) / natural = lefts[i + 1] - room
+        end = min(x1, (lefts[i + 1] - room + space * x0 / natural) / (1 + space / natural))
+        right = max(x0 + 1, math.floor(end))
+        boxes.append((x0, top, right, bottom))
+        if right > end:
+            following_x1 = placed[i + 1][1][2]
+            lefts[i + 1] = max(lefts[i + 1], min(
+                math.ceil(right + space * (right - x0) / natural + room), following_x1 - 1))
+    return boxes
 
 
 def _placed_words(

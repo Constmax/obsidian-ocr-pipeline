@@ -9,12 +9,15 @@ import pytest
 from ocrmypdf_paddle.hocr import (
     AVERAGE_ADVANCE,
     BASELINE_SHARE,
+    EDGE_ROOM_MAX,
     FLAT_DRIFT,
+    NARROW_ADVANCE,
     SPACE_ADVANCE,
     WORD_ROOM,
     LineGeometry,
     TextLine,
     Word,
+    advance,
     bounding_box,
     clamp_polygon,
     render_page,
@@ -226,7 +229,7 @@ def test_room_after_each_rendered_space_is_the_word_room():
 
     assert boxes[0][0] == 100 + WORD_ROOM * font_size
     for (text, _), box, following in zip(placed, boxes, boxes[1:]):
-        stretch = (box[2] - box[0]) / (AVERAGE_ADVANCE * len(text) * font_size)
+        stretch = (box[2] - box[0]) / (advance(text) * font_size)
         space_end = box[2] + SPACE_ADVANCE * font_size * stretch
         assert (following[0] - space_end) / font_size == pytest.approx(WORD_ROOM, abs=0.05)
     assert boxes[-1] == (438, 0, 700 - WORD_ROOM * font_size, 50)
@@ -234,10 +237,52 @@ def test_room_after_each_rendered_space_is_the_word_room():
 
 def test_word_boxes_never_grow_into_a_real_gap():
     boxes = spaced_word_boxes([("K", (100, 0, 130, 50)), ("weit", (600, 0, 700, 50))], 40)
-    assert boxes[0] == (110, 0, 130, 50)
-    # A word too short for its space keeps one pixel.
-    assert spaced_word_boxes([("I", (100, 0, 104, 50)), ("x", (105, 0, 120, 50))], 40)[0] == (
-        103, 0, 104, 50)
+    # The first word starts WORD_ROOM inside, but by at most EDGE_ROOM_MAX of 30 px.
+    assert boxes[0] == (109, 0, 130, 50)
+
+
+def test_a_word_too_short_for_its_space_pushes_the_next_word_on():
+    font_size = 40
+    boxes = spaced_word_boxes([("I", (100, 0, 104, 50)), ("x", (105, 0, 120, 50))], font_size)
+    # "I" keeps one pixel; "x" starts after its space and the word room.
+    assert boxes[0] == (102, 0, 103, 50)
+    space_end = 103 + SPACE_ADVANCE * font_size * 1 / (advance("I") * font_size)
+    assert boxes[1][0] - space_end >= WORD_ROOM * font_size
+    assert boxes[1][2] > boxes[1][0]
+
+
+def test_narrow_characters_count_narrower():
+    # A flat average stretched "ist" further than modeled, leaving pdftotext no room.
+    assert advance("ist") == pytest.approx(2 * NARROW_ADVANCE + AVERAGE_ADVANCE)
+    assert advance("Wagen") == pytest.approx(5 * AVERAGE_ADVANCE)
+
+
+@pytest.mark.parametrize("text, width", [("I", 16), ("§", 18), ("a)", 25)])
+def test_a_short_word_alone_on_its_line_keeps_most_of_its_box(text, width):
+    polygon = rect(100, 100, 100 + width, 140)
+    hocr, _ = render_page([TextLine(text, polygon, 0.9, words=(Word(text, polygon, 0.9),))], W, H)
+
+    x0, _, x1, _ = word_box(parsed_lines(hocr)[0][1][0][1])
+    assert x1 - x0 >= (1 - 2 * EDGE_ROOM_MAX) * width - 2
+
+
+@pytest.mark.parametrize("polygon", [
+    ((1000.0, 0.0), (1000.0, 0.0), (1000.0, 9.8), (973.1, 0.0)),  # font size 0 before
+    ((0.0, 180.0), (0.0, 168.1), (5.2, 240.6), (0.0, 252.5)),  # negative before
+    ((0.0, 529.9), (433.0, 800.0), (384.0, 800.0), (0.0, 552.1)),
+])
+def test_slivers_clipped_at_the_page_edge_render_upright_boxes(polygon):
+    assert clamp_polygon(polygon, W, H) == polygon
+    assert LineGeometry(polygon).font_size > 0
+    line = TextLine("ab cd", polygon, 0.9, words=(Word("ab", polygon, 0.9),
+                                                  Word("cd", polygon, 0.9)))
+    hocr, _ = render_page([line], W, H)
+
+    for title, words in parsed_lines(hocr):
+        for t in (title, *(word_title for _, word_title in words)):
+            x0, top, x1, bottom = word_box(t)
+            assert x0 < x1 and top < bottom
+        assert line_font_size(title) > 0
 
 
 def test_character_pieces_are_merged_per_word():
