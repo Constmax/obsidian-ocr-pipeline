@@ -63,7 +63,12 @@ fi
 # Python 3.12 venvs via uv (as setup.sh does):
 #   dev      — pytest job: pytest pyyaml pymupdf numpy pillow (+ pikepdf)
 #   ocrmypdf — pinned ocrmypdf + pytest; the Makefile picks it up by itself
-command -v uv >/dev/null 2>&1 || { log "installing uv"; python3 -m pip install -q uv; }
+# Standalone installer: pip into system Python is refused under PEP 668.
+if ! command -v uv >/dev/null 2>&1; then
+  log "installing uv"
+  curl -LsSf https://astral.sh/uv/install.sh | UV_NO_MODIFY_PATH=1 sh >&2
+  export PATH="$HOME/.local/bin:$PATH"
+fi
 make_venv() {
   local name=$1; shift
   local py="$VENV_ROOT/$name/bin/python"
