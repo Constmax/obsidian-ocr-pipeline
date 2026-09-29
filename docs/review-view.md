@@ -131,6 +131,18 @@ status file (all cleaned via `normalizePath()`, with a live indicator if a
 folder is missing), Markdown column default, scroll sync, PDF render factor,
 Markdown eager limit, and column widths.
 
+**Conversion** (#28, desktop only): path to `pdf2md` (empty: searched in
+`~/bin`, `/usr/local/bin`, then `PATH`; the field shows what the search found),
+render resolution (`--dpi`, 72–600) and tile threshold (`--tile-from`, 0 or
+more). Empty numbers leave pdf2md's defaults (150 dpi, 3000 characters), which
+the fields show as placeholders. A path that does not point to an executable
+file and an out-of-range number are reported under the field and not saved.
+**Check installation** runs `pdf2md --check --fortschritt --out <preview
+folder>` and lists every check with its detail, the warnings and the result;
+when pdf2md cannot run at all (not found, missing venv) it shows why.
+`parsePdf2mdSettings()` in `src/pdf2md-settings.ts` validates the three values
+on load, field by field.
+
 **Searchable copy** (for the Stage-1 action, #66): OCR engine (Automatic,
 Apple Vision, Tesseract, PaddleOCR (fast); default Automatic) and Split
 two-column pages (default off). `parseOcrSettings()` in `src/ocr-settings.ts`

@@ -27,6 +27,15 @@
     "cancelled-partial": 6,
     "cancelled-empty": 7
   },
+  "check": {
+    "comment": "Issue #28: the settings tab runs pdf2md --check --fortschritt --out <preview folder> and lists every check. One JSON document on stdout; exit success or check-failed.",
+    "args": ["--check", "--fortschritt"],
+    "document": {"typ": "string", "ok": "boolean", "checks": "array", "warnungen": "array"},
+    "check": {"name": "string", "ok": "boolean", "detail": "string"},
+    "names": ["python", "fitz", "mlx_vlm", "modell", "ausgabe", "speicher"],
+    "example": {"typ": "check", "ok": false, "checks": [{"name": "python", "ok": true, "detail": "3.12.4"}, {"name": "mlx_vlm", "ok": false, "detail": "nicht installiert"}], "warnungen": ["speicher: 7.5 GiB (weniger als 8 GiB — Parallelbetrieb riskiert OOM)"]}
+  },
+  "stage2Defaults": {"dpi": 150, "tileFrom": 3000},
   "inputSuffixes": [".bmp", ".jpeg", ".jpg", ".pdf", ".png", ".tif", ".tiff"],
   "previewFormat": 1,
   "stage1": {

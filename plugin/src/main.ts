@@ -8,6 +8,7 @@ import { VIEW_TYPE, OcrComparisonView, PdfSelectModal, PageSelectModal } from ".
 import { Inventory } from "./file-actions.ts";
 import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
 import { parseOcrSettings } from "./ocr-settings.ts";
+import { parsePdf2mdSettings, pdf2mdExecutable } from "./pdf2md-settings.ts";
 import { LEGACY_FOLDERS, LEGACY_PLUGIN_ID, legacyStart } from "./legacy-install.ts";
 import { ConversionController } from "./conversion-controller.ts";
 import { isConvertible } from "./input-formats.ts";
@@ -33,6 +34,7 @@ export default class OcrPreviewPlugin extends Plugin {
 				() => this.settings,
 				(entryName) => this.revealView(entryName),
 			),
+			{ resolveExecutable: () => pdf2mdExecutable(this.settings) },
 		);
 		this.searchableCopyHost = createSearchableCopyHost(this.app, () => this.settings);
 		await this.loadSettings();
@@ -181,6 +183,8 @@ export default class OcrPreviewPlugin extends Plugin {
 			// invalid values (e.g. an engine this version does not offer) fall
 			// back to the defaults field by field.
 			Object.assign(migrated, parseOcrSettings(saved));
+			// pdf2md path, --dpi and --tile-from (issue #28), same fallback.
+			Object.assign(migrated, parsePdf2mdSettings(saved));
 
 			this.settings = { ...DEFAULT_SETTINGS, ...migrated };
 		} else {

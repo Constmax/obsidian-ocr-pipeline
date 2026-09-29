@@ -40,6 +40,10 @@ export interface ConversionOptions {
 	gracePeriodMs?: number;
 	killDelayMs?: number;
 	pages?: string;
+	/** `--dpi`; omitted: pdf2md's default. */
+	dpi?: number;
+	/** `--tile-from`; omitted: pdf2md's default. */
+	tileFrom?: number;
 	onChild?: (child: ChildProcess) => void;
 	onProgress?: (event: ProgressEvent) => void;
 }
@@ -278,6 +282,8 @@ interface RunOptions {
 	/** Stops the child when `idleTimeoutMs` has passed without output. */
 	onTimeout?: (child: ChildProcess) => void;
 	onChild?: (child: ChildProcess) => void;
+	/** Sees every stdout line; returning false keeps it out of `stdoutLast`. */
+	onStdoutLine?: (line: string) => boolean;
 	/** Sees every stderr line; returning false keeps it out of `stderrLast`. */
 	onStderrLine?: (line: string) => boolean;
 }
@@ -307,7 +313,7 @@ function runProcess(
 		options.onChild?.(child);
 		const stdoutLast: string[] = [];
 		const stderrLast: string[] = [];
-		const stdoutBuf = lineBuffer(stdoutLast);
+		const stdoutBuf = lineBuffer(stdoutLast, options.onStdoutLine);
 		const stderrBuf = lineBuffer(stderrLast, options.onStderrLine);
 
 		// A fixed limit killed long documents that were still converting
@@ -378,6 +384,8 @@ export function convertPdf(
 	if (options.pages && options.pages.length > 0) {
 		args.push("--seiten", options.pages);
 	}
+	if (options.dpi !== undefined) args.push("--dpi", String(options.dpi));
+	if (options.tileFrom !== undefined) args.push("--tile-from", String(options.tileFrom));
 	args.push("--fortschritt");
 	return runProcess(pdf2md, args, { cwd, stdio: ["ignore", "pipe", "pipe"] }, spawnFn, {
 		...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
@@ -392,6 +400,93 @@ export function convertPdf(
 			return true;
 		},
 	});
+}
+
+/** One line of `pdf2md --check`: `python`, `fitz`, `mlx_vlm`, `modell`, `ausgabe`, `speicher`. */
+export interface CheckItem {
+	name: string;
+	ok: boolean;
+	detail: string;
+}
+
+export interface CheckReport {
+	ok: boolean;
+	checks: CheckItem[];
+	warnings: string[];
+}
+
+/** A preflight that ran and reported, or why it could not run. */
+export type Pdf2mdCheck = CheckReport | { error: string };
+
+/** `pdf2md --check` arguments before `--out`; pinned in contracts/cli-contract.json. */
+export const PDF2MD_CHECK_ARGS = ["--check", "--fortschritt"] as const;
+
+/** A check that has written nothing for this long is stopped; it answers in about a second. */
+export const PDF2MD_CHECK_TIMEOUT_MS = 60_000;
+
+/**
+ * The JSON document of `pdf2md --check --fortschritt` (pinned in
+ * contracts/cli-contract.json, `check`), or null when `text` is none.
+ */
+export function parseCheckReport(text: string): CheckReport | null {
+	let obj: unknown;
+	try {
+		obj = JSON.parse(text) as unknown;
+	} catch {
+		return null;
+	}
+	if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return null;
+	const doc = obj as Record<string, unknown>;
+	if (doc.typ !== "check" || typeof doc.ok !== "boolean") return null;
+	if (!Array.isArray(doc.checks) || !Array.isArray(doc.warnungen)) return null;
+	const checks: CheckItem[] = [];
+	for (const item of doc.checks) {
+		if (typeof item !== "object" || item === null) return null;
+		const c = item as Record<string, unknown>;
+		if (typeof c.name !== "string" || typeof c.ok !== "boolean" || typeof c.detail !== "string") {
+			return null;
+		}
+		checks.push({ name: c.name, ok: c.ok, detail: c.detail });
+	}
+	const warnings: unknown[] = doc.warnungen;
+	if (!warnings.every((w): w is string => typeof w === "string")) return null;
+	return { ok: doc.ok, checks, warnings };
+}
+
+/**
+ * Stage 2: `pdf2md --check --fortschritt --out <out>` (issue #28). Resolves to
+ * the report when pdf2md ran its checks (exit 0 or 4), otherwise to the reason
+ * it could not, e.g. a missing venv in the wrapper. Never throws.
+ */
+export async function checkPdf2md(
+	cli: string,
+	out: string,
+	cwd: string,
+	spawnFn: SpawnFunction = spawn,
+): Promise<Pdf2mdCheck> {
+	const stdout: string[] = [];
+	const result = await runProcess(
+		cli,
+		[...PDF2MD_CHECK_ARGS, "--out", out],
+		{ cwd, stdio: ["ignore", "pipe", "pipe"] },
+		spawnFn,
+		{
+			idleTimeoutMs: PDF2MD_CHECK_TIMEOUT_MS,
+			onTimeout: (child) => child.kill("SIGKILL"),
+			onStdoutLine: (line) => {
+				stdout.push(line);
+				return true;
+			},
+		},
+	);
+	const report = parseCheckReport(stdout.join("\n"));
+	// 0: all checks passed; 4: check-failed (contracts/cli-contract.json).
+	if (report !== null && (result.code === 0 || result.code === 4)) return report;
+	const detail = result.stderrLast[result.stderrLast.length - 1] ?? result.stdoutLast[result.stdoutLast.length - 1] ?? "";
+	if (result.code === null && /ENOENT/.test(detail)) return { error: `pdf2md not found: ${cli}` };
+	if (result.timeout) return { error: "pdf2md --check did not answer" };
+	const code = result.code ?? result.signal ?? "unknown";
+	return { error: detail.length > 0 ? `${detail} (exit code ${code})` : `pdf2md --check failed (exit code ${code})` };
 }
 
 const TOOL_DIRS = (home: string) => [join(home, "bin"), "/opt/homebrew/bin", "/usr/local/bin"];

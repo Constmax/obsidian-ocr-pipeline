@@ -7,7 +7,7 @@ import {
 	TextComponent,
 	normalizePath,
 } from "obsidian";
-import { checkEngineHere } from "./conversion-host.ts";
+import { checkEngineHere, checkPdf2mdHere } from "./conversion-host.ts";
 import type OcrPreviewPlugin from "./main.ts";
 import {
 	DEFAULT_OCR_SETTINGS,
@@ -17,10 +17,20 @@ import {
 	type OcrEngine,
 	type OcrSettings,
 } from "./ocr-settings.ts";
+import {
+	DEFAULT_PDF2MD_SETTINGS,
+	PDF2MD_DEFAULTS,
+	parseDpi,
+	parseTileFrom,
+	pdf2mdExecutable,
+	pdf2mdPathProblem,
+	type Parsed,
+	type Pdf2mdSettings,
+} from "./pdf2md-settings.ts";
 
 export type OperationMode = "review-flow" | "workbench";
 
-export interface Settings extends OcrSettings {
+export interface Settings extends OcrSettings, Pdf2mdSettings {
 	/** Folder where pdf2md.py writes (--out). */
 	previewFolder: string;
 	acceptedFolder: string;
@@ -52,6 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	syncActive: true,
 	mdEagerLimit: 200,
 	...DEFAULT_OCR_SETTINGS,
+	...DEFAULT_PDF2MD_SETTINGS,
 };
 
 const PATH_DEBOUNCE_MS = 600;
@@ -196,7 +207,154 @@ export class SettingsTab extends PluginSettingTab {
 			.addText((t) => this.widthField(t, 1))
 			.addText((t) => this.widthField(t, 2));
 
+		this.conversionSettings();
 		this.searchableCopySettings();
+	}
+
+	/** Which pdf2md runs, its --dpi and --tile-from, and its preflight; desktop only. */
+	private conversionSettings(): void {
+		const { containerEl } = this;
+		new Setting(containerEl).setName("Conversion").setHeading();
+
+		if (!Platform.isDesktopApp) {
+			containerEl.createEl("p", {
+				cls: "ocr-einstellungen-hinweis",
+				text: "Conversion is only available in Obsidian for desktop: it runs the locally installed pdf2md command.",
+			});
+			return;
+		}
+
+		const pathSetting = new Setting(containerEl)
+			.setName("Path to pdf2md")
+			.setDesc(
+				"Leave empty to search ~/bin, /usr/local/bin and PATH, where setup.sh " +
+					"installs it. Enter a path for an installation elsewhere.",
+			);
+		const pathHint = pathSetting.descEl.createDiv();
+		const showPath = (problem: string | null) => {
+			pathHint.className = problem === null ? "ocr-einstellungen-info" : "ocr-pfad-hinweis";
+			if (problem !== null) {
+				pathHint.setText(problem);
+			} else if (this.plugin.settings.pdf2mdPath.length === 0) {
+				const found = pdf2mdExecutable(this.plugin.settings);
+				const missing = pdf2mdPathProblem(found);
+				pathHint.setText(missing === null ? `Found: ${found}` : `Not found by the search — ${missing}`);
+				pathHint.className = missing === null ? "ocr-einstellungen-info" : "ocr-pfad-hinweis";
+			} else {
+				pathHint.setText("");
+			}
+		};
+		pathSetting.addText((t) =>
+			this.debounced(t, this.plugin.settings.pdf2mdPath, "~/bin/pdf2md", async (val) => {
+				const cleaned = val.trim();
+				// A path that cannot run is not saved: the next conversion would fail.
+				const problem = cleaned.length > 0 ? pdf2mdPathProblem(cleaned) : null;
+				if (problem === null) {
+					this.plugin.settings.pdf2mdPath = cleaned;
+					await this.plugin.saveSettings();
+				}
+				showPath(problem === null ? null : `Not saved — ${problem}`);
+			}),
+		);
+		showPath(null);
+
+		this.numberField(
+			"Render resolution (DPI)",
+			"Resolution scan pages are rendered at before OCR (--dpi). Empty uses pdf2md's default.",
+			"pdf2mdDpi",
+			PDF2MD_DEFAULTS.dpi,
+			parseDpi,
+		);
+		this.numberField(
+			"Tile threshold",
+			"Scan pages whose text layer has at least this many characters are read in " +
+				"horizontal tiles (--tile-from); 0 tiles every such page. Empty uses pdf2md's default.",
+			"pdf2mdTileFrom",
+			PDF2MD_DEFAULTS.tileFrom,
+			parseTileFrom,
+		);
+
+		const checkSetting = new Setting(containerEl)
+			.setName("Installation check")
+			.setDesc("Runs pdf2md --check: Python, PyMuPDF, the OCR runtime and model, write access to the preview folder, memory.");
+		const result = checkSetting.descEl.createDiv({ cls: "ocr-check-result" });
+		checkSetting.addButton((b) =>
+			b.setButtonText("Check installation").onClick(async () => {
+				b.setDisabled(true);
+				result.empty();
+				result.createDiv({ text: "Checking …" });
+				try {
+					this.showCheck(result, await checkPdf2mdHere(this.app, this.plugin.settings));
+				} finally {
+					b.setDisabled(false);
+				}
+			}),
+		);
+	}
+
+	private showCheck(el: HTMLElement, check: Awaited<ReturnType<typeof checkPdf2mdHere>>): void {
+		el.empty();
+		if ("error" in check) {
+			el.createDiv({ cls: "ocr-check-fehlt", text: `pdf2md could not run its check: ${check.error}` });
+			return;
+		}
+		for (const item of check.checks) {
+			el.createDiv({
+				cls: item.ok ? "ocr-check-ok" : "ocr-check-fehlt",
+				text: `${item.ok ? "✓" : "✗"} ${item.name}: ${item.detail}`,
+			});
+		}
+		for (const warning of check.warnings) {
+			el.createDiv({ cls: "ocr-pfad-hinweis", text: `⚠ ${warning}` });
+		}
+		el.createDiv({
+			cls: check.ok ? "ocr-check-ok" : "ocr-check-fehlt",
+			text: check.ok ? "All checks passed." : "At least one check failed.",
+		});
+	}
+
+	/** Whole-number setting; empty stores null (pdf2md's default), invalid input is not saved. */
+	private numberField(
+		name: string,
+		description: string,
+		key: "pdf2mdDpi" | "pdf2mdTileFrom",
+		placeholder: number,
+		parse: (text: string) => Parsed,
+	): void {
+		const setting = new Setting(this.containerEl).setName(name).setDesc(description);
+		const hint = setting.descEl.createDiv({ cls: "ocr-pfad-hinweis" });
+		const stored = this.plugin.settings[key];
+		setting.addText((t) =>
+			this.debounced(t, stored === null ? "" : String(stored), String(placeholder), async (val) => {
+				const parsed = parse(val);
+				if ("error" in parsed) {
+					hint.setText(`Not saved — ${parsed.error}`);
+					return;
+				}
+				hint.setText("");
+				this.plugin.settings[key] = parsed.value;
+				await this.plugin.saveSettings();
+			}),
+		);
+	}
+
+	/** Text field that saves after typing pauses; `onChange` fires on every keystroke. */
+	private debounced(
+		t: TextComponent,
+		value: string,
+		placeholder: string,
+		save: (value: string) => Promise<void>,
+	): void {
+		let timer: number | null = null;
+		t.setPlaceholder(placeholder)
+			.setValue(value)
+			.onChange((val) => {
+				if (timer !== null) window.clearTimeout(timer);
+				timer = window.setTimeout(() => {
+					timer = null;
+					void save(val);
+				}, PATH_DEBOUNCE_MS);
+			});
 	}
 
 	/** Engine and column split for "Create searchable copy"; desktop only. */

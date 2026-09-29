@@ -10,6 +10,7 @@ import {
 	convertPdf,
 	abortChild,
 	checkEngine,
+	checkPdf2md,
 	createSearchableCopy,
 	stage1Path,
 	terminateProcessGroup,
@@ -666,4 +667,76 @@ test("engine check: a CLI that cannot start is a reason too", async () => {
 	const quiet = checkEngine("apple", "/x/reprocess-raw", "/vault", spawnMock([], silent));
 	silent.emit("close", 1);
 	assert.equal(await quiet, "reprocess-raw --check-engine failed (exit code 1)");
+});
+
+test("dpi and tile threshold become --dpi and --tile-from before --fortschritt", async () => {
+	const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
+	const child = new FakeChild();
+	const promise = convertPdf("a.pdf", "_ocr-preview", "/bin/pdf2md", "/vault", spawnMock(calls, child), {
+		pages: "2",
+		dpi: 200,
+		tileFrom: 0,
+	});
+	child.emit("close", 0);
+	await promise;
+	assert.deepEqual(calls[0]!.args, [
+		"a.pdf", "--out", "_ocr-preview", "--seiten", "2", "--dpi", "200", "--tile-from", "0", "--fortschritt",
+	]);
+});
+
+const CHECK_JSON = JSON.stringify(
+	{
+		typ: "check",
+		ok: false,
+		checks: [
+			{ name: "python", ok: true, detail: "3.12.4" },
+			{ name: "fitz", ok: true, detail: "1.24.10" },
+			{ name: "mlx_vlm", ok: false, detail: "nicht installiert" },
+			{ name: "modell", ok: true, detail: "im Cache" },
+			{ name: "ausgabe", ok: true, detail: "/vault/_ocr-preview" },
+			{ name: "speicher", ok: true, detail: "16.0 GiB" },
+		],
+		warnungen: ["speicher: knapp"],
+	},
+	null,
+	1,
+);
+
+test("checkPdf2md: reads the whole JSON report, not only the last lines", async () => {
+	const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
+	const child = new FakeChild();
+	const promise = checkPdf2md("/bin/pdf2md", "_ocr-preview", "/vault", spawnMock(calls, child));
+	child.stdout.emit("data", CHECK_JSON + "\n");
+	child.emit("close", 4);
+	const report = await promise;
+	assert.deepEqual(calls[0]!.args, ["--check", "--fortschritt", "--out", "_ocr-preview"]);
+	assert.deepEqual((calls[0]!.options as { cwd: string }).cwd, "/vault");
+	assert.ok("checks" in report);
+	assert.equal(report.ok, false);
+	assert.equal(report.checks.length, 6);
+	assert.deepEqual(report.checks[2], { name: "mlx_vlm", ok: false, detail: "nicht installiert" });
+	assert.deepEqual(report.warnings, ["speicher: knapp"]);
+});
+
+test("checkPdf2md: a wrapper failure without report names the reason", async () => {
+	const child = new FakeChild();
+	const promise = checkPdf2md("/bin/pdf2md", "_ocr-preview", "/vault", spawnMock([], child));
+	child.stderr.emit("data", "❌ MLX venv missing: /Users/x/.venvs/mlxocr\n");
+	child.emit("close", 1);
+	assert.deepEqual(await promise, { error: "❌ MLX venv missing: /Users/x/.venvs/mlxocr (exit code 1)" });
+});
+
+test("checkPdf2md: a missing executable is reported as not found", async () => {
+	const child = new FakeChild();
+	const promise = checkPdf2md("/nope/pdf2md", "_ocr-preview", "/vault", spawnMock([], child));
+	child.emit("error", Object.assign(new Error("spawn /nope/pdf2md ENOENT"), { code: "ENOENT" }));
+	assert.deepEqual(await promise, { error: "pdf2md not found: /nope/pdf2md" });
+});
+
+test("checkPdf2md: exit 0 with garbage on stdout is not a report", async () => {
+	const child = new FakeChild();
+	const promise = checkPdf2md("/bin/pdf2md", "_ocr-preview", "/vault", spawnMock([], child));
+	child.stdout.emit("data", "[ ok ] python: 3.12\n");
+	child.emit("close", 0);
+	assert.deepEqual(await promise, { error: "[ ok ] python: 3.12 (exit code 0)" });
 });

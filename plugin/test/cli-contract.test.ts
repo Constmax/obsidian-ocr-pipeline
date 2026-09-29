@@ -10,15 +10,18 @@ import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 
 import {
+	PDF2MD_CHECK_ARGS,
 	PROGRESS_PROTOCOL,
 	SHORT_PAGE_LINE,
 	checkEngine,
+	parseCheckReport,
 	parseProgressEvent,
 	type ConversionResult,
 	type SpawnFunction,
 } from "../src/conversion.ts";
 import { EXIT_CODES, classifyFailure, classifyOcrFailure } from "../src/conversion-controller.ts";
 import { CONVERTIBLE_EXTENSIONS } from "../src/input-formats.ts";
+import { PDF2MD_DEFAULTS } from "../src/pdf2md-settings.ts";
 import {
 	SUPPORTED_PREVIEW_FORMAT,
 	parsePreview,
@@ -38,6 +41,15 @@ interface Contract {
 		origins: string[];
 	};
 	exitCodes: Record<string, number>;
+	check: {
+		args: string[];
+		example: {
+			ok: boolean;
+			checks: Array<{ name: string; ok: boolean; detail: string }>;
+			warnungen: string[];
+		};
+	};
+	stage2Defaults: { dpi: number; tileFrom: number };
 	inputSuffixes: string[];
 	previewFormat: number;
 	stage1: {
@@ -212,4 +224,21 @@ test("contract: --check-engine arguments and the reason of an unusable engine", 
 	child.emit("close", contract.exitCodes[spec.notUsable.exitCode]);
 	assert.equal(await pending, spec.notUsable.reason);
 	assert.deepEqual(calls, [spec.args]);
+});
+
+test("check: the plugin reads the contract's example report", () => {
+	const example = contract.check.example;
+	assert.deepEqual(parseCheckReport(JSON.stringify(example, null, 1)), {
+		ok: example.ok,
+		checks: example.checks,
+		warnings: example.warnungen,
+	});
+});
+
+test("check: the plugin passes the contract's arguments", () => {
+	assert.deepEqual([...PDF2MD_CHECK_ARGS], contract.check.args);
+});
+
+test("stage-2 defaults shown as placeholders match pdf2md's", () => {
+	assert.deepEqual(PDF2MD_DEFAULTS, contract.stage2Defaults);
 });
