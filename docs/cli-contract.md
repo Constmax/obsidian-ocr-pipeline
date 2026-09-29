@@ -4,7 +4,7 @@ _Issue #55. The plugin is a thin client: it spawns `pdf2md` and `reprocess-raw` 
 
 To change the contract, change the JSON file first, then both sides, in one PR.
 
-## 1. Progress Protocol (`pdf2md --fortschritt`)
+## 1. Progress Protocol (`pdf2md --progress`)
 
 - **Channel:** stderr, one JSON object per line. Other stderr lines (warnings, tracebacks) are not JSON objects and are kept as human output.
 - **Vocabulary:** German keys, exactly as listed in the contract. This is the one vocabulary; the plugin no longer accepts English aliases, which no producer ever emitted.
@@ -46,4 +46,4 @@ Stage 1 has no structured channel. The plugin reads two kinds of human lines, an
 
 ## Outside the Contract
 
-`pdf2md --check --fortschritt` prints one JSON document on stdout (`"typ": "check"`). The plugin does not read it; it is documented in [`scripts-detail.md`](scripts-detail.md#--check-stage-2).
+`pdf2md --check --progress` prints one JSON document on stdout (`"typ": "check"`). The plugin does not read it; it is documented in [`scripts-detail.md`](scripts-detail.md#--check-stage-2).

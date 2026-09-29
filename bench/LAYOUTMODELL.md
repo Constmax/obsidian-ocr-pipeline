@@ -10,7 +10,7 @@ Die Spaltenentscheidung ist die riskanteste Einzelentscheidung der Pipeline.
 Ein **falscher** Längsschnitt zerlegt jede Zeile der Seite in zwei Hälften und
 ist ohne das Original nicht zu rekonstruieren; ein **versäumter** kostet nur
 Reihenfolge (Nachtrag 12). Sie fällt heute über ein Tintenprofil
-(`layout.py:304`, `layout_erkennen()`) und trifft 13 von 14 handgeprüften
+(`detect_layout()` in `pdf2md/layout.py`) und trifft 13 von 14 handgeprüften
 Seiten.
 
 Warum nie ein Layoutmodell geprüft wurde, ist historisch und kein Argument:
@@ -45,7 +45,7 @@ höheres Rendern dem Detektor nichts.** Deshalb ist 110 dpi die Voreinstellung
 des Messstands — nicht die 150 der Pipeline.
 
 Die Leseordnung im selben Forward-Pass ist der zweite bemerkenswerte Punkt:
-genau das rekonstruiert `spalten_trennen()` heute aus Geometrie, rekursiv bis
+genau das rekonstruiert `split_columns()` heute aus Geometrie, rekursiv bis
 Tiefe 2, mit einem Sonderweg für den WuV-Doppelbogen.
 
 ## Was aus fremder Quelle stammt
