@@ -30,6 +30,7 @@ MAX_IMAGE_MPIXELS=400    # ocrmypdf --max-image-mpixels safety net (Default 250)
 # ── Global state (set by callers or detect_*) ───────────────
 APPLE_AVAILABLE=false
 PADDLE_AVAILABLE=false
+PADDLE_PROBLEM=""         # why an installed PaddleOCR cannot run (set by detect_paddle_ocr)
 RESOLVED_ENGINE=""        # apple|tesseract|paddle — the one engine state (set by resolve_engine)
 ENGINE_DESC=""            # RESOLVED_ENGINE for humans, e.g. "Apple Vision (auto)"
 OCR_RESULT_DESC=""        # Engine behind the last OCR result, with fallback (set by ocr_with_retry)
@@ -152,13 +153,27 @@ detect_apple_ocr() {
 
 # detect_paddle_ocr
 # Sets PADDLE_AVAILABLE=true if the PaddleOCR engine plugin (ocrmypdf_paddle)
-# loads. Its models and runtime are checked by the plugin when a run starts;
-# a failure there is an OCR failure and takes the fallback.
+# loads and `--paddle-check` reports its runtime, models and (fast mode)
+# Apple Vision ready for PADDLE_MODE. A plugin that loads but is not ready
+# leaves the reason in PADDLE_PROBLEM, so a run fails before OCR instead of
+# quietly falling back to another engine (issue #73).
 detect_paddle_ocr() {
     PADDLE_AVAILABLE=false
-    if ocrmypdf --plugin ocrmypdf_paddle --help >/dev/null 2>&1; then
-        PADDLE_AVAILABLE=true
+    PADDLE_PROBLEM=""
+    if ! ocrmypdf --plugin ocrmypdf_paddle --help >/dev/null 2>&1; then
+        return 0
     fi
+    local rc=0
+    PADDLE_PROBLEM="$(ocrmypdf --plugin ocrmypdf_paddle \
+        --paddle-check "${PADDLE_MODE:-accurate}" 2>&1 >/dev/null)" || rc=$?
+    case "$rc" in
+        0) PADDLE_AVAILABLE=true; PADDLE_PROBLEM="" ;;
+        # argparse: an ocrmypdf_paddle from before --paddle-check.
+        2) PADDLE_PROBLEM="The installed ocrmypdf_paddle is too old for this pipeline (no --paddle-check).
+   Reinstall it from this repo: ./setup.sh (docs/installation.md)" ;;
+        *) [ -n "$PADDLE_PROBLEM" ] || PADDLE_PROBLEM="PaddleOCR engine readiness check failed" ;;
+    esac
+    return 0
 }
 
 # engine_label <apple|tesseract|paddle>
@@ -201,6 +216,10 @@ resolve_engine() {
             RESOLVED_ENGINE=tesseract
             ENGINE_DESC="Tesseract (manual)" ;;
         paddle)
+            if [ -n "$PADDLE_PROBLEM" ]; then
+                echo "❌ $PADDLE_PROBLEM" >&2
+                return 1
+            fi
             if [ "$PADDLE_AVAILABLE" != true ]; then
                 echo "❌ PaddleOCR engine plugin not installed (ocrmypdf_paddle)." >&2
                 echo "   Put its venv first on PATH, or PYTHONPATH=<repo>/ocrmypdf_paddle/src: docs/installation.md" >&2
@@ -942,6 +961,33 @@ print_summary() {
 #  INIT: Run common setup (call once at script start)
 # ════════════════════════════════════════════════════════════
 
+# require_paddle_engine_for_mode <engine>
+# Usage error for --paddle-mode without --engine paddle.
+require_paddle_engine_for_mode() {
+    if [ -n "$PADDLE_MODE" ] && [ "$1" != paddle ]; then
+        usage_error "--paddle-mode needs --engine paddle"
+    fi
+}
+
+# check_engine <engine>
+# `reprocess-raw --check-engine`: resolves <engine> exactly as lib_init
+# would and exits without touching a file: 0 if a run would start on it,
+# 4 (`check-failed`, contracts/cli-contract.json) with the reason on stderr
+# otherwise. The plugin asks this before it offers an engine.
+check_engine() {
+    local engine="${1:-auto}"
+    require_paddle_engine_for_mode "$engine"
+    check_deps ocrmypdf qpdf gs pdftotext || exit 4
+    detect_apple_ocr
+    if [ "$engine" = paddle ]; then
+        detect_paddle_ocr
+    fi
+    resolve_engine "$engine" || exit 4
+    echo "✅ Engine usable"
+    echo "   🧠 Engine:    $ENGINE_DESC"
+    exit 0
+}
+
 # lib_init <engine_string> [--fast]
 # One-shot: dependency check + engine resolve + optimizer detection.
 # Call this once per script after argument parsing.
@@ -949,9 +995,7 @@ lib_init() {
     local engine="${1:-auto}" fast="${2:-false}"
 
     # A usage error, so it comes before any check or processing.
-    if [ -n "$PADDLE_MODE" ] && [ "$engine" != paddle ]; then
-        usage_error "--paddle-mode needs --engine paddle"
-    fi
+    require_paddle_engine_for_mode "$engine"
 
     echo "🔍 Checking dependencies..."
     check_deps ocrmypdf qpdf gs pdftotext || exit 1

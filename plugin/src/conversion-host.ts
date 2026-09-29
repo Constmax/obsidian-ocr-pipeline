@@ -3,12 +3,26 @@
 
 import { FileSystemAdapter, Notice, Platform, TFile, normalizePath, type App } from "obsidian";
 
-import type { ConversionHost } from "./conversion-controller.ts";
+import { homedir } from "os";
+
+import { resolveCli, type ConversionHost } from "./conversion-controller.ts";
+import { checkEngine } from "./conversion.ts";
 import { isConvertible } from "./input-formats.ts";
 import type { Inventory } from "./file-actions.ts";
 import { ExemptionModal } from "./exemption-modal.ts";
 import type { SearchableCopyHost } from "./searchable-copy.ts";
+import type { OcrEngine } from "./ocr-settings.ts";
 import type { Settings } from "./settings.ts";
+
+/**
+ * `reprocess-raw --check-engine` for this machine, run from the vault folder
+ * like a searchable copy: null when `engine` is usable, otherwise the reason.
+ */
+export function checkEngineHere(app: App, engine: OcrEngine): Promise<string | null> {
+	const adapter = app.vault.adapter;
+	const cwd = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : homedir();
+	return checkEngine(engine, resolveCli("reprocess-raw"), cwd);
+}
 
 export function createSearchableCopyHost(app: App, settings: () => Settings): SearchableCopyHost {
 	return {
@@ -26,6 +40,7 @@ export function createSearchableCopyHost(app: App, settings: () => Settings): Se
 			return true;
 		},
 		wait: (ms) => new Promise((done) => window.setTimeout(done, ms)),
+		checkEngine: (engine) => checkEngineHere(app, engine),
 		offerExemptions(offer) {
 			// Stays until the user acts on it or clicks it away.
 			const notice = new Notice(offer.message, 0);

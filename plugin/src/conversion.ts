@@ -410,6 +410,51 @@ export function stage1Path(path: string, home: string = homedir()): string {
 }
 
 /**
+ * Stage-1 engine options. PaddleOCR runs in fast mode only: Apple Vision's
+ * lines, citation lines re-read by PP-OCRv5. Accurate mode glued words in
+ * bench/ERGEBNIS.md, Nachtrag 22, and has not been re-measured since.
+ */
+export function engineArgs(engine: OcrEngine): string[] {
+	return engine === "paddle"
+		? ["--engine", "paddle", "--paddle-mode", "fast"]
+		: ["--engine", engine];
+}
+
+/** An engine check that has written nothing for this long is stopped. */
+export const ENGINE_CHECK_TIMEOUT_MS = 60_000;
+
+/**
+ * Stage 1: `reprocess-raw --check-engine` for `engine` (issue #73). Resolves
+ * to null when a searchable copy would run on that engine here, otherwise to
+ * the reason, read from the CLI's stderr. Never throws.
+ */
+export async function checkEngine(
+	engine: OcrEngine,
+	cli: string,
+	cwd: string,
+	spawnFn: SpawnFunction = spawn,
+): Promise<string | null> {
+	const spawnOptions = {
+		cwd,
+		stdio: ["ignore", "pipe", "pipe"],
+		env: { ...process.env, PATH: stage1Path(process.env.PATH ?? "") },
+	};
+	const result = await runProcess(cli, ["--check-engine", ...engineArgs(engine)], spawnOptions, spawnFn, {
+		idleTimeoutMs: ENGINE_CHECK_TIMEOUT_MS,
+		onTimeout: (child) => child.kill("SIGKILL"),
+	});
+	if (result.code === 0) return null;
+	const reason = result.stderrLast
+		.map((line) => line.replace(/^❌\s*/, ""))
+		.join(" ")
+		.trim();
+	if (reason.length > 0) return reason;
+	return result.timeout
+		? "reprocess-raw --check-engine did not answer"
+		: `reprocess-raw --check-engine failed (exit code ${result.code ?? result.signal ?? "unknown"})`;
+}
+
+/**
  * Stage 1: `reprocess-raw <source> --output <destination> [options]` with
  * `cwd` as working directory, in a new process group (`detached: true`) so
  * terminateProcessGroup reaches every descendant. No timeout in the first
@@ -424,7 +469,7 @@ export function createSearchableCopy(
 	options: SearchableCopyOptions = {},
 ): Promise<SearchableCopyResult> {
 	const args = [source, "--output", destination];
-	if (options.engine !== undefined) args.push("--engine", options.engine);
+	if (options.engine !== undefined) args.push(...engineArgs(options.engine));
 	if (options.splitColumns) args.push("--split-columns");
 	if (options.allowPages && options.allowPages.length > 0) {
 		args.push("--allow-pages", options.allowPages);

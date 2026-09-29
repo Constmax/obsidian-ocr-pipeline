@@ -44,6 +44,18 @@
       "command": "reprocess-raw.sh missing.pdf",
       "stdout": ["❌ File not found: missing.pdf"],
       "reason": "File not found: missing.pdf"
+    },
+    "checkEngine": {
+      "comment": "Issue #73: the plugin offers PaddleOCR only when this check exits 0 (success); check-failed carries the reason on stderr.",
+      "args": ["--check-engine", "--engine", "paddle", "--paddle-mode", "fast"],
+      "notUsable": {
+        "exitCode": "check-failed",
+        "stderr": [
+          "❌ PaddleOCR engine plugin not installed (ocrmypdf_paddle).",
+          "   Put its venv first on PATH, or PYTHONPATH=<repo>/ocrmypdf_paddle/src: docs/installation.md"
+        ],
+        "reason": "PaddleOCR engine plugin not installed (ocrmypdf_paddle). Put its venv first on PATH, or PYTHONPATH=<repo>/ocrmypdf_paddle/src: docs/installation.md"
+      }
     }
   }
 }
