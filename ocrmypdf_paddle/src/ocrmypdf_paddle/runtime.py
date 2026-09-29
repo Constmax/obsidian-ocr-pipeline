@@ -245,12 +245,28 @@ class RecognizedPage:
     lines: list[TextLine]
 
 
+def line_reading(result: Any) -> tuple[str, float]:
+    """Text and score of a recognizer-only result for one line image.
+
+    ("", nan) when it read nothing; several pieces are joined and scored by
+    the weakest.
+    """
+    txts = _as_list(getattr(result, "txts", None))
+    scores = _as_list(getattr(result, "scores", None))
+    pieces = [(text.strip(), _score(score)) for text, score in zip(txts, scores)
+              if isinstance(text, str) and text.strip()]
+    if not pieces:
+        return "", math.nan
+    return " ".join(text for text, _ in pieces), min(score for _, score in pieces)
+
+
 class Recognizer:
     """One RapidOCR pipeline per process, created on first use.
 
     A lock serializes creation and every recognition call. OCRmyPDF runs this
     engine with one job, but the pinned runtime is not proven thread-safe, so
-    the lock also holds if that policy is bypassed.
+    the lock also holds if that policy is bypassed. Fast mode reads its
+    citation lines through recognize_line() of the same instance.
     """
 
     def __init__(self, factory: Callable[[], Any] | None = None) -> None:
@@ -262,8 +278,7 @@ class Recognizer:
         from PIL import Image
 
         with self._lock:
-            if self._engine is None:
-                self._engine = self._factory()
+            self._ensure_engine()
             with Image.open(image_path) as image:
                 width, height = image.size
                 factor = downscale_factor(width, height)
@@ -280,6 +295,17 @@ class Recognizer:
                     scale_x = scale_y = 1.0
             result = self._run(source, image_path)
         return RecognizedPage(width, height, lines_from_result(result, scale_x, scale_y))
+
+    def recognize_line(self, image: Any) -> tuple[str, float]:
+        """The recognizer alone on one upright line image: (text, score)."""
+        with self._lock:
+            self._ensure_engine()
+            result = self._engine(image, use_det=False, use_cls=False, use_rec=True)
+        return line_reading(result)
+
+    def _ensure_engine(self) -> None:
+        if self._engine is None:
+            self._engine = self._factory()
 
     def _run(self, source: Any, image_path: Path) -> Any:
         try:

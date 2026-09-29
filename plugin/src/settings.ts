@@ -1,4 +1,13 @@
-import { App, Platform, PluginSettingTab, Setting, TextComponent, normalizePath } from "obsidian";
+import {
+	App,
+	DropdownComponent,
+	Platform,
+	PluginSettingTab,
+	Setting,
+	TextComponent,
+	normalizePath,
+} from "obsidian";
+import { checkEngineHere } from "./conversion-host.ts";
 import type OcrPreviewPlugin from "./main.ts";
 import {
 	DEFAULT_OCR_SETTINGS,
@@ -52,6 +61,7 @@ const ENGINE_LABELS: Record<OcrEngine, string> = {
 	auto: "Automatic",
 	apple: "Apple Vision",
 	tesseract: "Tesseract",
+	paddle: "PaddleOCR (fast)",
 };
 
 export class SettingsTab extends PluginSettingTab {
@@ -199,19 +209,28 @@ export class SettingsTab extends PluginSettingTab {
 			return;
 		}
 
-		new Setting(containerEl)
+		const engineSetting = new Setting(containerEl)
 			.setName("OCR engine")
 			.setDesc(
 				"Used for new searchable copies. Automatic uses Apple Vision when its " +
-					"OCRmyPDF plugin is installed and Tesseract otherwise.",
+					"OCRmyPDF plugin is installed and Tesseract otherwise. PaddleOCR (fast) " +
+					"keeps two-column pages in reading order without a column split; it is " +
+					"offered once the installation check passes.",
 			)
 			.addDropdown((d) => {
-				for (const engine of OCR_ENGINES) d.addOption(engine, ENGINE_LABELS[engine]);
-				d.setValue(this.plugin.settings.ocrEngine).onChange(async (value) => {
+				const stored = this.plugin.settings.ocrEngine;
+				for (const engine of OCR_ENGINES) {
+					// PaddleOCR joins after the check below, unless it is the stored value.
+					if (engine !== "paddle" || stored === "paddle") {
+						d.addOption(engine, ENGINE_LABELS[engine]);
+					}
+				}
+				d.setValue(stored).onChange(async (value) => {
 					if (!isOcrEngine(value)) return;
 					this.plugin.settings.ocrEngine = value;
 					await this.plugin.saveSettings();
 				});
+				void this.offerPaddle(d, engineSetting);
 			});
 
 		new Setting(containerEl)
@@ -228,6 +247,26 @@ export class SettingsTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+	}
+
+	/**
+	 * Adds PaddleOCR to the engine list once `reprocess-raw --check-engine`
+	 * finds it usable; otherwise names the reason under the setting.
+	 */
+	private async offerPaddle(dropdown: DropdownComponent, setting: Setting): Promise<void> {
+		const problem = await checkEngineHere(this.app, "paddle");
+		if (problem === null) {
+			if (!dropdown.selectEl.querySelector('option[value="paddle"]')) {
+				dropdown.addOption("paddle", ENGINE_LABELS.paddle);
+			}
+			return;
+		}
+		const reason = problem.replace(/\.$/, "");
+		const text =
+			this.plugin.settings.ocrEngine === "paddle"
+				? `PaddleOCR is not usable here: ${reason}. Searchable copies use Automatic until it is.`
+				: `PaddleOCR is not offered: ${reason}.`;
+		setting.descEl.createDiv({ cls: "ocr-einstellungen-hinweis", text });
 	}
 
 	/** Percentage field for a column width: Invalid falls back to default,

@@ -18,6 +18,9 @@ from pathlib import Path
 import pytest
 
 
+pytestmark = pytest.mark.slow  # end-to-end runs; `make test-fast` skips them
+
+
 BIN = Path(__file__).resolve().parent.parent
 BASH = "/bin/bash" if Path("/bin/bash").exists() else "bash"
 
@@ -179,7 +182,7 @@ def test_other_clis_specific_option_fails(tmp_path, script, positional, option):
     (["--jobs", "two"], "--jobs must be a positive whole number"),
     (["--dpi", "-5"], "--dpi must be a whole number"),
     (["--dpi", "3.5"], "--dpi must be a whole number"),
-    (["--engine", "paddle"], "--engine must be 'auto', 'apple', or 'tesseract'"),
+    (["--engine", "easyocr"], "--engine must be 'auto', 'apple', 'tesseract', or 'paddle'"),
 ])
 @pytest.mark.parametrize("script,positional", CLIS, ids=CLI_IDS)
 def test_invalid_value_is_a_usage_error(tmp_path, script, positional, options, message):

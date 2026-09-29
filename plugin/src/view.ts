@@ -21,12 +21,13 @@ import type { KeymapEventHandler } from "obsidian";
 import type OcrPreviewPlugin from "./main.ts";
 import { EditStateTracker } from "./edit-state.ts";
 import { Inventory, type InventoryEntry } from "./file-actions.ts";
+import { isConvertible, isDisplayableSource, isImageSource } from "./input-formats.ts";
 import { MarkdownColumn, type Representation } from "./md-pane.ts";
 import { PdfColumn } from "./pdf-pane.ts";
 import { Sidebar } from "./sidebar.ts";
 import { Coupling } from "./sync.ts";
 import type { FolderLocation, Preview } from "./types.ts";
-import { parsePreview, buildPreview } from "./preview-parser.ts";
+import { parsePreview, buildPreview, previewFormatWarning } from "./preview-parser.ts";
 import { LatestTaskQueue } from "./open-queue.ts";
 
 export const VIEW_TYPE = "ocr-preview-comparison";
@@ -404,6 +405,8 @@ export class OcrComparisonView extends ItemView {
 			await this.saveChangeImmediately();
 			if (this.closed || run !== this.openRun) return;
 			const preview = parsePreview(text);
+			const formatWarning = previewFormatWarning(preview);
+			if (formatWarning !== null) new Notice(`OCR Preview: "${name}": ${formatWarning}`);
 			await this.mdColumn.open(
 				item.file,
 				preview,
@@ -474,10 +477,14 @@ export class OcrComparisonView extends ItemView {
 		if (preview !== null) candidates.push(preview.sourcePdf);
 		const link = this.app.metadataCache.getFileCache(file)?.links?.[0]?.link;
 		if (link !== undefined && link.length > 0) candidates.push(link);
+		// Images convert too (Issue #100), so the basename fallback has to find
+		// them — but a PDF of the same name wins, since it is what Stage 1 and
+		// "Open in PDF viewer" work with.
+		const sameBasename = this.app.vault
+			.getFiles()
+			.filter((f) => isConvertible(f) && f.basename === file.basename);
 		candidates.push(
-			this.app.vault.getFiles().find(
-				(f) => f.extension === "pdf" && f.basename === file.basename,
-			)?.path ?? null,
+			(sameBasename.find((f) => !isImageSource(f)) ?? sameBasename[0])?.path ?? null,
 		);
 		candidates.push(item.entry["manual-source-pdf"]);
 
@@ -815,9 +822,9 @@ export class OcrComparisonView extends ItemView {
 		if (name === null) return;
 		const modal = new PdfSelectModal(
 			this.app,
-			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
+			this.app.vault.getFiles().filter(isDisplayableSource),
 		);
-		modal.setPlaceholder("Search original PDF…");
+		modal.setPlaceholder("Search original PDF or image…");
 		modal.onSelection = (file) => {
 			void this.inventory.updateEntry(name, { "manual-source-pdf": file.path });
 			this.safelyOpenPreview(name);
@@ -1079,9 +1086,10 @@ export class PdfSelectModal extends SuggestModal<TFile> {
 	constructor(
 		app: App,
 		private pdfs: TFile[],
+		emptyStateText = "No PDFs in vault.",
 	) {
 		super(app);
-		this.emptyStateText = "No PDFs in vault.";
+		this.emptyStateText = emptyStateText;
 	}
 
 	getSuggestions(query: string): TFile[] {
@@ -1146,32 +1154,15 @@ export class PageSelectModal extends Modal {
 		this.titleEl.setText("Select pages");
 		this.contentEl.createDiv({
 			cls: "setting-item-description",
-			text: `PDF: ${this.file.basename}`,
+			text: `Source: ${this.file.name}`,
 		});
-		try {
-			const loaded = (typeof window.pdfjsLib === "undefined" ? await loadPdfJs() : window.pdfjsLib) as {
-				getDocument: (opts: object) => { promise: Promise<{ numPages: number }> };
-			};
-			const pdfjs = window.pdfjsLib ?? loaded;
-			if (typeof window.pdfjsLib === "undefined" && pdfjs) {
-				(window as unknown as { pdfjsLib: unknown }).pdfjsLib = pdfjs;
-			}
-			const doc = await pdfjs.getDocument({
-				url: this.app.vault.getResourcePath(this.file),
-			}).promise;
-			this.contentEl.createDiv({
-				cls: "setting-item-description",
-				text: `Total ${doc.numPages} pages`,
-			});
-		} catch {
-			this.contentEl.createDiv({
-				cls: "setting-item-description",
-				text: "(Could not determine page count)",
-			});
-		}
+		this.contentEl.createDiv({
+			cls: "setting-item-description",
+			text: await this.pageCountText(),
+		});
 		new Setting(this.contentEl)
 			.setName("Pages")
-			.setDesc("e.g. 1,3-5,8 — leave empty = all pages")
+			.setDesc("e.g. 1,3-5,8 — leave empty = all pages. An existing preview keeps its other pages.")
 			.addText((t) => {
 				t.inputEl.placeholder = "all pages";
 				t.inputEl.addClass("ocr-seiten-eingabe");
@@ -1194,6 +1185,29 @@ export class PageSelectModal extends Modal {
 		this.input?.addEventListener("keydown", (e) => {
 			if (e.key === "Enter") execute();
 		});
+	}
+
+	/** "Total N pages", or a note when pdf.js cannot open the source. */
+	private async pageCountText(): Promise<string> {
+		// An image is normalized into a single page at the pipeline's input
+		// boundary (Issue #100); pdf.js can neither open it nor tell us
+		// anything we do not already know.
+		if (isImageSource(this.file)) return "Total 1 page";
+		try {
+			const loaded = (typeof window.pdfjsLib === "undefined" ? await loadPdfJs() : window.pdfjsLib) as {
+				getDocument: (opts: object) => { promise: Promise<{ numPages: number }> };
+			};
+			const pdfjs = window.pdfjsLib ?? loaded;
+			if (typeof window.pdfjsLib === "undefined" && pdfjs) {
+				(window as unknown as { pdfjsLib: unknown }).pdfjsLib = pdfjs;
+			}
+			const doc = await pdfjs.getDocument({
+				url: this.app.vault.getResourcePath(this.file),
+			}).promise;
+			return `Total ${doc.numPages} pages`;
+		} catch {
+			return "(Could not determine page count)";
+		}
 	}
 
 	onClose(): void {

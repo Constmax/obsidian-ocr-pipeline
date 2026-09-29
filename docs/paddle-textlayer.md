@@ -1,6 +1,13 @@
 # PaddleOCR as a third Stage-1 engine
 
-**Status:** Plan; implementation starts only after the runtime spike passes.
+**Status:** Steps 0–3 are done (hOCR order #61, runtime spike #62 with a go,
+adapter #68, reading order #69 with follow-ups #87, #94, #114, #124, #125) and
+fast mode (3a) is merged (#118). The gate result is still **keep split mode**.
+Open: the resolved engine value (step 4, #70, PR #121), the retain/discard
+benchmark (step 5, #71) and installation (step 6, #72). Issue #133 proposes
+removing OCRmyPDF from Stage 1, which would rework steps 4 and 6. Until step 5
+retains it, `setup.sh` does not install the plugin and `bin/` does not offer
+`--engine paddle`.
 
 ## Goal
 
@@ -345,7 +352,11 @@ the result explicitly says either “keep split mode” or “unsplit is support
   one line height and 1.5 times the usual leading, in the top 22 % or bottom
   12 % of the page. A gutter lies between 30 % and 70 % of the text width,
   almost no narrow line crosses it, and lines stand side by side on both
-  sides. A line crossing the gutter with no column line beside it separates
+  sides. At most 5 % of all narrow lines may cross it, but crossings are
+  counted only on lines between the top 22 % and the bottom 12 %, so a
+  running header or footer that no gap cuts off does not hide the gutter
+  (#114). A page with fewer than 8 narrow lines there counts crossings on
+  all narrow lines. A line crossing the gutter with no column line beside it separates
   sections; each section is read left column, then right. Within a column,
   lines are read in rows, and short lines standing in the margin follow their
   column. The debug JSON lists the chosen order.
@@ -427,6 +438,126 @@ supported command. Numbers, pinned versions and commands are in
 - **Next attempt:** search the leading footer rows for a pair as a whole
   rather than row by row. That change was found on a validation page, so it
   needs further unseen pages before the gate can pass.
+
+**Follow-up** in #114 (`bench/ERGEBNIS.md`, Nachtrag 24):
+
+- **Cause:** on pages whose line boxes touch (large type, m06) `_bands()`
+  cuts off neither the running header nor the footer. Their lines crossed
+  the gutter often enough to exceed the 5 % tolerance, and the page was
+  read row by row.
+- **Fix:** `_gutter()` counts crossings only on narrow lines between the
+  top 22 % and the bottom 12 % of the page (all narrow lines when fewer than
+  8 lie there). The tolerance stays 5 % of all narrow lines.
+- **Validation set:** `bench/reading_order_holdout3.json`, 13 two-column
+  pages from documents outside the earlier sets, chosen after the fix was
+  committed. One of them (q11) has the m06 failure and is read correctly.
+- **Result on the new pages:** **keep split mode.** The median is 100.0 %
+  against 94.9 % for the best split baseline, and no full-width line is
+  missing, but two rubric lines are read as the first line of the right
+  column (#124) and one page with one-column footnotes and no footer is
+  interleaved (#125). A full-width heading between column regions was not
+  found in the corpus (#120).
+
+**Follow-up** in #124 and #125 (`bench/ERGEBNIS.md`, Nachtrag 25):
+
+- **Causes:** a tilted rubric row whose right part sits half a line lower
+  was measured from that lower part and stayed in the columns (q07); a
+  right column recognized as single words moved `_right_edge()` into the
+  column, so the rubric's right part paired with its label as the first
+  column row (q06, real run); footnotes of one column in the footer band
+  never pair across the gutter and were read after both columns (q03).
+- **Fix:** the lowest grown header row is measured at its upper part, like
+  the first column pair, counting only parts of a similar height; column
+  edges (`_edge()`) and the line pitch are measured on visual rows; leading
+  footer rows go back to their column when they stand on one side of the
+  gutter, open with a footnote numeral hanging left of that column's text
+  edge with its text beside it, and every row starts at that edge.
+- **Known limit:** footnotes whose numeral is merged into the text box, or
+  that have no numeral, still stay in the footer band.
+- **Validation set:** `bench/reading_order_holdout4.json`, 13 two-column
+  pages from documents outside the earlier sets, chosen after the fix was
+  committed. Two of them (r02, r06) had a rubric line in the right column
+  before the fix and are read correctly.
+- **Result on the new pages:** **keep split mode.** The median is 100.0 %
+  against 95.2 % for the best split baseline and no full-width line is
+  misplaced, but three location-list lines are not recognized in the real
+  run and one skewed page is interleaved: hanging footnote numerals of the
+  right column narrow the gutter below half a line height (#127).
+
+### 3a. Fast mode: Apple Vision lines, citations re-read
+
+*Implemented outside the #74 queue* in `ocrmypdf_paddle/src/ocrmypdf_paddle/apple.py`. The plugin
+takes `--paddle-mode accurate|fast` (default `accurate`, also as the API
+argument `paddle_mode`):
+
+```bash
+ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
+```
+
+- **Why:** Apple Vision reads a page 3–7 times faster than RapidOCR on the
+  M1 but loses citations ("$ 935" for "§ 935", "§ 568 | BGB"). Its lines are
+  ordered as badly as any native order, but with their polygons
+  `order_lines()` orders them as well as RapidOCR's (bench/ERGEBNIS.md,
+  Nachtrag 22).
+- **Pipeline per page:** Vision's `VNRecognizeTextRequest` (accurate,
+  `de-DE`, language correction) returns lines as quadrilaterals with word
+  boxes. Lines matching `CITATION_HINT` (a "§", "$", "Art." or a number
+  followed by a Roman numeral) are read again by RapidOCR's recognizer alone,
+  without detection (about 8 % of the lines). The crop follows the line's own
+  edges with a 15 % margin and is straightened, so a skewed line does not
+  bring its neighbours along. Then `order_lines()` and `render_page()` run as
+  in accurate mode.
+- **Accepting a re-reading:** RapidOCR's text replaces Vision's only with a
+  recognition score of at least 0.8 and a `difflib` similarity to Vision's
+  text of at least 0.6; the line then carries RapidOCR's score. A citation
+  fix changes a few characters, a reading of noise or of a neighbouring line
+  most of them. Both thresholds are not calibrated yet (#71).
+- **Word boxes:** Vision's word boxes reach into half the space on either
+  side. Rendered unchanged, `pdftotext` glues the words of a line together
+  (0.3–2 % of the words survived on four truth pages). Accurate mode's text
+  layer glues RapidOCR's words the same way. A re-read line keeps Vision's
+  word boxes when it has the same number of words, otherwise the words are
+  spread across the line box.
+- **Selection in viewers** (both modes): trimming every word box by a
+  quarter of the line height separated the words for `pdftotext`, but in
+  Obsidian (pdf.js) a selection fell apart into one block per word, sat half
+  a line too low, and was too tall. `render_page()` now
+  - puts the baseline at 75 % of the line height instead of on the box
+    bottom (both recognizers' boxes reach below the descenders; measured
+    0.68–0.81 for Vision, 0.75 for RapidOCR);
+  - places each word's right edge so that 0.25 font sizes remain after the
+    space the renderer appends at the word's stretch: `pdftotext -raw` needs
+    about 0.12, pdf.js 4.10 keeps a line in one text item up to 0.6. The
+    line's first and last word also start and end 0.25 (at most 30 % of the
+    word's width) inside their boxes, because recognizers split a printed
+    line into touching lines; and
+  - writes every line flat. OCRmyPDF renders a line with a slope of 0.005 or
+    more rotated, and pdf.js undoes that rotation with a scale that includes
+    each word's stretch, so the words of such a line land on different
+    heights. Long one-column lines keep that much skew after deskewing, which
+    is why two-column pages looked fine. A sloped line becomes flat pieces
+    over which the baseline drifts at most 0.2 font sizes.
+
+  On five vault pages (one- and two-column, both modes) pdf.js text items
+  dropped from 3,250 to 1,198, and `pdftotext -raw` text is unchanged apart
+  from whitespace. 2 of 4,100 words newly glue to a neighbour, where two
+  recognized lines overlap; one pair glued on `main` is now separate.
+- **Dependencies:** macOS 13 or later with `pyobjc-framework-Vision` (extra
+  `[fast]`) plus everything accurate mode needs, because the models re-read
+  lines. `check_options` refuses fast mode before the first page when Vision
+  is missing, the macOS is too old, or Vision cannot read German; there is no
+  silent fallback to accurate. Both modes share one RapidOCR pipeline, created
+  only when a page needs it.
+- **Benchmark:** `reading_order.py run` starts `unsplit-paddle-fast` only
+  when it is named, so the default run works without Apple Vision.
+- **Wiring:** `bin/` offers `--engine paddle --paddle-mode accurate|fast`
+  since #70 (explicit only; see step 4). Since #73 the Obsidian engine setting
+  offers PaddleOCR in fast mode where `reprocess-raw --check-engine` passes.
+- **Readiness:** `ocrmypdf --plugin ocrmypdf_paddle --paddle-check MODE`
+  runs the same checks as `check_options` without an input file and exits
+  like `--version`: 0 ready, 1 not ready (reason on stderr). `bin/` runs it
+  before choosing the engine, so a missing model or package stops the run
+  before OCR instead of falling back to Apple Vision.
 
 ### 4. Replace binary engine flags with one resolved state
 

@@ -6,22 +6,24 @@ OCR-Pipeline für gescannte juristische Skripte, Fälle und Klausuren — von de
 Ordnerfotografie bis zur durchsuchbaren Markdown-Seite im Obsidian-Vault.
 
 Entstanden als Werkzeugkasten innerhalb eines Jura-Vaults, hier herausgelöst,
-weil es Code ist und in ein Notizen-Repo nicht gehört. **Fernziel: ein
-Obsidian-Plugin** — siehe [docs/plugin-roadmap.md](docs/plugin-roadmap.md).
+weil es Code ist und in ein Notizen-Repo nicht gehört. Die Bedienung läuft
+über ein **Obsidian-Plugin** (Stufe 3), das die installierten CLIs startet —
+Architekturentscheidung in [docs/plugin-roadmap.md](docs/plugin-roadmap.md).
 
-## Zwei Stufen
+## Three Stages
 
-| | Stufe 1 — `bin/` | Stufe 2 — `pdf2md/` |
-|---|---|---|
-| Ausgabe | durchsuchbares PDF (Textlayer) | Markdown |
-| Engine | Tesseract / Apple Vision (via ocrmypdf) | PaddleOCR-VL 1.5 4bit via MLX |
-| Zustand | **stabil, im täglichen Einsatz** | funktioniert, Zusammenbau-Schicht jung |
-| Laufzeit | Sekunden bis Minuten/Datei | 15–60 s/Seite auf M1 |
-| Plattform | macOS + Linux (Apple-Engine nur macOS) | Apple Silicon (MLX) |
+| | Stage 1 — `bin/` | Stage 2 — `pdf2md/` | Stage 3 — `plugin/` |
+|---|---|---|---|
+| Output | searchable PDF (text layer) | Markdown | review inside the vault |
+| Engine | Tesseract / Apple Vision (via ocrmypdf); PaddleOCR opt-in, not yet wired in | PaddleOCR-VL 1.5 4bit via MLX | calls Stage 1 and 2 |
+| State | **stable, in daily use** | works, assembly layer is young | usable, in development |
+| Runtime | seconds to minutes per file | 15–60 s/page on M1 | — |
+| Platform | macOS + Linux (Apple engine macOS only) | Apple Silicon (MLX) | Obsidian desktop |
 
-Die Stufen sind unabhängig. Stufe 1 macht Scans durchsuchbar und archivfähig,
-Stufe 2 macht sie **lesbar in Obsidian**. Für das Plugin ist Stufe 2 der
-interessante Teil.
+Stages 1 and 2 are independent. Stage 1 makes scans searchable and
+archivable, Stage 2 makes them **readable in Obsidian**. Stage 3 is a thin
+client: the plugin starts the installed CLIs and reads their output according
+to the contract in [docs/cli-contract.md](docs/cli-contract.md).
 
 ## Stufe 1 — PDF → durchsuchbares PDF
 
@@ -66,6 +68,12 @@ Markdown zusammen. Seiten mit brauchbarem Textlayer werden verlustfrei
 übernommen statt neu gelesen; Diagrammseiten kommen als Bild plus Text in einem
 eingeklappten Callout.
 
+Eingabe ist ein PDF oder ein einzelnes Seitenbild (`.png`, `.jpg`, `.jpeg`,
+`.tif`, `.tiff`, `.bmp`): Bilder werden an der Eingabegrenze zu einer
+einseitigen PDF normalisiert, in voller Auflösung, sodass dahinter alles
+PDF-only bleibt. Ein Bild ist genau eine Seite — ein mehrseitiges TIFF wird
+abgelehnt statt halb verarbeitet. Details in `docs/scripts-detail.md`.
+
 Entgleist die Generierung — eine Wortfolge wiederholt sich, ein Zähler läuft
 davon, die Ausgabe bricht ab —, wird das erkannt, die Kachel feiner geschnitten
 neu gerechnet und die bessere Fassung genommen. Was sich nicht reparieren lässt,
@@ -93,7 +101,7 @@ Zum Schluss läuft ein **Wörterbuchabgleich** über die OCR-Seiten (nicht über
 die exakten Textlayer-Seiten). Was kein Wörterbuch kennt, steht als `⌕`-Zeile
 im Protokoll und als `woerter-verdaechtig` im Frontmatter — der
 Begutachtungsdurchgang weiß damit, wonach er auf der Seite suchen soll.
-Ersetzt wird nur auf ausdrückliches Verlangen (`--woerterbuch-korrigieren`)
+Ersetzt wird nur auf ausdrückliches Verlangen (`--dictionary-correct`)
 und nur, wenn genau eine Variante aus der Verwechslungstabelle im Wörterbuch
 steht; bei zwei Lesarten bleibt das Wort stehen. Zitate, Zahlen und
 Abkürzungen werden gar nicht erst geprüft. Gemessen an 202 Wörtern echter
@@ -112,7 +120,10 @@ Markdown-Datei seitenweise neben das Original-PDF stellt — links die
 Vorschau-Liste, mittig die Originalseiten, rechts das Markdown, scrollgekoppelt,
 mit **Annehmen / Ablehnen** per Tastatur und Rückgängig. Der
 Begutachtungs-Durchgang, der heute aus zwei Fenstern nebeneinander besteht,
-bekommt damit eine Oberfläche. Zweck und Bedienung:
+bekommt damit eine Oberfläche. Aus dem Vault heraus startet das Plugin auch
+die Konvertierung (**OCR → Markdown**, PDF oder Seitenbild, mit Seitenauswahl)
+und die Stufe-1-Aktion **Create searchable copy (OCR)**, die neben der Quelle
+eine `<name>-ocr.pdf` ablegt und das Original nie anfasst. Zweck und Bedienung:
 [docs/review-view.md](docs/review-view.md).
 
 ## Neuer Laptop — Einmal-Setup
@@ -140,16 +151,18 @@ einem `git pull`, ausdrücklich **kein paralleler Installationsweg**:
 
 ```bash
 ./install.sh                                # Stufe-1-Symlinks nach ~/bin + Prüfung
-VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh   # Plugin (Stufe 3)
+VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh --enable   # Plugin (Stufe 3)
 ```
 
 - `install.sh` verlinkt `pdf-auto`, `pdf-combine`, `pdf-workflow`,
   `reprocess-raw` nach `~/bin` und prüft die Abhängigkeiten.
 - `plugin/install-plugin.sh` kopiert `main.js`, `manifest.json` und
-  `styles.css` nach `$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/` (ohne Build,
-  kein Node nötig; `--build` baut aus `src/` auf der Dev-Maschine). Kopie ist
-  Default (Symlinks verlieren in iCloud Dateien), `--symlink` bleibt als
-  Dev-Opt-in.
+  `styles.css` nach `$VAULT_ROOT/.obsidian/plugins/<id>/` — die ID steht nur in
+  `plugin/manifest.json` (ohne Build, kein Node nötig; `--build` baut aus `src/`
+  auf der Dev-Maschine). `--enable` trägt das Plugin in
+  `community-plugins.json` ein und schaltet die alte ID `ocr-vorschau` ab.
+  Kopie ist Default (Symlinks verlieren in iCloud Dateien), `--symlink` bleibt
+  als Dev-Opt-in.
 
 Systempakete installiert `setup.sh` über das `brew bundle` aus dem
 [Brewfile](Brewfile). `ocrmypdf` steht dort bewusst **nicht**: der brew-Build
@@ -179,13 +192,13 @@ pdf-combine ~/scans/skript skript-arbeitsrecht --split-columns
 reprocess-raw "raw/StR/Rep-Faelle/fall-01.pdf" --force-ocr --split-columns
 
 # PDF → Markdown
-pdf2md "raw/ZR/skript.pdf" --out _ocr-vorschau
+pdf2md "raw/ZR/skript.pdf" --out _ocr-preview
 
 # PDF → Markdown, nur bestimmte Seiten
-pdf2md "raw/ZR/skript.pdf" --seiten "1,3-5,8" --out _ocr-vorschau
+pdf2md "raw/ZR/skript.pdf" --pages "1,3-5,8" --out _ocr-preview
 
 # Passende Seitenergebnisse werden automatisch wiederverwendet; Seite 12 neu rechnen
-pdf2md "raw/ZR/skript.pdf" --out _ocr-vorschau --neu 12
+pdf2md "raw/ZR/skript.pdf" --out _ocr-preview --refresh-cache 12
 ```
 
 Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
@@ -202,16 +215,21 @@ Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
 ## Repo-Aufbau
 
 ```
-bin/         Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
-pdf2md/      Stufe 2 — pdf2md.py (CLI) + conversion.py (Runner) + layout.py
-             + ocr.py + assembly.py + dictionary.py + page_cache.py,
-             Testsuite in pdf2md/test/
-bench/       Benchmark-Harness und Messergebnisse
-plugin/      Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
-docs/        Installation, Flag-Referenz, Bugreport, Vault-Integration
-skill/       Claude-Code-Skill (SKILL.md) zum Einbinden in einen Vault
-setup.sh     Einmal-Setup (Einstiegstür): Brewfile + venvs + Links + Plugin
-Brewfile     Systempakete für das Setup (brew bundle)
+bin/             Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
+ocrmypdf_paddle/ Stufe 1 — OCRmyPDF-Engine-Plugin mit PaddleOCR (RapidOCR),
+                 noch nicht von setup.sh installiert (docs/paddle-textlayer.md)
+pdf2md/          Stufe 2 — pdf2md.py (CLI) + conversion.py (Runner) + layout.py
+                 + ocr.py + assembly.py + dictionary.py + page_cache.py,
+                 Testsuite in pdf2md/test/
+plugin/          Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
+contracts/       CLI-Vertrag zwischen den Stufen und dem Plugin (docs/cli-contract.md)
+bench/           Benchmark-Harness und Messergebnisse; alte Experimente in bench/archive/
+docs/            Installation, Flag-Referenz, CLI-Vertrag, Vorschau-Format, Plugin-Ansicht,
+                 Pläne (stage1-ui, paddle-textlayer), Vault-Integration des Skills
+skill/           Claude-Code-Skill (SKILL.md) zum Einbinden in einen Vault
+setup.sh         Einmal-Setup (Einstiegstür): Brewfile + venvs + Links + Plugin
+Brewfile         Systempakete für das Setup (brew bundle)
+Makefile         make check / make test-fast — dieselben Schritte wie die CI
 ```
 
 Die Benchmark-**Seitenbilder** liegen bewusst nicht im Repo: sie sind Scans aus
@@ -222,25 +240,34 @@ eigenen Bestand reproduzierbar. Die unterstützten Befehle stehen in
 
 ## CI
 
-Jeder Pull Request und jeder Push auf `main` läuft durch drei unabhängige Jobs
-(`.github/workflows/ci.yml`). Feature-Branches laufen über ihren PR — ein
-unbeschränktes `push` würde jeden Job doppelt starten.
+One command checks everything CI checks:
 
-- **plugin** — `npm ci`, tsc, eslint, Tests, Build und der Kern: `main.js` muss
-  versioniert sein *und* dem Build aus `src/` entsprechen. Ein PR, der `src/`
-  ändert ohne neu zu bauen, wird damit rot — ebenso einer, der `main.js` aus
-  der Versionierung nimmt.
-- **shell** — shellcheck (feste Version) über alle neun Shell-Skripte
-  (`setup.sh`, `install.sh`, `bin/*.sh`, `bin/pdf2md`,
+```bash
+make check      # plugin (tsc, eslint, tests, build, main.js), shellcheck, pytest, OCRmyPDF tests
+make test-fast  # fast tests only (pytest -m "not slow" + plugin tests), a few seconds
+```
+
+Every pull request and every push to `main` runs four jobs in
+`.github/workflows/ci.yml`; each calls one `make` target, and CI only installs
+the tools. Feature branches run through their PR — an unrestricted `push`
+would start every job twice.
+
+- **plugin** (`make plugin`) — `npm ci`, tsc, eslint, tests, build and the
+  core check: `main.js` must be versioned *and* match the build from `src/`.
+  A PR that changes `src/` without rebuilding turns red, as does one that
+  removes `main.js` from version control.
+- **shell** (`make shellcheck`) — shellcheck (pinned version) over all
+  tracked shell scripts (`setup.sh`, `install.sh`, `bin/*.sh`, `bin/pdf2md`,
   `plugin/install-plugin.sh`).
-- **python** — `pytest pdf2md/test`: Nahtentdopplung, Randmarken,
-  Schleifenerkennung, Wörterbuchabgleich und der Golden-Snapshot aus Issue #8
-  — ohne Modell, ohne Vault-Bestand.
-
-Lokal genügt für den Plugin-Teil `npm run lint && npm run check && npm test &&
-npm run build`, für die Skripte `shellcheck -x -P bin setup.sh install.sh
-bin/*.sh bin/pdf2md plugin/install-plugin.sh` und für Python
-`python3 -m pytest pdf2md/test`.
+- **python** (`make test-py`) — `pytest pdf2md/test bin/test`: Stage 2
+  without a model or vault material (seam deduplication, margin marks, loops,
+  dictionary, golden snapshot, CLI contract) and Stage 1 with stubbed tools;
+  plus the import smoke test of the benchmark entry points.
+- **ocrmypdf** (`make test-ocrmypdf`) — with the pinned ocrmypdf 17.8.0: the
+  hOCR text-layer order and the PaddleOCR engine plugin
+  (`ocrmypdf_paddle/test`, without RapidOCR or models). Locally `make` uses
+  `~/.venvs/ocrmypdf` once pytest is installed there; otherwise these tests
+  are skipped.
 
 ## Stand
 
@@ -252,12 +279,14 @@ Die Entgleisungen, die zuletzt 15 % der Seiten trafen und die Gesamtzahl auf
 Seite unter dem Stand davor. Was bleibt, ist gewöhnliche OCR-Ungenauigkeit —
 und eine mehrspaltige Seite, deren Lesereihenfolge noch nicht sitzt.
 
-Nicht umgesetzt: der Bild-Fallback für Diagrammseiten. Die Erkennung
-(`ist_diagramm`) ist auf handgeprüften Seiten kalibriert, und ein Eingriff ohne
+Nicht umgesetzt: der Bild-Fallback für Diagrammseiten (Issue #13). Die Erkennung
+(`is_diagram`) ist auf handgeprüften Seiten kalibriert, und ein Eingriff ohne
 eigene Messreihe würde nur gewonnene Diagrammseiten gegen verlorene Textseiten
-tauschen. Der Ausweg bleibt `--diagramm-seiten <nr>`.
+tauschen. Der Ausweg bleibt `--diagram-pages <nr>`.
 
-Offene Fehler, was noch nicht gebaut ist und die Reihenfolge:
+Offene Fehler, was noch nicht gebaut ist und die Reihenfolge stehen in den
+[GitHub-Issues](https://github.com/Constmax/obsidian-ocr-pipeline/issues); die
+Architekturentscheidung für das Plugin steht in
 [docs/plugin-roadmap.md](docs/plugin-roadmap.md).
 
 ## Lizenz
