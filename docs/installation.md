@@ -212,3 +212,16 @@ brctl download "<path>"
 Opens terminal at vault root. PATH/Scripts function normally since they live in
 `~/bin/`, not inside the vault.
 
+## Cloud Containers (Claude Code on the web)
+
+`setup.sh` is macOS-only. In a Linux cloud session the SessionStart hook
+`.claude/hooks/session-start.sh` (registered in `.claude/settings.json`) builds
+the toolchain `make check` needs, with the same pins as CI: apt packages
+`tesseract-ocr poppler-utils qpdf ghostscript`, shellcheck `v0.11.0`, Python
+3.12 venvs `$VENV_ROOT/dev` (pytest, pyyaml, pymupdf, numpy, pillow, pikepdf;
+put first on `PATH` for the session) and `$VENV_ROOT/ocrmypdf` (ocrmypdf
+`17.8.0` + pytest, which the Makefile picks up by itself), and `npm ci` in
+`plugin/`. It runs only when `CLAUDE_CODE_REMOTE=true` and skips steps that are
+already done. Stage 2 (MLX) and Apple Vision cannot run there; their tests use
+fakes and pass without them. Keep the pins in sync with `ci.yml` and `setup.sh`.
+
