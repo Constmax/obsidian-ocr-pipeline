@@ -66,6 +66,8 @@ export interface ConversionHost {
 	previewSource(entryName: string, folder: string): string | null;
 	/** Preview folder as configured and normalized for vault lookups. */
 	previewFolder(): { configured: string; normalized: string };
+	/** `--dpi` and `--tile-from` from the settings; null leaves pdf2md's default. */
+	pdf2mdOptions(): { dpi: number | null; tileFrom: number | null };
 	reconcile(): Promise<void>;
 	hasPreviewEntry(entryName: string, folder: string): boolean;
 	/** Opens the entry in the comparison view; false if the view is unavailable. */
@@ -313,6 +315,7 @@ export class ConversionController {
 				this.cancel(),
 			);
 			this.progress = progress;
+			const { dpi, tileFrom } = this.host.pdf2mdOptions();
 			const result = await this.convert(
 				pdf.path,
 				folder.normalized,
@@ -322,6 +325,8 @@ export class ConversionController {
 				{
 					idleTimeoutMs: this.idleTimeoutMs,
 					...(pages && pages.length > 0 ? { pages } : {}),
+					...(dpi !== null ? { dpi } : {}),
+					...(tileFrom !== null ? { tileFrom } : {}),
 					onChild: (child) => {
 						this.child = child;
 					},

@@ -72,6 +72,10 @@ class FakeHost implements ConversionHost {
 	previewFolder(): { configured: string; normalized: string } {
 		return this.folder;
 	}
+	renderOptions: { dpi: number | null; tileFrom: number | null } = { dpi: null, tileFrom: null };
+	pdf2mdOptions(): { dpi: number | null; tileFrom: number | null } {
+		return this.renderOptions;
+	}
 	async reconcile(): Promise<void> {
 		this.reconciles++;
 	}
@@ -194,6 +198,22 @@ test("missing or empty pages: no pages option", async () => {
 		calls[0]!.finish(result());
 		await running;
 	}
+});
+
+test("dpi and tile threshold from the settings reach pdf2md; unset ones stay out", async () => {
+	const { host, calls, controller } = setup();
+	let running = controller.run(PDF);
+	assert.equal("dpi" in calls[0]!.options, false);
+	assert.equal("tileFrom" in calls[0]!.options, false);
+	calls[0]!.finish(result());
+	await running;
+
+	host.renderOptions = { dpi: 200, tileFrom: 0 };
+	running = controller.run(PDF);
+	assert.equal(calls[1]!.options.dpi, 200);
+	assert.equal(calls[1]!.options.tileFrom, 0);
+	calls[1]!.finish(result());
+	await running;
 });
 
 test("waits for the inventory before opening the new entry", async () => {

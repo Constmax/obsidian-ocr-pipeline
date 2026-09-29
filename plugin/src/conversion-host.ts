@@ -6,13 +6,14 @@ import { FileSystemAdapter, Notice, Platform, TFile, normalizePath, type App } f
 import { homedir } from "os";
 
 import { resolveCli, type ConversionHost } from "./conversion-controller.ts";
-import { checkEngine } from "./conversion.ts";
+import { checkEngine, checkPdf2md, type Pdf2mdCheck } from "./conversion.ts";
 import { isConvertible } from "./input-formats.ts";
 import type { Inventory } from "./file-actions.ts";
 import { ExemptionModal } from "./exemption-modal.ts";
 import type { SearchableCopyHost } from "./searchable-copy.ts";
 import type { OcrEngine } from "./ocr-settings.ts";
 import type { Settings } from "./settings.ts";
+import { pdf2mdExecutable } from "./pdf2md-settings.ts";
 
 /**
  * `reprocess-raw --check-engine` for this machine, run from the vault folder
@@ -22,6 +23,18 @@ export function checkEngineHere(app: App, engine: OcrEngine): Promise<string | n
 	const adapter = app.vault.adapter;
 	const cwd = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : homedir();
 	return checkEngine(engine, resolveCli("reprocess-raw"), cwd);
+}
+
+/**
+ * `pdf2md --check` for the configured pdf2md, run from the vault folder
+ * against the preview folder, as a conversion would write there.
+ */
+export function checkPdf2mdHere(app: App, settings: Settings): Promise<Pdf2mdCheck> {
+	const adapter = app.vault.adapter;
+	if (!(adapter instanceof FileSystemAdapter)) {
+		return Promise.resolve({ error: "the check requires file system access (Desktop)" });
+	}
+	return checkPdf2md(pdf2mdExecutable(settings), normalizePath(settings.previewFolder), adapter.getBasePath());
 }
 
 export function createSearchableCopyHost(app: App, settings: () => Settings): SearchableCopyHost {
@@ -113,6 +126,10 @@ export function createConversionHost(
 		previewFolder() {
 			const configured = settings().previewFolder;
 			return { configured, normalized: normalizePath(configured) };
+		},
+		pdf2mdOptions() {
+			const { pdf2mdDpi, pdf2mdTileFrom } = settings();
+			return { dpi: pdf2mdDpi, tileFrom: pdf2mdTileFrom };
 		},
 		reconcile: () => inventory().reconcile(),
 		hasPreviewEntry(entryName, folder) {

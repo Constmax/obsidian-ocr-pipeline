@@ -565,6 +565,8 @@ pdf2md.py --check --out _ocr-preview
 {"typ":"check","ok":false,"checks":[{"name":"python","ok":true,"detail":"3.12.4"},…],"warnungen":["speicher: …"]}
 ```
 
+The plugin's **Check installation** button reads this document; its shape is part of the CLI contract ([cli-contract.md](cli-contract.md#5-installation-check-pdf2md---check)).
+
 ### Exit Codes
 
 - **0** — all checks passed

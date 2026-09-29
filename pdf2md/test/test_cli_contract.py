@@ -120,6 +120,46 @@ def test_exit_codes_match_the_contract():
     assert pdf2md_cli.EXIT_CANCELLED_EMPTY == codes["cancelled-empty"]
 
 
+@pytest.mark.slow
+def test_check_emits_one_json_document_in_contract_form(tmp_path):
+    spec = CONTRACT["check"]
+    result = subprocess.run(
+        [sys.executable, str(REPO / "pdf2md" / "pdf2md.py"), *spec["args"],
+         "--out", str(tmp_path / "out")],
+        capture_output=True, text=True, timeout=60, check=False)
+
+    codes = CONTRACT["exitCodes"]
+    assert result.returncode in (codes["success"], codes["check-failed"]), result.stderr
+    document = json.loads(result.stdout)
+    assert set(document) == set(spec["document"])
+    types = {**TYPES, "array": lambda value: isinstance(value, list)}
+    for key, kind in spec["document"].items():
+        assert types[kind](document[key]), key
+    assert document["typ"] == "check"
+    assert [check["name"] for check in document["checks"]] == spec["names"]
+    for check in document["checks"]:
+        assert set(check) == set(spec["check"])
+        assert all(TYPES[kind](check[key]) for key, kind in spec["check"].items()), check
+    assert all(isinstance(warning, str) for warning in document["warnungen"])
+    assert document["ok"] == (result.returncode == codes["success"])
+
+
+def test_the_check_example_has_the_contract_shape():
+    spec = CONTRACT["check"]
+    example = spec["example"]
+    assert set(example) == set(spec["document"])
+    for check in example["checks"]:
+        assert set(check) == set(spec["check"])
+        assert check["name"] in spec["names"]
+
+
+def test_stage2_defaults_match_the_contract():
+    args = pdf2md_cli._parser().parse_args([])
+    defaults = CONTRACT["stage2Defaults"]
+    assert args.dpi == defaults["dpi"]
+    assert args.tile_from == defaults["tileFrom"]
+
+
 def test_input_suffixes_match_the_contract():
     assert conversion.INPUT_SUFFIXES == frozenset(CONTRACT["inputSuffixes"])
 

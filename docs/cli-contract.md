@@ -45,6 +45,16 @@ Stage 1 has no structured channel. The plugin reads three kinds of human lines, 
 - **Input formats:** `inputSuffixes` = `INPUT_SUFFIXES` in `pdf2md/conversion.py` = `CONVERTIBLE_EXTENSIONS` in `plugin/src/input-formats.ts`.
 - **Preview format version:** `previewFormat` = `vorschau-format` written by `assembly.build_frontmatter` = `SUPPORTED_PREVIEW_FORMAT` in the parser. The review view shows a notice for a preview with an unknown version.
 
-## Outside the Contract
+## 5. Installation Check (`pdf2md --check`)
 
-`pdf2md --check --progress` prints one JSON document on stdout (`"typ": "check"`). The plugin does not read it; it is documented in [`scripts-detail.md`](scripts-detail.md#--check-stage-2).
+The settings tab (#28) runs `pdf2md --check --fortschritt --out <preview folder>` (`check.args` in the contract, then `--out`). pdf2md prints one JSON document on stdout, indented over several lines, and exits `0` (`success`) or `4` (`check-failed`):
+
+```json
+{"typ": "check", "ok": false, "checks": [{"name": "python", "ok": true, "detail": "3.12.4"}, …], "warnungen": ["speicher: …"]}
+```
+
+- **Document:** exactly `typ` (`"check"`), `ok` boolean, `checks` array, `warnungen` array of strings.
+- **Check:** exactly `name`, `ok` boolean, `detail` string; the names in contract order are `python`, `fitz`, `mlx_vlm`, `modell`, `ausgabe`, `speicher`. The plugin shows every check it receives, so a new name needs no plugin change, but it goes into the contract first.
+- **No document:** any other exit (for example `1` from the wrapper when the MLX venv is missing) or unparseable stdout. The plugin then shows the last output line and the exit code.
+
+`stage2Defaults` pins pdf2md's `--dpi` and `--tile-from` defaults, which the settings show as placeholders.

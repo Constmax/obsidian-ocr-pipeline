@@ -800,6 +800,25 @@
 	color: var(--text-warning);
 }
 
+.ocr-einstellungen-info {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.ocr-check-result {
+	margin-top: 6px;
+	font-size: var(--font-ui-smaller);
+	font-family: var(--font-monospace);
+}
+
+.ocr-check-ok {
+	color: var(--text-success);
+}
+
+.ocr-check-fehlt {
+	color: var(--text-error);
+}
+
 .ocr-seiten-eingabe {
 	width: 200px;
 }
