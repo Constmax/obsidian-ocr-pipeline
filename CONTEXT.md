@@ -4,6 +4,20 @@ Turns scanned legal study materials into searchable PDFs (Stage 1) and reviewabl
 
 ## Language
 
+### Recognition
+
+**Recognized line**:
+One line of text Stage 2 read from a source page, from the text layer or the model, with its position in page coordinates, its column where known and the table or box it belongs to.
+_Avoid_: Zeile, element, span, line list
+
+**Page coordinates**:
+Positions measured on the whole source page, as opposed to positions within a tile.
+_Avoid_: absolute coordinates, global coordinates
+
+**Tile**:
+A part of a page image that the model reads on its own, cut at the gutter or across a dense page.
+_Avoid_: crop, band, Kachel (in English text)
+
 ### Preview and review
 
 **Preview**:
