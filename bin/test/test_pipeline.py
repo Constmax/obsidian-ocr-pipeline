@@ -35,9 +35,12 @@ def _stub(path, body):
 
 # ocrmypdf <args...> <in> <out>. The engine follows --plugin: Apple Vision
 # and PaddleOCR are "installed" only with FAKE_APPLE / FAKE_PADDLE, otherwise
-# their probe fails and Tesseract is left. Output: `ocr(...)` for Tesseract,
-# `apple(...)`, `paddle(...)`. FAKE_OCR_FAIL lists engines whose OCR call
-# fails; `1` fails every engine.
+# their probe fails and Tesseract is left. An installed PaddleOCR answers
+# `--paddle-check MODE` with "not ready" and FAKE_PADDLE_UNREADY as reason
+# when that is set, or like a plugin from before that option (argparse
+# usage error) with FAKE_PADDLE_OLD. Output: `ocr(...)` for Tesseract, `apple(...)`,
+# `paddle(...)`. FAKE_OCR_FAIL lists engines whose OCR call fails; `1` fails
+# every engine.
 OCRMYPDF = '''
 engine=tesseract
 case " $* " in
@@ -49,6 +52,19 @@ if [ "${@: -1}" = "--help" ]; then
         apple) [ -n "${FAKE_APPLE:-}" ] ;;
         paddle) [ -n "${FAKE_PADDLE:-}" ] ;;
     esac
+    exit
+fi
+if [ "${@: -2:1}" = "--paddle-check" ]; then
+    echo "ocrmypdf $*" >> "$FAKE_LOG"
+    if [ -n "${FAKE_PADDLE_OLD:-}" ]; then
+        echo "OCRmyPDF: error: the following arguments are required: output_pdf" >&2
+        exit 2
+    fi
+    if [ -n "${FAKE_PADDLE_UNREADY:-}" ]; then
+        printf 'PaddleOCR engine is not ready:\n  %s\n' "$FAKE_PADDLE_UNREADY" >&2
+        exit 1
+    fi
+    echo "PaddleOCR engine is ready (${@: -1} mode)." >&2
     exit
 fi
 echo "ocrmypdf $*" >> "$FAKE_LOG"

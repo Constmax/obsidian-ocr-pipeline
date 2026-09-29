@@ -6,13 +6,16 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 
 import {
 	PROGRESS_PROTOCOL,
 	SHORT_PAGE_LINE,
+	checkEngine,
 	parseProgressEvent,
 	type ConversionResult,
+	type SpawnFunction,
 } from "../src/conversion.ts";
 import { EXIT_CODES, classifyFailure, classifyOcrFailure } from "../src/conversion-controller.ts";
 import { CONVERTIBLE_EXTENSIONS } from "../src/input-formats.ts";
@@ -40,6 +43,10 @@ interface Contract {
 	stage1: {
 		shortPages: { stderr: string[]; shortPageNumbers: number[] };
 		failure: { stdout: string[]; reason: string };
+		checkEngine: {
+			args: string[];
+			notUsable: { exitCode: string; stderr: string[]; reason: string };
+		};
 	};
 }
 
@@ -184,4 +191,25 @@ test("contract: the Stage-1 failure line gives the failure reason", () => {
 		failure.message,
 		`OCR Preview: Searchable copy failed (Code ${contract.exitCodes["error"]}) — ${contract.stage1.failure.reason}.`,
 	);
+});
+
+test("contract: --check-engine arguments and the reason of an unusable engine", async () => {
+	const spec = contract.stage1.checkEngine;
+	const calls: string[][] = [];
+	const child = new EventEmitter() as EventEmitter & {
+		stdout: EventEmitter & { setEncoding(): void };
+		stderr: EventEmitter & { setEncoding(): void };
+	};
+	child.stdout = Object.assign(new EventEmitter(), { setEncoding: () => {} });
+	child.stderr = Object.assign(new EventEmitter(), { setEncoding: () => {} });
+	const spawnFn = ((_command: string, args: readonly string[]) => {
+		calls.push([...args]);
+		return child;
+	}) as unknown as SpawnFunction;
+
+	const pending = checkEngine("paddle", "/x/reprocess-raw", "/vault", spawnFn);
+	child.stderr.emit("data", spec.notUsable.stderr.join("\n") + "\n");
+	child.emit("close", contract.exitCodes[spec.notUsable.exitCode]);
+	assert.equal(await pending, spec.notUsable.reason);
+	assert.deepEqual(calls, [spec.args]);
 });

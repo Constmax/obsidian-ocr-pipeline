@@ -529,7 +529,13 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
 - **Benchmark:** `reading_order.py run` starts `unsplit-paddle-fast` only
   when it is named, so the default run works without Apple Vision.
 - **Wiring:** `bin/` offers `--engine paddle --paddle-mode accurate|fast`
-  since #70 (explicit only; see step 4). The Obsidian setting follows in #73.
+  since #70 (explicit only; see step 4). Since #73 the Obsidian engine setting
+  offers PaddleOCR in fast mode where `reprocess-raw --check-engine` passes.
+- **Readiness:** `ocrmypdf --plugin ocrmypdf_paddle --paddle-check MODE`
+  runs the same checks as `check_options` without an input file and exits
+  like `--version`: 0 ready, 1 not ready (reason on stderr). `bin/` runs it
+  before choosing the engine, so a missing model or package stops the run
+  before OCR instead of falling back to Apple Vision.
 
 ### 4. Replace binary engine flags with one resolved state
 

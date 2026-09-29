@@ -14,6 +14,7 @@ only citation lines with PP-OCRv5 (apple.py, bench/ERGEBNIS.md, Nachtrag 22).
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -68,6 +69,13 @@ def add_options(parser):
         help="accurate: PP-OCRv5 reads the whole page (default). fast: Apple Vision "
         "reads the page and PP-OCRv5 re-reads only citation lines; macOS only.",
     )
+    group.add_argument(
+        "--paddle-check",
+        choices=MODES,
+        action=_CheckAction,
+        help="Report whether the engine can run in this mode (runtime, model files, "
+        "Apple Vision for fast), then exit: 0 ready, 1 not ready. Needs no files.",
+    )
 
 
 @hookimpl
@@ -93,18 +101,43 @@ def check_options(options):
             "PaddleOCR engine runs one OCR job; ignoring --jobs %d.", options.jobs
         )
     options.jobs = 1
+    problem = readiness_problem(mode)
+    if problem:
+        raise MissingDependencyError(problem)
+
+
+def readiness_problem(mode: str) -> str:
+    """Why the engine cannot run in `mode`; empty when it can.
+
+    Checks the pinned runtime, the model files and, in fast mode, Apple
+    Vision: everything a run needs before its first page.
+    """
     model_problems = runtime.check_models(runtime.model_dir())
     problems = runtime.missing_runtime() + model_problems
     if mode == "fast":
         problems += apple.missing_vision()
-    if problems:
-        hint = ""
-        if model_problems:
-            hint = (f"\nModel files are read from {runtime.MODEL_DIR_ENV} "
-                    f"(default {runtime.model_dir()}).")
-        raise MissingDependencyError(
-            "PaddleOCR engine is not ready:\n  " + "\n  ".join(problems) + hint
-        )
+    if not problems:
+        return ""
+    hint = ""
+    if model_problems:
+        hint = (f"\nModel files are read from {runtime.MODEL_DIR_ENV} "
+                f"(default {runtime.model_dir()}).")
+    return "PaddleOCR engine is not ready:\n  " + "\n  ".join(problems) + hint
+
+
+class _CheckAction(argparse.Action):
+    """`--paddle-check MODE`: reports readiness and exits, like --version.
+
+    Needs no input file, so `reprocess-raw --check-engine` and the plugin's
+    settings can ask before a run. Exit 0 when ready, 1 otherwise; the
+    report goes to stderr, because OCRmyPDF reserves stdout for the PDF.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        problem = readiness_problem(values)
+        if problem:
+            parser.exit(1, problem + "\n")
+        parser.exit(0, f"PaddleOCR engine is ready ({values} mode).\n")
 
 
 class PaddleOcrEngine(OcrEngine):

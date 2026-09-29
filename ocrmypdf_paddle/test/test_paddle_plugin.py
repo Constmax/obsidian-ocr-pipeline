@@ -405,3 +405,43 @@ def test_an_unknown_mode_is_rejected(plugin, ready):
     with pytest.raises(BadArgsError, match="--paddle-mode must be one of accurate, fast, "
                                            "not 'quick'"):
         plugin.check_options(options(paddle_mode="quick"))
+
+
+# ── --paddle-check: readiness without an input file (issue #73) ─────────────
+
+def paddle_check(ocrmypdf, *args):
+    """Parses `ocrmypdf --plugin ocrmypdf_paddle <args>` as the CLI does."""
+    from ocrmypdf.cli import get_options_and_plugins
+
+    with pytest.raises(SystemExit) as exited:
+        get_options_and_plugins(args=["--plugin", "ocrmypdf_paddle", *args])
+    return exited.value.code
+
+
+def test_paddle_check_passes_when_ready(ocrmypdf, monkeypatch, plugin, capsys):
+    monkeypatch.setattr(plugin.runtime, "missing_runtime", lambda: [])
+    monkeypatch.setattr(plugin.runtime, "check_models", lambda directory: [])
+    monkeypatch.setattr(plugin.apple, "missing_vision", lambda: [])
+
+    assert paddle_check(ocrmypdf, "--paddle-check", "fast") == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""  # OCRmyPDF keeps stdout for the PDF
+    assert captured.err == "PaddleOCR engine is ready (fast mode).\n"
+
+
+def test_paddle_check_names_every_problem(ocrmypdf, monkeypatch, plugin, capsys):
+    monkeypatch.setattr(plugin.runtime, "missing_runtime",
+                        lambda: ["rapidocr==3.9.2 is not installed"])
+    monkeypatch.setattr(plugin.runtime, "check_models", lambda directory: [])
+    monkeypatch.setattr(plugin.apple, "missing_vision",
+                        lambda: ["pyobjc-framework-Vision is not installed"])
+
+    assert paddle_check(ocrmypdf, "--paddle-check", "fast") == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "PaddleOCR engine is not ready:",
+        "  rapidocr==3.9.2 is not installed",
+        "  pyobjc-framework-Vision is not installed",
+    ]
+    # Accurate mode does not consult Apple Vision.
+    assert paddle_check(ocrmypdf, "--paddle-check", "accurate") == 1
+    assert "Vision" not in capsys.readouterr().err
