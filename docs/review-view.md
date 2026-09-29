@@ -5,10 +5,11 @@ Stage 2: Original PDF and generated Markdown file coupled page by page, with
 **Accept / Reject**, notes, editing, and Undo. The plugin id is `ocr-preview` (`ocr-vorschau`
 before the English rename) and the code is located in `plugin/`.
 
-What this is about: 15% of pages derail (repetition loops or aborts)
-and drag accuracy down from 98.2% to 93.3% (measured against `ddf69e9`) — see `README.md`,
-"Status". This view is the tool used to locate exactly those pages when
-reviewing before anything moves into the wiki.
+What this is about: OCR pages can contain word errors, and a derailed tile
+(repetition loop, abort) is repaired only when the retry succeeds — see
+`README.md`, "Stand". This view is where those pages are found and decided
+before anything moves into the wiki. The code calls it the comparison view
+(`OcrComparisonView`).
 
 ## The Three Columns
 
@@ -34,9 +35,9 @@ number of open entries. Two operating modes share the same controls:
 
 ## Opening
 
-- Ribbon icon (column icon) or command palette: **"Open OCR Review View"**
+- Ribbon icon (column icon) or command palette: **"Open OCR comparison"**
 - File menu on a preview `.md` or on a PDF with a matching stem:
-  "Open in OCR Review"
+  "Open in OCR comparison"
 - File menu on any PDF: **"OCR → Markdown"** opens the page-selection dialog
   for that file and starts conversion. While another conversion is running, the
   item remains visible but shows a notice instead of starting another one.
