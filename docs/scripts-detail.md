@@ -27,7 +27,7 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 - `auto`: Uses Apple Vision if `ocrmypdf-appleocr` is installed, otherwise Tesseract
 - `apple`: Forces Apple Vision (fails with error if plugin is missing)
 - `tesseract`: Forces Tesseract (automatically applies `--tesseract-pagesegmode 1` for column detection and `--clean` when `unpaper` is available)
-- `paddle`: PaddleOCR PP-OCRv5 through the `ocrmypdf_paddle` plugin (fails with an error if the plugin does not load). Never chosen by `auto` until the Stage-1 benchmark (#71) retains it. Runs one OCR job whatever `--jobs` says (`--jobs` still applies to a fallback engine). `--paddle-mode fast` lets Apple Vision read the lines and PP-OCRv5 re-read only citation lines (macOS 13+, see [paddle-textlayer.md](paddle-textlayer.md)). The plugin is not installed by `setup.sh`; run the CLIs with its venv first on `PATH`, e.g. `PATH="<paddle-venv>/bin:$PATH" pdf-combine … --engine paddle` ([installation.md](installation.md)).
+- `paddle`: PaddleOCR PP-OCRv5 through the `ocrmypdf_paddle` plugin (fails with an error before any OCR if the plugin does not load or `--paddle-check` finds its runtime, models or, in fast mode, Apple Vision not ready; an `ocrmypdf_paddle` from before that option is reported as too old). Never chosen by `auto` until the Stage-1 benchmark (#71) retains it. Runs one OCR job whatever `--jobs` says (`--jobs` still applies to a fallback engine). `--paddle-mode fast` lets Apple Vision read the lines and PP-OCRv5 re-read only citation lines (macOS 13+, see [paddle-textlayer.md](paddle-textlayer.md)). The plugin is not installed by `setup.sh`; run the CLIs with its venv first on `PATH`, e.g. `PATH="<paddle-venv>/bin:$PATH" pdf-combine … --engine paddle` ([installation.md](installation.md)).
 
 `resolve_engine` in `pdf-lib.sh` turns the requested engine into one resolved value (`apple`, `tesseract` or `paddle`); the OCR arguments and the fallbacks below are derived from that value alone.
 
@@ -149,6 +149,7 @@ Alphanumeric with Natural Sort. Use numerical prefixes for explicit ordering: `0
 
 ```bash
 reprocess-raw <raw-pdf-file> [--output FILE] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
+reprocess-raw --check-engine [--engine E] [--paddle-mode M]
 ```
 
 Wrapper around `pdf-combine` for the scenario "re-process an existing `raw/` file with the updated pipeline" (e.g. after bug fixes). Workflow:
@@ -170,6 +171,10 @@ The interface for GUI callers such as the Obsidian plugin. The same checks run, 
 - Publication never overwrites. The result is copied to a hidden `.<FILE>.XXXXXX` file in the destination folder and hard-linked (`ln`) to `FILE`; `ln` fails if `FILE` appeared while OCR was running. Afterwards the script confirms the link really is `FILE`, because BSD `ln` puts the link *inside* a folder that appeared under that name.
 - Hard links were verified inside iCloud Drive vaults (`~/Documents` and the Obsidian iCloud container). There is no `mv` fallback: on a filesystem without hard links, publication fails cleanly instead of accepting a check-then-rename race. macOS `mv -n` also exits 0 when it refuses to overwrite, so it cannot report that race.
 - `SIGKILL` cannot be trapped. If it lands between the hidden copy and its removal, a hidden `.<FILE>.XXXXXX` file can remain; it never carries the `.pdf` suffix. Cancel with `SIGTERM` to the process group first.
+
+### Engine check: `--check-engine`
+
+Resolves the engine exactly as a run would and exits without reading or writing a file: `0` when a run would start on that engine here (prints `🧠 Engine: …`), `4` (`check-failed`) with the reason on stderr otherwise. The plugin runs `reprocess-raw --check-engine --engine paddle --paddle-mode fast` before it offers PaddleOCR (contract: `stage1.checkEngine` in `contracts/cli-contract.json`). For PaddleOCR the check covers what a run needs before its first page: the plugin loads, and `ocrmypdf --plugin ocrmypdf_paddle --paddle-check <mode>` reports the pinned runtime, the model files and (fast mode) Apple Vision ready.
 
 ### `column_tools.py verify-pages`
 
