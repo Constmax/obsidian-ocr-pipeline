@@ -95,7 +95,30 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 
 ## Docs
 
-`docs/` is English: `scripts-detail.md` (flag reference), `installation.md`,
-`review-view.md`, `cli-contract.md` (what the plugin reads from the CLIs),
-`preview-format.md`, `plugin-roadmap.md` (architecture decision: the plugin
-spawns the installed CLIs as a thin client — pipeline code is not bundled).
+`README.md` is the German entry point; `docs/` and this file are English (the
+frontmatter and progress-event keys stay German — they are contract, see
+`docs/preview-format.md`). `bench/ERGEBNIS.md` is a German, append-only
+measurement log.
+
+Reference (describes what the code does now — update it in the same PR as the
+code):
+
+- `docs/scripts-detail.md` — flag reference for Stages 1 and 2
+- `docs/cli-contract.md`, `contracts/` — what the plugin reads from the CLIs
+- `docs/preview-format.md` — normative Markdown preview format
+- `docs/review-view.md` — the plugin's views, commands, settings, folder model
+- `docs/installation.md` — setup troubleshooting and which venv holds what
+- `docs/ocr-preview.md`, `docs/vault-integration.md`, `docs/log-und-git.md`,
+  `skill/SKILL.md` — vault-side conventions for the Claude skill (the vault has
+  its own, diverged copy under `.claude/skills/pdf-jura-workflow/`)
+
+Design records (the reasoning behind decisions; status header at the top says
+what is done):
+
+- `docs/plugin-roadmap.md` — plugin architecture decision (thin client)
+- `docs/stage1-ui.md` — safe searchable-copy action (implemented)
+- `docs/paddle-textlayer.md` — PaddleOCR engine plan, decisions and results
+- `docs/BUGREPORT-2026-07-06-split-merge.md` — why the B5 gate exists
+
+Open bugs and the work order live in GitHub issues, not in the docs. Flags in
+docs use the English option names; the German aliases still work.

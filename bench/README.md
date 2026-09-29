@@ -31,7 +31,8 @@ VAULT_ROOT=/path/to/vault python bench/build_bench.py
 `bench/reading_order_truth.json` (source pages and hand-drawn regions, no page
 text) and writes page images, recognized lines, overlays and workflow outputs
 below `bench/reading-order-lauf/`. `--truth bench/reading_order_holdout.json`
-selects the validation pages of issue #87; give them their own `--run-dir`. The regression commands require `bench/pages.json`, which
+selects the validation pages of issue #87 (`holdout2`–`holdout4` are the later
+validation sets of #94, #114 and #124/#125); give each its own `--run-dir`. The regression commands require `bench/pages.json`, which
 is produced from the user's vault and is not versioned.
 
 CI imports every supported entry point without loading the ML model or reading

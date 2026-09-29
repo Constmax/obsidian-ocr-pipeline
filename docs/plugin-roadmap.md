@@ -1,130 +1,109 @@
-# Roadmap: From Script Bundle to Obsidian Plugin
+# Plugin Architecture: Thin Client over the Installed CLIs
 
-This document records what a plugin should be, what the current code already
-provides for it, and where the real hurdles lie. It is a work-in-progress status, not a promise.
+This document records the architecture decision for the Obsidian plugin
+(`plugin/`), what it does today, and what is still missing. It does **not**
+track bugs or the work order: open work lives in the
+[GitHub issues](https://github.com/Constmax/obsidian-ocr-pipeline/issues) (plugin
+work: #26, #28, #54; Stage 1 engine: #74 and #133; Stage 2 quality: #12–#17).
+Earlier versions of this file carried a bug table and an implementation order;
+both went stale within weeks and were removed.
 
-## What the Plugin Should Do
+## What the Plugin Does
 
-A user places a scanned PDF into the vault, right-clicks in the context menu on
-"OCR → Markdown", and gets a readable, searchable `.md` alongside — with a
-backlink to the original PDF. No terminal, no venv, no guessing flags.
+A user places a scanned PDF (or a page image) into the vault, right-clicks
+"OCR → Markdown", and gets a readable `.md` in the preview folder — with a
+backlink to the source. No terminal, no venv, no flags. Details of the views
+and commands: [review-view.md](review-view.md).
 
-Realistic v1 feature scope:
-
-- Context menu entry on PDF files in File Explorer
-- Progress indicator (page n of m) — mandatory when running at 15–60 s/page
-- Output as `.md` in a configurable destination folder
-- Settings: Engine, DPI, output folder, path to local installation
-- Cancel button that cleanly kills the child process
+- **Convert:** file menu on a PDF or image and the command **Convert PDF and
+  open in OCR comparison** spawn `pdf2md`, with optional page selection,
+  page n of m from the `--progress` events, cancellation (process group,
+  `SIGTERM`, then `SIGKILL`) and an inactivity timeout.
+- **Review:** three-column comparison of source and Markdown with
+  Accept / Reject, notes, editing and Undo.
+- **Searchable copy:** **Create searchable copy (OCR)** runs
+  `reprocess-raw --output` (Stage 1) and writes `<stem>-ocr.pdf` beside the
+  source; design record in [stage1-ui.md](stage1-ui.md).
+- **Contract:** everything the plugin reads from the CLIs is pinned in
+  [cli-contract.md](cli-contract.md) and tested from both sides.
 
 ## The Core Architectural Question
 
-Obsidian plugins are TypeScript running in Electron. This pipeline is Bash + Python +
-MLX + Ghostscript + Tesseract. **This cannot be bundled directly.** Three approaches:
+Obsidian plugins are TypeScript running in Electron. This pipeline is Bash +
+Python + MLX + Ghostscript + Tesseract. **This cannot be bundled directly.**
+Three approaches:
 
-### A · Thin Client via Local Installation (Recommended for v1)
+### A · Thin Client via Local Installation (chosen)
 
 The plugin executes the installed CLIs via `child_process.spawn` and parses
-their stdout for progress. The pipeline remains the exact code in this repository.
+their output. The pipeline remains the exact code in this repository.
 
-- **Pros:** Immediately actionable. No re-implementation needed. All pipeline bugfixes automatically benefit the plugin.
-- **Cons:** Desktop only (`child_process` does not exist on mobile). The user must run `./setup.sh` beforehand. The Obsidian Community Store only accepts plugins relying on external binaries with clear labeling — for a private plugin, this is irrelevant.
-- **Required work on this repo:** Scripts must emit machine-readable progress output. Done for Stage 2: `pdf2md --fortschritt` streams versioned JSON events, specified in [cli-contract.md](cli-contract.md). Stage 1 still prints human text only; the plugin reads two pinned message lines from it (same document).
+- **Pros:** No re-implementation. Every pipeline fix benefits the plugin.
+- **Cons:** Desktop only (`child_process` does not exist on mobile). The user
+  must run `./setup.sh` beforehand. A plugin relying on external binaries would
+  need clear labeling for the Community Store; this one is private.
+- **Interface:** Stage 2 emits versioned JSON progress events, exit codes and a
+  `--check` preflight; Stage 1 still prints human text, and the plugin reads two
+  pinned message lines from it (see [cli-contract.md](cli-contract.md)).
 
 ### B · Sidecar Daemon
 
-A lightweight local HTTP server (Python, out of `pdf2md/`) started by the plugin
-and served via `fetch`.
+A lightweight local HTTP server (Python, out of `pdf2md/`) started by the
+plugin and served via `fetch`.
 
-- **Pros:** Model remains loaded between jobs — the 1.6s load time is paid only once. Clean progress reporting via Server-Sent Events (SSE). Precursor to "runs on Mac, controlled from iPad".
-- **Cons:** Process lifecycle management, port conflicts, zombie processes on Obsidian crashes. Significantly more code for marginal gains in v1.
+- **Pros:** The model stays loaded between jobs — the load time is paid once.
+  Clean progress via Server-Sent Events. Precursor to "runs on Mac, controlled
+  from iPad".
+- **Cons:** Process lifecycle, port conflicts, zombie processes on Obsidian
+  crashes. Significantly more code for marginal gains.
 
 ### C · Re-implementation in TypeScript/WASM
 
-- **Cons:** PaddleOCR-VL over MLX does not exist in WASM, and Tesseract.js is noticeably worse than native Tesseract binaries. Measured results in `bench/ERGEBNIS.md` would be voided. Non-viable path.
+PaddleOCR-VL over MLX does not exist in WASM, and Tesseract.js is noticeably
+worse than native Tesseract. The measured results in `bench/ERGEBNIS.md`
+would be void. Non-viable.
 
-**Decision:** A for v1, B as an option once batch processing across many files becomes the primary usage pattern.
+**Decision:** A. Revisit B once batch processing across many files becomes the
+primary usage pattern.
 
-## What is Already Plugin-Ready
+## What Is Still Missing
 
-- `pdf2md.py` already writes frontmatter containing `seiten-textlayer` / `seiten-ocr` / `seiten-diagramm` and a `Quelle:` link — exactly the metadata model that a plugin UI would display (see [ocr-preview.md](ocr-preview.md)).
-- `--out <folder>` already exists, making the target folder configurable.
-- The separation "Preview Folder ≠ Wiki" is already designed and documented.
-- Diagram pages are output as image + collapsed callout — native Obsidian syntax, no custom rendering needed.
-
-## What is Missing
-
-| Task | Rationale | Effort |
-|---|---|---|
-| Machine-readable progress from scripts | Required for progress bar UI | Small |
-| Clean exit code per error class | Plugin must distinguish "missing dependency" from "OCR failed" | Small |
-| Preflight check as standalone command | Plugin Settings needs "Installation OK?" validation | Small |
-| Cancellability (SIGTERM handling, temp cleanup) | 30-minute runs must be cancellable cleanly | Medium |
-| Reassembly layer stabilization | Most recent component: divider lines, reading order, spaced text | Large |
-| Footer detection on tile splits | Full-width elements get truncated at tile splits | Medium |
-
-The first three items take an afternoon combined and turn the repo into a plugin-ready interface. The major task is the reassembly layer — which determines perceived output quality far more than the OCR engine itself.
-
-## Known Issues
-
-| | Issue | Weight |
-|---|---|---|
-| ~~1~~ | ~~**Derailed pages** — 15% run into infinite loops or abort~~ | **Resolved**, 6 of 6 caught |
-| ~~2~~ | ~~**Reading order** `Klausur_2137` p. 7 (47.5%)~~ | **Resolved**, page now at 96.1% |
-| 3 | **Diagram page missing image** — `Strafrecht AT VI` p. 8, missing fallback to page image | Medium, workaround `--diagramm-seiten 8` |
-| 4 | **One false negative on two-column** — `Verwaltungsrecht AT Fall 8` p. 10, shallow gutter | Intentionally chosen trade-off (1 of 14) |
-| 5 | **Interleaved footnote blocks** in 2131/2135/2143 | Small, accounts for remaining 1–2 char loss |
-| 6 | **Footnote text across page break** truncated | Small |
-| ~~7~~ | ~~**`**Beispiel:**` mid-sentence**~~ | **Resolved**, both structural variants |
-| 8 | **Word errors** — quantified: 1.8% across all 40 pages (measured against commit `ddf69e9`); since dictionary check at least **discoverable** | Low |
-| 9 | **Multi-column reading order** — `2131_Lösung` p. 4 at 49.7% | New, currently largest single issue |
-
-Regarding item 7: Margin labels had **two** structural variants, and only one was previously recognized. Outdented into left margin (Hemmer scripts) → `randlabel_vorziehen()` moves it to block start. As inline prefix to same line → was misclassified as heading and broke the sentence; `ist_ueberschrift()` now excludes it. The `**A.**` portion of the same item was not an error: markers carry their title after them, which is correct Markdown.
-
-~~Untested in addition: **~140 scan pages with under 50 characters in legacy textlayer**.~~ **Resolved** (see `bench/ERGEBNIS.md` Addendum 16: raw archive scans in `_archive`/`repair-stage`, a converted script, and a handwritten sketch — no missing study content in active corpus).
-
-## Not Yet Built
-
-**The LLM repair pass** is on hold. At 98.2% word accuracy across all pages (measured against commit `ddf69e9`), the gain does not justify the risk of "improving" a correct statutory citation. If ever implemented: the benchmark suite now evaluates it, with the bar set at **92.0% citation accuracy** — it must not degrade accuracy below this threshold.
-
-**Local dictionary checking** (hunspell + legal term list) is **built** — serving as the verification aid planned here: `pdf2md/woerterbuch.py` reports issues, but replaces only unambiguous cases and only when explicitly requested. The primary benefit is the review queue (`woerter-verdaechtig` in frontmatter, `⌕` in logs), not automated text rewrites. Remaining open: **document-internal cross-checking**: if a confused variant of a word appears frequently on a page while the suspicious word appears once, that is a contextual clue no static dictionary can provide — dictionary checking also accepts morphologically well-formed pseudo-words like `Verhaltungsakte`, marking the boundary of the current approach.
-
-**Migration.** 701 `[[raw/…pdf]]` wikilinks still point to raw PDFs. Awaiting decision on final location of original files — without them, Markdown files are not fully reliable for OCR pages.
-
-**Minor items:** `pages.json` belongs in `.gitignore` — done in repo (`bench/pages.json`), pending in vault.
-
-## Advanced Ahead of Schedule: Review View (v0.1)
-
-This section documents an intentional deviation from the original sequence. Details on the view itself: [review-view.md](review-view.md).
-
-The sequence below lists the plugin skeleton as **Step 5**. However, a different component with distinct scope was built first:
-
-- **Different scope:** The Review View **is read-only** — no conversion, no `spawn`, no progress modal. It displays Stage 2 output `.md` files side-by-side with original PDFs and moves them via **Accept / Reject** between three folders. None of "What the plugin should do" above is implemented in this view.
-- **Why advanced:** The 15% derailed pages (see "Known Issues", #1) forced a manual human review process — comparing PDF and Markdown in split windows by hand. This review workflow lacked a dedicated interface and represents the critical bottleneck for identifying derailments.
-- **Architecture:** The view uses **Approach A without the spawn component** — calling Obsidian's built-in PDF.js library (`loadPdfJs`) without child processes. The A/B/C architectural decision remains unchanged.
-- **The three interface tasks remain open:** Machine-readable progress, exit codes, preflight checks — none were completed or rendered obsolete by this view. They remain pending for the core plugin implementation (Step 5).
-
-Sole interaction with the pipeline: `pdf2md.py` now writes page provenance into markers (contract: [preview-format.md](preview-format.md), "Page Markers"). Non-breaking change — legacy `%% S. n %%` markers continue to be supported.
-
-## Built Next: Conversion Command (v0.2)
-
-The initial Approach A building block is complete: command **"Convert PDF and open in OCR Review"** and the PDF file-menu action **"OCR → Markdown"**. The command selects a PDF in the vault via Suggest Modal; the file-menu action uses the PDF that was clicked. Both allow an optional page selection, spawn `~/bin/pdf2md <pdf> --out <preview-folder>` via `child_process.spawn`, and open Review View upon completion. Feedback is delivered via Notice.
-
-Intentionally **omitted** (remaining pending, see "What is Missing"): Configurable pdf2md path.
-
-## Implementation Order
-
-1. ~~**Derailment detection**~~ — Complete, 93.3% → 98.2% (measured against commit `ddf69e9`).
-2. **Known Issue 9** — Multi-column reading order (`2131_Lösung` p. 4). Largest remaining single item; gutter logic recently updated.
-3. **Known Issue 3** — Diagram fallback to page image. Requires hand-labeled sample set of diagram pages first; otherwise tweaks to `ist_diagramm()` merely shift probabilities.
-4. **Make scripts plugin-ready** — Progress output, exit codes, `--check`.
-5. **Harden reassembly layer** — Against a benchmark corpus of 20 pages with verified reference text. Harness resides in `bench/`.
-6. **Plugin skeleton** — TypeScript, esbuild, context menu, `spawn`, progress modal. `~/Developer/ask-my-notes` serves as reference template. *Review View (v0.1) is built — see "Advanced Ahead of Schedule" above; it does not replace this step.*
-7. **Settings Tab** with preflight validation.
-8. Only then evaluate Sidecar (Approach B) and Mobile support.
+- **Settings** (#28): an adjustable `pdf2md` path, DPI and `--tile-from`, and
+  a button that shows the `pdf2md --check` result. Today the CLIs are found on
+  `PATH` plus `~/bin` and the Homebrew folders (`resolveCli()`,
+  `stage1Path()`).
+- **Progress display** (#26): remaining-time estimate, a running count of
+  derailed pages, and a display that can be dismissed without ending the run.
+  Today a persistent notice shows page n of m with a cancel button.
+- **Batch conversion over the whole holdings** (#21).
+- **PaddleOCR in the engine setting** (#73), after the Stage-1 benchmark
+  decision (#71). Issue #133 proposes dropping OCRmyPDF altogether; that would
+  change the Stage-1 engine model described in
+  [paddle-textlayer.md](paddle-textlayer.md).
+- **Sidecar daemon and mobile support**: only after the above.
 
 ## Non-Goals
 
-- No cloud OCR. Course materials remain local on machine.
-- No automatic overwriting of wiki pages. Plugin generates preview files; migration into wiki remains a deliberate human action.
-- No expectation of error-free output. Backlink to original PDF is a core architectural feature, not a fallback compromise.
+- No cloud OCR. Course materials remain local on the machine.
+- No automatic overwriting of wiki pages. The plugin generates preview files;
+  migration into the wiki remains a deliberate human action.
+- No expectation of error-free output. The backlink to the original PDF is a
+  core architectural feature, not a fallback.
+
+## Not Built on Purpose
+
+**An LLM repair pass** is on hold. At 98.2 % word accuracy across the 40
+benchmark pages (measured against commit `ddf69e9`), the gain does not justify
+the risk of "improving" a correct statutory citation. If ever implemented, the
+benchmark evaluates it, with the bar set at **92.0 % citation accuracy**.
+
+**Document-internal cross-checking** of suspicious words (a confused variant
+that appears often on a page while the suspicious word appears once) is not
+built. The dictionary check (`pdf2md/dictionary.py`, see
+[scripts-detail.md](scripts-detail.md)) accepts morphologically well-formed
+pseudo-words like `Verhaltungsakte`, which marks the boundary of the current
+approach.
+
+**Migration:** 701 `[[raw/…pdf]]` wikilinks still point to raw PDFs. The final
+location of the original files is undecided; without them, Markdown files are
+not fully reliable for OCR pages.

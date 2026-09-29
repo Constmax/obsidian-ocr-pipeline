@@ -272,6 +272,18 @@ With automated MediaBox Fix, large scans remain RAM-safe:
 
 `ocrmypdf --max-image-mpixels` is configured to 400 MP in `build_ocr_args` (accommodates edge cases lacking MediaBox Fix) passed as CLI argument rather than environment variable (as ocrmypdf ignores `PILLOW_MAX_IMAGE_PIXELS`).
 
+## Stage 2: Option Names
+
+`pdf2md` options have English names (`--pages`, `--refresh-cache`,
+`--progress`, `--dictionary`, `--dictionary-correct`, `--dictionary-report`,
+`--no-dictionary`, `--lines-dump`, `--diagram-pages`, `--diagram-image-only`,
+`--retries`, `--tile-from`, `--image-dir`, `--image-max-edge`, `--no-bold`,
+`--ocr-only`). The German names they replaced (`--seiten`, `--neu`,
+`--fortschritt`, `--woerterbuch*`, `--zeilen-dump`, `--diagramm-*`,
+`--neuversuche`, `--kachel-ab`, `--bild-*`, `--kein-fett`, `--nur-ocr`) stay
+accepted as aliases; the Obsidian plugin still spawns `--seiten` and
+`--fortschritt`. This document uses the English names.
+
 ## Stage 2: Accepted Input Formats
 
 `pdf2md.py` takes a PDF or a single page image:
@@ -392,14 +404,14 @@ Executes post-reassembly across **every OCR page** — skipping native textlayer
 | Flag | Effect |
 |---|---|
 | *(Default)* | Reporting mode only; document text remains unaltered |
-| `--woerterbuch-korrigieren` | Replaces unambiguous OCR errors (see below) |
-| `--woerterbuch <file>` | Custom wordlist or `.dic` file (repeatable) |
-| `--woerterbuch-bericht <file>` | Export complete findings with page numbers as JSON |
-| `--kein-woerterbuch` | Disable dictionary checking completely |
+| `--dictionary-correct` | Replaces unambiguous OCR errors (see below) |
+| `--dictionary <file>` | Custom wordlist or `.dic` file (repeatable) |
+| `--dictionary-report <file>` | Export complete findings with page numbers as JSON |
+| `--no-dictionary` | Disable dictionary checking completely |
 
 **Unambiguous** definition: term does not exist in dictionary, and exactly *one* substitution variant from OCR confusion table (`m`/`rn`, `ff`/`i`, `l`/`1`, `u`/`ü`, etc.) exists in dictionary. If multiple matches exist (`Hans`/`Haus`), term is preserved and flagged only. Citations, numbers, abbreviations, tables, wikilinks, and footnote markers are skipped — resolving Roman numeral `I` vs `1`/`l`/`|` is explicitly outside module scope.
 
-**Dictionary Resolution Order**: `--woerterbuch`, then `$PDF2MD_WOERTERBUCH` (colon-separated), then first available system dictionary (`/opt/homebrew/share/hunspell`, `/usr/share/hunspell`, `~/Library/Spelling`, LibreOffice bundle). If `hunspell` with German dictionary is present, it takes precedence — evaluating affix rules for higher accuracy than simple fallback substitution rules. If no dictionary is found, execution reports status and skips verification.
+**Dictionary Resolution Order**: `--dictionary`, then `$PDF2MD_DICTIONARY` (colon-separated), then first available system dictionary (`/opt/homebrew/share/hunspell`, `/usr/share/hunspell`, `~/Library/Spelling`, LibreOffice bundle). If `hunspell` with German dictionary is present, it takes precedence — evaluating affix rules for higher accuracy than simple fallback substitution rules. If no dictionary is found, execution reports status and skips verification.
 
 Without system dictionary pre-installed, download files manually:
 
@@ -408,33 +420,33 @@ curl -o ~/.local/share/de_DE.dic \
   https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.dic
 curl -o ~/.local/share/de_DE.aff \
   https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.aff
-export PDF2MD_WOERTERBUCH=~/.local/share/de_DE.dic
+export PDF2MD_DICTIONARY=~/.local/share/de_DE.dic
 ```
 
 The accompanying `.aff` file is required: `SET` header defines encoding (`de_DE_frami.dic` uses ISO-8859-1). If missing, file is parsed as UTF-8, breaking dictionary lookup for all terms with German umlauts.
 
 **Benchmark**: Tested on 202 words of legal German against `de_DE_frami`: 0 false positives, 6 of 7 introduced OCR errors identified. The 7th (`Verhaltungsakte`) demonstrates documented limitation — morphologically well-formed pseudo-word decomposed by compound rule into `verhalten` + `Akte`. Strict rules would cause false positives on compound nouns, as `.dic` dictionaries delegate compound analysis to affix rules.
 
-## --seiten (Stage 2)
+## --pages (Stage 2)
 
 Convert selected pages only. Format as comma-separated list with page ranges (e.g. `1,3-5,8`). Omit or leave empty for all pages.
 
 ```bash
-python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-preview
+python pdf2md/pdf2md.py raw/ZR/skript.pdf --pages "1,3-5" --out _ocr-preview
 ```
 
 - Page numbers are 1-based matching original PDF. Image input has exactly one
-  page, so `--seiten` accepts only `1`.
-- `--diagramm-seiten` uses the same grammar. Whitespace around entries is ignored.
+  page, so `--pages` accepts only `1`.
+- `--diagram-pages` uses the same grammar. Whitespace around entries is ignored.
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
-- `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
+- `running_lines()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
 - Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`).
 - **An existing preview is merged, not replaced (Issue #106).** The selected pages replace their blocks, new ones are inserted in page order, and every other block stays verbatim, manual edits included. Without an existing preview only the selected pages are written, and `seiten` counts those.
-- The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--seiten` run adds no note, because pages it did not reach keep their previous blocks.
-- A preview without frontmatter or page markers, or with a page number twice, cannot be merged. The run stops before analysis with exit code 1 and leaves the file untouched; convert without `--seiten` to replace it.
-- Plugin queries selection via `SeitenAuswahlModal` (total page count rendered via pdf.js).
+- The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--pages` run adds no note, because pages it did not reach keep their previous blocks.
+- A preview without frontmatter or page markers, or with a page number twice, cannot be merged. The run stops before analysis with exit code 1 and leaves the file untouched; convert without `--pages` to replace it.
+- Plugin queries selection via `PageSelectModal` (total page count rendered via pdf.js).
 
-## Page Cache and `--neu` (Stage 2)
+## Page Cache and `--refresh-cache` (Stage 2)
 
 Every completed page is written atomically below
 `<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains parsed lines with
@@ -458,14 +470,14 @@ boxes, and older-schema entries are likewise recalculated.
 pdf2md raw/ZR/skript.pdf --out _ocr-preview
 
 # Recalculate every selected page
-pdf2md raw/ZR/skript.pdf --out _ocr-preview --neu
+pdf2md raw/ZR/skript.pdf --out _ocr-preview --refresh-cache
 
 # Recalculate only pages 12-14; reuse all other matching pages
-pdf2md raw/ZR/skript.pdf --out _ocr-preview --neu "12-14"
+pdf2md raw/ZR/skript.pdf --out _ocr-preview --refresh-cache "12-14"
 ```
 
-`--refresh-cache` is the English alias of `--neu`. The optional range uses the
-same grammar and validation as `--seiten`. Dictionary reporting/correction and
+The optional range of `--refresh-cache` (German alias `--neu`) uses the
+same grammar and validation as `--pages`. Dictionary reporting/correction and
 Markdown formatting are intentionally not part of the key: they are rerun from
 the cached raw lines on every invocation.
 
@@ -478,7 +490,7 @@ the cached raw lines on every invocation.
   the partial file holds exactly the pages finished before it (exit 6, or 7
   when there are none). `pdf2md.py` picks the exit code from the result, not
   the signal handler.
-- **Atomic writes:** the `.md`, `--zeilen-dump` and `--woerterbuch-bericht`
+- **Atomic writes:** the `.md`, `--lines-dump` and `--dictionary-report`
   go to a hidden `.<name>.<pid>.tmp` sibling first and replace the target in
   one rename. An interrupted write leaves the previous preview whole; only
   `SIGKILL` can leave the hidden sibling behind.
@@ -486,9 +498,9 @@ the cached raw lines on every invocation.
   `SIGKILL` only if pdf2md is still alive 5 s later. The plugin stops a run
   only after 15 minutes without any output, never after a fixed total time.
 
-## --fortschritt (Stage 2)
+## --progress (Stage 2)
 
-Machine-readable progress emitted as JSON lines to stderr. Default console output (German sentences, emojis, arrows) remains unaffected. Passing `--fortschritt` streams one JSON event per status change to stderr without altering stdout.
+Machine-readable progress emitted as JSON lines to stderr. Default console output (German sentences, emojis, arrows) remains unaffected. Passing `--progress` streams one JSON event per status change to stderr without altering stdout.
 
 ### Emitted Events
 
@@ -530,7 +542,7 @@ pdf2md.py --check --out _ocr-preview
 # fehlgeschlagen
 ```
 
-`--check --progress` (or `--check --fortschritt`) outputs the same as a single JSON document on stdout:
+`--check --progress` (or `--check --progress`) outputs the same as a single JSON document on stdout:
 
 ```json
 {"typ":"check","ok":false,"checks":[{"name":"python","ok":true,"detail":"3.12.4"},…],"warnungen":["speicher: …"]}
