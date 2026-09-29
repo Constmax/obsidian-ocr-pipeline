@@ -3,6 +3,8 @@
 # that `make check` needs, mirroring .github/workflows/ci.yml. The Apple-only
 # parts of setup.sh (brew, MLX, Apple Vision) are out of scope here.
 # Idempotent: every step checks first, so a resumed session costs seconds.
+# Async: the session starts at once while this runs in the background; it is
+# finished when $VENV_ROOT/.session-start.done exists (log: .session-start.log).
 set -euo pipefail
 
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
@@ -17,7 +19,23 @@ SHELLCHECK_VERSION=v0.11.0
 OCRMYPDF_VERSION=17.8.0
 PYTHON_VERSION=3.12
 
-log() { echo "[session-start] $*" >&2; }
+DONE="$VENV_ROOT/.session-start.done"
+
+# Session env first, so it is in place however long the install runs: the dev
+# venv is the default python3; `make test-ocrmypdf` finds $VENV_ROOT/ocrmypdf
+# on its own.
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  echo "export VENV_ROOT=\"$VENV_ROOT\"" >> "$CLAUDE_ENV_FILE"
+  echo "export PATH=\"$VENV_ROOT/dev/bin:\$PATH\"" >> "$CLAUDE_ENV_FILE"
+fi
+
+# Run in the background (async hook protocol: this must be the first stdout line).
+echo '{"async": true, "asyncTimeout": 600000}'
+
+mkdir -p "$VENV_ROOT"
+rm -f "$DONE"
+exec 2>>"$VENV_ROOT/.session-start.log"
+log() { echo "[session-start $(date +%T)] $*" >&2; }
 
 # System tools: tesseract (ocrmypdf demands it even with an engine plugin),
 # poppler (pdftotext -raw for the quality gate), qpdf and ghostscript.
@@ -65,11 +83,5 @@ if [ ! -f plugin/node_modules/.package-lock.json ] || [ plugin/package-lock.json
   (cd plugin && npm ci --no-audit --no-fund --loglevel=error >&2)
 fi
 
-# Session env: the dev venv is the default python3; `make test-ocrmypdf`
-# finds ~/.venvs/ocrmypdf on its own.
-if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
-  echo "export VENV_ROOT=\"$VENV_ROOT\"" >> "$CLAUDE_ENV_FILE"
-  echo "export PATH=\"$VENV_ROOT/dev/bin:\$PATH\"" >> "$CLAUDE_ENV_FILE"
-fi
-
+touch "$DONE"
 log "ready: make check / make test-fast"
