@@ -761,12 +761,6 @@ export class OcrComparisonView extends ItemView {
 		this.zoomDisplay.setText(`${Math.round(this.pdfColumn.currentZoom() * 100)} %`);
 	}
 
-	/** The original PDF of the open preview; null while nothing is open or loading. */
-	currentPdf(): TFile | null {
-		if (this.closed || this.requestedName !== null) return null;
-		return this.pdfFile;
-	}
-
 	private async openInPdfViewer(): Promise<void> {
 		if (this.closed || this.requestedName !== null || this.pdfFile === null) return;
 		await this.app.workspace.openLinkText(this.pdfFile.path, "");
@@ -809,16 +803,6 @@ export class OcrComparisonView extends ItemView {
 				.setIcon("rotate-ccw")
 				.onClick(() => void this.decide("open")),
 		);
-		const pdf = this.currentPdf();
-		// Stage 1 is PDF-only (Issue #100); an image source gets no copy.
-		if (pdf !== null && pdf.extension === "pdf") {
-			menu.addItem((i) =>
-				i
-					.setTitle("Create searchable copy (OCR)")
-					.setIcon("scan-text")
-					.onClick(() => this.plugin.createSearchableCopy(pdf)),
-			);
-		}
 		menu.addItem((i) =>
 			i
 				.setTitle("Copy path")
