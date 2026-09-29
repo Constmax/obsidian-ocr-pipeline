@@ -34,10 +34,11 @@ To change the contract, change the JSON file first, then both sides, in one PR.
 
 ## 3. Stage 1 (`reprocess-raw`, `column_tools.py`)
 
-Stage 1 has no structured channel. The plugin reads two kinds of human lines, and the contract pins the exact lines the real scripts print:
+Stage 1 has no structured channel. The plugin reads three kinds of human lines, and the contract pins the exact lines the real scripts print:
 
 - **B5 short pages** (stderr of `column_tools.py verify-pages`, passed through by `reprocess-raw`): `   🗑️  Page 3: only 5 characters (min: 50)`. The plugin collects the page numbers with `SHORT_PAGE_LINE` and offers them as exemptions.
 - **Failure reason:** the last line starting with `❌` (stdout or stderr), e.g. `❌ File not found: missing.pdf`. The plugin shows it without the marker.
+- **Engine check** (#73, `stage1.checkEngine`): `reprocess-raw --check-engine --engine paddle --paddle-mode fast` exits `0` (`success`) when a run would start on that engine and `4` (`check-failed`) otherwise, with the reason on stderr. The plugin joins the last stderr lines, drops the `❌` marker, and shows the result as the reason PaddleOCR is not offered or not used. Stage-1 usage errors still exit `1`.
 
 ## 4. Shared Constants
 

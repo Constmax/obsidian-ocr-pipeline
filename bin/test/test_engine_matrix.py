@@ -24,10 +24,15 @@ from test_pipeline import _write, box  # noqa: F401  (fixture)
 pytestmark = pytest.mark.slow  # end-to-end runs; `make test-fast` skips them
 
 
+def _ocr_calls(box):
+    """OCRmyPDF calls that read pages; the PaddleOCR readiness probe reads none."""
+    return [call for call in box.calls("ocrmypdf") if "--paddle-check" not in call.split()]
+
+
 def _engines(box):
     """Engine of every OCR call, `+split` when it read split halves."""
     sequence = []
-    for call in box.calls("ocrmypdf"):
+    for call in _ocr_calls(box):
         words = call.split()
         engine = "tesseract"
         if "ocrmypdf_appleocr" in words:
@@ -71,7 +76,7 @@ def test_paddle_arguments(box):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert box.files()["out.pdf"] == "paddle(a)"
-    [call] = box.calls("ocrmypdf")
+    [call] = _ocr_calls(box)
     assert "--plugin ocrmypdf_paddle --paddle-mode accurate " in call, call
     # One OCR job, whatever --jobs says; no Tesseract tuning.
     assert "--jobs 1 " in call and "--jobs 4" not in call, call
@@ -83,7 +88,7 @@ def test_paddle_fast_mode(box):
     result = _combine(box, "--engine", "paddle", "--paddle-mode", "fast", paddle="1")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "--paddle-mode fast " in box.calls("ocrmypdf")[0]
+    assert "--paddle-mode fast " in _ocr_calls(box)[0]
     assert _engine_line(result) == "PaddleOCR fast (manual)"
 
 

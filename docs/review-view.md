@@ -132,12 +132,18 @@ folder is missing), Markdown column default, scroll sync, PDF render factor,
 Markdown eager limit, and column widths.
 
 **Searchable copy** (for the Stage-1 action, #66): OCR engine (Automatic,
-Apple Vision, Tesseract; default Automatic) and Split two-column pages
-(default off). `parseOcrSettings()` in `src/ocr-settings.ts` validates both on
-load: data from before these settings and invalid values (such as an engine
-this version does not offer) fall back to the defaults field by field.
-PaddleOCR is not offered yet. Obsidian on mobile shows only a desktop-only
-notice in this section.
+Apple Vision, Tesseract, PaddleOCR (fast); default Automatic) and Split
+two-column pages (default off). `parseOcrSettings()` in `src/ocr-settings.ts`
+validates both on load: data from before these settings and invalid values
+(such as an engine this version does not know) fall back to the defaults field
+by field. Obsidian on mobile shows only a desktop-only notice in this section.
+
+PaddleOCR (#73) runs as `--engine paddle --paddle-mode fast` and appears in the
+list only after `reprocess-raw --check-engine` passes on this machine (the
+settings tab runs it each time it opens); otherwise the setting names the
+reason. A stored PaddleOCR is checked again before every run: when it is not
+usable (another Mac, a removed venv), the run uses Automatic and a notice says
+why. Whether PaddleOCR stays is decided by the benchmark in #71.
 
 The action itself is **Create searchable copy (OCR)**: in the PDF file menu,
 as a command that asks for a PDF, and in the view's More menu for the open

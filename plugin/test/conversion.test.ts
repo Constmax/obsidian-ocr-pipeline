@@ -9,6 +9,7 @@ import { join } from "node:path";
 import {
 	convertPdf,
 	abortChild,
+	checkEngine,
 	createSearchableCopy,
 	stage1Path,
 	terminateProcessGroup,
@@ -447,6 +448,31 @@ test("searchable copy: defaults pass only source and destination", async () => {
 	assert.deepEqual(calls[0]!.args, ["raw/case-01.pdf", "--output", "raw/case-01-ocr.pdf"]);
 });
 
+test("searchable copy: PaddleOCR always runs in fast mode (issue #73)", async () => {
+	const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
+	const child = new FakeChild();
+	const promise = createSearchableCopy(
+		"raw/case-01.pdf",
+		"raw/case-01-ocr.pdf",
+		"/Users/test/bin/reprocess-raw",
+		"/vault",
+		spawnMock(calls, child),
+		{ engine: "paddle", splitColumns: false },
+	);
+
+	child.emit("close", 0);
+	await promise;
+	assert.deepEqual(calls[0]!.args, [
+		"raw/case-01.pdf",
+		"--output",
+		"raw/case-01-ocr.pdf",
+		"--engine",
+		"paddle",
+		"--paddle-mode",
+		"fast",
+	]);
+});
+
 test("searchable copy: spawn errors and ordinary failure are results, not exceptions", async () => {
 	const thrown = await createSearchableCopy("a.pdf", "b.pdf", "/x/reprocess-raw", "/vault", () => {
 		throw new Error("spawn not available");
@@ -602,3 +628,42 @@ test(
 		}
 	},
 );
+
+// ── Stage 1: checkEngine (issue #73) ───────────────────────────────────────
+
+test("engine check: usable engine resolves to null", async () => {
+	const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
+	const child = new FakeChild();
+	const promise = checkEngine("paddle", "/Users/test/bin/reprocess-raw", "/vault", spawnMock(calls, child));
+
+	child.stdout.emit("data", "✅ Engine usable\n   🧠 Engine:    PaddleOCR fast (manual)\n");
+	child.emit("close", 0);
+	assert.equal(await promise, null);
+	assert.equal(calls[0]!.command, "/Users/test/bin/reprocess-raw");
+	assert.deepEqual(calls[0]!.args, ["--check-engine", "--engine", "paddle", "--paddle-mode", "fast"]);
+	const options = calls[0]!.options as { cwd: string; env: NodeJS.ProcessEnv };
+	assert.equal(options.cwd, "/vault");
+	assert.equal(options.env.PATH, stage1Path(process.env.PATH ?? ""));
+});
+
+test("engine check: a failed check returns the CLI's reason", async () => {
+	const child = new FakeChild();
+	const promise = checkEngine("paddle", "/x/reprocess-raw", "/vault", spawnMock([], child));
+
+	child.stdout.emit("data", "🔍 Checking dependencies...\n");
+	child.stderr.emit("data", "❌ PaddleOCR engine is not ready:\n  model file missing: /m/x.onnx\n");
+	child.emit("close", 4);
+	assert.equal(await promise, "PaddleOCR engine is not ready: model file missing: /m/x.onnx");
+});
+
+test("engine check: a CLI that cannot start is a reason too", async () => {
+	const child = new FakeChild();
+	const promise = checkEngine("paddle", "/x/reprocess-raw", "/vault", spawnMock([], child));
+
+	child.emit("error", new Error("spawn /x/reprocess-raw ENOENT"));
+	assert.equal(await promise, "Error: spawn /x/reprocess-raw ENOENT");
+	const silent = new FakeChild();
+	const quiet = checkEngine("apple", "/x/reprocess-raw", "/vault", spawnMock([], silent));
+	silent.emit("close", 1);
+	assert.equal(await quiet, "reprocess-raw --check-engine failed (exit code 1)");
+});
