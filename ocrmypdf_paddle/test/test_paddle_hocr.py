@@ -11,13 +11,11 @@ from ocrmypdf_paddle.hocr import (
     BASELINE_SHARE,
     EDGE_ROOM_MAX,
     FLAT_DRIFT,
-    NARROW_ADVANCE,
     SPACE_ADVANCE,
     WORD_ROOM,
     LineGeometry,
     TextLine,
     Word,
-    advance,
     bounding_box,
     clamp_polygon,
     render_page,
@@ -229,7 +227,7 @@ def test_room_after_each_rendered_space_is_the_word_room():
 
     assert boxes[0][0] == 100 + WORD_ROOM * font_size
     for (text, _), box, following in zip(placed, boxes, boxes[1:]):
-        stretch = (box[2] - box[0]) / (advance(text) * font_size)
+        stretch = (box[2] - box[0]) / (AVERAGE_ADVANCE * len(text) * font_size)
         space_end = box[2] + SPACE_ADVANCE * font_size * stretch
         assert (following[0] - space_end) / font_size == pytest.approx(WORD_ROOM, abs=0.05)
     assert boxes[-1] == (438, 0, 700 - WORD_ROOM * font_size, 50)
@@ -246,15 +244,9 @@ def test_a_word_too_short_for_its_space_pushes_the_next_word_on():
     boxes = spaced_word_boxes([("I", (100, 0, 104, 50)), ("x", (105, 0, 120, 50))], font_size)
     # "I" keeps one pixel; "x" starts after its space and the word room.
     assert boxes[0] == (102, 0, 103, 50)
-    space_end = 103 + SPACE_ADVANCE * font_size * 1 / (advance("I") * font_size)
+    space_end = 103 + SPACE_ADVANCE * font_size * 1 / (AVERAGE_ADVANCE * font_size)
     assert boxes[1][0] - space_end >= WORD_ROOM * font_size
     assert boxes[1][2] > boxes[1][0]
-
-
-def test_narrow_characters_count_narrower():
-    # A flat average stretched "ist" further than modeled, leaving pdftotext no room.
-    assert advance("ist") == pytest.approx(2 * NARROW_ADVANCE + AVERAGE_ADVANCE)
-    assert advance("Wagen") == pytest.approx(5 * AVERAGE_ADVANCE)
 
 
 @pytest.mark.parametrize("text, width", [("I", 16), ("§", 18), ("a)", 25)])
