@@ -177,7 +177,7 @@ echo "rc=$rc"
 
 # Attempt 1 always fails the quality gate; only the split variant passes.
 RETRY_HARNESS = '''
-USE_APPLE=false; SPLIT_COLUMNS=false; ENGINE_DESC="Tesseract"
+RESOLVED_ENGINE=tesseract; APPLE_AVAILABLE=false; SPLIT_COLUMNS=false; ENGINE_DESC="Tesseract"
 WORK_DIR="$PWD"
 ocr_args=(-l deu --deskew)
 run_ocr() { echo "run_ocr $1" >> ocr.log; cp "$1" "$2"; }
@@ -189,7 +189,7 @@ def test_retry_skips_split_without_pikepdf(sandbox):
     result = _run_lib(sandbox, RETRY_HARNESS + '''
 PYTHON_BIN=""
 split_two_column_pdf() { echo "split called"; return 1; }
-rc=0; ocr_with_retry in.pdf out.pdf "" ocr_args || rc=$?
+rc=0; ocr_with_retry in.pdf out.pdf ocr_args || rc=$?
 echo "rc=$rc"
 ''')
 
@@ -202,7 +202,7 @@ def test_retry_skips_ocr_when_split_fails(sandbox):
     result = _run_lib(sandbox, RETRY_HARNESS + '''
 PYTHON_BIN=python3
 split_two_column_pdf() { return 1; }
-rc=0; ocr_with_retry in.pdf out.pdf "" ocr_args || rc=$?
+rc=0; ocr_with_retry in.pdf out.pdf ocr_args || rc=$?
 echo "rc=$rc"
 ''')
 
@@ -215,7 +215,7 @@ def test_retry_discards_unmergeable_split_result(sandbox):
 PYTHON_BIN=python3
 split_two_column_pdf() { echo split > "$2"; }
 merge_split_pdf() { return 1; }
-rc=0; ocr_with_retry in.pdf out.pdf "" ocr_args || rc=$?
+rc=0; ocr_with_retry in.pdf out.pdf ocr_args || rc=$?
 echo "rc=$rc"
 ''')
 
