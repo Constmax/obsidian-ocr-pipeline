@@ -99,3 +99,17 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
 `review-view.md`, `cli-contract.md` (what the plugin reads from the CLIs),
 `preview-format.md`, `plugin-roadmap.md` (architecture decision: the plugin
 spawns the installed CLIs as a thin client — pipeline code is not bundled).
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `Constmax/obsidian-ocr-pipeline` (via `gh`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/` (created lazily). See `docs/agents/domain.md`.
