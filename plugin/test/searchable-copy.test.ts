@@ -153,8 +153,8 @@ test("a stored PaddleOCR that is not usable falls back to Automatic, visibly", a
 		[["auto", true]],
 	);
 	assert.deepEqual(host.notices, [
-		"OCR Preview: PaddleOCR is not usable here (PaddleOCR engine is not ready: model file missing: /m/x.onnx). " +
-			"This copy uses Automatic instead; choose another engine in the settings.",
+		"OCR Preview: This copy uses Automatic, because PaddleOCR cannot run here — " +
+			"PaddleOCR engine is not ready: model file missing: /m/x.onnx. Choose another engine in the settings.",
 		"OCR Preview: Searchable copy created — raw/a/case-01-ocr.pdf.",
 	]);
 });
