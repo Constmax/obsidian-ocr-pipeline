@@ -523,9 +523,7 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
     about 0.12, pdf.js 4.10 keeps a line in one text item up to 0.6. The
     line's first and last word also start and end 0.25 (at most 30 % of the
     word's width) inside their boxes, because recognizers split a printed
-    line into touching lines. The stretch counts narrow characters (`i`, `l`,
-    `t`, `f`, punctuation) at 0.3 em and the others at 0.6, so narrow words
-    like "ist" keep their room; and
+    line into touching lines; and
   - writes every line flat. OCRmyPDF renders a line with a slope of 0.005 or
     more rotated, and pdf.js undoes that rotation with a scale that includes
     each word's stretch, so the words of such a line land on different
@@ -535,8 +533,8 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
 
   On five vault pages (one- and two-column, both modes) pdf.js text items
   dropped from 3,250 to 1,198, and `pdftotext -raw` text is unchanged apart
-  from whitespace. 3 of 4,100 words newly glue to a neighbour, where two
-  recognized lines overlap (one of them a margin mark).
+  from whitespace. 2 of 4,100 words newly glue to a neighbour, where two
+  recognized lines overlap; one pair glued on `main` is now separate.
 - **Dependencies:** macOS 13 or later with `pyobjc-framework-Vision` (extra
   `[fast]`) plus everything accurate mode needs, because the models re-read
   lines. `check_options` refuses fast mode before the first page when Vision

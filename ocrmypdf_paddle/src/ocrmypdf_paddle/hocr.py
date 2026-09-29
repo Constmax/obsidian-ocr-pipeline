@@ -37,14 +37,11 @@ WORD_ROOM = 0.25
 EDGE_ROOM_MAX = 0.3
 
 #: Advance widths in em of NotoSans, OCRmyPDF's Latin text-layer font, for
-#: the stretch above: the narrow characters (0.22-0.38 em), an average for
-#: the others, and the space. Over German prose the mean stays near a flat
-#: 0.55; on a one-column page the font's real widths placed the words no
-#: better. With the flat mean alone, narrow words ("ist", "fit") stretched
-#: further than modeled and their wider space left pdftotext no room.
-NARROW = frozenset("fijltIJ!'(),-.:;[]")
-NARROW_ADVANCE = 0.3
-AVERAGE_ADVANCE = 0.6
+#: the stretch above: a flat average over German prose, and the space. On a
+#: one-column page the font's real widths placed the words no better, and
+#: narrower widths for narrow characters split five vault pages into 1 %
+#: more pdf.js text items without separating any more words.
+AVERAGE_ADVANCE = 0.55
 SPACE_ADVANCE = 0.26
 
 #: Where the baseline lies in a recognizer's line box, as a share of the line
@@ -262,11 +259,6 @@ def _bbox(box: Box) -> str:
     return f"bbox {box[0]} {box[1]} {box[2]} {box[3]}"
 
 
-def advance(text: str) -> float:
-    """Estimated advance width of `text` in em (NARROW_ADVANCE, AVERAGE_ADVANCE)."""
-    return sum(NARROW_ADVANCE if char in NARROW else AVERAGE_ADVANCE for char in text)
-
-
 def spaced_word_boxes(placed: Sequence[tuple[str, Box]], font_size: float) -> list[Box]:
     """Word boxes of one line that leave WORD_ROOM after each word.
 
@@ -292,7 +284,7 @@ def spaced_word_boxes(placed: Sequence[tuple[str, Box]], font_size: float) -> li
             end = x1 - min(room, EDGE_ROOM_MAX * (x1 - original))
             boxes.append((x0, top, max(x0 + 1, math.floor(end)), bottom))
             break
-        natural = advance(text) * font_size
+        natural = AVERAGE_ADVANCE * len(text) * font_size
         # right + space * (right - x0) / natural = lefts[i + 1] - room
         end = min(x1, (lefts[i + 1] - room + space * x0 / natural) / (1 + space / natural))
         right = max(x0 + 1, math.floor(end))
