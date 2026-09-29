@@ -350,7 +350,7 @@ def main():
     a = ap.parse_args()
     module_map = modules()
 
-    data_file = ROOT / "test" / "daten" / "snapshot.json"
+    data_file = ROOT / "test" / "data" / "snapshot.json"
     if a.check:
         if not data_file.exists():
             raise SystemExit(f"!! {data_file} missing — run without --check first")

@@ -61,6 +61,9 @@ export default defineConfig([
 			// sync.test.ts mocks `window` as a runtime shim.
 			"obsidianmd/no-global-this": "off",
 			"obsidianmd/prefer-window-timers": "off",
+			// install-plugin.test.ts builds a vault on disk: `.obsidian` is the
+			// folder the install scripts write, not a Vault#configDir lookup.
+			"obsidianmd/hardcoded-config-path": "off",
 		},
 	},
 ]);

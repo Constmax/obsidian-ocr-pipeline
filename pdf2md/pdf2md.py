@@ -9,17 +9,48 @@ import tempfile
 from pathlib import Path
 
 import cancellation
-from conversion import ConversionRequest, convert_document
+from conversion import (INPUT_SUFFIXES, ConversionRequest, PreviewFormatError,
+                        UnsupportedInput, convert_document,
+                        ensure_supported_input, open_document)
 from ocr import TOKEN_MAX
 from page_range import PageRangeError, parse_page_range
 
-BENCH = Path(__file__).resolve().parent
-OUT = BENCH / "out-C"
+SCRIPT_DIR = Path(__file__).resolve().parent
+# Default --out for manual runs; git-ignored. The plugin always passes --out.
+OUT = SCRIPT_DIR / "out-C"
 MODEL = os.environ.get("MLX_OCR_MODEL", "mlx-community/PaddleOCR-VL-1.5-4bit")
 PROMPT = "Parse this document page to Markdown."
 TILE_THRESHOLD = 3000
-KACHEL_AB = TILE_THRESHOLD
+EXIT_USAGE = 2  # argparse
 EXIT_CHECK = 4
+# Cancellation (Issues #25, #105): a partial file was written, or none was.
+EXIT_CANCELLED_PARTIAL = 6
+EXIT_CANCELLED_EMPTY = 7
+
+
+# --fortschritt protocol (Issue #55). The keys, the version and the exit codes
+# above are fixed in contracts/cli-contract.json, which the plugin's tests
+# read too; docs/cli-contract.md explains the rules.
+PROGRESS_PROTOCOL = 1
+
+
+def start_event(file, pages, dpi):
+    return {"typ": "start", "protokoll": PROGRESS_PROTOCOL, "datei": file,
+            "seiten": pages, "dpi": dpi}
+
+
+def page_event(number, total, seconds, origin, derailed, reason=None):
+    event = {"typ": "seite", "protokoll": PROGRESS_PROTOCOL, "nr": number,
+             "von": total, "sekunden": round(seconds, 1), "herkunft": origin,
+             "entgleist": derailed}
+    if reason is not None:
+        event["grund"] = reason
+    return event
+
+
+def finished_event(target, seconds, derailed):
+    return {"typ": "fertig", "protokoll": PROGRESS_PROTOCOL, "ziel": target,
+            "sekunden": round(seconds, 1), "entgleist": derailed}
 
 
 def _progress(event):
@@ -95,9 +126,13 @@ def preflight(out):
     return checks, warnings
 
 
-def pdf_page_count(pdf):
-    import fitz
-    with fitz.open(pdf) as doc:
+def page_count_of(source):
+    """Pages of the input — always 1 for an image, or UnsupportedInput.
+
+    A multi-frame image has no honest page count here (Issue #100), so
+    `open_document()` rejects it rather than reporting one.
+    """
+    with open_document(source) as doc:
         return doc.page_count
 
 
@@ -158,8 +193,7 @@ def _event_sink(progress):
             print(f"   {event['pages']} pages — {event['pages_textlayer']} from textlayer, "
                   f"{event['pages_ocr']} through model\n")
         elif kind == "start" and progress:
-            _progress({"typ": "start", "datei": event["file"],
-                       "seiten": event["pages"], "dpi": event["dpi"]})
+            _progress(start_event(event["file"], event["pages"], event["dpi"]))
         elif kind == "cache":
             print(f"   cache: {event['reused']} page(s) reused from "
                   f"{event['directory']}\n")
@@ -196,21 +230,16 @@ def _event_sink(progress):
             if progress:
                 origin = ("diagramm" if page.is_diagram else
                           "textlayer" if page.source == "textlayer" else "ocr")
-                payload = {"typ": "seite", "nr": page.number,
-                           "von": event["total_pages"],
-                           "sekunden": round(page.seconds, 1),
-                           "herkunft": origin, "entgleist": bool(page.trace)}
-                if page.trace:
-                    payload["grund"] = page.trace[0]
-                _progress(payload)
+                _progress(page_event(
+                    page.number, event["total_pages"], page.seconds, origin,
+                    bool(page.trace), page.trace[0] if page.trace else None))
         elif kind == "artifact":
             print(f"→ {event['path']} ({event['count']} {event['unit']})")
         elif kind == "complete":
             result = event["result"]
             if progress:
-                _progress({"typ": "fertig", "ziel": str(result.target),
-                           "sekunden": round(result.seconds, 1),
-                           "entgleist": result.pages_derailed})
+                _progress(finished_event(str(result.target), result.seconds,
+                                         result.pages_derailed))
             print(f"\n{result.seconds:.1f} s total "
                   f"({result.seconds / len(result.pages):.1f} s/page)\n→ {result.target}")
         elif kind == "cancelled":
@@ -224,8 +253,9 @@ def _event_sink(progress):
 
 
 def _run_preflight(args, parser):
-    if args.pdf:
-        parser.error("--check does not require a PDF file (only runs preflight check)")
+    if args.source:
+        parser.error("--check does not require an input file "
+                     "(only runs preflight check)")
     temporary = None
     target = args.out
     if args.out == OUT:
@@ -255,7 +285,9 @@ def _run_preflight(args, parser):
 
 def _parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("pdf", nargs="?", default=None, help="Input PDF file")
+    accepted = ", ".join(sorted(INPUT_SUFFIXES))
+    parser.add_argument("source", nargs="?", default=None, metavar="INPUT",
+                        help=f"Input file — PDF or image ({accepted})")
     parser.add_argument("--dpi", type=int, default=150)
     parser.add_argument("--tile-from", "--kachel-ab", dest="tile_from", type=int,
                         default=TILE_THRESHOLD)
@@ -293,12 +325,19 @@ def main():
     args = parser.parse_args()
     if args.check:
         sys.exit(_run_preflight(args, parser))
-    if not args.pdf:
-        parser.error("Requires a PDF file (or --check for preflight check)")
-    pdf = Path(args.pdf)
-    if not pdf.exists():
-        sys.exit(f"not found: {pdf}")
-    page_count = pdf_page_count(pdf)
+    if not args.source:
+        parser.error("Requires an input file — PDF or image "
+                     "(or --check for preflight check)")
+    source = Path(args.source)
+    if not source.exists():
+        sys.exit(f"not found: {source}")
+    try:
+        # The suffix is checked before the file is opened; the frame count
+        # only `page_count_of()` can see (Issue #100). Both exit the same way.
+        ensure_supported_input(source)
+        page_count = page_count_of(source)
+    except UnsupportedInput as error:
+        sys.exit(str(error))
     selection = page_option("--pages/--seiten", args.pages, page_count)
     forced = page_option("--diagram-pages/--diagramm-seiten",
                          args.diagram_pages, page_count) or set()
@@ -312,7 +351,7 @@ def main():
     cancellation.reset()
     cancellation.install()
     request = ConversionRequest(
-        pdf=pdf, output_dir=args.out, dpi=args.dpi, tile_from=args.tile_from,
+        pdf=source, output_dir=args.out, dpi=args.dpi, tile_from=args.tile_from,
         no_bold=args.no_bold, ocr_only=args.ocr_only, retries=args.retries,
         lines_dump=args.lines_dump, no_dictionary=args.no_dictionary,
         dictionaries=tuple(args.dictionary),
@@ -324,12 +363,21 @@ def main():
         diagram_image_only=args.diagram_image_only, model_name=MODEL,
         ocr_prompt=PROMPT, refresh_pages=frozenset(refresh),
         cancel_requested=cancellation.requested)
-    result = convert_document(
-        request, LazyMlxOcrAdapter(MODEL), _event_sink(args.progress))
+    try:
+        result = convert_document(
+            request, LazyMlxOcrAdapter(MODEL), _event_sink(args.progress))
+    except cancellation.Interrupted:
+        # A repeated signal outside the page loop: during analysis, the model
+        # load or the result write. That write is atomic, so the vault keeps
+        # its previous preview.
+        print("Cancellation — no file written.")
+        sys.exit(EXIT_CANCELLED_EMPTY)
+    except PreviewFormatError as error:
+        sys.exit(str(error))
     if result.cancelled:
-        sys.exit(6 if result.pages else 7)
+        sys.exit(EXIT_CANCELLED_PARTIAL if result.pages else EXIT_CANCELLED_EMPTY)
     if not result.pages:
-        sys.exit(f"no pages to convert: {pdf.name}")
+        sys.exit(f"no pages to convert: {source.name}")
 
 
 if __name__ == "__main__":

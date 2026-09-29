@@ -1,7 +1,12 @@
 # Safe Stage-1 OCR from the Obsidian review view
 
-**Status:** Plan; independently shippable with the existing Apple and Tesseract
-engines.
+**Status:** Implemented (#63 `reprocess-raw --output`, #64 process module, #65
+settings, #66 action and entry points, #67 page exemptions). Kept as the design
+record: the steps below describe the intent, and the *Implemented in* notes
+say where the code landed. Current behavior is documented in
+[`review-view.md`](review-view.md) and [`scripts-detail.md`](scripts-detail.md).
+PaddleOCR in the engine setting (#73): implemented, fast mode only, offered
+where `reprocess-raw --check-engine` passes; #71 decides whether it stays.
 
 ## Goal
 
@@ -179,6 +184,13 @@ interface OcrSettings {
 Defaults are `auto` and `false`. Validate loaded values and explicitly migrate
 missing or invalid historical data. Add `paddle` only after the engine plan's
 retention and installation gates pass.
+
+*Implemented in #73, ahead of those gates:* the plugin default (unsplit Apple)
+interleaves 27 of 55 hand-checked two-column pages (`bench/ERGEBNIS.md`,
+Nachtrag 19–25), so `paddle` (fast mode) is offered now, but only where
+`reprocess-raw --check-engine` finds it usable. A stored `paddle` that is not
+usable falls back to `auto` with a notice. If #71 discards the engine, the
+option goes again.
 
 The action is desktop-only because it needs filesystem paths and child
 processes. Resolve paths only through Obsidian's filesystem adapter and show a

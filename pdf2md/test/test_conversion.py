@@ -3,8 +3,10 @@
 from pathlib import Path
 
 import fitz
+import pytest
 
-from assembly import AssemblyContext, assemble_paragraphs
+from assembly import (AssemblyContext, PreviewFormatError, assemble_paragraphs,
+                      split_preview)
 from conversion import ConversionRequest, convert_document
 
 
@@ -175,3 +177,141 @@ def test_image_only_diagram_pages_stay_out_of_the_lines_dump(tmp_path):
     )
 
     assert [entry["seite"] for entry in json.loads(dump.read_text())] == [2]
+
+
+# --- A --pages run merges into the existing preview (Issue #106) ------------
+
+def _frontmatter(markdown):
+    return split_preview(markdown).fields
+
+
+def _blocks(markdown):
+    return {page.number: page.text for page in split_preview(markdown).pages}
+
+
+def test_a_pages_run_replaces_only_its_pages_in_the_existing_preview(tmp_path):
+    pdf = tmp_path / "skript.pdf"
+    output = tmp_path / "output"
+    _make_vector_pdf(pdf, pages=10)
+    target = convert_document(
+        ConversionRequest(pdf=pdf, output_dir=output), None).target
+    edited = target.read_text(encoding="utf-8").replace(
+        "Page 5: ", "Page 5 (checked by hand): ")
+    target.write_text(edited, encoding="utf-8")
+    before = _blocks(edited)
+
+    result = convert_document(
+        ConversionRequest(pdf=pdf, output_dir=output, ocr_only=True,
+                          temp_root=tmp_path / "scratch", no_dictionary=True,
+                          selected_pages=frozenset({3})),
+        lambda image, max_tokens=None: "Neu erkannte Seite drei",
+    )
+
+    merged = target.read_text(encoding="utf-8")
+    after = _blocks(merged)
+    assert sorted(after) == list(range(1, 11))
+    assert {number for number in after if after[number] != before[number]} == {3}
+    assert after[3].startswith("%% S. 3 | ocr")
+    assert "Neu erkannte Seite drei" in after[3]
+    assert "Page 5 (checked by hand): " in after[5]
+    fields = _frontmatter(merged)
+    assert (fields["seiten"], fields["seiten-textlayer"],
+            fields["seiten-ocr"]) == ("10", "9", "1")
+    assert "abgebrochen" not in fields
+    assert split_preview(merged).preamble == split_preview(edited).preamble
+    assert result.markdown == merged
+    assert [page.number for page in result.pages] == [3]
+
+
+def test_a_preview_without_page_markers_is_left_alone(tmp_path):
+    pdf = tmp_path / "notes.pdf"
+    output = tmp_path / "output"
+    output.mkdir()
+    _make_vector_pdf(pdf, pages=3)
+    target = output / "notes.md"
+    target.write_text("---\ntitel: notes\n---\nMy own notes\n", encoding="utf-8")
+
+    def unexpected_ocr(*_args, **_kwargs):
+        raise AssertionError("no page may be converted")
+
+    with pytest.raises(PreviewFormatError, match="no page markers"):
+        convert_document(
+            ConversionRequest(pdf=pdf, output_dir=output, ocr_only=True,
+                              selected_pages=frozenset({2})),
+            unexpected_ocr,
+        )
+
+    assert target.read_text(encoding="utf-8") == "---\ntitel: notes\n---\nMy own notes\n"
+
+
+def test_filling_the_gap_of_a_cancelled_run_drops_its_abort_note(tmp_path):
+    pdf = tmp_path / "partial.pdf"
+    output = tmp_path / "output"
+    _make_vector_pdf(pdf, pages=4)
+    pages_done = 0
+
+    def stop_after_two(event):
+        nonlocal pages_done
+        pages_done += event["type"] == "page"
+
+    convert_document(
+        ConversionRequest(pdf=pdf, output_dir=output,
+                          cancel_requested=lambda: pages_done >= 2),
+        None, stop_after_two)
+    assert _frontmatter((output / "partial.md").read_text())["abgebrochen"] \
+        == "seite 2 von 4"
+
+    one_more = convert_document(ConversionRequest(
+        pdf=pdf, output_dir=output, selected_pages=frozenset({3})), None).markdown
+    assert _frontmatter(one_more)["abgebrochen"] == "seite 2 von 4"
+    assert _frontmatter(one_more)["seiten"] == "3"
+
+    filled = convert_document(ConversionRequest(
+        pdf=pdf, output_dir=output, selected_pages=frozenset({4})), None).markdown
+    assert "abgebrochen" not in _frontmatter(filled)
+    assert sorted(_blocks(filled)) == [1, 2, 3, 4]
+
+
+def test_a_cancelled_pages_run_keeps_the_pages_it_did_not_reach(tmp_path):
+    pdf = tmp_path / "input.pdf"
+    output = tmp_path / "output"
+    _make_vector_pdf(pdf, pages=4)
+    convert_document(ConversionRequest(pdf=pdf, output_dir=output), None)
+    before = _blocks((output / "input.md").read_text())
+    cancelled = False
+
+    def cancel_after_first(event):
+        nonlocal cancelled
+        cancelled = cancelled or event["type"] == "page"
+
+    result = convert_document(
+        ConversionRequest(pdf=pdf, output_dir=output, ocr_only=True,
+                          temp_root=tmp_path / "scratch", no_dictionary=True,
+                          selected_pages=frozenset({2, 3}),
+                          cancel_requested=lambda: cancelled),
+        lambda image, max_tokens=None: "Neu", cancel_after_first)
+
+    after = _blocks(result.markdown)
+    assert result.cancelled is True
+    assert sorted(after) == [1, 2, 3, 4]
+    assert after[2] != before[2]
+    assert after[3] == before[3]
+    assert "abgebrochen" not in _frontmatter(result.markdown)
+
+
+def test_kept_pages_bring_their_derailment_from_the_page_cache(tmp_path):
+    import json
+
+    pdf = tmp_path / "input.pdf"
+    output = tmp_path / "output"
+    _make_vector_pdf(pdf, pages=3)
+    convert_document(ConversionRequest(pdf=pdf, output_dir=output), None)
+    entry_path = output / ".cache" / "input" / "002.json"
+    entry = json.loads(entry_path.read_text())
+    entry["page"]["trace"] = ["repetition loop, retried as tiles"]
+    entry_path.write_text(json.dumps(entry))
+
+    merged = convert_document(ConversionRequest(
+        pdf=pdf, output_dir=output, selected_pages=frozenset({1})), None).markdown
+
+    assert _frontmatter(merged)["seiten-entgleist"] == "1"

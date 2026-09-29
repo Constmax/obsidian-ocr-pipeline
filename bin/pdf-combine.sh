@@ -14,7 +14,9 @@ if [ $# -lt 2 ]; then
 Usage: $(basename "$0") <folder> <output-name> [options]
 
 Options:
-   --engine auto|apple|tesseract   OCR engine (Default: auto)
+   --engine auto|apple|tesseract|paddle
+                                   OCR engine (Default: auto; paddle only explicitly)
+   --paddle-mode accurate|fast     PaddleOCR mode (Default: accurate; fast needs macOS 13+)
    --dpi N                         Downscale target (Default: $DEFAULT_DPI, 0 = off)
    --jobs N                        Parallel OCR workers (Default: by RAM, 1–4)
    --force-ocr                     Force OCR even if text layer exists
@@ -41,7 +43,7 @@ fi
 
 OUTPUT_FILE="${INPUT_DIR}/${OUTPUT_NAME}.pdf"
 
-# Common options (--engine, --dpi, --jobs, split flags, --no-quality-gate)
+# Common options (--engine, --paddle-mode, --dpi, --jobs, split flags, --no-quality-gate)
 # are parsed and validated by parse_common_option in pdf-lib.sh.
 FORCE_OCR=false
 while [ $# -gt 0 ]; do
@@ -63,7 +65,7 @@ ORIGINAL_SIZE=$(du -sh "$INPUT_DIR" | cut -f1)
 
 # ── Step 1: Collect PDFs ──
 echo ""
-echo "📑 Step 1/4: Collecting PDFs..."
+echo "📑 Step 1/2: Collecting PDFs..."
 
 shopt -s nullglob nocaseglob
 PDF_LIST_RAW=(*.pdf)
@@ -90,93 +92,16 @@ for i in "${!PDF_LIST[@]}"; do
     printf "     %2d. %s\n" "$((i+1))" "${PDF_LIST[$i]}"
 done
 
-# ── Step 2: Merge ──
+# ── Step 2: merge, OCR, re-merge (run_pdf_pipeline in pdf-lib.sh) ──
+# Unlike pdf-auto and pdf-workflow, pdf-combine never passed unpaper's --clean.
 echo ""
-echo "🔗 Step 2/4: Merging..."
-if [ ${#PDF_LIST[@]} -eq 1 ]; then
-    cp "${PDF_LIST[0]}" "$WORK_DIR/combined.pdf"
-else
-    qpdf --empty --pages "${PDF_LIST[@]}" -- "$WORK_DIR/combined.pdf"
-fi
-TOTAL_PAGES=$(qpdf --show-npages "$WORK_DIR/combined.pdf")
-echo "   ✅ $TOTAL_PAGES pages"
-
-# ── Step 2.5: Fix oversized MediaBox (Hemmer PDFs: 72 PPI → A4) ──
-# Must run BEFORE downscale — oversized pages cause 140MP rasterization at 300 DPI.
-PRE_OCR_FILE="$WORK_DIR/combined.pdf"
-fix_mediabox "$PRE_OCR_FILE" "$WORK_DIR/fixed.pdf"
-PRE_OCR_FILE="$WORK_DIR/fixed.pdf"
-
-# ── Step 3: Downscale ──
-
-if [ "$TARGET_DPI" -gt 0 ]; then
+echo "🔤 Step 2/2: Merge + OCR + Optimization..."
+pipeline_options=(--no-clean)
+[ "$FORCE_OCR" = true ] && pipeline_options+=(--force-ocr)
+if ! run_pdf_pipeline "${pipeline_options[@]}" "$OUTPUT_FILE" "${PDF_LIST[@]}"; then
     echo ""
-    echo "🔽 Step 3/4: Downscaling to $TARGET_DPI DPI..."
-    gs_downscale "$PRE_OCR_FILE" "$WORK_DIR/downscaled.pdf" "$TARGET_DPI"
-    PRE_OCR_FILE="$WORK_DIR/downscaled.pdf"
-else
-    echo ""
-    echo "⏭️  Step 3/4: Downscaling skipped"
-fi
-
-# ── Optional: Column split ──
-if [ "$SPLIT_COLUMNS" = true ]; then
-    if ! split_two_column_pdf "$PRE_OCR_FILE" "$WORK_DIR/split.pdf"; then
-        echo ""
-        echo "❌ Column split failed — no file written"
-        exit 1
-    fi
-    PRE_OCR_FILE="$WORK_DIR/split.pdf"
-fi
-
-# ── Step 4: OCR ──
-echo ""
-echo "🔤 Step 4/4: OCR + Optimization..."
-
-# ocr_args is passed by name to build_ocr_args/run_ocr
-# (pass-by-name, bash 3.2) — usage is not seen by shellcheck in pdf-lib.sh.
-# shellcheck disable=SC2034
-ocr_args=()
-ocr_arg_flags=()
-[ "$FORCE_OCR" = true ] && ocr_arg_flags+=(--force-ocr)
-if [ "$SPLIT_COLUMNS" = true ]; then
-    ocr_arg_flags+=(--no-rotate --no-deskew)
-fi
-# Bash 3.2 (macOS /bin/bash) treats an empty "${arr[@]}" as unbound under set -u.
-build_ocr_args ocr_args ${ocr_arg_flags[@]+"${ocr_arg_flags[@]}"}
-
-OCR_OK=true
-if [ "$NO_QUALITY_GATE" = true ]; then
-    run_ocr "$PRE_OCR_FILE" "$OUTPUT_FILE" ocr_args
-else
-    alt_engine=""
-    if [ "$USE_APPLE" = true ]; then alt_engine="tesseract"; else alt_engine="apple"; fi
-    # ocr_with_retry returns 1 on a best-effort (quality-gate-failed) result.
-    if ! ocr_with_retry "$PRE_OCR_FILE" "$OUTPUT_FILE" "$alt_engine" ocr_args; then
-        echo "   ⚠️  Quality gate failed — deleting incomplete file"
-        rm -f "$OUTPUT_FILE"
-        OCR_OK=false
-    fi
-fi
-
-if [ "$OCR_OK" = false ]; then
-    echo ""
-    echo "❌ No result — Quality gate failed, no file written"
+    echo "❌ No result — no file written"
     exit 1
-fi
-
-# ── Step 4.5: Re-Merge (--split-columns → reassemble half-page pairs) ──
-if [ "$SPLIT_COLUMNS" = true ]; then
-    echo ""
-    echo "📐 Step 4.5/4: Re-merge (half-pages → original format)..."
-    if ! merge_split_pdf "$OUTPUT_FILE" "$WORK_DIR/merged_final.pdf"; then
-        # Handing off the unmerged halves would silently double the page count.
-        rm -f "$OUTPUT_FILE"
-        echo ""
-        echo "❌ Re-merge failed — split result discarded, no file written"
-        exit 1
-    fi
-    mv "$WORK_DIR/merged_final.pdf" "$OUTPUT_FILE"
 fi
 
 FINAL_SIZE=$(du -h "$OUTPUT_FILE" | cut -f1)
@@ -186,7 +111,7 @@ echo "════════════════════════�
 echo "✅ Done!"
 echo "═══════════════════════════════════════════"
 echo "📄 File:     $OUTPUT_FILE"
-echo "🧠 Engine:   $ENGINE_DESC"
-echo "📊 Pages:    $TOTAL_PAGES"
+echo "🧠 Engine:   $OCR_RESULT_DESC"
+echo "📊 Pages:    $PIPELINE_PAGES"
 echo "📊 Before:   $ORIGINAL_SIZE → After: $FINAL_SIZE"
 

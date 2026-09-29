@@ -6,7 +6,8 @@ All three scripts share these flags:
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--engine auto\|apple\|tesseract` | `auto` | OCR engine selection |
+| `--engine auto\|apple\|tesseract\|paddle` | `auto` | OCR engine selection |
+| `--paddle-mode accurate\|fast` | `accurate` | PaddleOCR mode; only with `--engine paddle` |
 | `--dpi N` | `300` | Pre-OCR downscaling (0 = disabled) |
 | `--jobs N` | by RAM (1–4) | Parallel OCR workers |
 | `--split-columns` | off | Automatically detect two-column pages, split, then re-merge back into original page layout |
@@ -26,6 +27,9 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 - `auto`: Uses Apple Vision if `ocrmypdf-appleocr` is installed, otherwise Tesseract
 - `apple`: Forces Apple Vision (fails with error if plugin is missing)
 - `tesseract`: Forces Tesseract (automatically applies `--tesseract-pagesegmode 1` for column detection and `--clean` when `unpaper` is available)
+- `paddle`: PaddleOCR PP-OCRv5 through the `ocrmypdf_paddle` plugin (fails with an error before any OCR if the plugin does not load or `--paddle-check` finds its runtime, models or, in fast mode, Apple Vision not ready; an `ocrmypdf_paddle` from before that option is reported as too old). Never chosen by `auto` until the Stage-1 benchmark (#71) retains it. Runs one OCR job whatever `--jobs` says (`--jobs` still applies to a fallback engine). `--paddle-mode fast` lets Apple Vision read the lines and PP-OCRv5 re-read only citation lines (macOS 13+, see [paddle-textlayer.md](paddle-textlayer.md)). The plugin is not installed by `setup.sh`; run the CLIs with its venv first on `PATH`, e.g. `PATH="<paddle-venv>/bin:$PATH" pdf-combine … --engine paddle` ([installation.md](installation.md)).
+
+`resolve_engine` in `pdf-lib.sh` turns the requested engine into one resolved value (`apple`, `tesseract` or `paddle`); the OCR arguments and the fallbacks below are derived from that value alone.
 
 ### DPI Tuning
 
@@ -73,7 +77,15 @@ After every OCR run, the pipeline automatically validates:
 
 Threshold 0.40 instead of 0.30: Tolerates unavoidable OCR artifacts in older Hemmer scans (e.g., "eaglen" for "hemmer") while reliably catching structural failures.
 
-On failure: Auto-retry with column split (when using Tesseract and `pikepdf` is available, including re-merge to original format), followed by retry with alternative engine (apple ↔ tesseract).
+On failure the gate walks a fixed fallback matrix:
+
+| Engine | Then | Then |
+|---|---|---|
+| Apple Vision | Tesseract | Tesseract with column split |
+| Tesseract | Tesseract with column split | Apple Vision (if installed) |
+| PaddleOCR | Apple Vision, or Tesseract without it | — |
+
+The column-split retry needs `pikepdf`, re-merges to the original format and is skipped when `--split-columns` already splits. PaddleOCR never adds an implicit split; an explicit `--split-columns` stays in force. An engine switch re-runs OCR with `--force-ocr`. Every switch is printed on stderr with its reason (`🔄 Fallback: PaddleOCR accurate → Apple Vision (quality gate failed)`), and the summary names the engine that produced the file (`pdf-auto`: per file, plus a fallback count). If every attempt fails, no file is written.
 
 ### Multi-Part File Detection
 
@@ -137,6 +149,7 @@ Alphanumeric with Natural Sort. Use numerical prefixes for explicit ordering: `0
 
 ```bash
 reprocess-raw <raw-pdf-file> [--output FILE] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
+reprocess-raw --check-engine [--engine E] [--paddle-mode M]
 ```
 
 Wrapper around `pdf-combine` for the scenario "re-process an existing `raw/` file with the updated pipeline" (e.g. after bug fixes). Workflow:
@@ -159,6 +172,10 @@ The interface for GUI callers such as the Obsidian plugin. The same checks run, 
 - Hard links were verified inside iCloud Drive vaults (`~/Documents` and the Obsidian iCloud container). There is no `mv` fallback: on a filesystem without hard links, publication fails cleanly instead of accepting a check-then-rename race. macOS `mv -n` also exits 0 when it refuses to overwrite, so it cannot report that race.
 - `SIGKILL` cannot be trapped. If it lands between the hidden copy and its removal, a hidden `.<FILE>.XXXXXX` file can remain; it never carries the `.pdf` suffix. Cancel with `SIGTERM` to the process group first.
 
+### Engine check: `--check-engine`
+
+Resolves the engine exactly as a run would and exits without reading or writing a file: `0` when a run would start on that engine here (prints `🧠 Engine: …`), `4` (`check-failed`) with the reason on stderr otherwise. The plugin runs `reprocess-raw --check-engine --engine paddle --paddle-mode fast` before it offers PaddleOCR (contract: `stage1.checkEngine` in `contracts/cli-contract.json`). For PaddleOCR the check covers what a run needs before its first page: the plugin loads, and `ocrmypdf --plugin ocrmypdf_paddle --paddle-check <mode>` reports the pinned runtime, the model files and (fast mode) Apple Vision ready.
+
 ### `column_tools.py verify-pages`
 
 ```bash
@@ -168,6 +185,15 @@ column_tools.py verify-pages <pdf> [--min-chars N] [--allow-pages LIST]
 Underlying verification tool, executable independently: extracts every page via `pdftotext -raw`, reports pages falling below threshold (excluding `--allow-pages`) to stderr, and exits code 1 on violations.
 
 ## Pre-OCR Pipeline (Automated)
+
+`pdf-auto` (per group), `pdf-combine` and `pdf-workflow` run one shared
+sequence, `run_pdf_pipeline` in `pdf-lib.sh`: merge the inputs, the three
+stages below, OCR with the quality gate, re-merge the halves, write the
+result. The scripts differ only in how they find their inputs and in two OCR
+flags (`pdf-combine` passes `--force-ocr` on request and never unpaper's
+`--clean`). The output file is written last and only when every step
+succeeded; on any failure the script prints a `❌` line and leaves no file at
+the output path. Intermediate files never land next to the inputs.
 
 Prior to OCR, every PDF passes through three automated stages without requiring flags:
 
@@ -263,6 +289,88 @@ With automated MediaBox Fix, large scans remain RAM-safe:
 
 `ocrmypdf --max-image-mpixels` is configured to 400 MP in `build_ocr_args` (accommodates edge cases lacking MediaBox Fix) passed as CLI argument rather than environment variable (as ocrmypdf ignores `PILLOW_MAX_IMAGE_PIXELS`).
 
+## Stage 2: Option Names
+
+`pdf2md` options have English names (`--pages`, `--refresh-cache`,
+`--progress`, `--dictionary`, `--dictionary-correct`, `--dictionary-report`,
+`--no-dictionary`, `--lines-dump`, `--diagram-pages`, `--diagram-image-only`,
+`--retries`, `--tile-from`, `--image-dir`, `--image-max-edge`, `--no-bold`,
+`--ocr-only`). The German names they replaced (`--seiten`, `--neu`,
+`--fortschritt`, `--woerterbuch*`, `--zeilen-dump`, `--diagramm-*`,
+`--neuversuche`, `--kachel-ab`, `--bild-*`, `--kein-fett`, `--nur-ocr`) stay
+accepted as aliases; the Obsidian plugin still spawns `--seiten` and
+`--fortschritt`. This document uses the English names.
+
+## Stage 2: Accepted Input Formats
+
+`pdf2md.py` takes a PDF or a single page image:
+
+| Format | Suffix |
+|---|---|
+| PDF | `.pdf` |
+| Image | `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.bmp` |
+
+```bash
+pdf2md raw/ZR/scan.png --out _ocr-preview
+```
+
+An image is normalized into a one-page PDF at the input boundary
+(`open_document()` in `conversion.py`), so layout detection, box detection,
+reassembly and the dictionary pass stay PDF-only and need no second code path.
+The wrapped page carries the image as a full-page raster: its text layer is
+empty and `image_ratio()` returns 1.0, so the page lands on the OCR branch
+exactly like a scan inside a PDF would.
+
+Anything else is rejected by suffix before a single page is processed, with a
+one-line error (exit code 1) naming the accepted formats. WebP and HEIC are not
+on the list because fitz does not open them; HEIC would need `pillow-heif`.
+
+A **multi-frame TIFF** — what a sheet feeder emits — is rejected too, by frame
+count rather than by suffix, and therefore only once the file is opened:
+
+```
+multi-page image not supported: stapel.tif carries 3 frames — convert it to a PDF first
+```
+
+fitz opens such a file as several pages, but the model is handed the source
+file itself and PIL reads only its first frame, so every page after the first
+would quietly repeat page 1; the assumed-A4 path below is worse still and
+drops the extra frames without a word. Combining several pages is what the PDF
+input is for.
+
+Four consequences worth knowing:
+
+- **The source resolution is preserved.** The page image handed to the model is
+  the input file itself, not a `--dpi` re-render of it — a 400 dpi scan is not
+  resampled down to 150. `--dpi` therefore has no effect on image input.
+  Two exceptions are rewritten as a PNG with the same pixels: a photo whose
+  EXIF orientation says it is stored sideways is turned upright (fitz and the
+  model honour EXIF, the tilers would not), and a CMYK file is converted to
+  RGB so its tiles can be saved.
+- **The paper size is assumed when the file does not declare one.** fitz reads
+  an image that carries no resolution metadata (most JPEGs) at 96 dpi, which
+  would make an A4 scan a 49-inch page and throw off the ink-based length
+  check that catches derailed generations. Such an image is laid out on an
+  assumed A4 page instead, keeping every pixel. A file that *does* declare its
+  resolution is taken at its word.
+- **One image is one page** — enforced, not assumed: a file carrying more than
+  one frame is rejected (above). Header/footer detection in `running_lines()`
+  needs at least two pages, so it contributes nothing here. Combining a folder
+  of images into one Markdown file is a separate feature.
+- **A shared basename only matters once it overwrites something.** `scan.pdf`
+  and `scan.png` both write `scan.md`. The plugin blocks the conversion when a
+  preview of that name already exists and did not come from the file being
+  converted (`previewSource()` reads its `quelle-pdf`); otherwise it says the
+  name is shared and continues. Vetoing on the mere existence of a rival was
+  tolerable while only PDFs could be sources — with images convertible, every
+  same-named attachment in the vault would block a conversion that destroys
+  nothing.
+
+Stage 1 (`bin/`) remains PDF-only: `pdf-auto`, `pdf-combine`, the column split
+and the text-layer checks all assume PDF input. In the plugin this is the
+difference between **OCR → Markdown** (PDF or image) and **Create searchable
+copy (OCR)** (PDF only).
+
 ## Stage 2: Module Structure (`pdf2md/`)
 
 `pdf2md.py` is the CLI adapter. It translates arguments, console events, and
@@ -294,7 +402,9 @@ load the ML model.
 Scan pages are rendered into a temporary directory below the system temp folder
 (`$TMPDIR`), never below `--out`: the plugin points `--out` at a vault folder,
 and Obsidian would index every intermediate PNG. `ConversionRequest.temp_root`
-overrides the location.
+overrides the location. Image input is copied there instead of rendered, for
+the same reason — `tile_vertically()` writes its tiles beside the page image,
+which must not be the user's own folder.
 
 **Vault Copying**: `.ocr-bench/` in vault uses a flat structure (see
 `bench/paths.py`, two-location convention) requiring **nine** files:
@@ -311,14 +421,14 @@ Executes post-reassembly across **every OCR page** — skipping native textlayer
 | Flag | Effect |
 |---|---|
 | *(Default)* | Reporting mode only; document text remains unaltered |
-| `--woerterbuch-korrigieren` | Replaces unambiguous OCR errors (see below) |
-| `--woerterbuch <file>` | Custom wordlist or `.dic` file (repeatable) |
-| `--woerterbuch-bericht <file>` | Export complete findings with page numbers as JSON |
-| `--kein-woerterbuch` | Disable dictionary checking completely |
+| `--dictionary-correct` | Replaces unambiguous OCR errors (see below) |
+| `--dictionary <file>` | Custom wordlist or `.dic` file (repeatable) |
+| `--dictionary-report <file>` | Export complete findings with page numbers as JSON |
+| `--no-dictionary` | Disable dictionary checking completely |
 
 **Unambiguous** definition: term does not exist in dictionary, and exactly *one* substitution variant from OCR confusion table (`m`/`rn`, `ff`/`i`, `l`/`1`, `u`/`ü`, etc.) exists in dictionary. If multiple matches exist (`Hans`/`Haus`), term is preserved and flagged only. Citations, numbers, abbreviations, tables, wikilinks, and footnote markers are skipped — resolving Roman numeral `I` vs `1`/`l`/`|` is explicitly outside module scope.
 
-**Dictionary Resolution Order**: `--woerterbuch`, then `$PDF2MD_WOERTERBUCH` (colon-separated), then first available system dictionary (`/opt/homebrew/share/hunspell`, `/usr/share/hunspell`, `~/Library/Spelling`, LibreOffice bundle). If `hunspell` with German dictionary is present, it takes precedence — evaluating affix rules for higher accuracy than simple fallback substitution rules. If no dictionary is found, execution reports status and skips verification.
+**Dictionary Resolution Order**: `--dictionary`, then `$PDF2MD_DICTIONARY` (colon-separated), then first available system dictionary (`/opt/homebrew/share/hunspell`, `/usr/share/hunspell`, `~/Library/Spelling`, LibreOffice bundle). If `hunspell` with German dictionary is present, it takes precedence — evaluating affix rules for higher accuracy than simple fallback substitution rules. If no dictionary is found, execution reports status and skips verification.
 
 Without system dictionary pre-installed, download files manually:
 
@@ -327,29 +437,33 @@ curl -o ~/.local/share/de_DE.dic \
   https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.dic
 curl -o ~/.local/share/de_DE.aff \
   https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.aff
-export PDF2MD_WOERTERBUCH=~/.local/share/de_DE.dic
+export PDF2MD_DICTIONARY=~/.local/share/de_DE.dic
 ```
 
 The accompanying `.aff` file is required: `SET` header defines encoding (`de_DE_frami.dic` uses ISO-8859-1). If missing, file is parsed as UTF-8, breaking dictionary lookup for all terms with German umlauts.
 
 **Benchmark**: Tested on 202 words of legal German against `de_DE_frami`: 0 false positives, 6 of 7 introduced OCR errors identified. The 7th (`Verhaltungsakte`) demonstrates documented limitation — morphologically well-formed pseudo-word decomposed by compound rule into `verhalten` + `Akte`. Strict rules would cause false positives on compound nouns, as `.dic` dictionaries delegate compound analysis to affix rules.
 
-## --seiten (Stage 2)
+## --pages (Stage 2)
 
 Convert selected pages only. Format as comma-separated list with page ranges (e.g. `1,3-5,8`). Omit or leave empty for all pages.
 
 ```bash
-python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-vorschau
+python pdf2md/pdf2md.py raw/ZR/skript.pdf --pages "1,3-5" --out _ocr-preview
 ```
 
-- Page numbers are 1-based matching original PDF.
-- `--diagramm-seiten` uses the same grammar. Whitespace around entries is ignored.
+- Page numbers are 1-based matching original PDF. Image input has exactly one
+  page, so `--pages` accepts only `1`.
+- `--diagram-pages` uses the same grammar. Whitespace around entries is ignored.
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
-- `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
-- Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`). Frontmatter `seiten` records count of selected pages.
-- Plugin queries selection via `SeitenAuswahlModal` (total page count rendered via pdf.js).
+- `running_lines()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
+- Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`).
+- **An existing preview is merged, not replaced (Issue #106).** The selected pages replace their blocks, new ones are inserted in page order, and every other block stays verbatim, manual edits included. Without an existing preview only the selected pages are written, and `seiten` counts those.
+- The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--pages` run adds no note, because pages it did not reach keep their previous blocks.
+- A preview without frontmatter or page markers, or with a page number twice, cannot be merged. The run stops before analysis with exit code 1 and leaves the file untouched; convert without `--pages` to replace it.
+- Plugin queries selection via `PageSelectModal` (total page count rendered via pdf.js).
 
-## Page Cache and `--neu` (Stage 2)
+## Page Cache and `--refresh-cache` (Stage 2)
 
 Every completed page is written atomically below
 `<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains parsed lines with
@@ -370,42 +484,50 @@ boxes, and older-schema entries are likewise recalculated.
 
 ```bash
 # Resume automatically, reusing every matching page
-pdf2md raw/ZR/skript.pdf --out _ocr-vorschau
+pdf2md raw/ZR/skript.pdf --out _ocr-preview
 
 # Recalculate every selected page
-pdf2md raw/ZR/skript.pdf --out _ocr-vorschau --neu
+pdf2md raw/ZR/skript.pdf --out _ocr-preview --refresh-cache
 
 # Recalculate only pages 12-14; reuse all other matching pages
-pdf2md raw/ZR/skript.pdf --out _ocr-vorschau --neu "12-14"
+pdf2md raw/ZR/skript.pdf --out _ocr-preview --refresh-cache "12-14"
 ```
 
-`--refresh-cache` is the English alias of `--neu`. The optional range uses the
-same grammar and validation as `--seiten`. Dictionary reporting/correction and
+The optional range of `--refresh-cache` (German alias `--neu`) uses the
+same grammar and validation as `--pages`. Dictionary reporting/correction and
 Markdown formatting are intentionally not part of the key: they are rerun from
 the cached raw lines on every invocation.
 
-## --fortschritt (Stage 2)
+## Cancellation and Result Writing (Stage 2)
 
-Machine-readable progress emitted as JSON lines to stderr. Default console output (German sentences, emojis, arrows) remains unaffected. Passing `--fortschritt` streams one JSON event per status change to stderr without altering stdout.
+- **First `SIGINT`/`SIGTERM`:** the current page finishes and is cached, then
+  the run stops and writes a partial file (`abgebrochen` in the frontmatter,
+  exit code 6) — or none, if no page was finished yet (exit code 7).
+- **Second signal:** stops the current page right away. That page is dropped;
+  the partial file holds exactly the pages finished before it (exit 6, or 7
+  when there are none). `pdf2md.py` picks the exit code from the result, not
+  the signal handler.
+- **Atomic writes:** the `.md`, `--lines-dump` and `--dictionary-report`
+  go to a hidden `.<name>.<pid>.tmp` sibling first and replace the target in
+  one rename. An interrupted write leaves the previous preview whole; only
+  `SIGKILL` can leave the hidden sibling behind.
+- **Plugin:** cancel sends `SIGTERM`, a second `SIGTERM` after 15 s, and
+  `SIGKILL` only if pdf2md is still alive 5 s later. The plugin stops a run
+  only after 15 minutes without any output, never after a fixed total time.
+
+## --progress (Stage 2)
+
+Machine-readable progress emitted as JSON lines to stderr. Default console output (German sentences, emojis, arrows) remains unaffected. Passing `--progress` streams one JSON event per status change to stderr without altering stdout.
 
 ### Emitted Events
 
-One event object emitted per state transition. Downstream parsers must accept and ignore unknown fields.
+The events, their order, the protocol version and the exit codes are specified in [`cli-contract.md`](cli-contract.md); the canonical examples are `contracts/progress-v1.jsonl`.
 
 ```json
-{"typ":"start","datei":"…","seiten":42,"dpi":150}
-{"typ":"seite","nr":7,"von":42,"sekunden":31.2,"herkunft":"ocr","entgleist":false}
-{"typ":"seite","nr":8,"von":42,"sekunden":44.1,"herkunft":"ocr","entgleist":true,"grund":"zu lang 324%"}
-{"typ":"fertig","ziel":"…","sekunden":1284.0,"entgleist":1}
+{"typ": "start", "protokoll": 1, "datei": "…", "seiten": 42, "dpi": 150}
+{"typ": "seite", "protokoll": 1, "nr": 8, "von": 42, "sekunden": 44.1, "herkunft": "ocr", "entgleist": true, "grund": "zu lang 324%"}
+{"typ": "fertig", "protokoll": 1, "ziel": "…", "sekunden": 1284.0, "entgleist": 1}
 ```
-
-- **start** — post PDF analysis: filename, page count, DPI
-- **seite** — per page: page number, total pages, elapsed seconds, provenance (`textlayer`/`ocr`/`diagramm`), derailment flag, optional cause
-- **fertig** — post completion: total execution time, output path, total derailments
-
-### Schema Contract
-
-Additional fields may be introduced to events in future revisions. Parsers (plugins, UIs, external tools) must ignore unrecognized fields without throwing errors.
 
 ## --check (Stage 2)
 
@@ -437,7 +559,7 @@ pdf2md.py --check --out _ocr-preview
 # fehlgeschlagen
 ```
 
-`--check --progress` (or `--check --fortschritt`) outputs the same as a single JSON document on stdout:
+`--check --progress` (German alias `--fortschritt`) outputs the same as a single JSON document on stdout:
 
 ```json
 {"typ":"check","ok":false,"checks":[{"name":"python","ok":true,"detail":"3.12.4"},…],"warnungen":["speicher: …"]}

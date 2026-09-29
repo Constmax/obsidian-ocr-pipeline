@@ -61,6 +61,34 @@ The sections correspond to the script's execution blocks.
   installed. Start Obsidian once (creates `.obsidian/`), then re-run
   `./setup.sh`.
 
+## Which Environment Holds Which Engine
+
+All venvs live under `$VENV_ROOT` (default `~/.venvs`, see `setup.sh`). Each
+OCR engine runs from exactly one of them:
+
+| Environment | Created by | Engine | Packages | Used by |
+|---|---|---|---|---|
+| `~/.venvs/ocrmypdf` (Python 3.12 via uv) | `setup.sh` ③ | Stage 1: Tesseract and Apple Vision through OCRmyPDF | `ocrmypdf==17.8.0`, `ocrmypdf-appleocr==0.3.4` | `pdf-auto`, `pdf-combine`, `pdf-workflow`, `reprocess-raw` (via `~/bin/ocrmypdf`) |
+| `~/.venvs/mlxocr` (Python 3.12 via uv) | `setup.sh` ⑥, Apple Silicon only | Stage 2: PaddleOCR-VL 1.5 through MLX | `pdf2md/requirements.txt` (`mlx-vlm`, `pymupdf`, `pikepdf`, `pillow`, `numpy`) | `pdf2md` wrapper, plugin conversion |
+| your own venv (Python ≥ 3.12) | by hand, **not** `setup.sh` | Stage 1 candidate: PaddleOCR PP-OCRv5 through RapidOCR/ONNX Runtime | `pip install ./ocrmypdf_paddle` (pins `ocrmypdf==17.8.0`, `rapidocr==3.9.2`, `onnxruntime==1.26.0`) | benchmarks only, until [paddle-textlayer.md](paddle-textlayer.md) retains the engine |
+
+Tesseract itself comes from Homebrew (`tesseract-lang` in the `Brewfile`); the
+Apple Vision engine needs macOS. Keep the Paddle engine out of
+`~/.venvs/ocrmypdf`, so that a failed Paddle install cannot break the
+Stage-1 engines in daily use.
+
+The Stage-1 CLIs call the `ocrmypdf` first on `PATH`. To run them with
+`--engine paddle` (explicit only, never picked by `auto`), put the Paddle
+venv first: `PATH="<paddle-venv>/bin:$PATH" pdf-combine <folder> <name>
+--engine paddle`. A fallback to Apple Vision then needs `ocrmypdf-appleocr`
+in that venv too; without it the fallback is Tesseract. Without installing the
+package, `PYTHONPATH=<repo>/ocrmypdf_paddle/src` loads it from the checkout,
+as `bench/reading_order.py` does.
+
+For development, `make check` also needs Node ≥ 22 and `shellcheck`
+(`brew install node shellcheck`); neither is part of the `Brewfile`, because
+using the pipeline needs neither.
+
 ## Python 3.12 expat Bug
 
 Homebrew builds of ocrmypdf sometimes link against a Python with broken
@@ -91,17 +119,24 @@ uv python uninstall 3.12 && uv python install --force 3.12
 ## Plugin (Stage 3)
 
 ```bash
-VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh
+VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh --enable
 ```
 
 - Copies `main.js`, `manifest.json`, and `styles.css` to
-  `$VAULT_ROOT/.obsidian/plugins/ocr-vorschau/`. The committed `main.js`
+  `$VAULT_ROOT/.obsidian/plugins/<id>/`, with the id taken from
+  `plugin/manifest.json` (`plugin/install-plugin.sh --print-id` shows it).
+  The committed `main.js`
   is default — no Node needed; only `--build` (npm, dev machine)
   requires node/npm.
 - Copying is default: when vault lives in iCloud Drive, symlinks can lose
   files. `--symlink` remains a dev opt-in (local only, never iCloud).
-- Afterwards in Obsidian: Settings → Community Plugins → Enable "OCR Preview",
-  reload once (`Cmd+R`).
+- `--enable` also enables the plugin in `community-plugins.json` and disables
+  the pre-rename id `ocr-vorschau`. Without it: Settings → Community Plugins →
+  Enable "OCR Preview". Reload once (`Cmd+R`) either way.
+- Coming from the pre-rename install (`plugins/ocr-vorschau/`): on its first
+  start the plugin takes over that install's `data.json`, or — without one —
+  keeps an existing `_ocr-vorschau/` folder. Delete `plugins/ocr-vorschau/`
+  afterwards.
 - Usage: [review-view.md](review-view.md).
 
 ## Verification
@@ -176,4 +211,21 @@ brctl download "<path>"
 
 Opens terminal at vault root. PATH/Scripts function normally since they live in
 `~/bin/`, not inside the vault.
+
+## Cloud Containers (Claude Code on the web)
+
+`setup.sh` is macOS-only. In a Linux cloud session the SessionStart hook
+`.claude/hooks/session-start.sh` (registered in `.claude/settings.json`) builds
+the toolchain `make check` needs, with the same pins as CI: apt packages
+`tesseract-ocr poppler-utils qpdf ghostscript`, shellcheck `v0.11.0`, Python
+3.12 venvs `$VENV_ROOT/dev` (pytest, pyyaml, pymupdf, numpy, pillow, pikepdf;
+put first on `PATH` for the session) and `$VENV_ROOT/ocrmypdf` (ocrmypdf
+`17.8.0` + pytest, which the Makefile picks up by itself), and `npm ci` in
+`plugin/`. It runs only when `CLAUDE_CODE_REMOTE=true`, on `startup` and
+`resume` (a resumed session may land in a fresh container), and skips steps
+that are already done. The hook is async: the session starts at once while the install
+runs in the background (about 30 s in a fresh container). It is finished when
+`$VENV_ROOT/.session-start.done` exists; its output goes to
+`$VENV_ROOT/.session-start.log`, where a failed step also shows up. Stage 2 (MLX) and Apple Vision cannot run there; their tests use
+fakes and pass without them. Keep the pins in sync with `ci.yml` and `setup.sh`.
 
