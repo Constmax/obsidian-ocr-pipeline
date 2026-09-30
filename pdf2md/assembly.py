@@ -51,7 +51,7 @@ ZONE_SIGNALS = [
     re.compile(r"^he[mn]+er\s*[.,:]?$", re.I),
     re.compile(r"^\W*(Juristisches\s*)?Repetitorium\W*$", re.I),
     re.compile(r"^(BGB|StGB|StR|ZR|OeR|ÖR)[\s-]*(AT|BT)?\s*$"),
-    re.compile(r"(Lösung|Sachverhalte?|Übersicht)\s*[-–]\s*Seite", re.I),
+    re.compile(r"(Lösung|Sachverhalte?|Übersicht)\s*[-–,]\s*Seite", re.I),
     re.compile(r"^Lösung\s*[-–].*Seite\s+\d+\s*$"),          # running head
     re.compile(r"^Klausur\s*Nr\.?\s*\d+\s*[-–]\s*Lösung,\s*Seite\s+\d+\s*$"),
     re.compile(r"^Fall\s*\d*\s*[-–]?\s*L[äöa]?"),      # "Fall 3 - Lä" (truncated)
@@ -73,14 +73,45 @@ class AssemblyResult:
     discarded: list[str]
 
 
+# Letters OCR confuses in running lines: "26-II", "26-Il", "26-11".
+_CONFUSABLE = str.maketrans("il|", "111")
+
+
+def _fragment_key(text):
+    return re.sub(r"[\W_]+", "", text.casefold().translate(_CONFUSABLE))
+
+
+def is_running_fragment(text, running, min_length=5):
+    """Is text one end of a running line, cut off at the column gutter?
+
+    A scan is read column by column, so a footer spanning both columns comes
+    back as two pieces, and the glyph at the cut may be read wrong.
+    """
+    key = _fragment_key(text)
+    for line in running:
+        whole = _fragment_key(line)
+        if len(key) >= len(whole):
+            continue
+        if any(len(piece) >= min_length and whole.startswith(piece)
+               for piece in (key, key[:-1])):
+            return True
+        if any(len(piece) >= min_length and whole.endswith(piece)
+               for piece in (key, key[1:])):
+            return True
+    return False
+
+
 def is_boilerplate(text, y=None, header_zone=70, footer_zone=950,
-                   context=None):
+                   context=None, fragment_zone=930):
     """Detect Hemmer boilerplate."""
     t = text.strip().strip("*").strip()
     if not t:
         return False
     running = context.running_lines if context else frozenset()
     if running and re.sub(r"\s+", " ", re.sub(r"\*", "", t)).strip() in running:
+        return True
+    if (running and y is not None and y >= fragment_zone
+            and is_running_fragment(t, running)):
         return True
     if any(p.search(t) for p in BOILERPLATE):
         return True
