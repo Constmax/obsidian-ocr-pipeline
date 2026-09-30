@@ -217,7 +217,7 @@ Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
 ```
 bin/             Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
 ocrmypdf_paddle/ Stufe 1 — OCRmyPDF-Engine-Plugin mit PaddleOCR (RapidOCR),
-                 noch nicht von setup.sh installiert (docs/paddle-textlayer.md)
+                 von setup.sh über install-paddle.sh installiert
 pdf2md/          Stufe 2 — pdf2md.py (CLI) + conversion.py (Runner) + layout.py
                  + ocr.py + assembly.py + dictionary.py + page_cache.py,
                  Testsuite in pdf2md/test/
