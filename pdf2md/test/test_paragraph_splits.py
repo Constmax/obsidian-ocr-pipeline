@@ -19,7 +19,7 @@ def z(text, y0, x0=100, x1=900, marker=None):
 @pytest.mark.parametrize("text", [
     "a) Erster Punkt", "bb) Zweiter Punkt", "aaa) Dritte Ebene",
     "a. Erster Punkt", "1. Anspruch", "IV. Ergebnis", "- Spiegelstrich",
-    "(2) Absatz",
+    "(2) Absatz", "iv. Ergebnis", "ff) Sechster Punkt",
 ])
 def test_labels_start_an_enumeration(text):
     assert ENUMERATION.match(text)
@@ -28,6 +28,7 @@ def test_labels_start_an_enumeration(text):
 @pytest.mark.parametrize("text", [
     "gem. § 823 I BGB", "vgl. BGH NJW 2000, 1", "hat.", "obj. Tb (-)",
     "i. V.m. § 15 BVerfSchG", "z. B. ein Kaufvertrag", "bzw. ein Vertrag",
+    "ff. BGB",
 ])
 def test_abbreviations_start_no_enumeration(text):
     assert not ENUMERATION.match(text)
@@ -72,7 +73,31 @@ def test_bold_line_after_an_article_continues_on_a_model_page():
         z("ergeben.", 124, x1=200),
     ]
     out = assemble_paragraphs(lines, OCR).paragraphs
-    assert len(out) == 2
+    assert out[1] == ("Nach anderer Ansicht soll sich die **Pflicht zur "
+                      "Abtretung aus § 242 BGB** ergeben.")
+
+
+def test_bold_line_inside_a_sentence_still_splits_a_text_layer_page():
+    lines = filler(40) + [
+        z("Die Eltern duerfen allein handeln, wenn es um eine Angelegenheit",
+          100, x1=750),
+        z("**des taeglichen Lebens**", 112, x1=400),
+        z("geht, vgl. § 1687 I S. 2 BGB.", 124, x1=400),
+    ]
+    assert len(assemble_paragraphs(lines).paragraphs) == 4
+
+
+def test_body_after_a_bold_heading_may_start_lowercase_on_a_model_page():
+    out = assemble_paragraphs([
+        z("Vorab ist festzuhalten:", 40, x1=300),
+        z("Der Sachverhalt ist aufgeklaert.", 52, x1=500),
+        z("**Meinungsstreit**", 76, x1=300),
+        z("h.M.: Der Anspruch ist ausgeschlossen, weil", 88, x1=700),
+        z("die Frist abgelaufen ist.", 100, x1=400),
+    ], OCR).paragraphs
+    assert out[1:] == ["**Meinungsstreit**",
+                       "h.M.: Der Anspruch ist ausgeschlossen, weil die "
+                       "Frist abgelaufen ist."]
 
 
 def test_bold_heading_after_a_sentence_still_separates_on_a_model_page():
@@ -113,6 +138,17 @@ def test_box_edge_still_splits_a_text_layer_page():
     assert len(assemble_paragraphs(box_crossing()).paragraphs) == 3
 
 
+@pytest.mark.parametrize("last", ["Es gilt folgendes Schema:",
+                                  "Anspruchsgrundlage § 433 II BGB"])
+def test_box_edge_after_a_colon_or_a_scheme_line_splits_a_model_page(last):
+    out = assemble_paragraphs(filler(40) + [
+        z(last, 100, x1=500),
+        z("Voraussetzung ist ein wirksamer Vertrag.", 112, x1=500,
+          marker="kasten1"),
+    ], OCR).paragraphs
+    assert out[1:] == [last, "Voraussetzung ist ein wirksamer Vertrag."]
+
+
 def test_box_edge_after_a_sentence_splits_a_model_page():
     out = assemble_paragraphs([
         z("Die Auskunft ist kein Verwaltungsakt.", 100, x1=500),
@@ -140,7 +176,7 @@ def test_label_of_its_own_line_is_kept():
         ["**1.**", (79, 100, 107, 112)],
         ["Begruendetheit", (139, 100, 400, 112)],
     ], OCR).paragraphs
-    assert "1." in " ".join(out[1:])
+    assert out[1] == "**1.**"
 
 
 def test_abbreviation_at_line_end_continues_without_coordinates():
