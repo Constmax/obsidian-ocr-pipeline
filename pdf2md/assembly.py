@@ -99,7 +99,7 @@ _CONFUSABLE = str.maketrans("il|", "111")
 # 7 %), where a footer cut at the gutter is dropped (Issue #161).
 FOOTER_BAND = 930
 # A piece of a running line holds at least this many letters and digits, and
-# this share of the line's.
+# this share of the line's, in at least two words.
 PIECE_MIN_LENGTH = 5
 PIECE_MIN_SHARE = 0.4
 
@@ -116,10 +116,16 @@ def is_running_piece(text, running_keys):
     A scan is read column by column, so a footer spanning both columns comes
     back as two pieces, and the right piece may start with half a glyph (a
     cut through "t" reads "l"). A piece must hold `PIECE_MIN_SHARE` of the
-    line: a city or a subject word alone ("Bremen", "Hessen") ends a
-    footnote line as well.
+    line and two words: a city or a subject word alone ("Bremen", "Hessen",
+    "Grundrechte") ends a footnote line as well.
     """
     key = _running_key(text)
+    if len(key) < PIECE_MIN_LENGTH:
+        return False
+    if key in running_keys:
+        return True
+    if len(re.findall(r"[^\W_]+", text)) < 2:
+        return False
     for whole in running_keys:
         if len(key) > len(whole):
             continue

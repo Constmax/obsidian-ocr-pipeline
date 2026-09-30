@@ -86,6 +86,15 @@ def test_a_word_that_merely_ends_a_running_line_is_kept():
     assert not is_boilerplate("Hessen", 960, context=context)
 
 
+def test_a_lone_word_of_a_short_running_line_is_kept():
+    """40 % of a short running line is a single word."""
+    context = AssemblyContext(
+        frozenset({"ÖR Hessen", "Staatsrecht II – Grundrechte"}), ocr_page=True)
+    assert not is_boilerplate("Hessen", 960, context=context)
+    assert not is_boilerplate("Grundrechte", 960, context=context)
+    assert is_boilerplate("Staatsrecht II –", 960, context=context)
+
+
 def test_a_piece_of_a_running_line_on_a_text_layer_page_is_kept():
     """A text layer is not cut at the gutter: a piece there is page text."""
     text_layer = AssemblyContext(CONTEXT.running_lines)

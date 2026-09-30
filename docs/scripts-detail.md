@@ -432,9 +432,9 @@ a `daten/` directory would be lost during flat file copies.
 
 `is_boilerplate()` drops a recognized line as a header or footer before the
 page's paragraphs are assembled, so a header the model glued to the first
-paragraph is dropped too. Besides fixed patterns (`BOILERPLATE`, and
-`ZONE_SIGNALS` for short lines and lines near the page edge), it drops the
-document's running lines:
+paragraph is dropped too. Besides fixed patterns (`BOILERPLATE`, the city
+lists, bare page numbers near the page edge, and `ZONE_SIGNALS` for short
+lines and lines near the page edge), it drops the document's running lines:
 
 - `running_lines()` in `conversion.py` reads them from the PDF's text layer.
   A line counts when it repeats on two pages in the header (top 9 %) or
@@ -446,9 +446,10 @@ document's running lines:
   back in two pieces. On a page the model read, a line whose top lies in the
   bottom 7 % is dropped as well when it is a running line read with OCR
   confusions (`i`, `l` and `|` read as `1`), or its start or end. A piece
-  must hold five letters or digits and 40 % of the line's; the end piece may
-  start with half a glyph. A text layer is not cut, so text-layer pages keep
-  such lines.
+  must hold five letters or digits, 40 % of the line's, and two words; the
+  end piece may start with half a glyph. A text layer is not cut, so
+  text-layer pages keep such lines. On a horizontally tiled page y is
+  tile-relative (#146), so the band also reaches into the upper tile.
 - A misread footer that is not a running line of the text layer (a scan
   without one, for example) is dropped only by the fixed patterns.
 
