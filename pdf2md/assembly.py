@@ -128,11 +128,13 @@ FN_DEF = re.compile(r"^(\d{1,2})\s+(?=" + FN_START + r")(.+)$")
 # citations like "BayVBl. 2016, 77 (78)" would split mid-citation.
 FN_DEF_SPLIT = re.compile(r"(?<=[.!?:)\]»\"“”]\s)(?=\d{1,2}\s+" + FN_START + ")")
 
-# A number after a citation word or roman numeral continues the citation
-# ("§ 35 VwVfG", "Art. 3 III 1 GG") — it never starts a footnote definition.
+# A number after a citation word continues the citation ("§ 35 VwVfG",
+# "Art. 3 III 1 GG") — it starts no footnote definition and is no footnote
+# mark. No roman-numeral alternative: FN_DEF_SPLIT never splits after a bare
+# letter, and in the body it would swallow marks glued to "AEUV", "BImSchV".
 CITATION_BEFORE = re.compile(
     r"(§+|Art\.|Abs\.|S\.|Satz|Alt\.|Nr\.|Rn\.|Rz\.|Hs\.|Halbs\.|Var\.|"
-    r"lit\.|Buchst\.|Seite|Fall|Teil|Rspr\.|Anm\.|[IVXL]+)\s*$")
+    r"lit\.|Buchst\.|Seite|Fall|Teil|Rspr\.|Anm\.)\s*$")
 
 
 def split_footnote_defs(text):
