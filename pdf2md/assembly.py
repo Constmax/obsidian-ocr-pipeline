@@ -23,6 +23,13 @@ LOC = re.compile(r"<\|LOC_(\d+)\|>")
 # Words that must NOT be joined after a line-end hyphen.
 NO_JOIN = re.compile(r"^(und|oder|bzw|sowie|als|wie|bis|von|zu|im|in)\b", re.I)
 
+# Words a phrase cannot end on: text ending in one runs on into the next
+# line, whatever the line looks like (Issue #163).
+OPEN_END = re.compile(
+    r"(?<![\w.])(?:der|die|das|des|dem|den|ein|eine|einer|eines|einem|einen"
+    r"|aus|bei|mit|von|vom|zu|zur|zum|für|über|unter|in|im|nach|wegen|gegen"
+    r"|durch|ohne|und|oder|bzw\.|sowie|dass|gem\.|vgl\.|i\.\s?V\.\s?m\.)\**$")
+
 # --- Hemmer Boilerplate ----------------------------------------------------
 
 CITIES = ("Augsburg Bayreuth Berlin Potsdam Bielefeld Bochum Bonn Bremen "
@@ -302,10 +309,14 @@ def parse_lines(text):
     return lines
 
 
+# Letter labels are one letter or one letter repeated ("a)", "bb)", "aaa)").
+# Any other short lowercase word with a period is an abbreviation or the
+# end of a sentence ("gem.", "vgl.", "hat."), and a single letter followed
+# by one is an abbreviation too ("i. V.m.", "z. B.") (Issue #163).
 ENUMERATION = re.compile(
     r"^\s*([-•·▪○●⇒⇨→➢✔]"
     r"|\(?\d{1,2}[.)]"
-    r"|[a-z]{1,3}[.)]"
+    r"|([a-z])\2{0,2}(?:\)|\.(?!\s*[A-Za-zÄÖÜ]{1,2}\.))"
     r"|[IVXL]{1,5}\.)(?=\s|$)"
 )
 KEYWORD_WORDS = (r"Anmerkung|Hinweis|Merksatz|Merke|Ergebnis|Beachte|"
@@ -375,6 +386,27 @@ def attach_footnote_numbers(lines, footer=900, proximity=40):
             continue
         out.append(z)
         i += 1
+    return out
+
+
+def drop_repeated_labels(lines):
+    """Drop an outline label the model read twice.
+
+    The model sometimes returns a line's leading label ("1.") a second time
+    as a line of its own, its box inside the box of the line it belongs to
+    (Issue #163).
+    """
+    out = []
+    for z in lines:
+        prev = out[-1] if out else None
+        if (prev is not None and z[1] and prev[1]
+                and STANDALONE_MARKER.match(z[0].strip())
+                and prev[1][0] - 2 <= z[1][0] and z[1][2] <= prev[1][2] + 2
+                and prev[1][1] - 2 <= z[1][1] and z[1][3] <= prev[1][3] + 2):
+            label = without_bold(z[0])
+            if without_bold(prev[0]).startswith(label + " "):
+                continue
+        out.append(z)
     return out
 
 
@@ -451,13 +483,14 @@ def assemble_paragraphs(lines, context=None):
 
     Returns an AssemblyResult — read .paragraphs, not the record itself.
     """
-    lines = attach_footnote_numbers(lines)
+    lines = drop_repeated_labels(attach_footnote_numbers(lines))
     ys = [z[1][1] for z in lines if z[1]]
     distances = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 200]
     normal = statistics.median(distances) if distances else None
     lines = promote_margin_labels(lines, normal)
     short, block = short_lines(lines)
 
+    ocr_page = bool(context and context.ocr_page)
     out, buffer, last_y, discarded = [], "", None, []
     was_heading, last_marker, prev_idx, buffer_x0 = False, None, None, None
     for i, z in enumerate(lines):
@@ -489,20 +522,35 @@ def assemble_paragraphs(lines, context=None):
                      or box and buffer_x0 is not None
                      and box[0] > buffer_x0 + 8
                      or bool(re.search(r"[,;\-–]\**$", buffer)))
+        # On a page the model read, bold comes per recognized line and the
+        # boxes from ruled lines of the image, so an all-bold line or a box
+        # edge can fall inside a sentence (Issue #163). There a line that
+        # carries on the buffer's sentence -- it starts lowercase, or the
+        # buffer ends on a word no phrase ends on -- is not cut off by a bold
+        # line or by the line before it looking like a heading, and a box
+        # edge cuts only where the spacing or a sentence end agrees.
+        runs_on = ocr_page and (cont[:1].islower()
+                                or bool(OPEN_END.search(buffer)))
+        box_crossed = not (ocr_page and normal and y is not None
+                           and last_y is not None
+                           and y - last_y <= normal * 1.6
+                           and not SENTENCE_END.search(buffer.rstrip("*")))
 
         if not buffer or hyphen:
             new_p = False
-        elif marker != last_marker:
+        elif marker != last_marker and box_crossed:
             new_p = True
         elif (ENUMERATION.match(bare) or KEYWORD.match(bare)
-              or (heading and not continues) or was_heading):
+              or (heading and not continues and not runs_on)
+              or (was_heading and not runs_on)):
             new_p = True
         elif y is not None and last_y is not None and y < last_y - 50:
             new_p = not text[:1].islower()
         elif normal and y is not None and last_y is not None:
             new_p = (y - last_y) > normal * 1.6
         else:
-            new_p = bool(re.search(r'[.!?:]["“»)]?\s*$', buffer))
+            new_p = (bool(re.search(r'[.!?:]["“»)]?\s*$', buffer))
+                     and not OPEN_END.search(buffer))
 
         if buffer and not new_p:
             if hyphen:
@@ -514,7 +562,11 @@ def assemble_paragraphs(lines, context=None):
                 out.append(buffer)
             buffer, buffer_x0 = text, (box[0] if box else None)
 
-        was_heading = ((heading and buffer == text
+        # On a model page a bold line can join a bold buffer (a heading
+        # wrapped over two lines); the heading still ends there.
+        was_heading = ((heading and (buffer == text
+                                     or ocr_page and only_bold(buffer)
+                                     and len(without_bold(buffer)) <= 90)
                         and not (block[i] and not short[i]))
                        or (short[i] and level(buffer) is not None
                            and (len(without_bold(buffer)) <= 90
