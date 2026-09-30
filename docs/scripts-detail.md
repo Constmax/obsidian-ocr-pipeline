@@ -10,7 +10,7 @@ All three scripts share these flags:
 | `--paddle-mode accurate\|fast` | `accurate` | PaddleOCR mode; only with `--engine paddle` |
 | `--dpi N` | `300` | Pre-OCR downscaling (0 = disabled) |
 | `--jobs N` | by RAM (1–4) | Parallel OCR workers |
-| `--split-columns` | off | Automatically detect two-column pages, split, then re-merge back into original page layout |
+| `--split-columns` | off | Automatically detect two-column pages, split, then re-merge back into original page layout (ignored with `--engine paddle`) |
 | `--split-columns-all` | off | Same as `--split-columns`, but without detection — splits every page |
 | `--keep-split` | off | Suppress re-merge (output remains split into half-pages) |
 | `--no-quality-gate` | off | Disable automated quality check + auto-retry |
@@ -85,7 +85,7 @@ On failure the gate walks a fixed fallback matrix:
 | Tesseract | Tesseract with column split | Apple Vision (if installed) |
 | PaddleOCR | Apple Vision, or Tesseract without it | — |
 
-The column-split retry needs `pikepdf`, re-merges to the original format and is skipped when `--split-columns` already splits. PaddleOCR never adds an implicit split; an explicit `--split-columns` stays in force. An engine switch re-runs OCR with `--force-ocr`. Every switch is printed on stderr with its reason (`🔄 Fallback: PaddleOCR accurate → Apple Vision (quality gate failed)`), and the summary names the engine that produced the file (`pdf-auto`: per file, plus a fallback count). If every attempt fails, no file is written.
+The column-split retry needs `pikepdf`, re-merges to the original format and is skipped when `--split-columns` already splits. PaddleOCR never splits: it orders both columns itself, and `--split-columns`/`--split-columns-all` with `--engine paddle` are ignored with a warning, for the fallback engine too (#153; split mode cost words and order in `bench/ERGEBNIS.md`, Nachtrag 26). An engine switch re-runs OCR with `--force-ocr`. Every switch is printed on stderr with its reason (`🔄 Fallback: PaddleOCR accurate → Apple Vision (quality gate failed)`), and the summary names the engine that produced the file (`pdf-auto`: per file, plus a fallback count). If every attempt fails, no file is written.
 
 ### Multi-Part File Detection
 

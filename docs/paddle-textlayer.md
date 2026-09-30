@@ -590,8 +590,9 @@ Make the retry matrix explicit and testable:
   applicable;
 - Tesseract failure → split Tesseract, then Apple where available;
 - Paddle failure → Apple when available, otherwise Tesseract;
-- Paddle does not add an implicit split retry; explicit user-requested split
-  mode remains in force.
+- Paddle does not add an implicit split retry. Since #153 it also ignores an
+  explicit split request (with a warning), because step 5 found split mode
+  worse on every cohort.
 
 Every fallback must be visible in stderr and the final summary, including the
 requested engine, the actual engine, and the reason for the transition.

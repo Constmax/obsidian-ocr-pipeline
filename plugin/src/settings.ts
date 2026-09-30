@@ -237,7 +237,8 @@ export class SettingsTab extends PluginSettingTab {
 			.setName("Split two-column pages")
 			.setDesc(
 				"Detects two-column pages, recognizes each column on its own, and merges " +
-					"the pages back. Recommended for two-column scripts; needs pikepdf.",
+					"the pages back. Recommended for two-column scripts with Apple Vision or " +
+					"Tesseract; needs pikepdf. PaddleOCR always reads whole pages.",
 			)
 			.addToggle((t) =>
 				t

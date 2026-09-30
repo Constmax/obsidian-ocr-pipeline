@@ -140,7 +140,8 @@ export async function runSearchableCopy(
 		source,
 		destination,
 		engine,
-		splitColumns,
+		// PaddleOCR orders both columns itself; splitting costs words and order (#153).
+		splitColumns: engine === "paddle" ? false : splitColumns,
 		...(allowPages ? { allowPages } : {}),
 	});
 	if (result === null) return;
