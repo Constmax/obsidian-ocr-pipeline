@@ -1,13 +1,15 @@
 # PaddleOCR as a third Stage-1 engine
 
-**Status:** Steps 0–3 are done (hOCR order #61, runtime spike #62 with a go,
-adapter #68, reading order #69 with follow-ups #87, #94, #114, #124, #125) and
-fast mode (3a) is merged (#118). The gate result is still **keep split mode**.
-Open: the resolved engine value (step 4, #70, PR #121), the retain/discard
-benchmark (step 5, #71) and installation (step 6, #72). Issue #133 proposes
-removing OCRmyPDF from Stage 1, which would rework steps 4 and 6. Until step 5
-retains it, `setup.sh` does not install the plugin and `bin/` does not offer
-`--engine paddle`.
+**Status:** Steps 0–5 are done (hOCR order #61, runtime spike #62 with a go,
+adapter #68, reading order #69 with follow-ups #87, #94, #114, #124, #125, fast
+mode 3a #118, resolved engine value #70, plugin option #73). Step 5 (#71,
+`bench/ERGEBNIS.md`, Nachtrag 26) **retains** PaddleOCR in fast mode, with one
+documented exception, and **removes split mode for PaddleOCR** (#153). Open:
+unsplit-only Paddle (#153), installation (step 6, #72), and the 90° rotation
+gap the benchmark found for every engine (#152). Issue #133 proposes removing
+OCRmyPDF from Stage 1, which would rework steps 4 and 6. Until step 6,
+`setup.sh` does not install the plugin; `bin/` offers `--engine paddle` where
+the plugin is installed.
 
 ## Goal
 
@@ -662,6 +664,23 @@ to `setup.sh` or the public engine list.
 
 **Complete when:** `bench/ERGEBNIS.md` contains a binary retain/discard decision
 and a separate keep/remove-split decision.
+
+**Result (2026-09-30, `bench/ERGEBNIS.md`, Nachtrag 26):** retain fast mode;
+remove split mode for PaddleOCR. `bench/stage1_bench.py` sends rendered vector
+pages through `reprocess-raw --output` and scores `pdftotext -raw` against
+their own text layer (cohorts `words`, `short`, `skew` in
+`bench/stage1_cohorts.json`); reading order ran on all five hand-checked sets.
+The thresholds are 1.96 standard errors of the best existing engine's page
+scores per cohort (words 1.3, citations 12.6 points on the 40-page set).
+`paddle-fast` against Apple: citations +18.3 points on short pages (above the
+threshold), +9.5 on the 40 pages (significant, below it), words +0.6; 4
+instead of 30 interleaved pages on 68 two-column scans; 3.2 s/page, 585 MB.
+One criterion is missed formally: on one page turned by 90° no engine rotates
+the page upright, Apple writes unreadable text that passes B5 and PaddleOCR
+writes almost none, which B5 catches (#152). Split mode loses 9 points of word
+accuracy on two-column pages, fails the quality gate on slides and breaks
+pages turned by 180°. Hard scans were not scored: there is no checked
+transcription.
 
 ### 6. Make installation reproducible only after retention
 
