@@ -114,6 +114,49 @@ def test_check_models_names_missing_and_mismatching_files(monkeypatch, tmp_path)
     assert runtime.check_models(tmp_path) == []
 
 
+# ── fetch_models: prefetch at setup, never at OCR time (#72) ────────────────
+
+def _pinned(monkeypatch, **contents):
+    monkeypatch.setattr(runtime, "MODEL_FILES", tuple(
+        runtime.ModelFile(name, hashlib.sha256(data).hexdigest(), f"https://models.test/{name}")
+        for name, data in contents.items()))
+
+
+def test_fetch_models_downloads_missing_and_mismatching_files(monkeypatch, tmp_path):
+    _pinned(monkeypatch, **{"a.onnx": b"model a", "b.onnx": b"model b"})
+    (tmp_path / "b.onnx").write_bytes(b"tampered")
+    asked = []
+
+    def download(url):
+        asked.append(url)
+        return {"https://models.test/a.onnx": b"model a",
+                "https://models.test/b.onnx": b"model b"}[url]
+
+    fetched = runtime.fetch_models(tmp_path / "models", download)
+    assert fetched == ["a.onnx", "b.onnx"] and len(asked) == 2
+    (tmp_path / "models" / "b.onnx").write_bytes(b"tampered")
+    assert runtime.fetch_models(tmp_path / "models", download) == ["b.onnx"]
+    assert runtime.check_models(tmp_path / "models") == []
+    # Nothing is fetched when every file matches.
+    assert runtime.fetch_models(tmp_path / "models", download) == []
+    assert len(asked) == 3
+
+
+def test_fetch_models_refuses_a_download_with_the_wrong_hash(monkeypatch, tmp_path):
+    _pinned(monkeypatch, **{"a.onnx": b"model a"})
+
+    with pytest.raises(RuntimeError, match="pinned SHA-256: https://models.test/a.onnx"):
+        runtime.fetch_models(tmp_path, lambda url: b"something else")
+    assert list(tmp_path.iterdir()) == []  # no partial or wrong file stays
+
+
+def test_every_pinned_model_names_its_download():
+    for model in runtime.MODEL_FILES:
+        assert model.url.startswith("https://www.modelscope.cn/models/RapidAI/RapidOCR/"
+                                    "resolve/v3.9.2/onnx/"), model
+        assert model.url.endswith("/" + model.name)
+
+
 def test_missing_runtime_reports_absent_and_unpinned_packages(monkeypatch):
     installed = {"onnxruntime": "1.27.0"}
 
@@ -302,3 +345,22 @@ def test_oversized_images_are_downscaled_and_mapped_back(tmp_path):
     assert (page.width, page.height) == (8000, 1000)
     assert page.lines[0].polygon == ((800.0, 80.0), (1600.0, 80.0), (1600.0, 160.0),
                                      (800.0, 160.0))
+
+
+def test_fetch_models_command_uses_the_model_directory(monkeypatch, tmp_path, capsys):
+    from ocrmypdf_paddle import __main__ as command
+
+    _pinned(monkeypatch, **{"a.onnx": b"model a"})
+    monkeypatch.setenv(runtime.MODEL_DIR_ENV, str(tmp_path))
+    monkeypatch.setattr(runtime, "download_url", lambda url: b"model a")
+
+    assert command.main(["fetch-models"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"fetched a.onnx into {tmp_path}", f"models ready in {tmp_path}"]
+    assert command.main(["fetch-models"]) == 0
+    assert capsys.readouterr().out.splitlines() == [f"models ready in {tmp_path}"]
+
+    monkeypatch.setattr(runtime, "download_url", lambda url: b"wrong")
+    (tmp_path / "a.onnx").unlink()
+    assert command.main(["fetch-models"]) == 1
+    assert "pinned SHA-256" in capsys.readouterr().err

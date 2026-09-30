@@ -26,6 +26,7 @@ bench/pages.json
 bench/bench-lauf/
 bench/reading-order-lauf/
 bench/apple-vision-lauf/
+bench/stage1-lauf/
 bench/defekt-lauf/
 bench/nachspiel-lauf/
 bench/kachel-debug/
@@ -58,3 +59,6 @@ plugin/node_modules/
 plugin/main.js.map
 plugin/data.json
 plugin/*.tsbuildinfo
+
+# Editable install of ocrmypdf_paddle (install-paddle.sh)
+*.egg-info/
