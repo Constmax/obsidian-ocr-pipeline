@@ -108,7 +108,7 @@ pdf.js library bundled with Obsidian itself — including the pre-wired worker (
 
 Lazy rendering with pre-measured geometry: After `getDocument`, the column fetches **all** viewports at scale 1 (page dictionary only, no rasterization) and assigns each page its aspect ratio as a CSS custom property. Height and width follow via `aspect-ratio` — scrollbars have correct geometry from frame one, preventing layout shifts during lazy loading rather than compensating for them. Rasterization runs via `IntersectionObserver` (rootMargin 200%), max 2 parallel, with pixel scale `min(width/page · devicePixelRatio, pdfZoomMax)` and LRU eviction at 12 canvases (on eviction `canvas.width = height = 0`, otherwise buffer remains allocated). `doc.destroy()` on file switch and view close; `RenderTask.cancel()` before re-renders. **Error degradation:** Banners in PDF header offer "Open in PDF viewer" and "Assign PDF…" — never a dead pane.
 
-**What the source column accepts (Issue #101):** PDFs, rendered through pdf.js as above, and PNG, JPG/JPEG and BMP images. An image bypasses pdf.js: it becomes a single `<img>` page whose aspect ratio comes from its natural size after the image loads, so zoom and page/scroll coupling treat it as a one-page document. TIFF converts (Stage 2 accepts it) but Chromium cannot decode it, so a TIFF source shows a banner naming the reason instead. When a PDF and an image share the preview's basename, the PDF wins. "Create searchable copy" is not offered for an image source — Stage 1 is PDF-only.
+**What the source column accepts (Issue #101):** PDFs, rendered through pdf.js as above, and PNG, JPG/JPEG and BMP images. An image bypasses pdf.js: it becomes a single `<img>` page whose aspect ratio comes from its natural size after the image loads, so zoom and page/scroll coupling treat it as a one-page document. TIFF converts (Stage 2 accepts it) but Chromium cannot decode it, so a TIFF source shows a banner naming the reason instead. When a PDF and an image share the preview's basename, the PDF wins.
 
 ### Fallback if `loadPdfJs` is ever removed
 
@@ -145,9 +145,9 @@ reason. A stored PaddleOCR is checked again before every run: when it is not
 usable (another Mac, a removed venv), the run uses Automatic and a notice says
 why. Whether PaddleOCR stays is decided by the benchmark in #71.
 
-The action itself is **Create searchable copy (OCR)**: in the PDF file menu,
-as a command that asks for a PDF, and in the view's More menu for the open
-preview's original PDF. It writes `<stem>-ocr.pdf` beside the source with
+The action itself is **Create searchable copy (OCR)**: in the PDF file menu
+and as a command that asks for a PDF. The comparison view offers no entry for
+it (#96): pure OCR never opens or requires the view. It writes `<stem>-ocr.pdf` beside the source with
 `reprocess-raw --output`, stops if that file already exists, never touches the
 source, and opens the new PDF.
 
