@@ -53,3 +53,10 @@ def test_no_phantom_definitions():
 def test_duplicate_number_appends():
     out = footnotes_obsidian(["Text.1", "1 First source.", "1 Second source."])
     assert out == ["Text.[^1]", "", "[^1]: First source. Second source."]
+
+
+def test_mark_after_abbreviation_ending_in_roman_letter():
+    out = footnotes_obsidian(
+        ["Vorlage nach Art. 267 AEUV12 ist zulässig.", "12 Vgl. EuGH."])
+    assert out == ["Vorlage nach Art. 267 AEUV[^12] ist zulässig.", "",
+                   "[^12]: Vgl. EuGH."]

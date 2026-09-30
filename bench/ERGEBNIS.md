@@ -2614,7 +2614,10 @@ einzigen bekannten Fehler:
    Trennung nach jedem Punkt/Leerzeichen zerlegte Zitate — aus
    `Kopp/Ramsauer, § 35 VwVfG, Rn. 18` wurden die Definitionen 8 (gekürzt)
    und 35 (Phantom). Jetzt trennt nur Satzzeichen plus Leerzeichen, und
-   ein Zitatwort davor (inklusive römischer Ziffern) schützt die Zahl.
+   ein Zitatwort davor schützt die Zahl. (Review 2026-09-30: die römischen
+   Ziffern sind aus dem Schutzmuster wieder entfernt — im Splitter wirkungslos,
+   im Fließtext verschluckten sie Fußnotenzeichen nach `AEUV`, `BImSchV`.
+   Korpus danach erneut 20/20 gegen `main` `af29c16`.)
    Regression über alle 1404 Vektorseiten (`bench/regress_footnote.py`):
    **1026 unverändert, 378 neu gruppiert, 294 Phantom-Doppelpunkte weg,
    0 Zeichen verloren.**
