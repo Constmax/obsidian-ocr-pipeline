@@ -534,28 +534,41 @@ Cases hold page text, so they live in the vault and are never committed:
 <preview folder>/.cases/<stem>/.stash/pNNN.json   the stash
 ```
 
-**`stash <preview> --page N`** keeps the page block as the preview holds it,
-with the page's page-cache entry, before the first edit is saved. A page has
-one stash: the first produced version since the last mark. A second `stash`
-leaves it alone (`stash kept`), so a rerun does not replace it. When the page
-already has a case made from the same recognized lines, nothing is stashed:
-the case holds the produced block, and the block in the preview is the
-user's. `add` removes the stash; `run` removes the stashes of previews that
-left the preview folder (accepted or deleted).
+The block a preview holds for a page always comes from the page's current
+page-cache entry. A stash or case made from other recognized lines therefore
+belongs to an earlier version of the page (before a rerun that read other
+lines, or before the preview was accepted and converted again) and is not
+used for the block the preview holds now.
+
+**`stash <preview> --page N`** keeps the page's page-cache entry and the
+produced block, called before the first edit is saved. The produced block is
+the replay of the entry's lines, not the text in the preview: that may be
+edited already, and nothing in the file tells.
+
+| Output | Meaning |
+|---|---|
+| `stashed` | The lines and the produced block are kept; a stash of other lines is replaced |
+| `stash kept` | The page has a stash of these lines; a rerun that reads the same lines does not replace it |
+| `not stashed, the case holds the produced block` | The page's case was made from these lines |
+
+`add` removes the stash; `run` removes the stashes of previews that left the
+preview folder (accepted or deleted).
 
 **`add <preview> --page N [--note TEXT] [--issue N] [--fault-stage
 assembly|upstream]`** marks the page: the current page block becomes the
 expected block. Recognized lines and produced block come from the stash;
 without a stash from the case the page already has (marking again updates the
-expected block and keeps note and issue unless given); without either from
-the current page-cache entry, whose replay then is the produced block. A
-changed expected block sets the case back to `open`.
+expected block); without either, or when they were made from other lines,
+from the current page-cache entry. Note and issue of an existing case stay
+unless given. A changed expected block sets the case back to `open`.
 
-Capturing a page (`stash`, and `add` without a stash or case) needs the
-page's page-cache entry and the source named in `quelle-pdf`, unchanged since
-the conversion; a relative `quelle-pdf` is looked up from the working
-directory and from every folder above the preview. Both commands exit with
-code 1 and one line on stderr when they cannot do what was asked.
+Capturing a page needs its page-cache entry and the source named in
+`quelle-pdf`, unchanged since the conversion; a relative `quelle-pdf` is
+looked up from the working directory and from every folder above the preview.
+`stash` exits with code 1 and one line on stderr without them. `add` then
+works from the stash or the existing case and fails only when there is
+neither. The page cache stays in the preview folder, so a page is stashed
+and first marked while its preview is under review, before it is accepted.
 
 A case file (`schema: 1`) holds:
 
@@ -588,10 +601,13 @@ case is reported as stale), the frozen copy is used. The dictionary pass is
 not replayed: it depends on the machine's word lists, and a word it corrected
 is an upstream fault.
 
-**Comparison** is block by block with `bench/structure.py`, marker line
-excluded: order, paragraph boundaries, kind (text, heading, table, footnote),
-heading level and footnote numbers count; bold, case and whitespace do not.
-The report names the blocks that differ.
+**Comparison** is block by block, marker line excluded. Each block is
+described as `bench/structure.py` describes a reference block (text
+fingerprint, kind, heading level, footnote number, the footnote marks it
+carries), and the two sequences must be equal: order, paragraph boundaries,
+kind (text, heading, table, footnote), heading level, footnote numbers and
+the paragraph a footnote mark sits in count; bold, case and whitespace do
+not. The report names the blocks that differ.
 
 **`run [FOLDER ...] [--issue N] [--promote]`** replays every case below the
 folders (default: `$VAULT_ROOT`; exit code 2 when neither is given).
@@ -602,8 +618,14 @@ folders (default: `$VAULT_ROOT`; exit code 2 when neither is given).
 | `open` | An open case still differs: a known failure | no |
 | `now matching` | An open case matches; `--promote` makes it `fixed` (`promoted`) | no |
 | `regressed` | A fixed case differs | yes (exit 1) |
+| `uncorrected` | The expected block equals the produced one for the comparer: the page was marked without a correction. Not replayed, never promoted | no |
 | `upstream` | Not replayed | no |
 | `unreadable` | The file cannot be read by this version | yes (exit 1) |
+| `error` | The replay raised: a damaged case, or the code under repair | yes (exit 1) |
+
+`--promote` also rewrites the frozen running lines with the ones the case
+matched with, so a case fixed by a running-line fix stays fixed once its
+source is moved or changed.
 
 `make check-cases` runs this with `~/.venvs/mlxocr` (pymupdf; no model is
 loaded) on `VAULT_ROOT` and stops with a message when `VAULT_ROOT` is unset.
