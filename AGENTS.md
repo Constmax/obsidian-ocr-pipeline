@@ -60,7 +60,7 @@ The plugin is where the user meets this code. Domain terms: `CONTEXT.md`.
 | `bench/`, `ocrmypdf_paddle/`, reading order | `bench/AGENTS.md` |
 | anything the plugin reads from a CLI: progress events, exit codes, message lines, input formats, preview format version | `docs/cli-contract.md` and `contracts/`; Python and TypeScript tests both read them, so change both sides in one PR |
 | setup, venvs, `setup.sh`, `install.sh` | `docs/installation.md` |
-| a design decision | `docs/adr/` and the design records below |
+| a design decision | the design records below, and `docs/adr/` once it exists (created lazily) |
 
 ## Commands
 
