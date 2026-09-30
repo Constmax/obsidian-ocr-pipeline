@@ -156,12 +156,33 @@ def test_paddle_never_adds_a_split_retry(box):
     assert box.files() == {"a.pdf": "a"}
 
 
-def test_paddle_keeps_an_explicit_split(box):
-    result = _combine(box, "--engine", "paddle", "--split-columns", paddle="1")
+@pytest.mark.parametrize("flag", ["--split-columns", "--split-columns-all"])
+def test_paddle_ignores_an_explicit_split(box, flag):
+    """#153: split mode loses words and order with PaddleOCR (bench Nachtrag 26)."""
+    result = _combine(box, "--engine", "paddle", flag, paddle="1")
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert _engines(box) == ["paddle+split"]
-    assert box.files()["out.pdf"] == "merged(paddle(split(a)))"
+    assert _engines(box) == ["paddle"]
+    assert box.files()["out.pdf"] == "paddle(a)"
+    assert box.calls("column_tools split") == []
+    assert f"PaddleOCR reads whole pages; ignoring {flag}" in result.stderr
+
+
+def test_paddle_fallback_reads_whole_pages_too(box):
+    result = _combine(box, "--engine", "paddle", "--split-columns",
+                      apple="1", paddle="1", bad_text="paddle(a)")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _engines(box) == ["paddle", "apple"]
+    assert box.files()["out.pdf"] == "apple(a)"
+
+
+def test_other_engines_keep_an_explicit_split(box):
+    result = _combine(box, "--engine", "apple", "--split-columns", apple="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _engines(box) == ["apple+split"]
+    assert "ignoring" not in result.stderr
 
 
 def test_tesseract_without_apple_ends_after_the_split_retry(box):
