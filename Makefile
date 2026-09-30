@@ -16,7 +16,7 @@ NPM ?= npm
 # Tracked scripts only: an untracked Finder copy ("pdf-lib 2.sh") is not ours to lint.
 SHELL_SCRIPTS := setup.sh install.sh install-paddle.sh .claude/hooks/session-start.sh $(shell git ls-files 'bin/*.sh') bin/pdf2md plugin/install-plugin.sh
 PY_TESTS := pdf2md/test bin/test
-BENCH_TESTS := bench/test_entrypoints.py bench/test_reading_order.py
+BENCH_TESTS := bench/test_entrypoints.py bench/test_reading_order.py bench/test_structure.py
 NODE_MODULES := plugin/node_modules/.package-lock.json
 
 .PHONY: check test-fast plugin lint-plugin test-plugin build-plugin shellcheck test-py test-ocrmypdf
