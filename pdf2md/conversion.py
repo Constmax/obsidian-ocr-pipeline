@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 import tempfile
@@ -11,6 +12,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -367,21 +369,29 @@ class ConversionResult:
     dictionary_findings: tuple[dict[str, Any], ...] = ()
 
 
-def running_lines(doc, header_zone=0.09, footer_zone=0.93, min_pages=2):
-    """Return repeated header/footer texts for one document."""
+def running_lines(doc, header_zone=0.09, footer_zone=0.93, min_pages=2,
+                  label_zone=0.12, label_share=Fraction(2, 3), label_pages=3):
+    """Return repeated header/footer texts for one document.
+
+    A line in the header or footer zone counts once it repeats on
+    `min_pages` pages. A course label under the header rule ("SchuldR-BT-2",
+    Issue #161) sits lower, down to `label_zone`, where slide titles and
+    body lines repeat as well; there a line counts only when it repeats on
+    `label_share` of the pages, and on at least `label_pages`.
+    """
     from collections import Counter
 
-    counter = Counter()
+    in_zone, near_header = Counter(), Counter()
     for i in range(doc.page_count):
         page = doc[i]
         height = page.rect.height or 1
-        seen = set()
+        seen, seen_near = set(), set()
         for block in page.get_text("dict")["blocks"]:
             if block.get("type") != 0:
                 continue
             for line in block["lines"]:
                 rel = ((line["bbox"][1] + line["bbox"][3]) / 2) / height
-                if not (rel <= header_zone or rel >= footer_zone):
+                if not (rel <= label_zone or rel >= footer_zone):
                     continue
                 text = re.sub(
                     r"\s+", " ",
@@ -389,9 +399,16 @@ def running_lines(doc, header_zone=0.09, footer_zone=0.93, min_pages=2):
                 ).strip()
                 if len(text) < 6 or re.fullmatch(r"[\d\s\-–—.]+", text):
                     continue
-                seen.add(text)
-        counter.update(seen)
-    return frozenset(text for text, count in counter.items() if count >= min_pages)
+                if rel <= label_zone:
+                    seen_near.add(text)
+                if rel <= header_zone or rel >= footer_zone:
+                    seen.add(text)
+        in_zone.update(seen)
+        near_header.update(seen_near)
+    label_count = max(label_pages, math.ceil(label_share * doc.page_count))
+    return frozenset(
+        [text for text, count in in_zone.items() if count >= min_pages]
+        + [text for text, count in near_header.items() if count >= label_count])
 
 
 def _remove_rotation(doc):
