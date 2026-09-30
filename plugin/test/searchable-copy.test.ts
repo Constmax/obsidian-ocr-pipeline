@@ -141,6 +141,18 @@ test("PaddleOCR runs when the engine check finds it usable (issue #73)", async (
 	assert.deepEqual(host.notices, ["OCR Preview: Searchable copy created — raw/a/case-01-ocr.pdf."]);
 });
 
+test("PaddleOCR never splits columns, whatever the toggle says (issue #153)", async () => {
+	const host = new FakeHost();
+	host.ocr = { ocrEngine: "paddle", splitColumns: true };
+	const controller = new FakeController();
+	await runSearchableCopy(SOURCE, controller, host);
+
+	assert.deepEqual(
+		controller.requests.map((r) => [r.engine, r.splitColumns]),
+		[["paddle", false]],
+	);
+});
+
 test("a stored PaddleOCR that is not usable falls back to Automatic, visibly", async () => {
 	const host = new FakeHost();
 	host.ocr = { ocrEngine: "paddle", splitColumns: true };

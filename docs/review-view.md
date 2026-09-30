@@ -143,7 +143,9 @@ list only after `reprocess-raw --check-engine` passes on this machine (the
 settings tab runs it each time it opens); otherwise the setting names the
 reason. A stored PaddleOCR is checked again before every run: when it is not
 usable (another Mac, a removed venv), the run uses Automatic and a notice says
-why. Whether PaddleOCR stays is decided by the benchmark in #71.
+why. The benchmark in #71 retained it (`bench/ERGEBNIS.md`, Nachtrag 26).
+PaddleOCR always reads whole pages: with it, the Split two-column pages toggle
+has no effect (#153).
 
 The action itself is **Create searchable copy (OCR)**: in the PDF file menu
 and as a command that asks for a PDF. The comparison view offers no entry for

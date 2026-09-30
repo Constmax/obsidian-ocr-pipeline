@@ -2464,3 +2464,117 @@ Je Seite (`*` = Textspalten verschränkt):
 - **Verbleibender Bestand:** Nach der Dokumentliste bleiben grob 80 unbenutzte Dokumente mit Zweispalterseiten (Fallösungen der Rechtsgebiete, Original-Scans in `raw/assets/` ohne benutzte Fassung, Klausurlösungen), nicht Seite für Seite geprüft. Der Vorrat reicht für weitere Prüfsätze.
 - **Fehlende Seitenart (#120):** weiter nur synthetisch getestet.
 - **Laufzeit:** `unsplit-paddle` brauchte 142 s für die 13 Seiten, `split-paddle` 119 s; nur ein Richtwert.
+
+## Nachtrag 2026-09-30 (26): Stufe-1-Benchmark — PaddleOCR behalten, Spaltentrennung für Paddle entfernen (#71)
+
+**Ergebnis:**
+- **Entscheidung behalten/verwerfen: behalten**, und zwar `--engine paddle --paddle-mode fast` (der Modus, den das Plugin seit #73 anbietet). Das Gate ist formal an einem Kriterium verfehlt (ein neuer B5-Fall auf einer um 90° gedrehten Seite, siehe unten). Diese Ausnahme ist bewusst entschieden und hier begründet.
+- **Entscheidung Spaltentrennung: für PaddleOCR entfernen.** Paddle läuft immer ungeteilt (#153). Für Apple und Tesseract bleibt die Spaltentrennung, wie sie ist.
+- **Lesereihenfolge:** Auf 68 handgeprüften Zweispalterseiten verschränkt `unsplit-paddle-fast` 4 Seiten, der bisherige Plugin-Standard `unsplit-apple` 30. Vollbreite-Zeilen stehen bei Paddle-fast 2-mal falsch, bei `unsplit-apple` 108-mal und mit Spaltentrennung rund 300-mal (von 438).
+- **Textlayer:** `paddle-fast` liest Normzitate deutlich treuer als Apple (78,9 gegen 69,4 % auf den 40 Vektorseiten, 95,2 gegen 77,0 % auf kurzen Seiten), Wörter etwas besser (97,5 gegen 96,9 %), bei gleicher Geschwindigkeit (3,2 gegen 3,3 s/Seite).
+- **Genauer Modus:** noch treuer bei Zitaten (83,6 %), aber doppelt so langsam und mit 1,9 GB Spitze statt 0,6 GB. Er bleibt aus dem Plugin draußen.
+
+### Aufbau
+
+Zwei Teile. Der zweite ist neu (`bench/stage1_bench.py`).
+
+**Lesereihenfolge** mit `bench/reading_order.py` auf allen fünf handgeprüften Sätzen (t 16, n 13, m 13, q 13, r 13 Seiten; `reading_order_truth.json`, `…_holdout.json` bis `…_holdout4.json`), Workflows `split-apple`, `split-tesseract`, `unsplit-apple`, `unsplit-tesseract`, `split-paddle`, `unsplit-paddle`, `unsplit-paddle-fast`, `--optimize 3`. Repo-Stand `7483102` (vor #134; #134 ändert laut PR die Reihenfolge des Rohtexts nicht).
+
+**Textlayer der Stufe 1** mit `bench/stage1_bench.py`: Vektorseiten werden mit 300 dpi grau gerendert, als reines Bild-PDF durch `reprocess-raw --output --min-chars 0` geschickt (den Weg des Plugins, mit Seitenzahlprüfung und Quality Gate) und je Seite per `pdftotext -raw` mit dem Textlayer der Originalseite verglichen (`vergleiche()` aus `bench_ocr.py`). B5 wird je Seite ausgewertet: Fehler, wenn die Wahrheit mindestens 50 Zeichen hat und die Ausgabe weniger. Kohorten (`bench/stage1_cohorts.json`):
+
+| Kohorte | Seiten | Inhalt |
+|---|---:|---|
+| `words` | 40 | die Vektorseiten aus `bench/bench-lauf/` (Nachtrag 17, 22); 32 einspaltig, 8 zweispaltig nach Textgeometrie |
+| `short` | 12 + 8 | kurze Vektorseiten (1–300 Zeichen: Titel-, Trenn- und Schlussfolien) und grafische (über 80 Pfade, unter 1.500 Zeichen), je Datei eine |
+| `skew` | 10 | zehn `words`-Seiten, gedreht um +1,5°, −2,5°, +4°, 90° und 180° (je 2) |
+
+Workflows: `tesseract` (heutige Politik mit Split-Wiederholung bei Gate-Fehler), `tesseract-split`, `apple`, `apple-split`, `paddle-fast`, `paddle-fast-split`, `paddle-accurate`, `paddle-accurate-split`; `paddle-fast` und `paddle-accurate` ein zweites Mal für die Stabilität. Repo-Stand `1f744c8` (mit #134). Alle Läufe nacheinander, nie zwei zugleich; vor jedem Workflow mindestens 25 % RAM frei.
+
+```text
+VAULT_ROOT=~/JuraExamenVault python bench/stage1_bench.py select
+VAULT_ROOT=~/JuraExamenVault python bench/stage1_bench.py prepare
+python bench/stage1_bench.py run && python bench/stage1_bench.py run --repeat
+python bench/stage1_bench.py score --json bench/stage1-lauf/scores.json
+python bench/reading_order.py --truth bench/reading_order_<set>.json --run-dir <dir> \
+    prepare|recognize|run --optimize 3 <workflows>|score
+```
+
+**Umgebung:** M1, 8 GB, macOS 26.2; `~/.venvs/ocrmypdf` (Python 3.12) mit ocrmypdf 17.8.0, ocrmypdf-appleocr 0.3.4, rapidocr 3.9.2, onnxruntime 1.26.0, pyobjc-framework-Vision 12.2.1, pikepdf 10.9.1, pypdfium2 5.11.0; Tesseract 5.5.2. `ocrmypdf_paddle` aus dem jeweiligen Checkout (`PYTHONPATH`). Modelle `ch_PP-OCRv5_det_mobile.onnx`, `latin_PP-OCRv5_rec_mobile.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx` (SHA-256 wie Nachtrag 18).
+
+### Schwellen
+
+Der Plan nennt vorläufig 2 Punkte Gewinn und 1 Punkt Toleranz und verlangt, sie aus der Streuung von Seite zu Seite abzuleiten. Festgelegt vor dem vollen Lauf: **Schwelle = 1,96 Standardfehler der Seitenwerte der besten bestehenden Engine auf derselben Kohorte**, also das, was die Kohorte überhaupt auflösen kann. Verglichen wird gepaart je Seite, mit 95-%-Bootstrap-Intervall (10.000 Ziehungen). Auf `words` sind das 1,3 Punkte für Wörter und 12,6 Punkte für Zitate (Apple streut bei Zitaten stark: 0–100 % je Seite).
+
+### Lesereihenfolge (68 Seiten)
+
+| Workflow | Median je Satz (t / n / m / q / r) | verschränkte Seiten | Vollbreite falsch | Seitenprüfung fehlgeschlagen |
+|---|---|---:|---:|---:|
+| `split-apple` | 96,0 / 94,8 / 95,3 / 94,9 / 94,7 % | 1 | 306 von 431 | 2 |
+| `split-tesseract` | 96,5 / 94,8 / 95,8 / 94,7 / 95,2 % | 1 | 304 von 431 | 2 |
+| `unsplit-apple` | 99,5 / 98,9 / 94,5 / 97,6 / 97,3 % | 30 | 108 von 438 | 0 |
+| `unsplit-tesseract` | 99,8 / 91,4 / 96,1 / 84,3 / 92,6 % | 37 | 26 von 438 | 0 |
+| `split-paddle` | 96,1 / 94,9 / 95,0 / 94,9 / 95,2 % | 1 | 312 von 438 | 0 |
+| `unsplit-paddle` | 100,0 / 100,0 / 100,0 / 100,0 / 100,0 % | 2 | 0 von 438 | 0 |
+| `unsplit-paddle-fast` | 100,0 / 100,0 / 99,5 / 100,0 / 100,0 % | 4 | 2 von 438 | 0 |
+
+Die zwei fehlgeschlagenen Seitenprüfungen der Split-Läufe liegen im n-Satz (Seiten fehlen im Ergebnis). Das Gate aus Nachtrag 19 für `unsplit-paddle` sagt für t und q „unsplit is supported“, für n, m und r „keep split mode“. Es scheitert dort an einzelnen Kriterien: je eine verschränkte Seite in n und r (r07: #127) und einzelne nicht gefundene Vollbreite-Zeilen. Dieses Gate prüft allein die Reihenfolge; die Split-Entscheidung unten wägt zusätzlich den Textlayer.
+
+### Textlayer
+
+| Kohorte | Workflow | Wörter | Reihenfolge | Zitate | B5 | s/Seite | Spitze RSS |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `words` (40) | `tesseract` | 96,1 % | 93,0 % | 4,2 % | 0 | 4,4 | 326 MB |
+| | `apple` | 96,9 % | 95,0 % | 69,4 % | 0 | 3,3 | 309 MB |
+| | `apple-split` | 94,5 % | 91,9 % | 64,3 % | 0 | 3,4 | 281 MB |
+| | `paddle-fast` | 97,5 % | 95,4 % | 78,9 % | 0 | 3,2 | 585 MB |
+| | `paddle-fast-split` | 94,7 % | 92,0 % | 68,7 % | 0 | 3,0 | 536 MB |
+| | `paddle-accurate` | 97,9 % | 95,8 % | 83,6 % | 0 | 6,8 | 1.878 MB |
+| `words`, zweispaltig (8) | `apple` | 96,1 % | 94,9 % | 65,4 % | 0 | | |
+| | `paddle-fast` | 97,9 % | 96,3 % | 74,7 % | 0 | | |
+| | `paddle-fast-split` | 89,2 % | 84,3 % | 60,8 % | 0 | | |
+| `short` (12) | `apple` | 92,8 % | 71,7 % | 77,0 % | 0 | 2,5 | 298 MB |
+| | `paddle-fast` | 93,6 % | 68,2 % | 95,2 % | 0 | 2,4 | 491 MB |
+| | `paddle-fast-split` | Quality Gate gescheitert, keine Ausgabe | | | 12 | | |
+| grafisch (8) | `apple` | 94,6 % | 86,7 % | 71,7 % | 0 | | |
+| | `paddle-fast` | 94,4 % | 64,3 % | 77,5 % | 0 | | |
+| | `paddle-accurate` | 98,0 % | 74,6 % | 93,7 % | 0 | | |
+| `skew` (10) | `tesseract` | 93,1 % | 83,8 % | 3,8 % | 0 | 4,8 | 318 MB |
+| | `apple` | 87,7 % | 86,6 % | 61,0 % | 0 | 3,2 | 398 MB |
+| | `paddle-fast` | 87,5 % | 86,5 % | 63,9 % | 1 | 3,5 | 638 MB |
+| | `paddle-fast-split` | 58,4 % | 56,1 % | 51,7 % | 4 | 2,6 | 572 MB |
+
+Vollständige Tabelle mit allen Workflows, Teilkohorten und Drehwinkeln: Ausgabe von `score` (nicht im Repo, Kursmaterial).
+
+**Stabilität:** `paddle-fast` und `paddle-accurate` liefern im zweiten Lauf auf allen 70 Seiten byte-gleichen Text.
+
+**Speicher:** kein Swap-Druck. Freier RAM nie unter 51 %; Auslagerungen während `paddle-accurate` 41.396 Seiten (≈ 650 MB), während `paddle-fast-split` 8.108, sonst 0.
+
+### Gate für `paddle-fast` gegen die beste bestehende Engine
+
+| Kriterium | Befund |
+|---|---|
+| Wort- oder Zitatgenauigkeit um die Schwelle besser | **erfüllt** auf `short`, Zitate +18,3 Punkte (Schwelle 14,7; Intervall +7,1 … +29,4). Auf `words` signifikant besser, aber unter der Schwelle: Zitate +9,5 (Schwelle 12,6; +2,7 … +17,7), Wörter +0,6 (Schwelle 1,3; +0,1 … +1,2) |
+| kein Rückschritt über die Toleranz auf einer geschützten Kohorte | **erfüllt.** Größter Abstand: `skew`, Wörter −5,6 gegen Tesseract (Toleranz 6,4), allein durch eine 90°-Seite; gegen Apple −0,2. Lesereihenfolge deutlich besser |
+| kein neuer B5- oder Seitenabdeckungsfehler | **formal verfehlt**, ein Fall (unten) |
+| Laufzeit und Speicher in den Grenzen aus #62 (15 s/Seite, halber RAM, kein Swap-Druck) | **erfüllt:** 2,4–3,5 s/Seite, höchstens 638 MB |
+
+**Der B5-Fall:** `skew`, Seite 9 (`UNIREP_KK_ZR_LH_16_01_2026.pdf`, S. 13, um 90° gedreht). Die Ausrichtung kommt bei allen Engines aus Tesseracts OSD (`ocrmypdf_paddle` gibt `get_orientation` an Tesseract weiter), und keine Engine dreht diese Seite zurück. Apple schreibt 2.258 Zeichen, von denen 7 % der Wörter stimmen, und besteht B5 still. Paddle schreibt 2 Zeichen, B5 schlägt an. Der Fehler liegt in der Drehungserkennung, nicht in der Erkennung; für den Nutzer ist der Paddle-Ausgang der sicherere, weil `reprocess-raw` nichts schreibt und die Seitenausnahme anbietet. Deshalb wird PaddleOCR trotzdem behalten. Die Drehungserkennung ist #152.
+
+**Genauer Modus:** erfüllt das Hauptkriterium schon auf `words` (Zitate +14,1, Schwelle 12,6; grafisch Wörter +3,4 und Zitate +22,0), hat denselben B5-Fall und kostet doppelt so viel Zeit und dreimal so viel Speicher. Er bleibt eine CLI-Option.
+
+### Spaltentrennung für Paddle
+
+Durchweg schlechter als ungeteilt:
+- **Reihenfolge:** Median um 95 % statt 100 %, 312 falsche Vollbreite-Zeilen statt 0 (derselbe Kopfschnitt wie in Nachtrag 19–25).
+- **Wörter auf Zweispaltern:** 89,2 statt 97,9 %.
+- **Folien:** Die ganze `short`-Kohorte scheitert am Quality Gate („One-sided text loss on split page“); ungeteilt besteht sie.
+- **Um 180° gedrehte Seiten:** 0,5–0,8 % statt 100 %, weil `--rotate-pages` auf Hälften abgeschaltet ist.
+
+Entscheidung: **entfernen** (#153).
+
+### Einschränkungen
+
+- **Keine Hand-Kohorte:** Harte Scans (Durchschlag, Handschrift, `03-durchschlag-handschrift`) sind nicht bewertet, weil keine geprüfte Transkription vorliegt. Die Scan-Seiten gehen nur über die Lesereihenfolge ein, deren Wahrheitszeilen RapidOCR-Zeilen sind (Heimvorteil bei „nicht gefunden“).
+- **Kleine Teilkohorten:** 8 Zweispalter-Vektorseiten, 8 grafische Seiten, je 2 Seiten pro Drehwinkel. Die Schwellen dort sind entsprechend grob.
+- **Zwei Code-Stände:** Die Lesereihenfolge lief vor #134, der Textlayer danach.
+- **Wandzeit:** Tesseract und Apple laufen mit mehreren Jobs, Paddle mit einem. Die Sekunden gelten für ganze Kohorten-PDFs, nicht für eine warme Einzelseite.

@@ -1,13 +1,14 @@
 # PaddleOCR as a third Stage-1 engine
 
-**Status:** Steps 0–3 are done (hOCR order #61, runtime spike #62 with a go,
-adapter #68, reading order #69 with follow-ups #87, #94, #114, #124, #125) and
-fast mode (3a) is merged (#118). The gate result is still **keep split mode**.
-Open: the resolved engine value (step 4, #70, PR #121), the retain/discard
-benchmark (step 5, #71) and installation (step 6, #72). Issue #133 proposes
-removing OCRmyPDF from Stage 1, which would rework steps 4 and 6. Until step 5
-retains it, `setup.sh` does not install the plugin and `bin/` does not offer
-`--engine paddle`.
+**Status:** Steps 0–5 are done (hOCR order #61, runtime spike #62 with a go,
+adapter #68, reading order #69 with follow-ups #87, #94, #114, #124, #125, fast
+mode 3a #118, resolved engine value #70, plugin option #73). Step 5 (#71,
+`bench/ERGEBNIS.md`, Nachtrag 26) **retains** PaddleOCR in fast mode, with one
+documented exception, and **removes split mode for PaddleOCR** (#153). Step
+6 is done (#72): `setup.sh` installs the plugin into the Stage-1 venv through
+`install-paddle.sh` and prefetches the models. Open: the 90° rotation gap the
+benchmark found for every engine (#152). Issue #133 proposes removing
+OCRmyPDF from Stage 1, which would rework steps 4 and 6.
 
 ## Goal
 
@@ -588,8 +589,9 @@ Make the retry matrix explicit and testable:
   applicable;
 - Tesseract failure → split Tesseract, then Apple where available;
 - Paddle failure → Apple when available, otherwise Tesseract;
-- Paddle does not add an implicit split retry; explicit user-requested split
-  mode remains in force.
+- Paddle does not add an implicit split retry. Since #153 it also ignores an
+  explicit split request (with a warning), because step 5 found split mode
+  worse on every cohort.
 
 Every fallback must be visible in stderr and the final summary, including the
 requested engine, the actual engine, and the reason for the transition.
@@ -663,6 +665,23 @@ to `setup.sh` or the public engine list.
 **Complete when:** `bench/ERGEBNIS.md` contains a binary retain/discard decision
 and a separate keep/remove-split decision.
 
+**Result (2026-09-30, `bench/ERGEBNIS.md`, Nachtrag 26):** retain fast mode;
+remove split mode for PaddleOCR. `bench/stage1_bench.py` sends rendered vector
+pages through `reprocess-raw --output` and scores `pdftotext -raw` against
+their own text layer (cohorts `words`, `short`, `skew` in
+`bench/stage1_cohorts.json`); reading order ran on all five hand-checked sets.
+The thresholds are 1.96 standard errors of the best existing engine's page
+scores per cohort (words 1.3, citations 12.6 points on the 40-page set).
+`paddle-fast` against Apple: citations +18.3 points on short pages (above the
+threshold), +9.5 on the 40 pages (significant, below it), words +0.6; 4
+instead of 30 interleaved pages on 68 two-column scans; 3.2 s/page, 585 MB.
+One criterion is missed formally: on one page turned by 90° no engine rotates
+the page upright, Apple writes unreadable text that passes B5 and PaddleOCR
+writes almost none, which B5 catches (#152). Split mode loses 9 points of word
+accuracy on two-column pages, fails the quality gate on slides and breaks
+pages turned by 180°. Hard scans were not scored: there is no checked
+transcription.
+
 ### 6. Make installation reproducible only after retention
 
 After the benchmark retains PaddleOCR:
@@ -678,6 +697,21 @@ After the benchmark retains PaddleOCR:
 **Complete when:** a clean setup can run a warm Paddle smoke test without
 network access, and an intentionally failed Paddle installation does not break
 Apple or Tesseract processing.
+
+**Result (2026-09-30, #72):** `install-paddle.sh`, called by `setup.sh` ③.
+The engine goes into the Stage-1 venv after all, but pip gets every installed
+package as a constraint, so it can only add packages. In a clean venv
+(`ocrmypdf==17.8.0` and `ocrmypdf-appleocr==0.3.4` only):
+
+- The install found a real pin conflict. `ocrmypdf-appleocr` now brings
+  `pyobjc-framework-Vision` 12.2.2, and the `[fast]` extra pinned 12.2.1. The
+  extra now accepts 12.x.
+- The install then left every existing package unchanged, fetched the three
+  models (SHA-256 checked), passed `--paddle-check` in both modes, and read
+  its generated page offline, with every proxy on a closed port.
+- A second run was a no-op.
+- An install forced to fail (pip without network) changed nothing, and Apple
+  and Tesseract read the same page afterwards.
 
 ## Verification matrix
 

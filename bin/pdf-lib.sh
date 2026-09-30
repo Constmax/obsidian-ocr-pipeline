@@ -998,6 +998,17 @@ lib_init() {
     # A usage error, so it comes before any check or processing.
     require_paddle_engine_for_mode "$engine"
 
+    # PaddleOCR orders both columns itself; splitting them loses words and
+    # order (#153, bench/ERGEBNIS.md, Nachtrag 26). A fallback engine then
+    # reads whole pages too.
+    if [ "$engine" = paddle ] && [ "$SPLIT_COLUMNS" = true ]; then
+        local split_flag=--split-columns
+        [ "$SPLIT_ALL_PAGES" = true ] && split_flag=--split-columns-all
+        echo "⚠️  PaddleOCR reads whole pages; ignoring $split_flag" >&2
+        SPLIT_COLUMNS=false
+        SPLIT_ALL_PAGES=false
+    fi
+
     echo "🔍 Checking dependencies..."
     check_deps ocrmypdf qpdf gs pdftotext || exit 1
 
