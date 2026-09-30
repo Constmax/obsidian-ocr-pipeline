@@ -270,6 +270,19 @@ test("list gives the marked pages and is empty when the query fails", async () =
 	);
 	assert.equal(listed.get(spec.caseLines[1]!.page)?.status, spec.caseLines[1]!.status);
 
+	// A case `list` could not read has no line; its stderr line is logged.
+	const skipped: string[] = [];
+	const readable = await new PageCases(
+		async () =>
+			result({
+				stdout: [spec.caseLines[0]!.stdout],
+				stderrLast: ["pdf2md case: cannot read p002.json: schema 99"],
+			}),
+		(message) => skipped.push(message),
+	).list(PREVIEW);
+	assert.deepEqual([...readable.keys()], [spec.caseLines[0]!.page]);
+	assert.deepEqual(skipped, ["OCR Preview: pdf2md case: cannot read p002.json: schema 99"]);
+
 	const warnings: string[] = [];
 	const none = await new PageCases(
 		async () => result({ code: 1, stderrLast: ["❌ MLX venv missing (/x/python). Run ./setup.sh in repo once."] }),

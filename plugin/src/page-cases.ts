@@ -141,6 +141,8 @@ export class PageCases {
 			);
 			return cases;
 		}
+		// A case `list` could not read is named on stderr and has no line.
+		for (const line of result.stderrLast) this.warn(`OCR Preview: ${line}`);
 		for (const line of result.stdout) {
 			const pageCase = parseCaseLine(line);
 			if (pageCase !== null) cases.set(pageCase.page, pageCase);

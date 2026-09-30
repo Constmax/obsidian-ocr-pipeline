@@ -54,6 +54,18 @@ export class MarkdownColumn {
 		return this.blocks;
 	}
 
+	/** The page whose block is at the top of the visible part of the column. */
+	visiblePage(): number | null {
+		const top = this.scrollEl.getBoundingClientRect().top + 1;
+		let visible: number | null = null;
+		// Blocks are kept in page order.
+		for (const [pageNumber, el] of this.blocks) {
+			if (visible !== null && el.getBoundingClientRect().top > top) break;
+			visible = pageNumber;
+		}
+		return visible;
+	}
+
 	currentPreview(): Preview | null {
 		return this.preview;
 	}

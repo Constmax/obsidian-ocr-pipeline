@@ -323,7 +323,7 @@ def _parser():
 
 
 def main():
-    # `pdf2md case stash | add | list | run` (Issue #139). Imported only here: the
+    # `pdf2md case stash | add | list | run` (Issues #139, #140). Imported only here: the
     # conversion runs without cases.py.
     if sys.argv[1:2] == ["case"]:
         import cases

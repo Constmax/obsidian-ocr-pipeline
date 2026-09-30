@@ -397,8 +397,12 @@ export function convertPdf(
 	});
 }
 
-/** A `pdf2md case` call that has written nothing for this long is stopped. */
-export const PAGE_CASE_TIMEOUT_MS = 60_000;
+/**
+ * A `pdf2md case` call that has written nothing for this long is stopped. The
+ * save of a page's first edit waits for its stash, so a hung call must not
+ * hold it for long.
+ */
+export const PAGE_CASE_TIMEOUT_MS = 15_000;
 
 /** The result of a `pdf2md case` call with every non-empty stdout line. */
 export interface PageCaseResult extends ConversionResult {
