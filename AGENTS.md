@@ -23,9 +23,11 @@ repo. All code identifiers, comments, docs and commit messages are in English. M
   from line geometry in `ordering.py`, measured against the hand-checked
   truth set of `bench/reading_order.py`. `--paddle-mode fast` (macOS) takes
   Apple Vision's lines and re-reads only citation lines with PP-OCRv5
-  (`apple.py`; extra `[fast]` for pyobjc-framework-Vision). Not installed by
-  `setup.sh` until the benchmark retains it; tests need the pinned ocrmypdf
-  but no RapidOCR, Vision or models (`python3 -m pytest ocrmypdf_paddle/test`).
+  (`apple.py`; extra `[fast]` for pyobjc-framework-Vision). Retained by the
+  benchmark (#71); `setup.sh` installs it through `install-paddle.sh` into the
+  Stage-1 venv without changing its packages and prefetches the models; tests
+  need the pinned ocrmypdf but no RapidOCR, Vision or models
+  (`python3 -m pytest ocrmypdf_paddle/test`).
 - `bench/` — benchmark harness; page images are copyrighted scans, NOT in the
   repo, reproducible via `bench/build_bench.py` from the user's vault. Finished
   experiments live in `bench/archive/` (not supported, not smoke-tested).

@@ -4,12 +4,11 @@
 adapter #68, reading order #69 with follow-ups #87, #94, #114, #124, #125, fast
 mode 3a #118, resolved engine value #70, plugin option #73). Step 5 (#71,
 `bench/ERGEBNIS.md`, Nachtrag 26) **retains** PaddleOCR in fast mode, with one
-documented exception, and **removes split mode for PaddleOCR** (#153). Open:
-unsplit-only Paddle (#153), installation (step 6, #72), and the 90° rotation
-gap the benchmark found for every engine (#152). Issue #133 proposes removing
-OCRmyPDF from Stage 1, which would rework steps 4 and 6. Until step 6,
-`setup.sh` does not install the plugin; `bin/` offers `--engine paddle` where
-the plugin is installed.
+documented exception, and **removes split mode for PaddleOCR** (#153). Step
+6 is done (#72): `setup.sh` installs the plugin into the Stage-1 venv through
+`install-paddle.sh` and prefetches the models. Open: the 90° rotation gap the
+benchmark found for every engine (#152). Issue #133 proposes removing
+OCRmyPDF from Stage 1, which would rework steps 4 and 6.
 
 ## Goal
 
@@ -698,6 +697,21 @@ After the benchmark retains PaddleOCR:
 **Complete when:** a clean setup can run a warm Paddle smoke test without
 network access, and an intentionally failed Paddle installation does not break
 Apple or Tesseract processing.
+
+**Result (2026-09-30, #72):** `install-paddle.sh`, called by `setup.sh` ③.
+The engine goes into the Stage-1 venv after all, but pip gets every installed
+package as a constraint, so it can only add packages. In a clean venv
+(`ocrmypdf==17.8.0` and `ocrmypdf-appleocr==0.3.4` only):
+
+- The install found a real pin conflict. `ocrmypdf-appleocr` now brings
+  `pyobjc-framework-Vision` 12.2.2, and the `[fast]` extra pinned 12.2.1. The
+  extra now accepts 12.x.
+- The install then left every existing package unchanged, fetched the three
+  models (SHA-256 checked), passed `--paddle-check` in both modes, and read
+  its generated page offline, with every proxy on a closed port.
+- A second run was a no-op.
+- An install forced to fail (pip without network) changed nothing, and Apple
+  and Tesseract read the same page afterwards.
 
 ## Verification matrix
 

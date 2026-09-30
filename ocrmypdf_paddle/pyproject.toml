@@ -16,9 +16,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# --paddle-mode fast: Apple Vision reads the page (macOS only). The version
-# is the one ocrmypdf-appleocr 0.3.4 runs with in the Stage-1 venv.
-fast = ["pyobjc-framework-Vision==12.2.1; sys_platform == 'darwin'"]
+# --paddle-mode fast: Apple Vision reads the page (macOS only). Not pinned
+# exactly: ocrmypdf-appleocr 0.3.4 leaves pyobjc open, so a clean Stage-1 venv
+# gets whatever 12.x is current (12.2.2 on 2026-09-30), and install-paddle.sh
+# must not change it (#72). Fast mode uses no API newer than 12.2.1.
+fast = ["pyobjc-framework-Vision>=12.2.1,<13; sys_platform == 'darwin'"]
 
 [tool.setuptools.dynamic]
 version = { attr = "ocrmypdf_paddle.__version__" }
