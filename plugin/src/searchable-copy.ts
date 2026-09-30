@@ -1,5 +1,5 @@
-// "Create searchable copy (OCR)": the Stage-1 action behind the PDF file menu,
-// the command, and the comparison view. Proposes `<stem>-ocr.pdf` beside the
+// "Create searchable copy (OCR)": the Stage-1 action behind the PDF file menu
+// and the command (never the comparison view). Proposes `<stem>-ocr.pdf` beside the
 // source, refuses an existing destination before anything is spawned, runs
 // `reprocess-raw --output` through the ConversionController with the saved OCR
 // settings, and opens the new PDF. When the B5 gate reports pages with too
