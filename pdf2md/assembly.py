@@ -309,14 +309,16 @@ def parse_lines(text):
     return lines
 
 
-# Letter labels are one letter or one letter repeated ("a)", "bb)", "aaa)").
-# Any other short lowercase word with a period is an abbreviation or the
-# end of a sentence ("gem.", "vgl.", "hat."), and a single letter followed
-# by one is an abbreviation too ("i. V.m.", "z. B.") (Issue #163).
+# Letter labels are one letter or one letter repeated ("a)", "bb)", "aaa)"),
+# or a lowercase roman numeral ("iv."). Any other short lowercase word with
+# a period is an abbreviation or the end of a sentence ("gem.", "vgl.",
+# "hat.", "ff."), and a single letter followed by one is an abbreviation too
+# ("i. V.m.", "z. B.") (Issue #163).
 ENUMERATION = re.compile(
     r"^\s*([-•·▪○●⇒⇨→➢✔]"
     r"|\(?\d{1,2}[.)]"
-    r"|([a-z])\2{0,2}(?:\)|\.(?!\s*[A-Za-zÄÖÜ]{1,2}\.))"
+    r"|(?!ff\.)([a-z])\2{0,2}(?:\)|\.(?!\s*[A-Za-zÄÖÜ]{1,2}\.))"
+    r"|(?:iv|vi{1,3}|ix)[.)]"
     r"|[IVXL]{1,5}\.)(?=\s|$)"
 )
 KEYWORD_WORDS = (r"Anmerkung|Hinweis|Merksatz|Merke|Ergebnis|Beachte|"
@@ -527,14 +529,17 @@ def assemble_paragraphs(lines, context=None):
         # edge can fall inside a sentence (Issue #163). There a line that
         # carries on the buffer's sentence -- it starts lowercase, or the
         # buffer ends on a word no phrase ends on -- is not cut off by a bold
-        # line or by the line before it looking like a heading, and a box
-        # edge cuts only where the spacing or a sentence end agrees.
-        runs_on = ocr_page and (cont[:1].islower()
-                                or bool(OPEN_END.search(buffer)))
+        # line or by the line before it looking like a heading. After a bold
+        # heading only the second counts: body text may start with "h.M.".
+        # A box edge cuts unless the buffer stops mid-sentence (on a
+        # lowercase word, a comma or a hyphen) at normal spacing.
+        runs_on = ocr_page and (bool(OPEN_END.search(buffer))
+                                or cont[:1].islower() and not only_bold(buffer))
         box_crossed = not (ocr_page and normal and y is not None
                            and last_y is not None
                            and y - last_y <= normal * 1.6
-                           and not SENTENCE_END.search(buffer.rstrip("*")))
+                           and (runs_on or re.search(r"[a-zäöüß,\-–]\**$",
+                                                     buffer)))
 
         if not buffer or hyphen:
             new_p = False
