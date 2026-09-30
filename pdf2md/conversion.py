@@ -301,7 +301,8 @@ def _page_content(lines, context: BlockContext, source: str):
 
     Returns `(paragraphs, discarded, findings)`.
     """
-    assembled = assemble_paragraphs(lines, context.assembly)
+    assembled = assemble_paragraphs(
+        lines, replace(context.assembly, ocr_page=source == "ocr"))
     paragraphs, findings = assembled.paragraphs, []
     if source == "ocr" and lines:
         paragraphs, findings = dictionary.check(

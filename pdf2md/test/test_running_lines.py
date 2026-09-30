@@ -7,7 +7,7 @@ from conversion import running_lines
 
 AUTHOR = "RA Dr. Erika Muster, M.A., LL.M. - 03/2026"
 FOOTER = "h/w/t - 26-Il"
-CONTEXT = AssemblyContext(frozenset({AUTHOR, FOOTER}))
+CONTEXT = AssemblyContext(frozenset({AUTHOR, FOOTER}), ocr_page=True)
 BODY = "Der Anspruch ist entstanden und nicht erloschen."
 
 
@@ -55,6 +55,16 @@ def test_both_ends_of_a_footer_cut_at_the_gutter_are_dropped():
     assert len(result.discarded) == 3
 
 
+def test_a_whole_footer_read_with_ocr_confusions_is_dropped():
+    assert is_boilerplate("h/w/t - 26-II", 950, context=CONTEXT)
+
+
+def test_a_piece_of_a_running_line_on_a_text_layer_page_is_kept():
+    """A text layer is not cut at the gutter: a piece there is page text."""
+    text_layer = AssemblyContext(CONTEXT.running_lines)
+    assert not is_boilerplate("RA Dr. Erika Muster, M", 955, context=text_layer)
+
+
 def test_a_piece_of_a_running_line_above_the_footer_is_kept():
     assert not is_boilerplate("RA Dr. Erika Muster, M", 500, context=CONTEXT)
 
@@ -69,3 +79,7 @@ def test_a_piece_from_the_middle_is_kept():
 
 def test_a_page_header_with_a_comma_is_boilerplate():
     assert is_boilerplate("Sachverhalte, Seite 2")
+
+
+def test_a_sentence_citing_a_page_is_kept():
+    assert not is_boilerplate("Vgl. die Lösung, Seite 4.")

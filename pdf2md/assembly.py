@@ -15,6 +15,7 @@ import json
 import re
 import statistics
 from dataclasses import dataclass
+from functools import cached_property
 
 LOC = re.compile(r"<\|LOC_(\d+)\|>")
 # --- Post-processing -------------------------------------------------------
@@ -51,7 +52,8 @@ ZONE_SIGNALS = [
     re.compile(r"^he[mn]+er\s*[.,:]?$", re.I),
     re.compile(r"^\W*(Juristisches\s*)?Repetitorium\W*$", re.I),
     re.compile(r"^(BGB|StGB|StR|ZR|OeR|ÖR)[\s-]*(AT|BT)?\s*$"),
-    re.compile(r"(Lösung|Sachverhalte?|Übersicht)\s*[-–,]\s*Seite", re.I),
+    re.compile(r"(Lösung|Sachverhalte?|Übersicht)\s*[-–]\s*Seite", re.I),
+    re.compile(r"^(Lösung|Sachverhalte?|Übersicht)\s*,\s*Seite\s+\d+\s*$", re.I),
     re.compile(r"^Lösung\s*[-–].*Seite\s+\d+\s*$"),          # running head
     re.compile(r"^Klausur\s*Nr\.?\s*\d+\s*[-–]\s*Lösung,\s*Seite\s+\d+\s*$"),
     re.compile(r"^Fall\s*\d*\s*[-–]?\s*L[äöa]?"),      # "Fall 3 - Lä" (truncated)
@@ -60,9 +62,17 @@ ZONE_SIGNALS = [
 
 @dataclass(frozen=True)
 class AssemblyContext:
-    """Document-scoped state used while assembling pages."""
+    """State used while assembling a page: the document's running lines and
+    how the page was read."""
 
     running_lines: frozenset[str] = frozenset()
+    # The page was read by the model, column by column, so a line spanning
+    # both columns can come back in pieces (Issue #161).
+    ocr_page: bool = False
+
+    @cached_property
+    def running_keys(self) -> tuple[str, ...]:
+        return tuple(_fragment_key(line) for line in self.running_lines)
 
 
 @dataclass(frozen=True)
@@ -81,16 +91,15 @@ def _fragment_key(text):
     return re.sub(r"[\W_]+", "", text.casefold().translate(_CONFUSABLE))
 
 
-def is_running_fragment(text, running, min_length=5):
+def is_running_fragment(text, running_keys, min_length=5):
     """Is text one end of a running line, cut off at the column gutter?
 
     A scan is read column by column, so a footer spanning both columns comes
     back as two pieces, and the glyph at the cut may be read wrong.
     """
     key = _fragment_key(text)
-    for line in running:
-        whole = _fragment_key(line)
-        if len(key) >= len(whole):
+    for whole in running_keys:
+        if len(key) > len(whole):
             continue
         if any(len(piece) >= min_length and whole.startswith(piece)
                for piece in (key, key[:-1])):
@@ -110,8 +119,8 @@ def is_boilerplate(text, y=None, header_zone=70, footer_zone=950,
     running = context.running_lines if context else frozenset()
     if running and re.sub(r"\s+", " ", re.sub(r"\*", "", t)).strip() in running:
         return True
-    if (running and y is not None and y >= fragment_zone
-            and is_running_fragment(t, running)):
+    if (context and context.ocr_page and y is not None and y >= fragment_zone
+            and is_running_fragment(t, context.running_keys)):
         return True
     if any(p.search(t) for p in BOILERPLATE):
         return True
