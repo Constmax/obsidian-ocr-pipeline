@@ -36,6 +36,10 @@ the page block Stage 2 produced and the one the user expects (terms:
 `CONTEXT.md`). Cases live in the vault under `<preview folder>/.cases/`,
 hold page text, and stay out of the repo.
 
+Not yet available: `make check-cases` and the `pdf2md case` commands arrive
+with #139, which removes this note. Until then there are no cases to replay;
+a Stage-2 assembly fix names its target pages by id and how it measured them.
+
 For a Stage-2 assembly fix:
 
 1. Before changing code, run `make check-cases` (`ISSUE=<n>` when the issue
