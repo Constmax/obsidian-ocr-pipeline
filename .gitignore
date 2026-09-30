@@ -46,6 +46,8 @@ pdf2md/out-C/
 # Pipeline-Temporärdateien
 _tmp_ocr/
 **/.cache/
+# Page cases hold page text and stay in the vault (pdf2md/cases.py)
+**/.cases/
 map_page*.json
 *_FAILED_*.pdf
 *.bak

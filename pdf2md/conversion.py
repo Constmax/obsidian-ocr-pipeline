@@ -394,6 +394,23 @@ def running_lines(doc, header_zone=0.09, footer_zone=0.93, min_pages=2):
     return frozenset(text for text, count in counter.items() if count >= min_pages)
 
 
+def _remove_rotation(doc):
+    for page in doc:
+        if page.rotation:
+            page.remove_rotation()
+
+
+def source_running_lines(source: Path) -> frozenset[str]:
+    """The running lines of a source, as a conversion of it finds them.
+
+    A replay of a page case calls this, so a change to `running_lines`
+    reaches the case.
+    """
+    with open_document(source) as doc:
+        _remove_rotation(doc)
+        return running_lines(doc)
+
+
 def textlayer_lines(page):
     """Read positioned lines from an existing PDF text layer."""
     width = page.rect.width or 1
@@ -459,9 +476,7 @@ def analyze_pages(request: ConversionRequest, temporary_dir: Path):
     source_is_image = is_image_input(request.pdf)
     pages: list[AnalyzedPage] = []
     with open_document(request.pdf) as doc:
-        for page in doc:
-            if page.rotation:
-                page.remove_rotation()
+        _remove_rotation(doc)
         context = AssemblyContext(running_lines(doc))
         for index in range(doc.page_count):
             number = index + 1
