@@ -428,6 +428,30 @@ Missing files trigger `ModuleNotFoundError`. For the same reason, legal term
 lists are embedded directly within modules rather than separate data files —
 a `daten/` directory would be lost during flat file copies.
 
+## Stage 2: Headers and Footers (`assembly.py`)
+
+`is_boilerplate()` drops a recognized line as a header or footer before the
+page's paragraphs are assembled, so a header the model glued to the first
+paragraph is dropped too. Besides fixed patterns (`BOILERPLATE`, and
+`ZONE_SIGNALS` for short lines and lines near the page edge), it drops the
+document's running lines:
+
+- `running_lines()` in `conversion.py` reads them from the PDF's text layer.
+  A line counts when it repeats on two pages in the header (top 9 %) or
+  footer (bottom 7 %) zone. A course label under the header rule (down to
+  12 %) counts only when it repeats on two thirds of the pages and on at
+  least three: slide titles and body lines repeat there as well (Issue #161).
+- A running line is dropped anywhere on the page.
+- A scan is read column by column, so a footer spanning both columns comes
+  back in two pieces. On a page the model read, a line whose top lies in the
+  bottom 7 % is dropped as well when it is a running line read with OCR
+  confusions (`i`, `l` and `|` read as `1`), or its start or end. A piece
+  must hold five letters or digits and 40 % of the line's; the end piece may
+  start with half a glyph. A text layer is not cut, so text-layer pages keep
+  such lines.
+- A misread footer that is not a running line of the text layer (a scan
+  without one, for example) is dropped only by the fixed patterns.
+
 ## Stage 2: Dictionary Verification (`dictionary.py`)
 
 Executes post-reassembly across **every OCR page** — skipping native textlayer pages whose text is exact and would produce false positives. Unrecognized terms are logged as `⌕` lines in execution output and added to `woerter-verdaechtig` in frontmatter.
@@ -470,8 +494,7 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --pages "1,3-5" --out _ocr-preview
   page, so `--pages` accepts only `1`.
 - `--diagram-pages` uses the same grammar. Whitespace around entries is ignored.
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
-- `running_lines()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering. A line counts when it repeats on two pages in the header (top 9 %) or footer (bottom 7 %) zone; a course label under the header rule (down to 12 %) counts only when it repeats on ⅔ of the pages and on at least three (Issue #161).
-- A scan is read column by column, so a footer spanning both columns comes back in two pieces. On a page read by the model, a line whose top lies in the bottom 7 % is dropped as well when it is a running line read with OCR confusions (`i`/`l`/`1`) or its start or end: five letters and 40 % of the line or more; the end piece may start with half a glyph. A text layer is not cut, so text-layer pages keep such lines.
+- `running_lines()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
 - Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`).
 - **An existing preview is merged, not replaced (Issue #106).** The selected pages replace their blocks, new ones are inserted in page order, and every other block stays verbatim, manual edits included. Without an existing preview only the selected pages are written, and `seiten` counts those.
 - The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--pages` run adds no note, because pages it did not reach keep their previous blocks.

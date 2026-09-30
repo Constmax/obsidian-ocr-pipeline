@@ -72,7 +72,17 @@ class AssemblyContext:
 
     @cached_property
     def running_keys(self) -> tuple[str, ...]:
-        return tuple(_fragment_key(line) for line in self.running_lines)
+        return tuple(_running_key(line) for line in self.running_lines)
+
+    def is_running(self, text, y=None):
+        """Is text a running line? On a model page, a line in the footer band
+        also counts when it is one read with OCR confusions, or a piece of
+        one cut at the column gutter."""
+        line = re.sub(r"\s+", " ", re.sub(r"\*", "", text)).strip()
+        if line in self.running_lines:
+            return True
+        return (self.ocr_page and y is not None and y >= FOOTER_BAND
+                and is_running_piece(text, self.running_keys))
 
 
 @dataclass(frozen=True)
@@ -83,27 +93,37 @@ class AssemblyResult:
     discarded: list[str]
 
 
-# Letters OCR confuses in running lines: "26-II", "26-Il", "26-11".
+# Characters OCR confuses in running lines: "26-II", "26-Il", "26-11", "26-|1".
 _CONFUSABLE = str.maketrans("il|", "111")
+# The top of a model-page line from here down lies in the footer band (bottom
+# 7 %), where a footer cut at the gutter is dropped (Issue #161).
+FOOTER_BAND = 930
+# A piece of a running line holds at least this many letters and digits, and
+# this share of the line's.
+PIECE_MIN_LENGTH = 5
+PIECE_MIN_SHARE = 0.4
 
 
-def _fragment_key(text):
+def _running_key(text):
+    """Letters and digits of text, casefolded, confusable characters as 1."""
     return re.sub(r"[\W_]+", "", text.casefold().translate(_CONFUSABLE))
 
 
-def is_running_fragment(text, running_keys, min_length=5, min_share=0.4):
-    """Is text one end of a running line, cut off at the column gutter?
+def is_running_piece(text, running_keys):
+    """Is text a running line read with OCR confusions, or one end of it cut
+    off at the column gutter?
 
     A scan is read column by column, so a footer spanning both columns comes
-    back as two pieces, and the right piece may start with half a glyph
-    ("lein" for "Hein"). A piece must hold `min_share` of the line: a city
-    or a subject word alone ("Bremen", "Hessen") ends a footnote line as well.
+    back as two pieces, and the right piece may start with half a glyph (a
+    cut through "t" reads "l"). A piece must hold `PIECE_MIN_SHARE` of the
+    line: a city or a subject word alone ("Bremen", "Hessen") ends a
+    footnote line as well.
     """
-    key = _fragment_key(text)
+    key = _running_key(text)
     for whole in running_keys:
         if len(key) > len(whole):
             continue
-        least = max(min_length, min_share * len(whole))
+        least = max(PIECE_MIN_LENGTH, PIECE_MIN_SHARE * len(whole))
         if len(key) >= least and whole.startswith(key):
             return True
         if any(len(piece) >= least and whole.endswith(piece)
@@ -113,16 +133,12 @@ def is_running_fragment(text, running_keys, min_length=5, min_share=0.4):
 
 
 def is_boilerplate(text, y=None, header_zone=70, footer_zone=950,
-                   context=None, fragment_zone=930):
+                   context=None):
     """Detect Hemmer boilerplate."""
     t = text.strip().strip("*").strip()
     if not t:
         return False
-    running = context.running_lines if context else frozenset()
-    if running and re.sub(r"\s+", " ", re.sub(r"\*", "", t)).strip() in running:
-        return True
-    if (context and context.ocr_page and y is not None and y >= fragment_zone
-            and is_running_fragment(t, context.running_keys)):
+    if context and context.is_running(t, y):
         return True
     if any(p.search(t) for p in BOILERPLATE):
         return True

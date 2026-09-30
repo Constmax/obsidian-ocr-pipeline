@@ -34,6 +34,14 @@ def test_a_line_below_the_header_zone_counts_only_on_most_pages():
         assert "Beispiel:" not in running_lines(doc)
 
 
+def test_a_label_on_two_thirds_of_the_pages_is_a_running_line():
+    def lines_on(number):
+        return [("SchuldR-BT-2", 0.115)] if number <= 6 else []
+
+    with _pdf(9, lines_on) as doc:
+        assert "SchuldR-BT-2" in running_lines(doc)
+
+
 def test_a_short_document_needs_the_label_on_three_pages():
     with _pdf(2, lambda _n: [("SchuldR-BT-2", 0.115)]) as doc:
         assert "SchuldR-BT-2" not in running_lines(doc)
@@ -62,6 +70,11 @@ def test_both_ends_of_a_footer_cut_at_the_gutter_are_dropped():
 
 def test_a_whole_footer_read_with_ocr_confusions_is_dropped():
     assert is_boilerplate("RA Dr. Erika Muster, M.A., Ll.M. - 03/2026", 950,
+                          context=CONTEXT)
+
+
+def test_a_footer_read_with_a_bar_is_dropped():
+    assert is_boilerplate("RA Dr. Erika Muster, M.A., L|.M. - 03/2026", 950,
                           context=CONTEXT)
 
 

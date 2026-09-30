@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import math
 import re
 import shutil
 import tempfile
@@ -12,7 +11,6 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
-from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -301,10 +299,11 @@ def _page_content(lines, context: BlockContext, source: str):
 
     Returns `(paragraphs, discarded, findings)`.
     """
+    ocr_page = source == "ocr"
     assembled = assemble_paragraphs(
-        lines, replace(context.assembly, ocr_page=source == "ocr"))
+        lines, replace(context.assembly, ocr_page=ocr_page))
     paragraphs, findings = assembled.paragraphs, []
-    if source == "ocr" and lines:
+    if ocr_page and lines:
         paragraphs, findings = dictionary.check(
             paragraphs, context.wordbook, context.dictionary_correct)
     return paragraphs, assembled.discarded, findings
@@ -370,29 +369,35 @@ class ConversionResult:
     dictionary_findings: tuple[dict[str, Any], ...] = ()
 
 
+# A course label counts on at least this many pages (Issue #161).
+LABEL_MIN_PAGES = 3
+
+
 def running_lines(doc, header_zone=0.09, footer_zone=0.93, min_pages=2,
-                  label_zone=0.12, label_share=Fraction(2, 3), label_pages=3):
+                  label_zone=0.12):
     """Return repeated header/footer texts for one document.
 
     A line in the header or footer zone counts once it repeats on
     `min_pages` pages. A course label under the header rule ("SchuldR-BT-2",
     Issue #161) sits lower, down to `label_zone`, where slide titles and
     body lines repeat as well; there a line counts only when it repeats on
-    `label_share` of the pages, and on at least `label_pages`.
+    two thirds of the pages, and on at least `LABEL_MIN_PAGES`.
     """
     from collections import Counter
 
-    in_zone, near_header = Counter(), Counter()
+    zone_pages, label_pages = Counter(), Counter()
     for i in range(doc.page_count):
         page = doc[i]
         height = page.rect.height or 1
-        seen, seen_near = set(), set()
+        in_zone, in_label_zone = set(), set()
         for block in page.get_text("dict")["blocks"]:
             if block.get("type") != 0:
                 continue
             for line in block["lines"]:
                 rel = ((line["bbox"][1] + line["bbox"][3]) / 2) / height
-                if not (rel <= label_zone or rel >= footer_zone):
+                zone = rel <= header_zone or rel >= footer_zone
+                label = rel <= label_zone
+                if not (zone or label):
                     continue
                 text = re.sub(
                     r"\s+", " ",
@@ -400,16 +405,16 @@ def running_lines(doc, header_zone=0.09, footer_zone=0.93, min_pages=2,
                 ).strip()
                 if len(text) < 6 or re.fullmatch(r"[\d\s\-–—.]+", text):
                     continue
-                if rel <= label_zone:
-                    seen_near.add(text)
-                if rel <= header_zone or rel >= footer_zone:
-                    seen.add(text)
-        in_zone.update(seen)
-        near_header.update(seen_near)
-    label_count = max(label_pages, math.ceil(label_share * doc.page_count))
+                if zone:
+                    in_zone.add(text)
+                if label:
+                    in_label_zone.add(text)
+        zone_pages.update(in_zone)
+        label_pages.update(in_label_zone)
     return frozenset(
-        [text for text, count in in_zone.items() if count >= min_pages]
-        + [text for text, count in near_header.items() if count >= label_count])
+        [text for text, count in zone_pages.items() if count >= min_pages]
+        + [text for text, count in label_pages.items()
+           if count >= LABEL_MIN_PAGES and 3 * count >= 2 * doc.page_count])
 
 
 def _remove_rotation(doc):
