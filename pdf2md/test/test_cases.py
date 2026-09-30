@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import fitz
@@ -89,6 +90,17 @@ def _stored(preview, number=1):
 
 # --- Capture ----------------------------------------------------------------
 
+def _rerun_with_other_lines(root, pdf):
+    _write_pdf(pdf, body=["Eine ganz andere Seite ist es nach dem erneuten "
+                          "Lauf geworden.", *BODY[1:]])
+    _convert(pdf, root / "_ocr-preview")
+
+
+def _load_stash(preview, number=1):
+    return json.loads(cases.stash_path(preview, number).read_text(
+        encoding="utf-8"))
+
+
 def test_a_marked_page_becomes_a_case_with_produced_and_expected_block(vault):
     root, pdf, preview = vault
 
@@ -97,7 +109,8 @@ def test_a_marked_page_becomes_a_case_with_produced_and_expected_block(vault):
     path, case, missing = cases.add(preview, 1, note="one paragraph too few",
                                     issue=130)
 
-    assert path == root / "_ocr-preview" / ".cases" / "skript" / "p001.json"
+    assert path == (root / "_ocr-preview" / ".cases" / "skript"
+                    / "p001.json").resolve()
     assert cases.case_id(path) == "skript/p001"
     assert _stored(preview) == case
     assert case["schema"] == 1
@@ -115,24 +128,55 @@ def test_a_marked_page_becomes_a_case_with_produced_and_expected_block(vault):
     assert not cases.stash_path(preview, 1).exists()
 
 
-def test_a_stash_survives_a_rerun_and_supplies_the_produced_block(vault):
+def test_a_rerun_that_reads_the_same_lines_keeps_the_stash(vault):
     root, pdf, preview = vault
     cases.stash(preview, 1)
+    before = cases.stash_path(preview, 1).read_bytes()
     _edit(preview, "Der Anspruch", "Der erste Anspruch")
 
-    # The rerun writes a block from other lines over the user's edit.
-    _write_pdf(pdf, body=["Eine ganz andere Seite ist es nach dem erneuten "
-                          "Lauf geworden.", *BODY[1:]])
-    _convert(pdf, root / "_ocr-preview")
+    _convert(pdf, root / "_ocr-preview")  # writes over the user's edit
+
     assert cases.stash(preview, 1) == "kept"
-    _, case, _ = cases.add(preview, 1)
-
-    assert case["produced"] == PRODUCED
-    assert case["page"]["lines"][1][0] == BODY[0]
-    assert "Eine ganz andere Seite" in case["expected"]
+    assert cases.stash_path(preview, 1).read_bytes() == before
 
 
-def test_marking_without_a_stash_takes_the_produced_block_from_the_cache(vault):
+def test_a_stash_of_other_lines_is_replaced(vault):
+    """The stash of an earlier version of the page — left by a rerun that
+    read other lines, or by a preview that was accepted and converted again —
+    must not supply the lines for the block the preview holds now."""
+    root, pdf, preview = vault
+    cases.stash(preview, 1)
+    _rerun_with_other_lines(root, pdf)
+
+    assert cases.stash(preview, 1) == "stashed"
+    assert "Eine ganz andere Seite" in _load_stash(preview)["produced"]
+
+
+def test_marking_ignores_a_stash_of_other_lines(vault):
+    root, pdf, preview = vault
+    cases.stash(preview, 1)
+    _rerun_with_other_lines(root, pdf)
+    _edit(preview, "andere Seite", "neue Seite")
+
+    _, case, missing = cases.add(preview, 1)
+
+    assert case["page"]["lines"][1][0].startswith("Eine ganz andere Seite")
+    assert "Eine ganz andere Seite" in case["produced"]
+    assert "Eine ganz neue Seite" in case["expected"]
+    assert missing == ["neue"]
+    assert not cases.stash_path(preview, 1).exists()
+
+
+def test_the_produced_block_is_the_replay_not_an_edited_preview(vault):
+    _, _, preview = vault
+    _split_first_sentence(preview)  # edited before anything was stashed
+
+    assert cases.stash(preview, 1) == "stashed"
+
+    assert _load_stash(preview)["produced"] == PRODUCED
+
+
+def test_marking_without_a_stash_takes_the_lines_from_the_cache(vault):
     _, _, preview = vault
     _split_first_sentence(preview)
 
@@ -146,7 +190,7 @@ def test_marking_again_updates_the_expected_block_only(vault):
     _, _, preview = vault
     cases.stash(preview, 1)
     _split_first_sentence(preview)
-    cases.add(preview, 1, note="first note", issue=130)
+    _, first, _ = cases.add(preview, 1, note="first note", issue=130)
 
     # The block in the preview is the user's now: nothing to stash.
     assert cases.stash(preview, 1) == "held"
@@ -154,9 +198,54 @@ def test_marking_again_updates_the_expected_block_only(vault):
     _, case, _ = cases.add(preview, 1)
 
     assert case["produced"] == PRODUCED
+    assert case["page"] == first["page"]
     assert case["expected"].count("\n\n") == 3
     assert (case["note"], case["issue"], case["status"]) == (
         "first note", 130, "open")
+
+
+def test_marking_again_after_a_rerun_takes_the_new_lines(vault):
+    root, pdf, preview = vault
+    _split_first_sentence(preview)
+    cases.add(preview, 1, note="first note", issue=130)
+
+    _rerun_with_other_lines(root, pdf)
+    _edit(preview, "geworden. ", "geworden.\n\n")
+    _, case, missing = cases.add(preview, 1)
+
+    assert case["page"]["lines"][1][0].startswith("Eine ganz andere Seite")
+    assert "Eine ganz andere Seite" in case["produced"]
+    assert (case["fault_stage"], missing) == ("assembly", [])
+    assert (case["note"], case["issue"], case["status"]) == (
+        "first note", 130, "open")
+
+
+def test_marking_again_works_from_the_case_once_the_cache_is_gone(vault):
+    root, _, preview = vault
+    _split_first_sentence(preview)
+    _, first, _ = cases.add(preview, 1)
+    for entry in (root / "_ocr-preview" / ".cache" / "skript").iterdir():
+        entry.unlink()
+
+    _edit(preview, "Schaden. ", "Schaden.\n\n")
+    _, case, _ = cases.add(preview, 1)
+
+    assert case["page"] == first["page"]
+    assert case["expected"].count("\n\n") == 3
+
+
+def test_a_stash_this_version_cannot_read_does_not_block_marking(vault):
+    _, _, preview = vault
+    cases.stash(preview, 1)
+    cases.stash_path(preview, 1).write_text("{", encoding="utf-8")
+    _split_first_sentence(preview)
+
+    assert cases.stash(preview, 1) == "stashed"
+    cases.stash_path(preview, 1).write_text("{", encoding="utf-8")
+    _, case, _ = cases.add(preview, 1)
+
+    assert case["produced"] == PRODUCED
+    assert not cases.stash_path(preview, 1).exists()
 
 
 def test_a_preview_without_a_cache_entry_or_page_cannot_be_captured(vault):
@@ -188,17 +277,32 @@ def test_a_relative_source_is_found_from_the_vault_root(vault, monkeypatch):
     assert _load_stash(preview)["pdf"] == str(pdf.resolve())
 
 
-def _load_stash(preview, number=1):
-    return json.loads(cases.stash_path(preview, number).read_text(
-        encoding="utf-8"))
-
-
 # --- Replay -----------------------------------------------------------------
 
-def test_an_open_case_is_a_known_failure_and_names_its_blocks(vault, capsys):
+@pytest.fixture
+def corrected(vault):
+    """The vault with page 1 corrected and marked: an open case."""
     root, _, preview = vault
     _split_first_sentence(preview)
     cases.add(preview, 1, issue=130)
+    return vault
+
+
+def _fix_assembly(monkeypatch):
+    """Stand in for the assembly fix the corrected case waits for."""
+    produced = cases.page_block
+
+    def fixed(lines, context, meta):
+        block = produced(lines, context, meta)
+        return replace(block, markdown=block.markdown.replace(
+            FIRST + " ", FIRST + "\n\n"))
+
+    monkeypatch.setattr(cases, "page_block", fixed)
+
+
+def test_an_open_case_is_a_known_failure_and_names_its_blocks(
+        corrected, capsys):
+    root, _, _ = corrected
 
     (outcome,) = cases.run([root])
 
@@ -216,11 +320,12 @@ def test_an_open_case_is_a_known_failure_and_names_its_blocks(vault, capsys):
     assert "1 page case(s): 1 open" in report
 
 
-def test_open_to_now_matching_to_promoted_to_fixed(vault, capsys):
-    root, _, preview = vault
-    # Marked without a correction, the case matches as soon as it is replayed:
-    # what a case looks like once its assembly bug is fixed.
-    cases.add(preview, 1)
+def test_open_to_now_matching_to_promoted_to_fixed(
+        corrected, monkeypatch, capsys):
+    root, _, preview = corrected
+    assert _states(root, promote=True) == {"skript/p001": "open"}
+
+    _fix_assembly(monkeypatch)
 
     assert _states(root) == {"skript/p001": "now matching"}
     assert _stored(preview)["status"] == "open"
@@ -231,26 +336,38 @@ def test_open_to_now_matching_to_promoted_to_fixed(vault, capsys):
     assert "1 fixed" in capsys.readouterr().out
 
 
-def test_a_fixed_case_that_differs_fails_the_run(vault, monkeypatch, capsys):
-    root, _, preview = vault
-    cases.add(preview, 1)
-    cases.run([root], promote=True)
-    produced = cases.page_block
+def test_a_fixed_case_that_differs_fails_the_run(
+        corrected, monkeypatch, capsys):
+    root, _, preview = corrected
+    with monkeypatch.context() as patch:
+        _fix_assembly(patch)
+        cases.run([root], promote=True)
 
-    def regressed(lines, context, meta):
-        return produced(lines[:2], context, meta)
-
-    monkeypatch.setattr(cases, "page_block", regressed)
-
+    # The fix is gone again: the case regressed.
     assert _states(root) == {"skript/p001": "regressed"}
     assert cases.main(["run", str(root)]) == 1
     assert "regressed" in capsys.readouterr().out
     assert _stored(preview)["status"] == "fixed"
 
 
-def test_running_lines_are_recomputed_from_the_source(vault, monkeypatch):
+def test_a_page_marked_without_a_correction_is_never_promoted(vault, capsys):
     root, _, preview = vault
     cases.add(preview, 1)
+    # Bold is nothing the comparer sees, so this is no correction either.
+    _edit(preview, "%% S. 2 | textlayer %%\n\nDer Anspruch",
+          "%% S. 2 | textlayer %%\n\n**Der Anspruch**")
+    cases.add(preview, 2)
+
+    assert _states(root, promote=True) == {"skript/p001": "uncorrected",
+                                           "skript/p002": "uncorrected"}
+    assert _stored(preview)["status"] == "open"
+    assert cases.main(["run", str(root)]) == 0
+    assert "correct the page and mark it again" in capsys.readouterr().out
+
+
+def test_running_lines_are_recomputed_from_the_source(corrected, monkeypatch):
+    root, _, _ = corrected
+    _fix_assembly(monkeypatch)
     assert _states(root) == {"skript/p001": "now matching"}
 
     # A change to running-line detection reaches the case: here it no longer
@@ -259,12 +376,13 @@ def test_running_lines_are_recomputed_from_the_source(vault, monkeypatch):
 
     (outcome,) = cases.run([root])
     assert outcome.state == "open"
-    assert outcome.differing[-1] == "+ replayed block 1: " + HEADER
+    assert outcome.differing == ("+ replayed block 1: " + HEADER,)
 
 
-def test_a_changed_source_is_stale_and_replays_the_frozen_lines(vault, capsys):
-    root, pdf, preview = vault
-    cases.add(preview, 1)
+def test_a_changed_source_is_stale_and_replays_the_frozen_lines(
+        corrected, monkeypatch, capsys):
+    root, pdf, _ = corrected
+    _fix_assembly(monkeypatch)
     _write_pdf(pdf, header=None)
 
     (outcome,) = cases.run([root])
@@ -274,9 +392,10 @@ def test_a_changed_source_is_stale_and_replays_the_frozen_lines(vault, capsys):
     assert "stale: source changed" in capsys.readouterr().out
 
 
-def test_a_missing_source_falls_back_to_the_frozen_lines(vault, capsys):
-    root, pdf, preview = vault
-    cases.add(preview, 1)
+def test_a_missing_source_falls_back_to_the_frozen_lines(
+        corrected, monkeypatch, capsys):
+    root, pdf, _ = corrected
+    _fix_assembly(monkeypatch)
     pdf.unlink()
 
     (outcome,) = cases.run([root])
@@ -284,6 +403,42 @@ def test_a_missing_source_falls_back_to_the_frozen_lines(vault, capsys):
     assert (outcome.state, outcome.source) == ("now matching", "missing")
     cases.main(["run", str(root)])
     assert "source not found" in capsys.readouterr().out
+
+
+def test_promoting_freezes_the_running_lines_the_case_matched_with(
+        corrected, monkeypatch):
+    """A case captured while running-line detection was wrong must stay
+    fixed once its source is gone."""
+    root, pdf, preview = corrected
+    path = cases.case_path(preview, 1)
+    path.write_text(json.dumps({**_stored(preview), "running_lines": []}),
+                    encoding="utf-8")
+    _fix_assembly(monkeypatch)
+
+    assert _states(root, promote=True) == {"skript/p001": "promoted"}
+    assert _stored(preview)["running_lines"] == [HEADER]
+    pdf.unlink()
+    assert _states(root) == {"skript/p001": "fixed"}
+
+
+def test_a_footnote_mark_in_another_paragraph_differs():
+    expected = "%% S. 1 | ocr %%\n\nErster Absatz.[^1]\n\nZweiter Absatz."
+    moved = "%% S. 1 | ocr %%\n\nErster Absatz.\n\nZweiter Absatz.[^1]"
+
+    assert cases.compare(expected, expected) == []
+    assert cases.compare(expected, moved) == [
+        "- expected block 1: Erster Absatz.[^1]",
+        "- expected block 2: Zweiter Absatz.",
+        "+ replayed block 1: Erster Absatz.",
+        "+ replayed block 2: Zweiter Absatz.[^1]",
+    ]
+
+
+def test_a_block_with_a_footnote_number_twice_matches_itself():
+    block = ("%% S. 1 | ocr %%\n\nText.[^1]\n\n[^1]: Links, Rn. 5.\n\n"
+             "[^1]: Rechts, Rn. 7.")
+
+    assert cases.compare(block, block) == []
 
 
 # --- Fault stage ------------------------------------------------------------
@@ -319,9 +474,10 @@ def test_the_fault_stage_can_be_set_and_stays_when_marking_again(vault):
 def test_markup_and_a_hyphenated_word_are_covered_by_the_lines():
     case = {
         "page": {"lines": [["Rechtsfolge ist der Schadens-", None],
-                           ["ersatz statt der Leistung. 1", None]]},
+                           # a decomposed umlaut, as some text layers hold it
+                           ["ersatz statt der Rückgabe. 1", None]]},
         "expected": "%% S. 1 | ocr %%\n\n#### Rechtsfolge\n\n"
-                    "ist der **Schadensersatz** statt der Leistung.[^7]\n\n"
+                    "ist der **Schadensersatz** statt der Rückgabe.[^7]\n\n"
                     "[^7]: Palandt",
     }
 
@@ -341,6 +497,16 @@ def test_a_run_can_be_limited_to_the_cases_of_an_issue(vault):
     assert _states(root, issue=99) == {}
 
 
+def test_overlapping_folders_replay_a_case_once(corrected, monkeypatch, capsys):
+    root, _, _ = corrected
+    monkeypatch.setenv("HOME", str(root.parent))
+
+    assert len(cases.run([root, root / "_ocr-preview"])) == 1
+    # An unexpanded tilde, as `make check-cases VAULT_ROOT=~/vault` passes it.
+    assert cases.main(["run", "~/vault"]) == 0
+    assert "1 page case(s): 1 open" in capsys.readouterr().out
+
+
 def test_a_stash_is_dropped_once_its_preview_left_the_folder(vault, capsys):
     root, _, preview = vault
     cases.stash(preview, 1)
@@ -358,9 +524,9 @@ def test_a_stash_is_dropped_once_its_preview_left_the_folder(vault, capsys):
     assert "removed 1 stash(es)" in capsys.readouterr().out
 
 
-def test_an_older_schema_is_upgraded_instead_of_rejected(vault, monkeypatch):
-    root, _, preview = vault
-    cases.add(preview, 1)
+def test_an_older_schema_is_upgraded_instead_of_rejected(
+        corrected, monkeypatch):
+    root, _, preview = corrected
     monkeypatch.setattr(cases, "SCHEMA", 2)
     monkeypatch.setattr(cases, "_CASE_KEYS", (*cases._CASE_KEYS, "reviewer"))
     monkeypatch.setitem(cases._UPGRADES, 1,
@@ -370,14 +536,17 @@ def test_an_older_schema_is_upgraded_instead_of_rejected(vault, monkeypatch):
 
     assert (case["schema"], case["reviewer"]) == (2, None)
     assert _stored(preview)["schema"] == 1
-    assert _states(root, promote=True) == {"skript/p001": "promoted"}
-    assert (_stored(preview)["schema"], _stored(preview)["status"]) == (
-        2, "fixed")
-
-
-def test_a_case_this_version_cannot_read_fails_the_run(vault, capsys):
-    root, _, preview = vault
+    # Marking again writes the upgraded record, with the key the newer
+    # schema added.
+    _edit(preview, "Schaden. ", "Schaden.\n\n")
     cases.add(preview, 1)
+    assert (_stored(preview)["schema"], _stored(preview)["reviewer"]) == (
+        2, None)
+    assert _states(root) == {"skript/p001": "open"}
+
+
+def test_a_case_this_version_cannot_read_fails_the_run(corrected, capsys):
+    root, _, preview = corrected
     path = cases.case_path(preview, 1)
     path.write_text(json.dumps({**_stored(preview), "schema": 99}),
                     encoding="utf-8")
@@ -389,9 +558,24 @@ def test_a_case_this_version_cannot_read_fails_the_run(vault, capsys):
     assert "schema 99" in capsys.readouterr().out
 
 
-def test_run_needs_a_folder_or_the_vault_root(vault, monkeypatch, capsys):
-    root, _, preview = vault
-    cases.add(preview, 1)
+def test_a_case_that_cannot_be_replayed_fails_the_run_not_the_others(
+        corrected, capsys):
+    root, _, preview = corrected
+    _edit(preview, "%% S. 2 | textlayer %%\n\n" + FIRST + " ",
+          "%% S. 2 | textlayer %%\n\n" + FIRST + "\n\n")
+    cases.add(preview, 2)
+    damaged = _stored(preview)
+    del damaged["page"]["source"]
+    cases.case_path(preview, 1).write_text(json.dumps(damaged),
+                                           encoding="utf-8")
+
+    assert _states(root) == {"skript/p001": "error", "skript/p002": "open"}
+    assert cases.main(["run", str(root)]) == 1
+    assert "replay failed: KeyError('source')" in capsys.readouterr().out
+
+
+def test_run_needs_a_folder_or_the_vault_root(corrected, monkeypatch, capsys):
+    root, _, _ = corrected
     monkeypatch.delenv("VAULT_ROOT", raising=False)
 
     assert cases.main(["run"]) == 2
@@ -426,10 +610,12 @@ def test_the_case_subcommand_is_reached_through_pdf2md(vault):
                  "--issue", "130")
     replayed = call("run", str(root), "--issue", "130")
 
-    assert (stashed.returncode, stashed.stdout) == (
-        0, "stashed: skript/p001\n")
-    assert (added.returncode, added.stdout) == (
-        0, "case skript/p001: open, fault stage assembly\n")
+    # `endswith`: a newer pymupdf announces itself on stdout first.
+    assert stashed.returncode == 0
+    assert stashed.stdout.endswith("stashed: skript/p001\n")
+    assert added.returncode == 0
+    assert added.stdout.endswith(
+        "case skript/p001: open, fault stage assembly\n")
     assert replayed.returncode == 0
     assert "1 page case(s): 1 open" in replayed.stdout
     assert call("run").returncode == 2
@@ -446,9 +632,8 @@ def test_make_check_cases_stops_without_a_vault_root():
 
 
 @pytest.mark.slow
-def test_make_check_cases_replays_the_cases_of_the_vault(vault):
-    root, _, preview = vault
-    cases.add(preview, 1, issue=130)
+def test_make_check_cases_replays_the_cases_of_the_vault(corrected):
+    root, _, _ = corrected
 
     result = subprocess.run(
         ["make", "check-cases", f"VAULT_ROOT={root}", "ISSUE=130",
@@ -457,4 +642,4 @@ def test_make_check_cases_replays_the_cases_of_the_vault(vault):
         env=_clean_environment())
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "1 page case(s): 1 now matching" in result.stdout
+    assert "1 page case(s): 1 open" in result.stdout

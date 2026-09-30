@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import sys
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -186,30 +187,56 @@ def _capture(preview: Path, fields: dict, page) -> dict:
     }
 
 
-def stash(preview: Path, number: int) -> str:
-    """Keep the produced block of a page before its first edit is saved.
+def _same_page(record: dict | None, captured: dict) -> bool:
+    """Whether a stash or case was made from the lines the page has now."""
+    return record is not None and all(
+        record[key] == captured[key] for key in ("page", "pdf_sha256"))
 
-    Returns what happened:
+
+def _load_or_none(path: Path, keys) -> dict | None:
+    """A stash or case, or None when there is none this version can read."""
+    try:
+        return _load(path, keys) if path.exists() else None
+    except CaseError:
+        return None
+
+
+def _with_produced(captured: dict) -> dict:
+    """A capture with its produced block: the replay of its lines.
+
+    Not the block the preview holds. That one may be edited already — an
+    edit outside the review view, a stash that failed earlier — and nothing
+    in the file tells. The replay is what Stage 2 makes of these lines.
+    """
+    return {**captured,
+            "produced": replay(captured, captured["running_lines"])}
+
+
+def stash(preview: Path, number: int) -> str:
+    """Keep the produced block of a page and the lines it was made from,
+    called before the first edit of the page is saved.
+
+    The block in a preview always comes from the page's current page-cache
+    entry, so a stash or case made from other lines belongs to an earlier
+    version of the page. Returns what happened:
 
     - `stashed`: the block and the page's recognized lines are kept.
-    - `kept`: the page already has a stash. It holds the first produced
-      version since the last mark, and a rerun must not replace it.
-    - `held`: the page's case was made from these very lines, so it holds
-      the produced block already; the block in the preview is the user's.
+    - `kept`: the page has a stash of these lines. It holds the first
+      produced version since the last mark, and a rerun that reads the same
+      lines again must not replace it.
+    - `held`: the page's case was made from these lines, so it holds the
+      produced block already; the block in the preview is the user's.
     """
     target = stash_path(preview, number)
-    if target.exists():
-        return "kept"
     fields, page = _preview_page(preview, number)
-    record = _capture(preview, fields, page)
-    try:
-        case = load_case(case_path(preview, number))
-    except CaseError:
-        case = None
-    if case is not None and all(
-            case[key] == record[key] for key in ("page", "pdf_sha256")):
+    captured = _capture(preview, fields, page)
+    if _same_page(_load_or_none(target, _STASH_KEYS), captured):
+        return "kept"
+    if _same_page(_load_or_none(case_path(preview, number), _CASE_KEYS),
+                  captured):
+        target.unlink(missing_ok=True)
         return "held"
-    _write(target, {**record, "produced": page.text})
+    _write(target, _with_produced(captured))
     return "stashed"
 
 
@@ -219,7 +246,10 @@ def add(preview: Path, number: int, note: str | None = None,
 
     The lines and the produced block come from the stash; without one, from
     the case the page already has (marking again updates the expected
-    block); without either, from the current page-cache entry.
+    block). Both count only while they were made from the lines the page
+    has now: after a rerun that read other lines, the case is made anew from
+    the current page-cache entry. When that entry or the source is gone, the
+    stash or case is all there is and is used as it is.
 
     Returns `(path, case, missing)` — `missing` are the words that decided
     an automatic `upstream`.
@@ -227,16 +257,20 @@ def add(preview: Path, number: int, note: str | None = None,
     fields, page = _preview_page(preview, number)
     target, stashed = case_path(preview, number), stash_path(preview, number)
     previous = load_case(target) if target.exists() else None
-    if stashed.exists():
-        base = _load(stashed, _STASH_KEYS)
-    elif previous is not None:
-        base = previous
+    stash_record = _load_or_none(stashed, _STASH_KEYS)
+    try:
+        captured = _capture(preview, fields, page)
+    except CaseError:
+        if stash_record is None and previous is None:
+            raise
+        base = stash_record or previous
     else:
-        base = _capture(preview, fields, page)
-        base["produced"] = replay(base, base["running_lines"])
+        base = next((record for record in (stash_record, previous)
+                     if _same_page(record, captured)), None)
+        if base is None:
+            base = _with_produced(captured)
 
-    case = {key: base[key] for key in _STASH_KEYS}
-    case = {"schema": SCHEMA, **case, "expected": page.text}
+    case = {**base, "schema": SCHEMA, "expected": page.text}
     kept = previous or {}
     case["note"] = note if note is not None else kept.get("note", "")
     case["issue"] = issue if issue is not None else kept.get("issue")
@@ -298,17 +332,16 @@ def _structure():
 def compare(expected: str, replayed: str) -> list[str]:
     """Name the blocks in which a replay differs from the expected block.
 
-    Empty when they match. Blocks are compared as `bench/structure.py`
-    compares them: order, boundaries, kind, heading level and footnotes
-    count; bold, case and whitespace do not.
+    Empty when they match. Each block is described as `bench/structure.py`
+    describes a reference block — text fingerprint, kind, heading level,
+    footnote number and the footnote marks it carries — and the two
+    sequences must be equal. That is `compare_structure` held block by
+    block: a footnote mark that moved to another paragraph differs here.
+    Bold, case and whitespace do not count.
     """
     structure = _structure()
     wanted = structure.reference_paragraphs(_paragraphs(expected))
-    candidate = _paragraphs(replayed)
-    result = structure.compare_structure(wanted, candidate)
-    if result["passed"]:
-        return []
-    got = structure.reference_paragraphs(candidate)
+    got = structure.reference_paragraphs(_paragraphs(replayed))
 
     def key(block):
         return json.dumps({name: value for name, value in block.items()
@@ -324,11 +357,12 @@ def compare(expected: str, replayed: str) -> list[str]:
                       for index in range(i1, i2)]
         differing += [f"+ replayed block {index + 1}: {got[index]['anchor']}"
                       for index in range(j1, j2)]
-    # The comparer can fail on a criterion no single block shows.
-    return differing or [
-        f"! {name} differ" for name, value in result.items()
-        if name != "passed" and (value is False or
-                                 isinstance(value, tuple) and not value[0])]
+    return differing
+
+
+def uncorrected(case: dict) -> bool:
+    """Whether the case was marked without a correction the comparer sees."""
+    return not compare(case["expected"], case["produced"])
 
 
 _FOOTNOTE_MARK = re.compile(r"\[\^\d+\]:?")
@@ -343,15 +377,17 @@ def uncovered_words(case: dict, replayed: str) -> list[str]:
     which joins a word hyphenated across two lines — or in the replayed
     block, which holds what assembly itself adds (the callout title).
     """
-    def words(block):
-        return _WORD.findall(_FOOTNOTE_MARK.sub(
-            " ", "\n\n".join(_paragraphs(block))).lower())
+    def words(text):
+        return _WORD.findall(unicodedata.normalize("NFC", text).lower())
 
-    run_together = "".join(_WORD.findall(
-        " ".join(line[0] for line in case["page"]["lines"]).lower()))
-    held = set(words(replayed))
+    def block_words(block):
+        return words(_FOOTNOTE_MARK.sub(" ", "\n\n".join(_paragraphs(block))))
+
+    run_together = "".join(words(
+        " ".join(line[0] for line in case["page"]["lines"])))
+    held = set(block_words(replayed))
     missing = []
-    for word in words(case["expected"]):
+    for word in block_words(case["expected"]):
         if word not in held and word not in run_together \
                 and word not in missing:
             missing.append(word)
@@ -392,7 +428,8 @@ class Outcome:
     """What one case did in a run."""
     id: str
     path: Path
-    # fixed | open | now matching | promoted | regressed | upstream | unreadable
+    # fixed | open | now matching | promoted | regressed | uncorrected |
+    # upstream | unreadable | error
     state: str
     issue: int | None = None
     # current | missing | stale; None when the case was not replayed
@@ -402,7 +439,7 @@ class Outcome:
 
     @property
     def failed(self) -> bool:
-        return self.state in ("regressed", "unreadable")
+        return self.state in ("regressed", "unreadable", "error")
 
 
 def _walk(root: Path):
@@ -434,8 +471,10 @@ def drop_orphaned_stashes(cases: Path) -> int:
 
 
 def find_cases(roots) -> list[Path]:
-    return sorted(path for root in roots for cases in _walk(Path(root))
-                  for path in cases.glob("*/p*.json"))
+    """Every case file below `roots`, once, whatever roots overlap."""
+    return sorted({path.resolve() for root in roots
+                   for cases in _walk(Path(root))
+                   for path in cases.glob("*/p*.json")})
 
 
 def run(roots, issue: int | None = None, promote: bool = False) -> list[Outcome]:
@@ -443,7 +482,9 @@ def run(roots, issue: int | None = None, promote: bool = False) -> list[Outcome]
 
     An open case that still differs is a known failure. A fixed case that
     differs has regressed and fails the run. An open case that matches is
-    reported, and becomes fixed only with `promote`.
+    reported, and becomes fixed only with `promote`. A case whose expected
+    block equals its produced one was marked without a correction: it says
+    nothing about a fix and is never promoted.
     """
     sources, outcomes = _Sources(), []
     for path in find_cases(roots):
@@ -455,23 +496,40 @@ def run(roots, issue: int | None = None, promote: bool = False) -> list[Outcome]
             continue
         if issue is not None and case["issue"] != issue:
             continue
+
+        def outcome(state, source=None, differing=(), detail=""):
+            return Outcome(case_id(path), path, state, case["issue"], source,
+                           tuple(differing), detail)
+
         if case["fault_stage"] == "upstream":
-            outcomes.append(Outcome(case_id(path), path, "upstream",
-                                    case["issue"]))
+            outcomes.append(outcome("upstream"))
             continue
-        running, source = sources.running_lines(case)
-        differing = compare(case["expected"], replay(case, running))
+        try:
+            if case["status"] != "fixed" and uncorrected(case):
+                outcomes.append(outcome("uncorrected"))
+                continue
+            running, source = sources.running_lines(case)
+            differing = compare(case["expected"], replay(case, running))
+        except CaseError:
+            raise
+        except Exception as error:  # a damaged case, or the code under repair
+            outcomes.append(outcome("error", detail=f"replay failed: {error!r}"))
+            continue
         if case["status"] == "fixed":
             state = "regressed" if differing else "fixed"
         elif differing:
             state = "open"
         elif promote:
-            _write(path, {**case, "status": "fixed"})
+            # The frozen running lines become the ones the case matched
+            # with, so it still matches once its source is gone.
+            fixed = {**case, "status": "fixed"}
+            if source == "current":
+                fixed["running_lines"] = sorted(running)
+            _write(path, fixed)
             state = "promoted"
         else:
             state = "now matching"
-        outcomes.append(Outcome(case_id(path), path, state, case["issue"],
-                                source, tuple(differing)))
+        outcomes.append(outcome(state, source, differing))
     return outcomes
 
 
@@ -480,14 +538,19 @@ def run(roots, issue: int | None = None, promote: bool = False) -> list[Outcome]
 _STASH_NOTES = {
     "stashed": "stashed",
     "kept": "stash kept",
-    "held": "no stash, the case holds the produced block",
+    "held": "not stashed, the case holds the produced block",
 }
 _SOURCE_NOTES = {
     "missing": "source not found, frozen running lines",
     "stale": "stale: source changed, frozen running lines",
 }
 _SUMMARY = ("fixed", "promoted", "now matching", "open", "regressed",
-            "upstream", "unreadable")
+            "uncorrected", "upstream", "unreadable", "error")
+_STATE_NOTES = {
+    "upstream": "(not replayed)",
+    "uncorrected": "(expected equals produced: correct the page and mark "
+                   "it again)",
+}
 
 
 def _print_run(outcomes, promote):
@@ -495,8 +558,8 @@ def _print_run(outcomes, promote):
         parts = [f"{outcome.state:<13}{outcome.id}"]
         if outcome.issue is not None:
             parts.append(f"#{outcome.issue}")
-        if outcome.state == "upstream":
-            parts.append("(not replayed)")
+        if outcome.state in _STATE_NOTES:
+            parts.append(_STATE_NOTES[outcome.state])
         if outcome.source in _SOURCE_NOTES:
             parts.append(f"[{_SOURCE_NOTES[outcome.source]}]")
         if outcome.detail:
@@ -560,7 +623,7 @@ def main(argv=None) -> int:
                 print("   not in the recognized lines: "
                       + ", ".join(missing[:8])
                       + (" …" if len(missing) > 8 else ""))
-            if case["expected"] == case["produced"]:
+            if uncorrected(case):
                 print("   the expected block equals the produced one — "
                       "correct the page and mark it again")
             return 0
@@ -572,7 +635,9 @@ def main(argv=None) -> int:
                 print("pdf2md case run: no folder given and VAULT_ROOT is "
                       "unset", file=sys.stderr)
                 return 2
-            roots = [Path(vault).expanduser()]
+            roots = [Path(vault)]
+        # `make check-cases VAULT_ROOT=~/vault` passes the tilde unexpanded.
+        roots = [root.expanduser() for root in roots]
         for root in roots:
             if not root.is_dir():
                 raise CaseError(f"not a folder: {root}")
