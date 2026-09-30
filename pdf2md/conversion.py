@@ -278,6 +278,13 @@ class PageMeta:
     # File name of the page image; set for a diagram page only.
     diagram_image: str | None = None
 
+    @classmethod
+    def from_cache_entry(cls, entry, diagram_image: str | None = None) -> PageMeta:
+        """The meta of a page as its page-cache entry describes it."""
+        return cls(number=entry["number"], source=entry["source"],
+                   source_detail=f"{entry['layout']}, {entry['mode']}",
+                   diagram_image=diagram_image)
+
 
 @dataclass(frozen=True)
 class PageBlock:
@@ -287,24 +294,35 @@ class PageBlock:
     findings: list[dictionary.Finding]
 
 
+def _page_content(lines, context: BlockContext, source: str):
+    """Assemble a page's lines and run the dictionary pass of an OCR page.
+
+    Returns `(paragraphs, discarded, findings)`.
+    """
+    assembled = assemble_paragraphs(lines, context.assembly)
+    paragraphs, findings = assembled.paragraphs, []
+    if source == "ocr" and lines:
+        paragraphs, findings = dictionary.check(
+            paragraphs, context.wordbook, context.dictionary_correct)
+    return paragraphs, assembled.discarded, findings
+
+
 def page_block(lines, context: BlockContext, meta: PageMeta) -> PageBlock:
     """Turn one page's recognized lines into its page block.
 
     The one path from lines to the preview: assembly, the dictionary pass of
-    an OCR page, the page marker and the diagram callout. A conversion, the
-    `--pages` merge and a replay all call it, so they cannot drift apart. No
-    model, no PDF and no file access.
+    an OCR page, the page marker and the diagram callout. A conversion and a
+    replay both call it, so they cannot drift apart. The block carries no
+    trailing whitespace, which is how `split_preview` reads it back. No model,
+    no PDF and no file access.
     """
-    assembled = assemble_paragraphs(lines, context.assembly)
-    paragraphs, findings = assembled.paragraphs, []
-    if meta.source == "ocr" and lines:
-        paragraphs, findings = dictionary.check(
-            paragraphs, context.wordbook, context.dictionary_correct)
+    paragraphs, discarded, findings = _page_content(
+        lines, context, meta.source)
 
     diagram = meta.diagram_image is not None
     markdown = page_marker(meta.number, "diagramm" if diagram else (
         "textlayer" if meta.source == "textlayer"
-        else f"ocr | {meta.source_detail}"))
+        else f"ocr | {meta.source_detail}" if meta.source_detail else "ocr"))
     if diagram:
         parts = [f"![[{meta.diagram_image}]]"]
         if not context.diagram_image_only and paragraphs:
@@ -315,7 +333,7 @@ def page_block(lines, context: BlockContext, meta: PageMeta) -> PageBlock:
         markdown += "\n\n".join(parts)
     else:
         markdown += "\n\n".join(paragraphs)
-    return PageBlock(markdown, paragraphs, assembled.discarded, findings)
+    return PageBlock(markdown.rstrip(), paragraphs, discarded, findings)
 
 
 @dataclass(frozen=True)
@@ -610,7 +628,7 @@ def _merged_document(request, existing, finished, cache_dir, block_context,
     """
     blocks = {page.number: page.text for page in existing.pages}
     fresh = {page.result.number: page for page in finished}
-    blocks.update((number, page.block.rstrip()) for number, page in fresh.items())
+    blocks.update((number, page.block) for number, page in fresh.items())
 
     textlayer = diagram = derailed = suspect = corrected = 0
     for page in existing.pages:
@@ -629,12 +647,8 @@ def _merged_document(request, existing, finished, cache_dir, block_context,
                 block_context = replace(
                     block_context,
                     wordbook=dictionary.load(list(request.dictionaries)))
-            findings = page_block(entry["lines"], block_context, PageMeta(
-                number=page.number, source=source,
-                source_detail=f"{entry['layout']}, {entry['mode']}",
-                diagram_image=(diagram_image_name(request.pdf, page.number)
-                               if page.origin == "diagramm" else None),
-            )).findings
+            _, _, findings = _page_content(
+                entry["lines"], block_context, source)
             corrected += sum(item.count for item in findings if item.corrected)
             suspect += sum(item.count for item in findings if not item.corrected)
     for page in fresh.values():
@@ -890,20 +904,22 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         "mode": mode, "lines": lines, "trace": trace,
                     }
                     page_cache.write_page(cache_dir, write_context, cached_page)
+                    entry = cached_page
 
                 dump = None if image_only else {
                     "seite": page.number,
                     "quelle": source if source == "textlayer" else source_detail,
                     "zeilen": lines,
                 }
-                image_name = image_path = None
-                if diagram:
-                    image_name, image_path = diagram_image(
-                        request.pdf, page.number, image_dir, request.image_max_edge)
-                block = page_block(lines, block_context, PageMeta(
-                    number=page.number, source=source,
-                    source_detail=source_detail, diagram_image=image_name))
+                block = page_block(
+                    lines, block_context, PageMeta.from_cache_entry(
+                        entry, diagram_image_name(request.pdf, page.number)
+                        if diagram else None))
                 findings = block.findings
+                image_path = None
+                if diagram:
+                    _, image_path = diagram_image(
+                        request.pdf, page.number, image_dir, request.image_max_edge)
                 seconds = 0.0 if reused else time.perf_counter() - page_started
                 result = PageResult(
                     number=page.number, source=source,
