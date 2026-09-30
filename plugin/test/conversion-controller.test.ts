@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { ChildProcess } from "node:child_process";
 
 import {
-	CONVERSION_TIMEOUT_MS,
+	CONVERSION_IDLE_TIMEOUT_MS,
 	INDEX_WAIT_MS,
 	INDEX_WAIT_STEPS,
 	ConversionController,
@@ -42,6 +42,8 @@ class FakeHost implements ConversionHost {
 	openSucceeds = true;
 	opened: string[] = [];
 	lookups: Array<[string, string]> = [];
+	/** Origin of an already existing preview; null = no preview yet. */
+	existingPreviewSource: string | null = null;
 
 	notify(message: string): void {
 		this.notices.push(message);
@@ -63,6 +65,9 @@ class FakeHost implements ConversionHost {
 	}
 	pdfsWithSameBasename(): string[] {
 		return this.duplicates;
+	}
+	previewSource(): string | null {
+		return this.existingPreviewSource;
 	}
 	previewFolder(): { configured: string; normalized: string } {
 		return this.folder;
@@ -158,7 +163,7 @@ test("success: passes paths, timeout and pages, reports page progress, opens the
 	const call = calls[0]!;
 	assert.deepEqual(call.args, ["raw/case-01.pdf", "_ocr-preview", "/home/test/bin/pdf2md", "/vault"]);
 	assert.equal(call.spawnFn, undefined);
-	assert.equal(call.options.timeoutMs, CONVERSION_TIMEOUT_MS);
+	assert.equal(call.options.idleTimeoutMs, CONVERSION_IDLE_TIMEOUT_MS);
 	assert.equal(call.options.pages, "1-3");
 
 	call.options.onChild!(child);
@@ -248,18 +253,47 @@ test("a second request while running is refused without spawning", async () => {
 	);
 });
 
-test("duplicate basename stops before spawning", async () => {
+test("duplicate basename stops before spawning when a foreign preview exists", async () => {
 	const host = new FakeHost();
 	host.duplicates = ["other/case-01.pdf", "old/case-01.pdf"];
+	host.existingPreviewSource = "other/case-01.pdf";
 	const { calls, controller } = setup(host);
 	await controller.run(PDF);
 
 	assert.equal(calls.length, 0);
 	assert.deepEqual(host.progress, []);
 	assert.deepEqual(host.notices, [
-		'OCR Preview: "case-01" also exists as other/case-01.pdf, old/case-01.pdf — output would overwrite. Please rename one of the files.',
+		'OCR Preview: "case-01.md" was not converted from raw/case-01.pdf — converting would overwrite it. Please rename one of raw/case-01.pdf, other/case-01.pdf, old/case-01.pdf.',
 	]);
 	assert.equal(controller.isRunning, false);
+});
+
+test("duplicate basename only warns while there is no preview to overwrite", async () => {
+	// A vault image named like the PDF must not veto a conversion that
+	// destroys nothing (Issue #100).
+	const host = new FakeHost();
+	host.duplicates = ["attachments/case-01.png"];
+	const { calls, controller } = setup(host);
+	const running = controller.run(PDF);
+
+	assert.equal(calls.length, 1);
+	assert.deepEqual(host.notices, [
+		'OCR Preview: "case-01" also exists as attachments/case-01.png — all of them write "case-01.md".',
+	]);
+	calls[0]!.finish(result());
+	await running;
+});
+
+test("duplicate basename does not block re-converting the same source", async () => {
+	const host = new FakeHost();
+	host.duplicates = ["attachments/case-01.png"];
+	host.existingPreviewSource = PDF.path;
+	const { calls, controller } = setup(host);
+	const running = controller.run(PDF);
+
+	assert.equal(calls.length, 1);
+	calls[0]!.finish(result());
+	await running;
 });
 
 test("without file-system access nothing is spawned", async () => {
@@ -348,7 +382,7 @@ test("classifyFailure maps exit codes, signals, timeouts, and ENOENT", () => {
 			"killed",
 			"cancelled — force terminated after grace period (SIGKILL)",
 		],
-		[{ code: null, signal: "SIGTERM", timeout: true }, "timeout", "cancelled after 30 min"],
+		[{ code: null, signal: "SIGTERM", timeout: true }, "timeout", "cancelled — no output for 15 min"],
 		[{ code: 6, timeout: true }, "partial-output", "cancelled — partial file created (incomplete)"],
 		[{ code: null, signal: "SIGTERM" }, "signal", "cancelled (Signal SIGTERM)"],
 		[{ code: null }, "start-error", "Start error"],
@@ -377,7 +411,7 @@ test("classifyFailure detail: last stderr line, else last stdout line without pr
 	);
 	assert.equal(
 		classifyFailure(result({ code: null, signal: "SIGTERM", timeout: true }), 60_000).message,
-		"OCR Preview: Conversion failed (cancelled after 1 min).",
+		"OCR Preview: Conversion failed (cancelled — no output for 1 min).",
 	);
 });
 

@@ -1,15 +1,20 @@
 """OCRmyPDF engine plugin: PaddleOCR PP-OCRv5 models through RapidOCR.
 
     ocrmypdf --plugin ocrmypdf_paddle -l deu input.pdf output.pdf
+    ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
 
 Plan: docs/paddle-textlayer.md, steps 2 (#68) and 3 (#69). Lines are put in
 reading order by ordering.order_lines() before the hOCR is written; whether
 multi-column pages still need split-column processing is decided by the
 truth-set comparison in bench/ERGEBNIS.md.
+
+`--paddle-mode fast` (macOS only) takes Apple Vision's lines and re-reads
+only citation lines with PP-OCRv5 (apple.py, bench/ERGEBNIS.md, Nachtrag 22).
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -20,7 +25,7 @@ from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
 from ocrmypdf.exceptions import BadArgsError, MissingDependencyError
 
-from ocrmypdf_paddle import runtime
+from ocrmypdf_paddle import apple, runtime
 from ocrmypdf_paddle.hocr import render_page
 from ocrmypdf_paddle.ordering import order_lines
 
@@ -32,7 +37,14 @@ log = logging.getLogger(__name__)
 #: used to check that selection lines up with the page image.
 DEBUG_DIR_ENV = "OCRMYPDF_PADDLE_DEBUG_DIR"
 
+#: --paddle-mode values: RapidOCR alone, or Apple Vision with citation lines
+#: re-read by RapidOCR.
+MODES = ("accurate", "fast")
+DEFAULT_MODE = "accurate"
+
 _recognizer = runtime.Recognizer()
+# Both modes share one RapidOCR pipeline; fast mode only re-reads lines.
+_fast_recognizer = apple.FastRecognizer(reader=_recognizer)
 
 
 def _selected(options) -> bool:
@@ -42,10 +54,39 @@ def _selected(options) -> bool:
     return options is None or getattr(options, "ocr_engine", "auto") == "auto"
 
 
+def _mode(options) -> str:
+    # Absent when the plugin's options were not registered (plain namespaces).
+    return getattr(options, "paddle_mode", None) or DEFAULT_MODE
+
+
+@hookimpl
+def add_options(parser):
+    group = parser.add_argument_group("PaddleOCR", "PaddleOCR engine options")
+    group.add_argument(
+        "--paddle-mode",
+        choices=MODES,
+        default=DEFAULT_MODE,
+        help="accurate: PP-OCRv5 reads the whole page (default). fast: Apple Vision "
+        "reads the page and PP-OCRv5 re-reads only citation lines; macOS only.",
+    )
+    group.add_argument(
+        "--paddle-check",
+        choices=MODES,
+        action=_CheckAction,
+        help="Report whether the engine can run in this mode (runtime, model files, "
+        "Apple Vision for fast), then exit: 0 ready, 1 not ready. Needs no files.",
+    )
+
+
 @hookimpl
 def check_options(options):
     if not _selected(options):
         return
+    mode = _mode(options)
+    if mode not in MODES:
+        raise BadArgsError(
+            f"PaddleOCR engine --paddle-mode must be one of {', '.join(MODES)}, not {mode!r}."
+        )
     try:
         runtime.recognition_language(options.languages)
     except ValueError as error:
@@ -60,13 +101,43 @@ def check_options(options):
             "PaddleOCR engine runs one OCR job; ignoring --jobs %d.", options.jobs
         )
     options.jobs = 1
-    problems = runtime.missing_runtime() + runtime.check_models(runtime.model_dir())
-    if problems:
-        raise MissingDependencyError(
-            "PaddleOCR engine is not ready:\n  " + "\n  ".join(problems)
-            + f"\nModel files are read from {runtime.MODEL_DIR_ENV} "
-            f"(default {runtime.model_dir()})."
-        )
+    problem = readiness_problem(mode)
+    if problem:
+        raise MissingDependencyError(problem)
+
+
+def readiness_problem(mode: str) -> str:
+    """Why the engine cannot run in `mode`; empty when it can.
+
+    Checks the pinned runtime, the model files and, in fast mode, Apple
+    Vision: everything a run needs before its first page.
+    """
+    model_problems = runtime.check_models(runtime.model_dir())
+    problems = runtime.missing_runtime() + model_problems
+    if mode == "fast":
+        problems += apple.missing_vision()
+    if not problems:
+        return ""
+    hint = ""
+    if model_problems:
+        hint = (f"\nModel files are read from {runtime.MODEL_DIR_ENV} "
+                f"(default {runtime.model_dir()}).")
+    return "PaddleOCR engine is not ready:\n  " + "\n  ".join(problems) + hint
+
+
+class _CheckAction(argparse.Action):
+    """`--paddle-check MODE`: reports readiness and exits, like --version.
+
+    Needs no input file, so `reprocess-raw --check-engine` and the plugin's
+    settings can ask before a run. Exit 0 when ready, 1 otherwise; the
+    report goes to stderr, because OCRmyPDF reserves stdout for the PDF.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        problem = readiness_problem(values)
+        if problem:
+            parser.exit(1, problem + "\n")
+        parser.exit(0, f"PaddleOCR engine is ready ({values} mode).\n")
 
 
 class PaddleOcrEngine(OcrEngine):
@@ -79,6 +150,9 @@ class PaddleOcrEngine(OcrEngine):
     @staticmethod
     def creator_tag(options):
         rapidocr = runtime.PINNED_PACKAGES["rapidocr"]
+        if _mode(options) == "fast":
+            return (f"ocrmypdf-paddle {__version__} fast (Apple Vision, "
+                    f"citations re-read by RapidOCR {rapidocr}, PP-OCRv5 mobile)")
         return f"ocrmypdf-paddle {__version__} (RapidOCR {rapidocr}, PP-OCRv5 mobile)"
 
     def __str__(self):
@@ -114,7 +188,8 @@ class PaddleOcrEngine(OcrEngine):
     @staticmethod
     def generate_hocr(input_file, output_hocr, output_text, options):
         input_file = Path(input_file)
-        page = _recognizer.recognize(input_file)
+        recognizer = _fast_recognizer if _mode(options) == "fast" else _recognizer
+        page = recognizer.recognize(input_file)
         ordered = order_lines(page.lines, page.width, page.height)
         hocr, text = render_page(ordered, page.width, page.height)
         Path(output_hocr).write_text(hocr, encoding="utf-8")

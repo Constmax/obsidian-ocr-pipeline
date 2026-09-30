@@ -14,6 +14,7 @@
 #   - Two-column page splitting (CropBox)
 #   - OCR args construction
 #   - Post-OCR quality gate with auto-retry
+#   - run_pdf_pipeline: the merge-to-OCR sequence all three CLIs share
 # ============================================================
 
 # ── Defaults ────────────────────────────────────────────────
@@ -28,13 +29,19 @@ MAX_IMAGE_MPIXELS=400    # ocrmypdf --max-image-mpixels safety net (Default 250)
 
 # ── Global state (set by callers or detect_*) ───────────────
 APPLE_AVAILABLE=false
-USE_APPLE=false
-ENGINE_DESC=""
+PADDLE_AVAILABLE=false
+PADDLE_PROBLEM=""         # why an installed PaddleOCR cannot run (set by detect_paddle_ocr)
+RESOLVED_ENGINE=""        # apple|tesseract|paddle — the one engine state (set by resolve_engine)
+ENGINE_DESC=""            # RESOLVED_ENGINE for humans, e.g. "Apple Vision (auto)"
+OCR_RESULT_DESC=""        # Engine behind the last OCR result, with fallback (set by ocr_with_retry)
+OCR_FALLBACK=false        # true when the last OCR result came from a fallback engine
+FALLBACK_COUNT=0          # Results from a fallback engine in this run (pdf-auto summary)
 HAS_JBIG2=false
 HAS_PNGQUANT=false
 HAS_UNPAPER=false
 OPTIMIZE_LEVEL=1
 ENGINE="auto"             # --engine flag
+PADDLE_MODE=""            # --paddle-mode flag (accurate|fast; only with --engine paddle)
 TARGET_DPI=$DEFAULT_DPI
 DPI_SET=false             # true once --dpi was given (even with the default value)
 JOBS=$DEFAULT_JOBS
@@ -45,6 +52,7 @@ SPLIT_ALL_PAGES=false     # --split-columns-all flag (force --all instead of per
 KEEP_SPLIT=false          # --keep-split flag (suppress merge)
 SPLIT_MAP=""              # Path to split_map.json (set by split_two_column_pdf)
 PYTHON_BIN=""             # Python with pikepdf (set by lib_init)
+PIPELINE_PAGES=""         # Page count of the merged input (set by run_pdf_pipeline)
 
 # ════════════════════════════════════════════════════════════
 #  OPTION PARSING
@@ -71,7 +79,7 @@ require_option_value() {
 # value and sets OPTION_SHIFT to the number of arguments consumed. Any other
 # option is a usage error, so call this from the CLI's fallback case branch:
 #   *) parse_common_option "$@"; shift "$OPTION_SHIFT" ;;
-# ENGINE, NO_QUALITY_GATE and OPTION_SHIFT are read by the CLIs — usage is
+# ENGINE, PADDLE_MODE, NO_QUALITY_GATE and OPTION_SHIFT are read by the CLIs — usage is
 # not seen by shellcheck in pdf-lib.sh.
 # shellcheck disable=SC2034
 parse_common_option() {
@@ -80,8 +88,15 @@ parse_common_option() {
         --engine)
             require_option_value "$@"
             case "$2" in
-                auto|apple|tesseract) ENGINE="$2" ;;
-                *) usage_error "--engine must be 'auto', 'apple', or 'tesseract', got '$2'" ;;
+                auto|apple|tesseract|paddle) ENGINE="$2" ;;
+                *) usage_error "--engine must be 'auto', 'apple', 'tesseract', or 'paddle', got '$2'" ;;
+            esac
+            OPTION_SHIFT=2 ;;
+        --paddle-mode)
+            require_option_value "$@"
+            case "$2" in
+                accurate|fast) PADDLE_MODE="$2" ;;
+                *) usage_error "--paddle-mode must be 'accurate' or 'fast', got '$2'" ;;
             esac
             OPTION_SHIFT=2 ;;
         --dpi)
@@ -136,34 +151,100 @@ detect_apple_ocr() {
     fi
 }
 
-# resolve_engine <engine_string>
-# Resolves auto|apple|tesseract → USE_APPLE + ENGINE_DESC.
-# Exits if apple is requested but not installed.
+# detect_paddle_ocr
+# Sets PADDLE_AVAILABLE=true if the PaddleOCR engine plugin (ocrmypdf_paddle)
+# loads and `--paddle-check` reports its runtime, models and (fast mode)
+# Apple Vision ready for PADDLE_MODE. A plugin that loads but is not ready
+# leaves the reason in PADDLE_PROBLEM, so a run fails before OCR instead of
+# quietly falling back to another engine (issue #73).
+detect_paddle_ocr() {
+    PADDLE_AVAILABLE=false
+    PADDLE_PROBLEM=""
+    if ! ocrmypdf --plugin ocrmypdf_paddle --help >/dev/null 2>&1; then
+        return 0
+    fi
+    local rc=0
+    PADDLE_PROBLEM="$(ocrmypdf --plugin ocrmypdf_paddle \
+        --paddle-check "${PADDLE_MODE:-accurate}" 2>&1 >/dev/null)" || rc=$?
+    case "$rc" in
+        0) PADDLE_AVAILABLE=true; PADDLE_PROBLEM="" ;;
+        # argparse: an ocrmypdf_paddle from before --paddle-check.
+        2) PADDLE_PROBLEM="The ocrmypdf_paddle that ocrmypdf loads is too old for this pipeline (no --paddle-check).
+   Update it: git pull in the checkout of an editable install, or pip install <repo>/ocrmypdf_paddle (docs/installation.md)" ;;
+        *) [ -n "$PADDLE_PROBLEM" ] || PADDLE_PROBLEM="PaddleOCR engine readiness check failed" ;;
+    esac
+    return 0
+}
+
+# engine_label <apple|tesseract|paddle>
+# Prints the engine's name for messages and summaries.
+engine_label() {
+    case "$1" in
+        apple)     echo "Apple Vision" ;;
+        tesseract) echo "Tesseract" ;;
+        paddle)    echo "PaddleOCR ${PADDLE_MODE:-accurate}" ;;
+    esac
+}
+
+# resolve_engine <auto|apple|tesseract|paddle>
+# The single source of truth for the engine (issue #70): sets
+# RESOLVED_ENGINE (apple|tesseract|paddle) and ENGINE_DESC. `auto` prefers
+# Apple Vision and falls back to Tesseract; PaddleOCR is never chosen by
+# `auto`. Returns 1 if the requested engine is not installed.
+# ENGINE_DESC is read by the CLIs — usage is not seen by shellcheck here.
+# shellcheck disable=SC2034
 resolve_engine() {
     local engine="${1:-auto}"
-    USE_APPLE=false
     case "$engine" in
         auto)
             if [ "$APPLE_AVAILABLE" = true ]; then
-                USE_APPLE=true
+                RESOLVED_ENGINE=apple
                 ENGINE_DESC="Apple Vision (auto)"
             else
+                RESOLVED_ENGINE=tesseract
                 ENGINE_DESC="Tesseract (auto-fallback)"
             fi ;;
         apple)
-            if [ "$APPLE_AVAILABLE" = true ]; then
-                USE_APPLE=true
-                ENGINE_DESC="Apple Vision (manual)"
-            else
+            if [ "$APPLE_AVAILABLE" != true ]; then
                 echo "❌ Apple Vision plugin not installed." >&2
                 echo "   Install: pip install ocrmypdf-appleocr" >&2
                 return 1
-            fi ;;
+            fi
+            RESOLVED_ENGINE=apple
+            ENGINE_DESC="Apple Vision (manual)" ;;
         tesseract)
+            RESOLVED_ENGINE=tesseract
             ENGINE_DESC="Tesseract (manual)" ;;
+        paddle)
+            if [ -n "$PADDLE_PROBLEM" ]; then
+                echo "❌ $PADDLE_PROBLEM" >&2
+                return 1
+            fi
+            if [ "$PADDLE_AVAILABLE" != true ]; then
+                echo "❌ PaddleOCR engine plugin not installed (ocrmypdf_paddle)." >&2
+                echo "   Put its venv first on PATH, or PYTHONPATH=<repo>/ocrmypdf_paddle/src: docs/installation.md" >&2
+                return 1
+            fi
+            RESOLVED_ENGINE=paddle
+            ENGINE_DESC="$(engine_label paddle) (manual)" ;;
         *)
-            echo "❌ --engine must be 'auto', 'apple', or 'tesseract'" >&2
+            echo "❌ --engine must be 'auto', 'apple', 'tesseract', or 'paddle'" >&2
             return 1 ;;
+    esac
+    return 0
+}
+
+# fallback_engine <apple|tesseract|paddle>
+# Prints the engine the quality gate switches to after <engine> failed:
+# Apple Vision → Tesseract, Tesseract → Apple Vision, PaddleOCR → Apple
+# Vision or, without it, Tesseract. Prints nothing if that is not installed.
+fallback_engine() {
+    case "$1" in
+        apple) echo tesseract ;;
+        tesseract)
+            if [ "$APPLE_AVAILABLE" = true ]; then echo apple; fi ;;
+        paddle)
+            if [ "$APPLE_AVAILABLE" = true ]; then echo apple; else echo tesseract; fi ;;
     esac
     return 0
 }
@@ -363,17 +444,19 @@ merge_split_pdf() {
 #  OCR EXECUTION
 # ════════════════════════════════════════════════════════════
 
-# build_ocr_args <output_var_name> [--force-ocr] [--clean]
-# Builds the ocrmypdf argument array.
+# build_ocr_args <output_var_name> [--engine E] [--force-ocr] [--clean] [--no-rotate] [--no-deskew]
+# Builds the ocrmypdf argument array for engine E (default RESOLVED_ENGINE).
 # Sets the variable named by $1 to the array of arguments.
 build_ocr_args() {
     local outvar="$1"; shift
+    local engine="$RESOLVED_ENGINE"
     local use_clean=false
     local no_rotate=false
     local no_deskew=false
     local skip_text="--skip-text"
     while [ $# -gt 0 ]; do
         case "$1" in
+            --engine)    engine="$2"; shift 2 ;;
             --force-ocr) skip_text="--force-ocr"; shift ;;
             --clean)     use_clean=true; shift ;;
             --no-rotate) no_rotate=true; shift ;;
@@ -396,20 +479,26 @@ build_ocr_args() {
     if [ "$no_deskew" = false ]; then
         args+=(--deskew)
     fi
+    # PaddleOCR runs one OCR job: parallel workers each load the models.
+    local jobs="$JOBS"
+    [ "$engine" = paddle ] && jobs=1
     args+=(
         --optimize "$OPTIMIZE_LEVEL"
-        --jobs "$JOBS"
+        --jobs "$jobs"
         --max-image-mpixels "$MAX_IMAGE_MPIXELS"
     )
 
-    if [ "$USE_APPLE" = true ]; then
-        args=(--plugin ocrmypdf_appleocr "${args[@]}")
-    else
-        args+=(--tesseract-pagesegmode 1)
-        if [ "$use_clean" = true ] && [ "$HAS_UNPAPER" = true ]; then
-            args+=(--clean)
-        fi
-    fi
+    case "$engine" in
+        apple)
+            args=(--plugin ocrmypdf_appleocr "${args[@]}") ;;
+        paddle)
+            args=(--plugin ocrmypdf_paddle --paddle-mode "${PADDLE_MODE:-accurate}" "${args[@]}") ;;
+        tesseract)
+            args+=(--tesseract-pagesegmode 1)
+            if [ "$use_clean" = true ] && [ "$HAS_UNPAPER" = true ]; then
+                args+=(--clean)
+            fi ;;
+    esac
 
     # Indirect assignment: set the caller's variable
     printf -v "$outvar" '%s ' "${args[@]}"
@@ -550,21 +639,98 @@ print(total, isolated, mixed_case, digit_alpha)
     return 0
 }
 
-# ocr_with_retry <pre_ocr.pdf> <output.pdf> <other_engine> <args_array_name> [--no-split]
-# Runs OCR, checks quality, retries with alternative engine on failure.
-# If quality fails and we're using tesseract, also tries with --split-columns.
-# $3 = the OTHER engine to try on retry (apple|tesseract)
-# $4 = name of the OCR args array variable (bash 3.2: passed by name)
-# Returns 0 if final result passes quality, 1 if all attempts fail.
+# _ocr_attempt <input.pdf> <output.pdf> <args_array_name>
+# Internal: one OCR run plus the quality gate. Returns 0 if <output.pdf>
+# passed; otherwise 1 with OCR_FAIL_REASON set. A result that failed the gate
+# stays at <output.pdf> (the best effort); a failed run leaves none.
+_ocr_attempt() {
+    local input="$1" output="$2" args_name="$3"
+    if ! run_ocr "$input" "$output" "$args_name"; then
+        echo "   ❌ OCR failed"
+        rm -f "$output"
+        OCR_FAIL_REASON="OCR failed"
+        return 1
+    fi
+    if quality_check "$output"; then
+        return 0
+    fi
+    OCR_FAIL_REASON="quality gate failed"
+    return 1
+}
+
+# _split_retry <input.pdf> <output.pdf> <args_array_name> <scratch_dir>
+# Internal: OCR the input split into column halves with the given args and
+# re-merge them. Skipped (return 1) when columns are split anyway, with
+# --no-split, or without pikepdf: halves without a split map cannot be merged
+# back. Writes <output.pdf> only as a merged result that passed the gate.
+_split_retry() {
+    local input="$1" output="$2" args_name="$3" scratch_dir="$4"
+    if [ "$SPLIT_COLUMNS" = true ] || [ "$no_split" = true ] || [ -z "$PYTHON_BIN" ]; then
+        return 1
+    fi
+    echo "   🔄 Retry with --split-columns..."
+    local split_pdf="$scratch_dir/ocr_retry_split.pdf"
+    local split_ocr="$scratch_dir/ocr_retry_split_ocr.pdf"
+    local merged_tmp="$scratch_dir/ocr_retry_merged.pdf"
+    local saved_split_map=$SPLIT_MAP
+
+    # Strip --rotate-pages and --deskew from the caller's args (unreliable
+    # per-half orientation detection would break the merge below, and deskew
+    # was already done pre-split) without assuming which other flags it built in.
+    local split_args=() _orig_arg
+    eval "_orig_args=(\"\${${args_name}[@]}\")"
+    # _orig_args was assigned via eval string (pass-by-name, bash 3.2).
+    # shellcheck disable=SC2154
+    for _orig_arg in "${_orig_args[@]}"; do
+        [ "$_orig_arg" = "--rotate-pages" ] && continue
+        [ "$_orig_arg" = "--deskew" ] && continue
+        split_args+=("$_orig_arg")
+    done
+
+    local ok=false
+    if ! split_two_column_pdf "$input" "$split_pdf"; then
+        echo "   ❌ Column split failed"
+    elif _ocr_attempt "$split_pdf" "$split_ocr" split_args; then
+        # Reassemble the halves before handing the result off — otherwise
+        # this internal retry silently doubles the page count, exactly like
+        # the bug that corrupted several files in raw/. Unmergeable halves
+        # are discarded, never handed off.
+        if merge_split_pdf "$split_ocr" "$merged_tmp"; then
+            mv "$merged_tmp" "$output"
+            ok=true
+        fi
+    fi
+    rm -f "$split_pdf" "$split_ocr" "$merged_tmp"
+    # A failed split retry must not leave its map behind: metric 1.5 in
+    # quality_check would verify the next, unsplit attempt against it and
+    # report a spurious page-count mismatch.
+    [ "$ok" = true ] && return 0
+    SPLIT_MAP=$saved_split_map
+    return 1
+}
+
+# ocr_with_retry <pre_ocr.pdf> <output.pdf> <args_array_name> [--no-split]
+# Runs OCR with RESOLVED_ENGINE, checks quality and walks the fallback
+# matrix on failure (issue #70):
+#   Apple Vision → Tesseract → Tesseract with column split
+#   Tesseract    → Tesseract with column split → Apple Vision
+#   PaddleOCR    → Apple Vision, or Tesseract without it; no column split
+# An engine switch rebuilds the args with --force-ocr, since the input may
+# carry a text layer from an earlier attempt. Every switch is printed on
+# stderr with its reason. Sets OCR_RESULT_DESC and OCR_FALLBACK for the
+# summary. <args_array_name> is passed by name (bash 3.2).
+# Returns 0 if the final result passes quality, 1 if all attempts fail
+# (<output.pdf> then holds the best effort, if any).
 #
 # Scratch files are placed in $WORK_DIR (set by the caller, cleaned via its
 # EXIT trap) rather than next to $output — otherwise an interrupted run can
 # leave a "<output>.tmp_qc.pdf" behind, which ends in .pdf and gets picked up
 # as an input on the next run.
 ocr_with_retry() {
-    local input="$1" output="$2" alt_engine="$3"
-    local args_name="$4"   # array variable name, not nameref
-    local no_split="${5:-false}"
+    local input="$1" output="$2" args_name="$3"
+    # Read by _split_retry (bash locals are dynamically scoped).
+    local no_split=false
+    [ "${4:-}" = "--no-split" ] && no_split=true
 
     local scratch_dir="${WORK_DIR:-}"
     local own_scratch_dir=false
@@ -572,120 +738,204 @@ ocr_with_retry() {
         scratch_dir=$(mktemp -d)
         own_scratch_dir=true
     fi
-
-    # ── Attempt 1: primary engine ──
-    echo "   🔤 OCR (attempt 1): $ENGINE_DESC"
-
-    local work_pdf="$input"
     local ocr_tmp="$scratch_dir/ocr_retry_tmp_qc.pdf"
+    local engine="$RESOLVED_ENGINE" status=1
+    OCR_RESULT_DESC="$ENGINE_DESC"
+    OCR_FALLBACK=false
+    OCR_FAIL_REASON=""
 
-    if ! run_ocr "$work_pdf" "$ocr_tmp" "$args_name"; then
-        echo "   ❌ OCR (attempt 1) failed"
-        rm -f "$ocr_tmp"
-    elif quality_check "$ocr_tmp"; then
-        mv "$ocr_tmp" "$output"
-        [ "$own_scratch_dir" = true ] && rm -rf "$scratch_dir"
-        return 0
-    fi
-
-    local saved_split_map=$SPLIT_MAP
-    # ── Attempt 2: try --split-columns (if tesseract and not already split) ──
-    # Needs pikepdf: halves without a split map cannot be merged back.
-    if [ "$USE_APPLE" = false ] && [ "$SPLIT_COLUMNS" = false ] && [ "$no_split" != "true" ] \
-        && [ -n "$PYTHON_BIN" ]; then
-        echo "   🔄 Retry with --split-columns..."
-        local split_pdf="$scratch_dir/ocr_retry_split.pdf"
-        local split_ok=true
-        split_two_column_pdf "$input" "$split_pdf" || split_ok=false
-
-        # Strip --rotate-pages and --deskew from the caller's args for this sub-attempt
-        # (unreliable per-half orientation detection would break the merge
-        # below, and deskew was already done pre-split) without assuming which other flags the caller built in.
-        local split_args=() _orig_arg
-        eval "_orig_args=(\"\${${args_name}[@]}\")"
-        # _orig_args was assigned via eval string (pass-by-name, bash 3.2).
-        # shellcheck disable=SC2154
-        for _orig_arg in "${_orig_args[@]}"; do
-            [ "$_orig_arg" = "--rotate-pages" ] && continue
-            [ "$_orig_arg" = "--deskew" ] && continue
-            split_args+=("$_orig_arg")
-        done
-
-        if [ "$split_ok" = false ]; then
-            echo "   ❌ Column split failed"
-        elif ! run_ocr "$split_pdf" "$ocr_tmp" split_args; then
-            echo "   ❌ Split OCR failed"
-            rm -f "$ocr_tmp"
-        elif quality_check "$ocr_tmp"; then
-            # Reassemble the split halves back into original-page format
-            # before handing off the result — otherwise this internal
-            # auto-retry path silently doubles the page count, exactly
-            # like the bug that corrupted several files in raw/.
-            local merged_tmp="$scratch_dir/ocr_retry_merged.pdf"
-            if merge_split_pdf "$ocr_tmp" "$merged_tmp"; then
-                mv "$merged_tmp" "$output"
-                rm -f "$split_pdf"
-                [ "$own_scratch_dir" = true ] && rm -rf "$scratch_dir"
-                return 0
+    echo "   🔤 OCR (attempt 1): $ENGINE_DESC"
+    if _ocr_attempt "$input" "$ocr_tmp" "$args_name"; then
+        status=0
+    elif [ "$engine" = tesseract ] && _split_retry "$input" "$ocr_tmp" "$args_name" "$scratch_dir"; then
+        OCR_RESULT_DESC="$ENGINE_DESC, column split retry"
+        status=0
+    else
+        local fallback from to
+        fallback=$(fallback_engine "$engine")
+        from=$(engine_label "$engine")
+        if [ -z "$fallback" ]; then
+            echo "   ⚠️  No fallback engine: Apple Vision is not installed" >&2
+        else
+            to=$(engine_label "$fallback")
+            echo "   🔄 Fallback: $from → $to ($OCR_FAIL_REASON)" >&2
+            OCR_RESULT_DESC="$to (fallback from $from: $OCR_FAIL_REASON)"
+            OCR_FALLBACK=true
+            # retry_args is passed by name to build_ocr_args/run_ocr
+            # (pass-by-name, bash 3.2) — usage is not seen by shellcheck.
+            # shellcheck disable=SC2034
+            local retry_args=()
+            local retry_flags=(--engine "$fallback" --force-ocr --clean)
+            if [ "$SPLIT_COLUMNS" = true ]; then
+                retry_flags+=(--no-rotate --no-deskew)
             fi
-            # Unmergeable halves are discarded, never handed off.
-            rm -f "$ocr_tmp"
+            build_ocr_args retry_args "${retry_flags[@]}"
+            if _ocr_attempt "$input" "$ocr_tmp" retry_args; then
+                status=0
+            # Tesseract as a fallback keeps its split retry — except in
+            # PaddleOCR's chain, which never adds an implicit split.
+            elif [ "$fallback" = tesseract ] && [ "$engine" != paddle ] \
+                && _split_retry "$input" "$ocr_tmp" retry_args "$scratch_dir"; then
+                OCR_RESULT_DESC="$OCR_RESULT_DESC, column split retry"
+                status=0
+            fi
         fi
-        rm -f "$split_pdf"
-    fi
-    # A failed split retry must not leave its map behind: metric 1.5 in
-    # quality_check would verify the unsplit attempt-3 result against it
-    # and report a spurious page-count mismatch.
-    SPLIT_MAP=$saved_split_map
-
-    # ── Attempt 3: switch engine ──
-    if [ "$alt_engine" != "$ENGINE_DESC" ] && [ -n "$alt_engine" ]; then
-        echo "   🔄 Retry with alternative engine: $alt_engine"
-
-        local saved_apple=$USE_APPLE saved_desc=$ENGINE_DESC
-        if ! resolve_engine "$alt_engine"; then
-            USE_APPLE=$saved_apple; ENGINE_DESC=$saved_desc
-            echo "   ❌ Alternative engine not available"
-            [ "$own_scratch_dir" = true ] && rm -rf "$scratch_dir"
-            return 1
-        fi
-
-        # Rebuild args with new engine — always use --force-ocr on retry
-        # since the input may have residual text from a prior attempt.
-        # Preserve split column flags if needed.
-        # retry_args is passed by name to build_ocr_args/run_ocr
-        # (pass-by-name, bash 3.2) — usage is not seen by shellcheck in
-        # build_ocr_args.
-        # shellcheck disable=SC2034
-        retry_args=()
-        local retry_flags=(--force-ocr --clean)
-        if [ "$SPLIT_COLUMNS" = true ]; then
-            retry_flags+=(--no-rotate --no-deskew)
-        fi
-        build_ocr_args retry_args "${retry_flags[@]}"
-
-        if ! run_ocr "$input" "$ocr_tmp" retry_args; then
-            echo "   ❌ OCR (attempt 3) failed"
-            rm -f "$ocr_tmp"
-        elif quality_check "$ocr_tmp"; then
-            mv "$ocr_tmp" "$output"
-            USE_APPLE=$saved_apple; ENGINE_DESC=$saved_desc
-            [ "$own_scratch_dir" = true ] && rm -rf "$scratch_dir"
-            return 0
-        fi
-        USE_APPLE=$saved_apple; ENGINE_DESC=$saved_desc
     fi
 
-    echo "   ⚠️  All OCR attempts exhausted — using best-effort result"
-    # Save last attempt if any file exists, even if quality check failed
+    if [ "$status" -ne 0 ]; then
+        echo "   ⚠️  All OCR attempts exhausted — using best-effort result"
+        OCR_FALLBACK=false
+        OCR_RESULT_DESC="$ENGINE_DESC"
+    fi
+    # Save the last attempt even if its quality check failed; last resort:
+    # the input as-is.
     if [ -f "$ocr_tmp" ]; then
         mv "$ocr_tmp" "$output"
-    else
-        # Last resort: copy input as-is
+    elif [ "$status" -ne 0 ]; then
         cp "$input" "$output"
     fi
     [ "$own_scratch_dir" = true ] && rm -rf "$scratch_dir"
-    return 1
+    return "$status"
+}
+
+# ════════════════════════════════════════════════════════════
+#  PIPELINE
+# ════════════════════════════════════════════════════════════
+
+# run_pdf_pipeline [--force-ocr] [--no-clean] <output.pdf> <input.pdf>...
+# The one merge-to-OCR sequence of pdf-auto, pdf-combine and pdf-workflow
+# (issue #50): merge the inputs in the given order, fix the MediaBox,
+# downscale, split columns (SPLIT_COLUMNS), OCR with the quality gate
+# (unless NO_QUALITY_GATE), re-merge the halves and publish the result.
+# The CLIs only find and group their inputs.
+#
+# Options are the OCR flags that differ between the CLIs: --force-ocr
+# replaces --skip-text, --no-clean leaves out unpaper's --clean.
+#
+# Temporary files: every intermediate, including the split map and the
+# quality gate's retries, lives in one run folder under $WORK_DIR (the
+# caller's, which its EXIT trap removes on interrupt). The run folder is
+# removed on every return. The result is renamed onto <output.pdf> last, so
+# <output.pdf> is the finished file or absent — never unmerged halves.
+#
+# Sets PIPELINE_PAGES to the page count of the merged input, and
+# OCR_RESULT_DESC to the engine behind the result (with any fallback, see
+# ocr_with_retry). Returns 0 when
+# <output.pdf> was written; otherwise prints a ❌ line, removes
+# <output.pdf> and returns 1. Callers run it in a condition (`if`, `||`),
+# where `set -e` is off, so every step is checked explicitly.
+run_pdf_pipeline() {
+    # Read by _pdf_pipeline_steps (bash locals are dynamically scoped).
+    local pipeline_force_ocr=false pipeline_clean=true
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --force-ocr) pipeline_force_ocr=true; shift ;;
+            --no-clean)  pipeline_clean=false; shift ;;
+            *) break ;;
+        esac
+    done
+    local output="$1"; shift
+
+    local run_dir status=0
+    run_dir=$(mktemp -d "${WORK_DIR:?}/pipeline.XXXXXX") || {
+        echo "   ❌ Cannot create a work folder in $WORK_DIR"; return 1
+    }
+    _pdf_pipeline_steps "$run_dir" "$output" "$@" || status=1
+    rm -rf "$run_dir"
+    # The map was in the run folder; the next run must not verify against it.
+    SPLIT_MAP=""
+    [ "$status" -eq 0 ] || rm -f "$output"
+    return "$status"
+}
+
+# _pdf_pipeline_steps <run_dir> <output.pdf> <input.pdf>...
+# Internal: the steps of run_pdf_pipeline, which owns cleanup.
+_pdf_pipeline_steps() {
+    local run_dir="$1" output="$2"; shift 2
+
+    # ── Merge ──
+    local merged="$run_dir/merged.pdf"
+    if [ $# -eq 1 ]; then
+        cp "$1" "$merged" || { echo "   ❌ Cannot read $1"; return 1; }
+    elif ! qpdf --empty --pages "$@" -- "$merged"; then
+        echo "   ❌ Merging $# files failed (qpdf)"; return 1
+    fi
+    local npages_status=0
+    PIPELINE_PAGES=$(qpdf --show-npages "$merged" 2>/dev/null) || npages_status=$?
+    # Exit 3: the count was printed, with warnings (common on damaged scans).
+    if [ "$npages_status" -ne 0 ] && [ "$npages_status" -ne 3 ]; then
+        PIPELINE_PAGES="?"
+    fi
+    echo "   🔗 Merged $# file(s): $PIPELINE_PAGES pages"
+
+    # ── MediaBox fix, then downscale ──
+    # The fix must come first: oversized pages rasterize at 140 MP at 300 DPI.
+    local pre_ocr="$run_dir/fixed.pdf"
+    fix_mediabox "$merged" "$pre_ocr"
+    if [ "$TARGET_DPI" -gt 0 ]; then
+        gs_downscale "$pre_ocr" "$run_dir/downscaled.pdf" "$TARGET_DPI"
+        pre_ocr="$run_dir/downscaled.pdf"
+    else
+        echo "   ⏭️  Downscaling skipped (--dpi 0)"
+    fi
+
+    # ── Column split ──
+    # --no-rotate/--no-deskew: per-half orientation detection is unreliable
+    # and a rotated half would break the re-merge.
+    local flags=()
+    if [ "$pipeline_force_ocr" = true ]; then flags+=(--force-ocr); fi
+    if [ "$pipeline_clean" = true ]; then flags+=(--clean); fi
+    if [ "$SPLIT_COLUMNS" = true ]; then
+        if ! split_two_column_pdf "$pre_ocr" "$run_dir/split.pdf"; then
+            echo "   ❌ Column split failed — no file written"; return 1
+        fi
+        pre_ocr="$run_dir/split.pdf"
+        flags+=(--no-rotate --no-deskew)
+    fi
+
+    # ── OCR with quality gate ──
+    # ocr_args is passed by name to build_ocr_args/run_ocr
+    # (pass-by-name, bash 3.2) — usage is not seen by shellcheck.
+    # shellcheck disable=SC2034
+    local ocr_args
+    build_ocr_args ocr_args ${flags[@]+"${flags[@]}"}
+    local result="$run_dir/ocr.pdf"
+    if [ "$NO_QUALITY_GATE" = true ]; then
+        echo "   🔤 OCR: $ENGINE_DESC"
+        OCR_RESULT_DESC="$ENGINE_DESC"
+        OCR_FALLBACK=false
+        if ! run_ocr "$pre_ocr" "$result" ocr_args; then
+            echo "   ❌ OCR failed — no file written"; return 1
+        fi
+    else
+        # WORK_DIR for this call only: the retries' scratch files and split
+        # map land in the run folder, not in the caller's WORK_DIR.
+        # ocr_with_retry returns 1 on a best-effort (quality-gate-failed) result.
+        if ! WORK_DIR="$run_dir" ocr_with_retry "$pre_ocr" "$result" ocr_args; then
+            echo "   ❌ Quality gate failed — no file written"; return 1
+        fi
+    fi
+
+    # ── Re-merge the halves (merge_split_pdf copies them with --keep-split) ──
+    if [ "$SPLIT_COLUMNS" = true ]; then
+        if ! merge_split_pdf "$result" "$run_dir/remerged.pdf"; then
+            # Handing off the unmerged halves would silently double the page count.
+            echo "   ❌ Re-merge failed — split result discarded, no file written"; return 1
+        fi
+        result="$run_dir/remerged.pdf"
+    fi
+
+    # ── Publish ──
+    # Moved beside the output first (the run folder may be on another
+    # volume), then renamed: <output> is never a half-copied file.
+    local staged="$output.partial"
+    if ! { mv "$result" "$staged" && mv "$staged" "$output"; }; then
+        rm -f "$staged"
+        echo "   ❌ Cannot write $output"; return 1
+    fi
+    if [ "$OCR_FALLBACK" = true ]; then
+        FALLBACK_COUNT=$((FALLBACK_COUNT + 1))
+    fi
 }
 
 # ════════════════════════════════════════════════════════════
@@ -700,6 +950,9 @@ print_summary() {
     echo "═══════════════════════════════════════════"
     echo "🧠 Engine:      $ENGINE_DESC"
     echo "📊 Successful: $success"
+    if [ "$FALLBACK_COUNT" -gt 0 ]; then
+        echo "🔄 Fallbacks:  $FALLBACK_COUNT (engine switched after a failure, see above)"
+    fi
     [ "$fail" -gt 0 ] && echo "❌ Failed: $fail"
     echo "📁 Output:     $output_dir"
 }
@@ -708,16 +961,62 @@ print_summary() {
 #  INIT: Run common setup (call once at script start)
 # ════════════════════════════════════════════════════════════
 
+# require_paddle_engine_for_mode <engine>
+# Usage error for --paddle-mode without --engine paddle.
+require_paddle_engine_for_mode() {
+    if [ -n "$PADDLE_MODE" ] && [ "$1" != paddle ]; then
+        usage_error "--paddle-mode needs --engine paddle"
+    fi
+}
+
+# check_engine <engine>
+# `reprocess-raw --check-engine`: resolves <engine> with the same checks as
+# lib_init (tools, Apple Vision, PaddleOCR readiness; not pikepdf, which only
+# --split-columns needs) and exits without touching a file: 0 if a run would start on it,
+# 4 (`check-failed`, contracts/cli-contract.json) with the reason on stderr
+# otherwise. The plugin asks this before it offers an engine.
+check_engine() {
+    local engine="${1:-auto}"
+    require_paddle_engine_for_mode "$engine"
+    check_deps ocrmypdf qpdf gs pdftotext || exit 4
+    detect_apple_ocr
+    if [ "$engine" = paddle ]; then
+        detect_paddle_ocr
+    fi
+    resolve_engine "$engine" || exit 4
+    echo "✅ Engine usable"
+    echo "   🧠 Engine:    $ENGINE_DESC"
+    exit 0
+}
+
 # lib_init <engine_string> [--fast]
 # One-shot: dependency check + engine resolve + optimizer detection.
 # Call this once per script after argument parsing.
 lib_init() {
     local engine="${1:-auto}" fast="${2:-false}"
 
+    # A usage error, so it comes before any check or processing.
+    require_paddle_engine_for_mode "$engine"
+
+    # PaddleOCR orders both columns itself; splitting them loses words and
+    # order (#153, bench/ERGEBNIS.md, Nachtrag 26). A fallback engine then
+    # reads whole pages too.
+    if [ "$engine" = paddle ] && [ "$SPLIT_COLUMNS" = true ]; then
+        local split_flag=--split-columns
+        [ "$SPLIT_ALL_PAGES" = true ] && split_flag=--split-columns-all
+        echo "⚠️  PaddleOCR reads whole pages; ignoring $split_flag" >&2
+        SPLIT_COLUMNS=false
+        SPLIT_ALL_PAGES=false
+    fi
+
     echo "🔍 Checking dependencies..."
     check_deps ocrmypdf qpdf gs pdftotext || exit 1
 
+    # Apple Vision is probed for every engine: it is also a fallback.
     detect_apple_ocr
+    if [ "$engine" = paddle ]; then
+        detect_paddle_ocr
+    fi
     detect_optimizers
 
     # ── Python binary with pikepdf (for column_tools.py) ──
@@ -756,6 +1055,9 @@ lib_init() {
     echo "   🧠 Engine:    $ENGINE_DESC"
     echo "   📦 Optimize:  $OPTIMIZE_LEVEL"
     echo "   ⚙️  Jobs: $JOBS | DPI: $TARGET_DPI"
+    if [ "$RESOLVED_ENGINE" = paddle ]; then
+        echo "   ⚙️  PaddleOCR runs one OCR job; --jobs applies to a fallback engine"
+    fi
     # NOTE: these must not be the last statement in the function — under
     # `set -e`, "[ false-cond ] && echo ..." returns 1 when the condition
     # is false, which becomes lib_init's own return status and kills the

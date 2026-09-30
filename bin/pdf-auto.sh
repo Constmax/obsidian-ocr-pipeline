@@ -15,7 +15,9 @@ Usage: $(basename "$0") <folder> [options]
 
 Options:
    --output-dir DIR                Output folder (Default: <input>/_processed)
-   --engine auto|apple|tesseract   OCR engine (Default: auto)
+   --engine auto|apple|tesseract|paddle
+                                   OCR engine (Default: auto; paddle only explicitly)
+   --paddle-mode accurate|fast     PaddleOCR mode (Default: accurate; fast needs macOS 13+)
    --dpi N                         Downscale target (Default: $DEFAULT_DPI, 0 = off)
    --jobs N                        Parallel OCR workers (Default: by RAM, 1–4)
    --cleanup                       Move originals to _archive/ after success
@@ -33,7 +35,7 @@ INPUT_DIR=$(cd "$1" 2>/dev/null && pwd) || {
 }
 shift
 
-# Common options (--engine, --dpi, --jobs, split flags, --no-quality-gate)
+# Common options (--engine, --paddle-mode, --dpi, --jobs, split flags, --no-quality-gate)
 # are parsed and validated by parse_common_option in pdf-lib.sh.
 OUTPUT_DIR="$INPUT_DIR/_processed"
 CLEANUP=false
@@ -91,109 +93,40 @@ done
 
 sort -t$'\t' -k1,1V -k2,2n "$WORK_DIR/files.tsv" > "$WORK_DIR/sorted.tsv"
 
-# ── OCR function ──
+# ── One group → one output (run_pdf_pipeline in pdf-lib.sh) ──
 process_group() {
     local base="$1"; shift
-    local files=("$@")
-    local count=${#files[@]}
     local output_file="$OUTPUT_DIR/${base}.pdf"
 
     echo ""
-    if [ "$count" -eq 1 ]; then
+    if [ $# -eq 1 ]; then
         echo "📄 Single file: $base"
     else
-        echo "📚 Group: $base ($count parts)"
+        echo "📚 Group: $base ($# parts)"
     fi
-    for f in "${files[@]}"; do echo "   → $f"; done
+    local f
+    for f in "$@"; do echo "   → $f"; done
 
-    # Merge
-    if [ "$count" -eq 1 ]; then
-        cp "${files[0]}" "$WORK_DIR/merged.pdf" || { echo "   ❌ cp failed"; return 1; }
-    else
-        qpdf --empty --pages "${files[@]}" -- "$WORK_DIR/merged.pdf" || { echo "   ❌ qpdf failed"; return 1; }
-    fi
-
-    # Fix oversized MediaBox before downscale (Hemmer PDFs: 72 PPI → A4)
-    local fixed="$WORK_DIR/fixed.pdf"
-    fix_mediabox "$WORK_DIR/merged.pdf" "$fixed"
-    local pre_ocr="$fixed"
-
-    # Downscale
-    if [ "$TARGET_DPI" -gt 0 ]; then
-        gs_downscale "$pre_ocr" "$WORK_DIR/downscaled.pdf" "$TARGET_DPI"
-        pre_ocr="$WORK_DIR/downscaled.pdf"
-    fi
-
-    # Column split (if requested)
-    if [ "$SPLIT_COLUMNS" = true ]; then
-        # Explicit check: process_group runs in an `if`, where `set -e` is off.
-        if ! split_two_column_pdf "$pre_ocr" "$WORK_DIR/split.pdf"; then
-            echo "   ❌ Column split failed for '$base'"
-            rm -f "$WORK_DIR/merged.pdf" "$WORK_DIR/downscaled.pdf"
-            return 1
-        fi
-        pre_ocr="$WORK_DIR/split.pdf"
-    fi
-
-    # Build OCR args (--clean for tesseract when unpaper available;
-    # --no-rotate when splitting — per-half orientation detection is
-    # unreliable and would break the re-merge)
-    # ocr_args is passed by name to build_ocr_args/run_ocr
-    # (pass-by-name, bash 3.2) — usage is not seen by shellcheck in pdf-lib.sh.
-    # shellcheck disable=SC2034
-    local ocr_args
-    if [ "$SPLIT_COLUMNS" = true ]; then
-        build_ocr_args ocr_args --clean --no-rotate --no-deskew
-    else
-        build_ocr_args ocr_args --clean
-    fi
-
-    # OCR with quality gate
-    local ocr_ok=false
-    if [ "$NO_QUALITY_GATE" = true ]; then
-        if run_ocr "$pre_ocr" "$output_file" ocr_args; then
-            ocr_ok=true
-        fi
-    else
-        local alt_engine
-        if [ "$USE_APPLE" = true ]; then alt_engine="tesseract"; else alt_engine="apple"; fi
-        if ocr_with_retry "$pre_ocr" "$output_file" "$alt_engine" ocr_args; then
-            ocr_ok=true
-        fi
-    fi
-
-    if [ "$ocr_ok" = true ]; then
-        # ── Re-Merge after split-columns ──
-        if [ "$SPLIT_COLUMNS" = true ] && [ "$KEEP_SPLIT" != true ]; then
-            local merged="$WORK_DIR/merged_final.pdf"
-            if ! merge_split_pdf "$output_file" "$merged"; then
-                # Handing off the unmerged halves would silently double the page count.
-                echo "   ❌ Re-merge failed for '$base' — no file written"
-                rm -f "$output_file" "$WORK_DIR/merged.pdf" "$WORK_DIR/downscaled.pdf" "$WORK_DIR/split.pdf"
-                return 1
-            fi
-            mv "$merged" "$output_file"
-        fi
-
-        local size; size=$(du -h "$output_file" | cut -f1)
-        echo "   ✅ Done: $output_file ($size)"
-        rm -f "$WORK_DIR/merged.pdf" "$WORK_DIR/downscaled.pdf" "$WORK_DIR/split.pdf"
-
-        if [ "$CLEANUP" = true ]; then
-            for f in "${files[@]}"; do
-                if [ -f "$f" ]; then
-                    mv "$f" "$ARCHIVE_DIR/" 2>/dev/null && \
-                        echo "   🧹 Archived: $f"
-                fi
-            done
-        fi
-        return 0
-    else
-        echo "   ❌ OCR failed for '$base'"
-        rm -f "$output_file"
-        rm -f "$WORK_DIR/merged.pdf" "$WORK_DIR/downscaled.pdf" "$WORK_DIR/split.pdf"
+    if ! run_pdf_pipeline "$output_file" "$@"; then
+        echo "   ❌ '$base' failed"
         return 1
     fi
+
+    local size; size=$(du -h "$output_file" | cut -f1)
+    echo "   ✅ Done: $output_file ($size)"
+    if [ "$OCR_RESULT_DESC" != "$ENGINE_DESC" ]; then
+        echo "   🔄 Engine: $OCR_RESULT_DESC"
+    fi
+
+    if [ "$CLEANUP" = true ]; then
+        for f in "$@"; do
+            if [ -f "$f" ]; then
+                mv "$f" "$ARCHIVE_DIR/" 2>/dev/null && \
+                    echo "   🧹 Archived: $f"
+            fi
+        done
+    fi
+    return 0
 }
 
 # ── Main loop ──

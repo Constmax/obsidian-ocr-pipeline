@@ -34,7 +34,8 @@ VAULT_ROOT=/path/to/vault python bench/build_bench.py
 `bench/reading_order_truth.json` (source pages and hand-drawn regions, no page
 text) and writes page images, recognized lines, overlays and workflow outputs
 below `bench/reading-order-lauf/`. `--truth bench/reading_order_holdout.json`
-selects the validation pages of issue #87; give them their own `--run-dir`. `structure_bench.py` reads its truth from
+selects the validation pages of issue #87 (`holdout2`–`holdout4` are the later
+validation sets of #94, #114 and #124/#125); give each its own `--run-dir`. `structure_bench.py` reads its truth from
 `bench/structure_truth.json` (20 pages across all assembly layouts;
 fingerprints plus short anchors, no page text) and writes candidates below
 `bench/structure-lauf/`; `bless` refreshes the fingerprints after a
@@ -47,15 +48,29 @@ CI imports every supported entry point without loading the ML model or reading
 vault assets. This catches renamed or deleted internal modules while keeping
 the smoke check cheap.
 
-## Historical investigations
+## Historical investigations (`bench/archive/`)
 
-The remaining Python files are retained as records of specific experiments,
-including the original PaddleOCR/MLX candidate comparison, derailment tuning,
-tiling diagnostics, diagram and grid experiments, the optional layout-model
-evaluation, and the Stage-1 RapidOCR runtime spike (`spike_rapidocr.py`, issue
-#62). They are not supported command-line interfaces and are excluded
-from the CI smoke check. Promote a script to the table above before relying on
-it as part of the regular benchmark workflow.
+`bench/archive/` keeps the scripts of finished experiments as records: the
+original PaddleOCR/MLX candidate comparison (`run_bench.py`, `score.py`,
+`ergebnisse.csv`), derailment tuning and replays (`bench_defekt.py`,
+`nachspiel.py`, `tune_test.py`, `speed_test.py`), tiling diagnostics
+(`kachel_debug.py`, `tile_test.py`), diagram, grid and column-detection
+experiments (`diagramm_test.py`, `gitter_test.py`, `detect_test.py`), the
+parallel-worker spike (`par_worker.py`, formerly in `pdf2md/`) and the Stage-1
+RapidOCR runtime spike (`spike_rapidocr.py`, issue #62). They are not supported
+command-line interfaces and are excluded from the CI smoke check; their paths
+still resolve against `bench/`, so their working folders stay git-ignored.
+Promote a script to the table above before relying on it as part of the
+regular benchmark workflow.
+
+`layoutmodell_test.py` (the optional layout-model evaluation, see
+[LAYOUTMODELL.md](LAYOUTMODELL.md)) stays in `bench/`:
+`pdf2md/test/test_layout_model.py` imports its region-to-column conversion.
+
+The direct Apple Vision comparison (`apple_vision.py` with `apple_vision.swift`,
+ERGEBNIS.md addendum 22) also stays in `bench/`, because it imports
+`reading_order.py` and `bench_ocr.py`. Like the archive, it is not a supported
+command-line interface and is excluded from the CI smoke check.
 
 Benchmark results and methodology live in [ERGEBNIS.md](ERGEBNIS.md). The
 reproducible six-page source manifest lives in
