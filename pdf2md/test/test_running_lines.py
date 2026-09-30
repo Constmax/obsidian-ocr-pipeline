@@ -34,6 +34,11 @@ def test_a_line_below_the_header_zone_counts_only_on_most_pages():
         assert "Beispiel:" not in running_lines(doc)
 
 
+def test_a_short_document_needs_the_label_on_three_pages():
+    with _pdf(2, lambda _n: [("SchuldR-BT-2", 0.115)]) as doc:
+        assert "SchuldR-BT-2" not in running_lines(doc)
+
+
 def test_the_header_zone_still_needs_two_pages():
     def lines_on(number):
         return [("Klausurenkurs/Hessen", 0.06)] if number in (2, 5) else []
@@ -56,7 +61,16 @@ def test_both_ends_of_a_footer_cut_at_the_gutter_are_dropped():
 
 
 def test_a_whole_footer_read_with_ocr_confusions_is_dropped():
-    assert is_boilerplate("h/w/t - 26-II", 950, context=CONTEXT)
+    assert is_boilerplate("RA Dr. Erika Muster, M.A., Ll.M. - 03/2026", 950,
+                          context=CONTEXT)
+
+
+def test_a_word_that_merely_ends_a_running_line_is_kept():
+    """A footnote line may end on a word the running line starts with."""
+    context = AssemblyContext(frozenset({"Verwaltungsrecht-AT/Hessen"}),
+                              ocr_page=True)
+    assert not is_boilerplate("Verwaltungsrecht I", 960, context=context)
+    assert not is_boilerplate("Hessen", 960, context=context)
 
 
 def test_a_piece_of_a_running_line_on_a_text_layer_page_is_kept():

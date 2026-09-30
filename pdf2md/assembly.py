@@ -91,20 +91,22 @@ def _fragment_key(text):
     return re.sub(r"[\W_]+", "", text.casefold().translate(_CONFUSABLE))
 
 
-def is_running_fragment(text, running_keys, min_length=5):
+def is_running_fragment(text, running_keys, min_length=5, min_share=0.4):
     """Is text one end of a running line, cut off at the column gutter?
 
     A scan is read column by column, so a footer spanning both columns comes
-    back as two pieces, and the glyph at the cut may be read wrong.
+    back as two pieces, and the right piece may start with half a glyph
+    ("lein" for "Hein"). A piece must hold `min_share` of the line: a city
+    or a subject word alone ("Bremen", "Hessen") ends a footnote line as well.
     """
     key = _fragment_key(text)
     for whole in running_keys:
         if len(key) > len(whole):
             continue
-        if any(len(piece) >= min_length and whole.startswith(piece)
-               for piece in (key, key[:-1])):
+        least = max(min_length, min_share * len(whole))
+        if len(key) >= least and whole.startswith(key):
             return True
-        if any(len(piece) >= min_length and whole.endswith(piece)
+        if any(len(piece) >= least and whole.endswith(piece)
                for piece in (key, key[1:])):
             return True
     return False
