@@ -27,8 +27,9 @@ hold source pages, hand-drawn regions and fingerprints, never page text.
 - `ocrmypdf_paddle/test` needs the pinned ocrmypdf but no RapidOCR, Vision or
   models (`python3 -m pytest ocrmypdf_paddle/test`); without ocrmypdf it is
   skipped unless `REQUIRE_OCRMYPDF=1` (set in CI).
-- `setup.sh` does not install the Paddle engine; the retain/discard benchmark
-  (#71) decides that. The plugin offers it only where
+- The Stage-1 benchmark (#71) retained the Paddle engine: `setup.sh` installs
+  it through `install-paddle.sh` into the Stage-1 venv without changing that
+  venv's packages, and prefetches the models. The plugin offers it only where
   `reprocess-raw --check-engine --engine paddle` finds it usable.
 
 ## Measurement log
