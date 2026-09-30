@@ -90,6 +90,7 @@ export class OcrComparisonView extends ItemView {
 	private editTracker = new EditStateTracker();
 	private readonly pageCases: PageCases | null;
 	private marked = new Map<number, PageCase>();
+	private pageCaseRun = 0;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -710,14 +711,19 @@ export class OcrComparisonView extends ItemView {
 		if (stash !== null) this.mdWriteChain = this.mdWriteChain.then(() => stash);
 	}
 
-	/** Asks `pdf2md case list` which pages of the open preview have a case. */
-	private async refreshPageCases(): Promise<void> {
+	/**
+	 * Asks `pdf2md case list` which pages of the open preview have a case.
+	 * Only the latest query counts, so an answer from before a page was marked
+	 * cannot take its badge away. `keepShown` leaves the badges up meanwhile.
+	 */
+	private async refreshPageCases(keepShown = false): Promise<void> {
+		const run = ++this.pageCaseRun;
 		const file = this.caseFile();
-		this.marked = new Map();
+		if (!keepShown) this.marked = new Map();
 		this.showPageCases();
 		if (file === null || this.pageCases === null) return;
 		const marked = await this.pageCases.list(file.path);
-		if (this.closed || this.caseFile() !== file) return;
+		if (this.closed || run !== this.pageCaseRun || this.caseFile() !== file) return;
 		this.marked = marked;
 		this.showPageCases();
 	}
@@ -742,9 +748,13 @@ export class OcrComparisonView extends ItemView {
 		);
 	}
 
-	/** "Mark page as wrong" for the page the view shows. */
+	/**
+	 * "Mark page as wrong" for the page at the top of the Markdown column.
+	 * Not `currentPage`: that follows the source column and stands still when
+	 * the source is missing.
+	 */
 	markCurrentPage(): void {
-		this.markPage(this.currentPage);
+		this.markPage(this.mdColumn.visiblePage() ?? this.currentPage);
 	}
 
 	private markPage(pageNumber: number): void {
@@ -781,12 +791,8 @@ export class OcrComparisonView extends ItemView {
 			8000,
 		);
 		if (this.closed || this.caseFile() !== file) return;
-		if (pageCase === null) {
-			void this.refreshPageCases();
-			return;
-		}
-		this.marked.set(pageNumber, pageCase);
-		this.showPageCases();
+		if (pageCase !== null) this.marked.set(pageNumber, pageCase);
+		void this.refreshPageCases(true);
 	}
 
 	private async saveChangeImmediately(): Promise<void> {
@@ -1292,7 +1298,7 @@ class MarkPageModal extends Modal {
 		};
 		markBtn.addEventListener("click", () => execute());
 		field.addEventListener("keydown", (e) => {
-			if (e.key === "Enter") execute();
+			if (e.key === "Enter" && !e.isComposing) execute();
 		});
 	}
 
