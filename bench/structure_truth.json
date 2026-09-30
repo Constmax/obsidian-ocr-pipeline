@@ -1,0 +1,2377 @@
+{
+ "description": "Structure truth set for issue #20: 20 hand-checked vector pages across all assembly layouts. Sources resolve against VAULT_ROOT. Each blessed page holds structural blocks (fingerprints plus short anchors), never page text — the same copyright rule as bench/BENCHMARK-SET.md. Score with `python bench/structure_bench.py score`; bless checked candidates with `bless` (local only, never in CI). Vector pages only: their text-layer input is deterministic, so exact fingerprints are stable across runs. OCR wobble would flake them; tile seams are covered by pdf2md/test/test_seam.py instead.",
+ "pages": [
+  {
+   "id": "s01",
+   "source": "raw/OeR/Verwaltungsrecht-AT/WuV_Verwaltungsrecht 2026.pdf",
+   "page": 1,
+   "layout": "two columns, question-answer grid, hyphenation",
+   "blocks": [
+    {
+     "hash": "19d8daa11d99",
+     "anchor": "**Antworten zu den Wiederholungs- und Vertiefungsfragen im V",
+     "refs": []
+    },
+    {
+     "hash": "feef0a1ba1f0",
+     "anchor": "**Fall 1**",
+     "refs": []
+    },
+    {
+     "hash": "1410e6b66e93",
+     "anchor": "**Wiederholungsfragen**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "28b52787be33",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "d542dceef611",
+     "anchor": "**Vertiefungsfragen**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "6dadd31d4fbc",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "4b90bcd112bd",
+     "anchor": "**Fall 2**",
+     "refs": []
+    },
+    {
+     "hash": "1410e6b66e93",
+     "anchor": "**Wiederholungsfragen**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "0fcb64a8580c",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "d542dceef611",
+     "anchor": "**Vertiefungsfragen**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "50eca94e6c67",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "98c7a2539eb1",
+     "anchor": "**Systematische Fragen zum belastenden VA**",
+     "refs": []
+    },
+    {
+     "hash": "7b4cf3a05dad",
+     "anchor": "**Prozessuales**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "4a94788c5f18",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "22438594a524",
+     "anchor": "Allgemeines Rechtsschutzbedürfnis: Kann das Klageziel überha",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "14a6190de2e2",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "43b66914b4d6",
+     "anchor": "**Prüfungsschema für den belastenden Verwaltungsakt**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "5c86e90aa00e",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "20fae8f3fa88",
+     "anchor": "**Fall 4**",
+     "refs": []
+    },
+    {
+     "hash": "1410e6b66e93",
+     "anchor": "**Wiederholungsfragen**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "316ea9e5d971",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "d9d935752b08",
+     "anchor": "**Systematische Fragen zum Verwaltungsakt**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "7c3481021886",
+     "anchor": "| Frage | Antwort |"
+    }
+   ]
+  },
+  {
+   "id": "s02",
+   "source": "raw/OeR/Verwaltungsrecht-AT/WuV_Verwaltungsrecht 2026.pdf",
+   "page": 3,
+   "layout": "two columns, grouped answers (grid abstains on non-aligned rows)",
+   "note": "Answers are grouped prose, not y-aligned: the grid correctly abstains and column order (questions, then answers) is kept.",
+   "blocks": [
+    {
+     "table": true,
+     "hash": "0bc5c6eef900",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "c14d12033009",
+     "anchor": "**Fall 8**",
+     "refs": []
+    },
+    {
+     "hash": "1410e6b66e93",
+     "anchor": "**Wiederholungsfragen**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "16a0c29723c0",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "d542dceef611",
+     "anchor": "**Vertiefungsfragen**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "efc26fd1118f",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "90707349c170",
+     "anchor": "**Fall 9**",
+     "refs": []
+    },
+    {
+     "hash": "f94591ddaeaf",
+     "anchor": "**Wiederholungs- und Vertiefungsfragen**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "05da04611d59",
+     "anchor": "| Frage | Antwort |"
+    },
+    {
+     "hash": "3cf2e9219bbb",
+     "anchor": "**Systematische Fragen zu Rücknahme und Widerruf von Verwalt",
+     "refs": []
+    },
+    {
+     "hash": "78e47beb450e",
+     "anchor": "1. Liegt eine Aufhebung vor, wenn eine vorläufige Leistung k",
+     "refs": []
+    },
+    {
+     "hash": "d793e161ce75",
+     "anchor": "2. Was ist die Ermächtigungsgrundlage für die Aufhebung eine",
+     "refs": []
+    },
+    {
+     "hash": "29e2ebe037b2",
+     "anchor": "3. Setzt § 49 VwVfG zwingend einen rechtmäßigen Verwaltungsa",
+     "refs": []
+    },
+    {
+     "hash": "403da81ca521",
+     "anchor": "4. Worin liegt die Bedeutung des § 49 III VwVfG?",
+     "refs": []
+    },
+    {
+     "hash": "cb011d6c6720",
+     "anchor": "5.  Gibt es einen Bestandsschutz auch im Rahmen von § 48 III",
+     "refs": []
+    },
+    {
+     "hash": "8af3b8a49598",
+     "anchor": "**Fall 10**",
+     "refs": []
+    },
+    {
+     "hash": "1410e6b66e93",
+     "anchor": "**Wiederholungsfragen**",
+     "refs": []
+    },
+    {
+     "hash": "ed06b1485b6d",
+     "anchor": "1. Skizzieren Sie den Rechtsschutz gegen Nebenbestimmungen.",
+     "refs": []
+    },
+    {
+     "hash": "d2871e82d52d",
+     "anchor": "2. Wie berechnet sich die Widerspruchsfrist?",
+     "refs": []
+    },
+    {
+     "hash": "130425353a5e",
+     "anchor": "3. Wie stellen Sie fest, ob eine Anlage nach dem BImSchG gen",
+     "refs": []
+    },
+    {
+     "hash": "d542dceef611",
+     "anchor": "**Vertiefungsfragen**",
+     "refs": []
+    },
+    {
+     "hash": "2ed8739c1bab",
+     "anchor": "1. Der betroffene Bürger legt verfristet Widerspruch ein. Ka",
+     "refs": []
+    },
+    {
+     "hash": "f67fc8e1554f",
+     "anchor": "2. Welche zwei Genehmigungsverfahren kennt das BImSchG? Wann",
+     "refs": []
+    },
+    {
+     "hash": "494e483c8b1d",
+     "anchor": "3. Was ist Präklusionswirkung i.S.d. § 10 BIm- SchG?",
+     "refs": []
+    },
+    {
+     "hash": "a8ab0c142ed5",
+     "anchor": "4. Ist § 5 BImSchG drittschützend?",
+     "refs": []
+    },
+    {
+     "hash": "8b6ae8c751ba",
+     "anchor": "5. Definieren Sie den Begriff „Realkonzession“.",
+     "refs": []
+    },
+    {
+     "hash": "30b2deeee7a9",
+     "anchor": "**Systematische Fragen zum begünstigenden VA**",
+     "refs": []
+    },
+    {
+     "hash": "97ad12dfa4d4",
+     "anchor": "**mit Nebenbestimmungen**",
+     "refs": []
+    },
+    {
+     "hash": "be024ffcc04f",
+     "anchor": "1. Unterscheiden Sie die Arten der Nebenbestimmungen anhand ",
+     "refs": []
+    },
+    {
+     "hash": "5be8f3f0ea2c",
+     "anchor": "2. Was ist eine modifizierende Auflage?",
+     "refs": []
+    },
+    {
+     "hash": "9e996101b765",
+     "anchor": "3. Wie prüft man die Zulässigkeit von Nebenbestimmungen?",
+     "refs": []
+    },
+    {
+     "hash": "b58441b6d6ad",
+     "anchor": "4. Ist eine rechtswidrige Nebenbestimmung durchsetzbar?",
+     "refs": []
+    },
+    {
+     "hash": "e90232f90e90",
+     "anchor": "Nein, die vorläufige Regelung endet automatisch.",
+     "refs": []
+    },
+    {
+     "hash": "ebd5c60fcff5",
+     "anchor": "Soweit keine spezialgesetzliche Regelung greift gelten §§ 48",
+     "refs": []
+    },
+    {
+     "hash": "b4e7a11f057a",
+     "anchor": "In der statthaften Klageart stellen sich zwei Fragen: (1) Li",
+     "refs": []
+    },
+    {
+     "hash": "71e82f924797",
+     "anchor": "Die Rspr. bejaht die Möglichkeit der Heilung der Verfristung",
+     "refs": []
+    },
+    {
+     "hash": "abc7db552071",
+     "anchor": "Befristung/Bedingung: Hier ist der Verwaltungsakt in seiner ",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s03",
+   "source": "raw/ZR/Schuldrecht-AT/fall12-begleitskript.pdf",
+   "page": 1,
+   "layout": "lined table 6x3, headings, stacked boxes",
+   "blocks": [
+    {
+     "hash": "34c1c7ce9077",
+     "anchor": "**Begleitskript zu Fall 12**",
+     "refs": []
+    },
+    {
+     "hash": "976926b7922a",
+     "anchor": "Das allgemeine Leistungsstörungsrecht im gesetzlichen Schuld",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "f2f72f8fb23b",
+     "anchor": "I. Der Ausgangspunkt: §§ 280 ff. BGB sind kein Vertragsrecht",
+     "refs": []
+    },
+    {
+     "hash": "bd46b8320336",
+     "anchor": "Die §§ 241 ff., 280 ff. BGB stehen im Zweiten Buch des BGB u",
+     "refs": [
+      1
+     ]
+    },
+    {
+     "hash": "9e5a1172a034",
+     "anchor": "**Merksatz:** Es gibt keine Pauschalantwort. Für **jeden din",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "bc500f1f8491",
+     "anchor": "II. Der Befund bei § 985 BGB",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "7ca0dd0357ab",
+     "anchor": "| **Norm** | **Anwendbar?** | **Grund** |"
+    },
+    {
+     "hash": "9f684d578041",
+     "anchor": "**Zu § 990 Abs. 2 BGB:** Die Norm ist das Einfallstor für de",
+     "refs": []
+    },
+    {
+     "hash": "411ef777651c",
+     "anchor": "**Zwei Fallen im Fall 12:** (1) Die Kosten der **verzugsbegr",
+     "refs": []
+    },
+    {
+     "footnote": 1,
+     "hash": "499bd36c9e73",
+     "anchor": "Motive III, S. 398 f.; wiedergegeben in BGH, Urt. v. 23.03.2"
+    }
+   ]
+  },
+  {
+   "id": "s04",
+   "source": "raw/ZR/Schuldrecht-AT/fall12-begleitskript.pdf",
+   "page": 2,
+   "layout": "headings, footnote block, single box",
+   "blocks": [
+    {
+     "heading": 3,
+     "hash": "9a3b894b4894",
+     "anchor": "III. § 281 BGB und § 985 BGB – BGH, Urt. v. 18.03.2016 – V Z",
+     "refs": []
+    },
+    {
+     "hash": "b0047c5fa27c",
+     "anchor": "Der V. Zivilsenat hat entschieden: Erfüllt der **bösgläubige",
+     "refs": [
+      2
+     ]
+    },
+    {
+     "hash": "9103ae6d2253",
+     "anchor": "• **Historie:** Schon zu § 283 BGB a.F. war der Übergang zum",
+     "refs": [
+      3
+     ]
+    },
+    {
+     "hash": "34bc7c9a7d24",
+     "anchor": "• **Reformziel:** Die Schuldrechtsmodernisierung wollte die ",
+     "refs": []
+    },
+    {
+     "hash": "ce2874cd1092",
+     "anchor": "• **Praktisches Bedürfnis:** Der Eigentümer muss bei ungewis",
+     "refs": []
+    },
+    {
+     "hash": "7e587939c0ce",
+     "anchor": "• **Grenze:** Die Privilegierung des **gutgläubigen, unverkl",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "4e4f918f50e6",
+     "anchor": "IV. Exkurs: Warum § 281 BGB bei § 1004 BGB nicht passt – BGH",
+     "refs": []
+    },
+    {
+     "hash": "da53f41e420f",
+     "anchor": "Sieben Jahre später hat derselbe Senat für den **Beseitigung",
+     "refs": [
+      4
+     ]
+    },
+    {
+     "hash": "e764a83b0bce",
+     "anchor": "**Vier Schlagworte für die Studenten**",
+     "refs": []
+    },
+    {
+     "hash": "d27daf03ca90",
+     "anchor": "**1. „Dulde und liquidiere\" – das kennt das BGB nicht.** § 1",
+     "refs": []
+    },
+    {
+     "hash": "d1367ecf2cae",
+     "anchor": "**2. Der Beseitigungsanspruch ist ein „Stehaufmännchen\".** §",
+     "refs": []
+    },
+    {
+     "hash": "62b5051850d5",
+     "anchor": "**3. Bei § 985 BGB kann der Schuldner sich „freikaufen\", bei",
+     "refs": []
+    },
+    {
+     "hash": "f8e4881e6ed5",
+     "anchor": "**4. Kein Bedürfnis, dafür ein Wahlrecht des Schuldners.** D",
+     "refs": []
+    },
+    {
+     "hash": "afdc0149b21d",
+     "anchor": "**Wichtig für die Klausur:** Der BGH hat in dieser Entscheid",
+     "refs": []
+    },
+    {
+     "footnote": 2,
+     "hash": "64f63ae25f5c",
+     "anchor": "BGH, Urt. v. 18.03.2016 – V ZR 89/15, BGHZ 209, 270 (Leitsat"
+    },
+    {
+     "footnote": 3,
+     "hash": "63f610044ee5",
+     "anchor": "BGH, Urt. v. 29.10.1969 – VIII ZR 202/67, BGHZ 53, 29, 32 ff"
+    },
+    {
+     "footnote": 4,
+     "hash": "c6259839b51a",
+     "anchor": "BGH, Urt. v. 23.03.2023 – V ZR 67/22 (Wurzeln einer Nachbarp"
+    }
+   ]
+  },
+  {
+   "id": "s05",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-teil-2-sekundaeransprueche-2026.pdf",
+   "page": 2,
+   "layout": "mixed diagram and prose page",
+   "note": "Diagram page: box order is interleaved and the vertical label is split into single letters (known box-to-box limitation); the page renders as image plus callout.",
+   "blocks": [
+    {
+     "heading": 3,
+     "hash": "d59417e32a32",
+     "anchor": "II. System der Schadensersatzansprüche",
+     "refs": []
+    },
+    {
+     "hash": "a0f1490a20d0",
+     "anchor": "**S**",
+     "refs": []
+    },
+    {
+     "hash": "84a516841ba7",
+     "anchor": "**c**",
+     "refs": []
+    },
+    {
+     "hash": "27d5482eebd0",
+     "anchor": "**h**",
+     "refs": []
+    },
+    {
+     "hash": "51e69892ab49",
+     "anchor": "**u**",
+     "refs": []
+    },
+    {
+     "hash": "07c342be6e56",
+     "anchor": "**l**",
+     "refs": []
+    },
+    {
+     "hash": "3c363836cf4e",
+     "anchor": "**d**",
+     "refs": []
+    },
+    {
+     "hash": "7a38d8cbd20d",
+     "anchor": "**v**",
+     "refs": []
+    },
+    {
+     "hash": "58e6b3a414a1",
+     "anchor": "**e**",
+     "refs": []
+    },
+    {
+     "hash": "4dc7c9ec434e",
+     "anchor": "**r**",
+     "refs": []
+    },
+    {
+     "hash": "27d5482eebd0",
+     "anchor": "**h**",
+     "refs": []
+    },
+    {
+     "hash": "961fa22f61a5",
+     "anchor": "**ä**",
+     "refs": []
+    },
+    {
+     "hash": "07c342be6e56",
+     "anchor": "**l**",
+     "refs": []
+    },
+    {
+     "hash": "8efd86fb78a5",
+     "anchor": "**t**",
+     "refs": []
+    },
+    {
+     "hash": "d1854cae891e",
+     "anchor": "**n**",
+     "refs": []
+    },
+    {
+     "hash": "042dc4512fa3",
+     "anchor": "**i**",
+     "refs": []
+    },
+    {
+     "hash": "a0f1490a20d0",
+     "anchor": "**s**",
+     "refs": []
+    },
+    {
+     "hash": "6fc1659fd57f",
+     "anchor": "**§ 311a I**",
+     "refs": []
+    },
+    {
+     "hash": "aa346ca0cf95",
+     "anchor": "vorvertraglich,",
+     "refs": []
+    },
+    {
+     "hash": "4df93928b294",
+     "anchor": "anf. Unmöglkt. **§ 311 II, III**",
+     "refs": []
+    },
+    {
+     "hash": "0583bff858e5",
+     "anchor": "AGL: **§ 311a II** AGL: **§ 280 I,** (ggf iVm § 284) 241 II ",
+     "refs": []
+    },
+    {
+     "hash": "a0526b1f113f",
+     "anchor": "**§ 280 I**",
+     "refs": []
+    },
+    {
+     "hash": "38751b7f6161",
+     "anchor": "**§§ 280 I, II, 286**",
+     "refs": []
+    },
+    {
+     "hash": "45488da34b62",
+     "anchor": "**§§ 280 I, III, 281 ff/ 284**",
+     "refs": []
+    },
+    {
+     "hash": "4c7b0c0347c7",
+     "anchor": "einfacher SE Verzögerungsschaden SE statt Leistung",
+     "refs": []
+    },
+    {
+     "hash": "3123bd78d997",
+     "anchor": "bei nachträgl. Schäden, die durch SE statt Lstg b. Verl. Unm",
+     "refs": []
+    },
+    {
+     "hash": "c7119d6b4cda",
+     "anchor": "v. nicht lstgsbezog. § 283 beseitigen sind Nebenpflichten § ",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "a24eacdb59a0",
+     "anchor": "III. System des Rücktrittsrechts",
+     "refs": []
+    },
+    {
+     "hash": "4b8aad95cbeb",
+     "anchor": "**Unmöglichkeit  Nichtleistung  Schlechtleistung Nebenpflich",
+     "refs": []
+    },
+    {
+     "hash": "0878ac6dbd7c",
+     "anchor": "**bzw. Verzug**",
+     "refs": []
+    },
+    {
+     "hash": "135a9fd02363",
+     "anchor": "**verletzung**",
+     "refs": []
+    },
+    {
+     "hash": "d6227f180955",
+     "anchor": "§ 437 Nr. 2, Pflicht- § 634 Nr. 3 verl, i.S.v. § 241 II",
+     "refs": []
+    },
+    {
+     "hash": "6955fc1035cb",
+     "anchor": "**§ 326 V**",
+     "refs": []
+    },
+    {
+     "hash": "63a7100a86a2",
+     "anchor": "**§ 323**",
+     "refs": []
+    },
+    {
+     "hash": "539db146d79d",
+     "anchor": "**§ 323 (behebbar)**",
+     "refs": []
+    },
+    {
+     "hash": "ccc600d9df4e",
+     "anchor": "**§ 324**",
+     "refs": []
+    },
+    {
+     "hash": "fd047fff6120",
+     "anchor": "**§ 326 V (unbehebbar)**",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s06",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-teil-2-sekundaeransprueche-2026.pdf",
+   "page": 4,
+   "layout": "diagram page, stacked boxes",
+   "note": "Diagram page: linearized box text (known box-to-box limitation); renders as image plus callout.",
+   "blocks": [
+    {
+     "heading": 3,
+     "hash": "7d06dc89001e",
+     "anchor": "II. Zu-Spät-Leistung:",
+     "refs": []
+    },
+    {
+     "hash": "14c3d94e8e12",
+     "anchor": "**Abgrenzung von §§ 280 I, III, 281 BGB und §§ 280 I, II, 28",
+     "refs": []
+    },
+    {
+     "hash": "436a7a299568",
+     "anchor": "**Verzögerungsschaden**",
+     "refs": []
+    },
+    {
+     "hash": "33c85cdf9eea",
+     "anchor": "**Schadensersatz statt der Leistung**",
+     "refs": []
+    },
+    {
+     "hash": "2c47a226978b",
+     "anchor": "§ 280 I, II, nur wenn",
+     "refs": []
+    },
+    {
+     "hash": "1d9e25b9b9c5",
+     "anchor": "§ 280 I, III unter den zusätzl. Voraussetzungen des § 281 !",
+     "refs": []
+    },
+    {
+     "hash": "3a977feb132f",
+     "anchor": "Verzug nach § 286 !",
+     "refs": []
+    },
+    {
+     "hash": "72140228cb41",
+     "anchor": "(parallel: Rücktritt, § 323)",
+     "refs": []
+    },
+    {
+     "hash": "c37bb20dc291",
+     "anchor": "„Mahnung“ „Nachfristsetzung“",
+     "refs": []
+    },
+    {
+     "hash": "ce7ed298419a",
+     "anchor": "Ø Der Anspruch auf Ersatz des Verzögerungsschadens nach **§§",
+     "refs": []
+    },
+    {
+     "hash": "af5a02f48b2c",
+     "anchor": "Anspruch auf",
+     "refs": []
+    },
+    {
+     "hash": "ff4878b6f9bb",
+     "anchor": "Anspruch auf Ersatz des Verzögerungs-",
+     "refs": []
+    },
+    {
+     "hash": "b692ae08b37d",
+     "anchor": "Leistung",
+     "refs": []
+    },
+    {
+     "hash": "a979ef10cc6f",
+     "anchor": "+",
+     "refs": []
+    },
+    {
+     "hash": "c1768d1e893f",
+     "anchor": "schadens, §§ 280 I, II, 286",
+     "refs": []
+    },
+    {
+     "hash": "71dffebd4d99",
+     "anchor": "Ø Der Anspruch nach **§§ 280 I, II 286 BGB** kommt aber **nu",
+     "refs": []
+    },
+    {
+     "hash": "1d009bd59c18",
+     "anchor": "Ø Ein Anspruch auf **Schadensersatz statt der Leistung** kom",
+     "refs": []
+    },
+    {
+     "hash": "b3417cb88a68",
+     "anchor": "Ø P: Strittig ist, ob der ursprünglich begründete Verzugssch",
+     "refs": []
+    },
+    {
+     "hash": "e7bb2edbfd1a",
+     "anchor": "- Nach  e.A.  geht  der  Verzugsschaden  nach §§ 280  I,  II",
+     "refs": [
+      1
+     ]
+    },
+    {
+     "footnote": 1,
+     "hash": "9b421b079c39",
+     "anchor": "Grüneberg, § 281, Rn. 27. P: Die Voraussetzungen des § 286 B"
+    }
+   ]
+  },
+  {
+   "id": "s07",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-teil-5-schadensrecht-2026.pdf",
+   "page": 4,
+   "layout": "mixed diagram page with heading",
+   "note": "Mixed diagram page: box labels interleave with prose (known limitation); renders as image plus callout.",
+   "blocks": [
+    {
+     "heading": 4,
+     "hash": "eab262886900",
+     "anchor": "2. Haftungsausfüllende Kausalität",
+     "refs": []
+    },
+    {
+     "hash": "0be1a626f4d1",
+     "anchor": "Conditio-sine-qua-non-Formel: schädigende Ereignis kann nich",
+     "refs": []
+    },
+    {
+     "hash": "652aa442a80c",
+     "anchor": "**Äquivalenz**",
+     "refs": []
+    },
+    {
+     "hash": "012b2c1e5766",
+     "anchor": "hinweggedacht werden, ohne dass der Erfolg entfiele **Äquiva",
+     "refs": []
+    },
+    {
+     "hash": "f6204590a9c3",
+     "anchor": "Schaden liegt nicht",
+     "refs": []
+    },
+    {
+     "hash": "95134dac8fc3",
+     "anchor": "**Adäquanz**",
+     "refs": []
+    },
+    {
+     "hash": "2b4ae439d1c9",
+     "anchor": "außerhalb jeglicher",
+     "refs": []
+    },
+    {
+     "hash": "829e77f6882d",
+     "anchor": "**Schutzzweck der Norm**",
+     "refs": []
+    },
+    {
+     "hash": "e4644ecb8c76",
+     "anchor": "wertende",
+     "refs": []
+    },
+    {
+     "hash": "769ca5e33425",
+     "anchor": "**/ Pflichtwidrigkeits-/**",
+     "refs": []
+    },
+    {
+     "hash": "285312a2cb8c",
+     "anchor": "**Zurechnungszusammenhang**",
+     "refs": []
+    },
+    {
+     "hash": "81fd63348570",
+     "anchor": "**Soll die Norm gerade für den eingetretenen**",
+     "refs": []
+    },
+    {
+     "hash": "e0c2e85ac7aa",
+     "anchor": "**Schaden eine Ersatzpflicht begründen?**",
+     "refs": []
+    },
+    {
+     "hash": "10bdbb746e61",
+     "anchor": "Nicht nur allgemeines Lebensrisiko !",
+     "refs": []
+    },
+    {
+     "hash": "298589f388fc",
+     "anchor": "**Dazwischentreten Dritter / Geschädigter**: Selbst das vors",
+     "refs": []
+    },
+    {
+     "hash": "421fb6b370ff",
+     "anchor": "**Reserveursache / innewohnende Schadensanlage**",
+     "refs": []
+    },
+    {
+     "hash": "2cb5b76cea81",
+     "anchor": "=> keine Berücksichtigung bei Objektschäden; anders: Vermöge",
+     "refs": []
+    },
+    {
+     "hash": "3ef4a3305791",
+     "anchor": "**Rechtmäßiges Alternativverhalten**: Schaden, der auf pflic",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s08",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-teil-5-schadensrecht-2026.pdf",
+   "page": 3,
+   "layout": "prose with inline margin label, unleveled outline marker",
+   "blocks": [
+    {
+     "hash": "6de57f29e7c5",
+     "anchor": "**1.b) Schadenskorrektur**",
+     "refs": []
+    },
+    {
+     "hash": "00f30cf55962",
+     "anchor": "**Vorteilsanrechnung**: Rechtsgedanke des **§ 843 IV**: Adäq",
+     "refs": []
+    },
+    {
+     "hash": "088c83b86e08",
+     "anchor": "Sonderproblem **Erbschaft:**",
+     "refs": []
+    },
+    {
+     "hash": "1ee106a70f1c",
+     "anchor": "**Beachte:** nur bei § 844 BGB liegt sachliche Kongruenz",
+     "refs": []
+    },
+    {
+     "hash": "88e2aad3b815",
+     "anchor": "vor. **-** Der Stammwert der Erbschaft wird grds. nicht ange",
+     "refs": []
+    },
+    {
+     "hash": "ce9a13fda4e6",
+     "anchor": "**-** P: Wird berücksichtigt, ob der Anspruchsberechtigte  d",
+     "refs": []
+    },
+    {
+     "hash": "ecc8a96c8355",
+     "anchor": "(Vgl. SchR AT Fall 17!)",
+     "refs": []
+    },
+    {
+     "hash": "d93747e1bb6a",
+     "anchor": "**Abzug „Neu für Alt“:**",
+     "refs": []
+    },
+    {
+     "hash": "4716bd2b634c",
+     "anchor": "Grds. § 249 II: Dispositionsfreiheit des Geschädigten.",
+     "refs": []
+    },
+    {
+     "hash": "8749c6d0d71b",
+     "anchor": "Abzug aber bei solchen Gütern, bei denen Gebrauchtmarkt best",
+     "refs": []
+    },
+    {
+     "hash": "0fc795901e5d",
+     "anchor": "Arg.: Bereicherungsverbot, soweit sich Schadensabrechnung gü",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s09",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-zusatzuebersichten.pdf",
+   "page": 4,
+   "layout": "two columns, table, headings",
+   "blocks": [
+    {
+     "hash": "6cc306b03fcc",
+     "anchor": "**Hinweise zur Leistungs- und Gegenleistungsgefahr**",
+     "refs": []
+    },
+    {
+     "hash": "9d645db1a410",
+     "anchor": "Die **Leistungsgefahr** bezeichnet das Risiko einer Vertrags",
+     "refs": []
+    },
+    {
+     "hash": "489d29350a2d",
+     "anchor": "Die **Gegenleistungsgefahr** betrifft die Frage, ob der Gläu",
+     "refs": []
+    },
+    {
+     "hash": "4f66559eb378",
+     "anchor": "**Wichtiger Hinweis:** Als „Schuldner“ wird im Unmöglichkeit",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "1d325095f654",
+     "anchor": "I. Leistung unmöglich",
+     "refs": []
+    },
+    {
+     "hash": "ec7beb43c51c",
+     "anchor": "Unmöglichkeit: bei Gattungsschulden an §§ 243 II, 300 II den",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "58efb50b2177",
+     "anchor": "II. Ausnahmen von der Regel des § 326 I S.1 1.Hs.",
+     "refs": []
+    },
+    {
+     "hash": "c43239076b6c",
+     "anchor": "Bis zur vollständigen Erbringung der Leistung (Übereignung b",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "5c82e157fb5c",
+     "anchor": "III. Drittschadensliquidation",
+     "refs": []
+    },
+    {
+     "hash": "05c933995a93",
+     "anchor": "Stehen in der Klausur dem finanziell nicht Geschädigten Ansp",
+     "refs": []
+    },
+    {
+     "hash": "d1b5748cb16c",
+     "anchor": "**Faustregel:** Der Eigentümer (Anspruch aus § 823 I gegen d",
+     "refs": []
+    },
+    {
+     "hash": "80d92b0e4791",
+     "anchor": "-beim Kaufvertrag wg. § 447 I die Vergütungsgefahr auf den K",
+     "refs": []
+    },
+    {
+     "hash": "9cf521f06eac",
+     "anchor": "Hierbei sind zwei Möglichkeiten zu unterscheiden:",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "063801ffdf57",
+     "anchor": "| § 421 I HGB (nicht in der Prüfungsordnung) | **Drittschade"
+    }
+   ]
+  },
+  {
+   "id": "s10",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-zusatzuebersichten.pdf",
+   "page": 7,
+   "layout": "diagram grid of equal boxes, margin labels",
+   "note": "Diagram grid rendered as tables via the question-answer grid; fragmented box rows remain (known limitation).",
+   "blocks": [
+    {
+     "hash": "2eba2d2fbaab",
+     "anchor": "**Übersicht zur Verspätung der Leistung**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "b26e771dc737",
+     "anchor": "|  |  |"
+    },
+    {
+     "hash": "885225baab11",
+     "anchor": "**(Verzug)**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "41bad0509cff",
+     "anchor": "|  |  |"
+    },
+    {
+     "hash": "023d2b924cca",
+     "anchor": "**Beachte außerdem:**",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "d215d9ef4b4f",
+     "anchor": "|  |  |"
+    },
+    {
+     "hash": "b9dccba66f2f",
+     "anchor": "**Schadensersatz statt der**",
+     "refs": []
+    },
+    {
+     "hash": "9cf623b5cdc8",
+     "anchor": "**§§ 280 I, III, 281:**",
+     "refs": []
+    },
+    {
+     "hash": "e8ca9bbc6c14",
+     "anchor": "**§ 280 Abs.1 S.2:**",
+     "refs": []
+    },
+    {
+     "hash": "ce50ac9abcd3",
+     "anchor": "**§ 281 Abs.1:**",
+     "refs": []
+    },
+    {
+     "hash": "46f3803dcde5",
+     "anchor": "einredefreien",
+     "refs": []
+    },
+    {
+     "hash": "8d2ff1f9a59a",
+     "anchor": "**§ 281 Abs.2:**",
+     "refs": []
+    },
+    {
+     "hash": "0cd12bfad2b4",
+     "anchor": "Primäranspruch (§ 281 Abs.4)",
+     "refs": []
+    },
+    {
+     "hash": "b692ae08b37d",
+     "anchor": "**Leistung**",
+     "refs": []
+    },
+    {
+     "hash": "f3f2675a3a3b",
+     "anchor": "Leistung trotz",
+     "refs": []
+    },
+    {
+     "hash": "dbfd9e53bdea",
+     "anchor": "erlischt mit",
+     "refs": []
+    },
+    {
+     "hash": "5aa60c22f4c7",
+     "anchor": "Vertretenmüssen des Schuldners Nichterbringung einer fällige",
+     "refs": []
+    },
+    {
+     "hash": "023d2b924cca",
+     "anchor": "**Beachte außerdem:**",
+     "refs": []
+    },
+    {
+     "hash": "992b4e907511",
+     "anchor": "Schadensersatzbegehren",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s11",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-zusatzuebersichten.pdf",
+   "page": 3,
+   "layout": "dense outline, heading levels 3 and 4",
+   "blocks": [
+    {
+     "hash": "8baad6505edf",
+     "anchor": "**Die Grundstruktur der SR-AT Klausur**",
+     "refs": []
+    },
+    {
+     "hash": "381a47cc18d9",
+     "anchor": "**Ausgangssituation:** Zwei Parteien schließen einen Verpfli",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "ed37a040a892",
+     "anchor": "I. Besteht der Erfüllungsanspruch (i.d.R. § 433 I) noch?",
+     "refs": []
+    },
+    {
+     "hash": "da02cdfaf202",
+     "anchor": "Einstiegsnorm ist § 275. Wenn eine Gattungsschuld Gegenstand",
+     "refs": []
+    },
+    {
+     "hash": "7054dc72dbef",
+     "anchor": "Unmöglichkeitsrecht ist deswegen nur dann anwendbar, wenn be",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "7278bd548493",
+     "anchor": "II. Das Schicksal der Gegenleistung (nur bei gegenseitigen V",
+     "refs": []
+    },
+    {
+     "hash": "c36c16f8c5cc",
+     "anchor": "Gemäß § 326 I erlischt grundsätzlich der Gegenleistungsanspr",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "413ea8d2d1af",
+     "anchor": "III. Bestehen Schadensersatzansprüche des Gläubigers?",
+     "refs": []
+    },
+    {
+     "hash": "2318b638a267",
+     "anchor": "Hierbei ist auf die Frage einzugehen, wer die Unmöglichkeit ",
+     "refs": []
+    },
+    {
+     "hash": "8764c6bcdf0b",
+     "anchor": "**Exkurs: Kurzübersicht zum Annahmeverzug**",
+     "refs": []
+    },
+    {
+     "hash": "08fdea4dee26",
+     "anchor": "**Voraussetzungen:**",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "d6ca619cf0d4",
+     "anchor": "1. Leistungsberechtigung (vgl. § 271 I, II)",
+     "refs": []
+    },
+    {
+     "hash": "7f3f87c1eb8d",
+     "anchor": "2. Leistungsvermögen (§ 297, Schuldner- und Gläubigerverzug ",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "569d9d08dd0a",
+     "anchor": "3. Leistungsangebot (§§ 294ff)",
+     "refs": []
+    },
+    {
+     "hash": "825c3a006d4c",
+     "anchor": "- Schick- und Bringschuld: tatsächlich; es sei denn, ernstha",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "600ee941dbec",
+     "anchor": "4. Nichtannahme der Leistung bzw. Verweigerung die Gegenleis",
+     "refs": []
+    },
+    {
+     "hash": "bdbe9debd8dc",
+     "anchor": "**Die wichtigsten Rechtsfolgen:**",
+     "refs": []
+    },
+    {
+     "hash": "3a9e7dfadb66",
+     "anchor": "1. Haftungsprivilegierung (§ 300 I): Haftung nur für grobe F",
+     "refs": []
+    },
+    {
+     "hash": "90547b3c9188",
+     "anchor": "2. Übergang der Leistungsgefahr (§ 300 II), d.h. erleichtert",
+     "refs": []
+    },
+    {
+     "hash": "0c7bb63f76c6",
+     "anchor": "3. Übergang der Preisgefahr beim gegenseitigen Vertrag (§ 32",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s12",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-zusatzuebersichten.pdf",
+   "page": 5,
+   "layout": "headings with stacked boxes",
+   "blocks": [
+    {
+     "hash": "aece0b086eb3",
+     "anchor": "**Das Freiwerden des Gattungsschuldners nach der Schuldrecht",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "23e819d2ce95",
+     "anchor": "I. Unmöglichkeit gemäß § 275 I",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "cbc9bea523d6",
+     "anchor": "1. Gesamte Gattung geht unter",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "4d15abd7a745",
+     "anchor": "2. Vorrat geht unter (bei beschränkter Gattungsschuld)",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "7b0f8f56a9a4",
+     "anchor": "3. Zeitablauf bei absolutem Fixgeschäft",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "461979851f61",
+     "anchor": "4. Untergang nach Konkretisierung der Sache zur Stückschuld,",
+     "refs": []
+    },
+    {
+     "hash": "4bc84a8bcd03",
+     "anchor": "5. Untergang der Sache während des Annahmeverzugs des Käufer",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "574fb7fde70c",
+     "anchor": "II. Faktische Unmöglichkeit auf Einrede gemäß § 275 II",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "fb6be9c856a8",
+     "anchor": "1. Grundsatz: § 275 II greift nicht ein",
+     "refs": []
+    },
+    {
+     "hash": "d2f3429b9638",
+     "anchor": "⇨ Gattungsschulden sind Beschaffungsschulden“",
+     "refs": []
+    },
+    {
+     "hash": "12f382e07cf7",
+     "anchor": "Weil Gattungsschulden Beschaffungsschulden sind, kann sich d",
+     "refs": []
+    },
+    {
+     "hash": "62ff758cdf7e",
+     "anchor": "Der Gläubiger kann also nur gem. §§ 280 I, III, 281 zu Sekun",
+     "refs": []
+    },
+    {
+     "hash": "d5f36cfd7be9",
+     "anchor": "Beruft sich der Schuldner aber auf eigenes „Unvermögen“ ohne",
+     "refs": []
+    },
+    {
+     "hash": "294488cef73c",
+     "anchor": "Grund: Die Fristsetzung ist gemäß § 281 II BGB wegen endgült",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "78f1cba6d223",
+     "anchor": "2. Ausnahme: § 275 II greift ein",
+     "refs": []
+    },
+    {
+     "hash": "5b37825c794e",
+     "anchor": "**a)** Die Vorschrift des § 276 I S.1 BGB ist auf die typisc",
+     "refs": []
+    },
+    {
+     "hash": "a4953506f69b",
+     "anchor": "**b)** 276 I S.1 gilt dagegen nicht für Beschaffungshinderni",
+     "refs": []
+    },
+    {
+     "hash": "34dc85abe2c4",
+     "anchor": "**c)** Rechtsfolge: Liegt ein derartiger Ausnahmefall vor, s",
+     "refs": []
+    },
+    {
+     "hash": "82f18be34687",
+     "anchor": "⇨ Für die Sekundäransprüche aus §§ 280 I, III, 283 BGB fehlt",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s13",
+   "source": "raw/Klausuren/OeR/2131_Lösung_OeffentlichesRecht_Hessen.pdf",
+   "page": 2,
+   "layout": "two columns, nine footnote definitions, inline margin label",
+   "blocks": [
+    {
+     "hash": "3133751f9e71",
+     "anchor": "Rückgängigmachung seiner positiven Auswahlentscheidung (als ",
+     "refs": [
+      4
+     ]
+    },
+    {
+     "hash": "0314178d70ab",
+     "anchor": "**Anmerkung:** Gerade hierin liegt der Unterschied zur Leite",
+     "refs": [
+      5
+     ]
+    },
+    {
+     "hash": "aca66df54237",
+     "anchor": "Die Voraussetzung für die Zuordnung der ersten Stufe zum öff",
+     "refs": [
+      6
+     ]
+    },
+    {
+     "heading": 4,
+     "hash": "4cafac1be141",
+     "anchor": "4. Übrige Voraussetzungen",
+     "refs": []
+    },
+    {
+     "hash": "5cea5f1839bb",
+     "anchor": "Allerdings könnte dieser Rechtswegeröffnung der unionsrechtl",
+     "refs": [
+      7
+     ]
+    },
+    {
+     "hash": "4e29237bb9af",
+     "anchor": "Zumal die Streitigkeit auch nichtverfassungsrechtlicher Art ",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "e50a2112ac03",
+     "anchor": "II. Statthaftigkeit des Widerspruchs",
+     "refs": []
+    },
+    {
+     "hash": "7f751252786a",
+     "anchor": "Der Widerspruch müsste gem. § 68 VwGO statthaft sein. Dies i",
+     "refs": [
+      8
+     ]
+    },
+    {
+     "hash": "f4d28648d625",
+     "anchor": "**VGH Kassel, LKRZ 2015, 345:** Öffentlich-rechtliche Willen",
+     "refs": []
+    },
+    {
+     "hash": "9b8f7152842b",
+     "anchor": "Danach kann nicht zwingend von einem Verwaltungsakt ausgegan",
+     "refs": [
+      9
+     ]
+    },
+    {
+     "footnote": 4,
+     "hash": "47b15faeecc9",
+     "anchor": "Stellhorn, BayVBl. 2016, 77 (78); Kopp/Schenke, § 40 VwGO, R"
+    },
+    {
+     "footnote": 5,
+     "hash": "8607526cba0f",
+     "anchor": "BVerwG, NJW 1993, 2695 = JA 1994, 128 (130) entgegen den Vor"
+    },
+    {
+     "footnote": 6,
+     "hash": "fc1e2a69852a",
+     "anchor": "Stellhorn, BayVBl. 2016, 77 (78); grundlegend VG München, NV"
+    },
+    {
+     "footnote": 7,
+     "hash": "136f520c3386",
+     "anchor": "Eine Vorlagepflicht gem. Art. 267 III AEUV kommt mangels let"
+    },
+    {
+     "footnote": 8,
+     "hash": "70f87c87baca",
+     "anchor": "VGH Mannheim, NVwZ-RR 2017, 224 = JuS 2017, 805 (Anm. Waldho"
+    },
+    {
+     "footnote": 9,
+     "hash": "ba0928d7fbe5",
+     "anchor": "Kopp/Ramsauer, § 35 VwVfG, Rn. 56; Fritsche, NVwZ 2006, 762 "
+    }
+   ]
+  },
+  {
+   "id": "s14",
+   "source": "raw/Klausuren/OeR/2143_Loesung_OeffentlichesRecht_Hessen.pdf",
+   "page": 4,
+   "layout": "ten footnote definitions, margin labels",
+   "blocks": [
+    {
+     "hash": "a22ed1db1a93",
+     "anchor": "interesses dann, wenn andernfalls kein wirksamer Rechtsschut",
+     "refs": []
+    },
+    {
+     "hash": "3d3202e7bca0",
+     "anchor": "ist. Nach a.A. verlange Art. 19 IV GG nur bei Fällen gewicht",
+     "refs": [
+      17
+     ]
+    },
+    {
+     "hash": "a074e98d1655",
+     "anchor": "**Anmerkung:** Kritisch ist hierzu anzumerken, dass ein vera",
+     "refs": [
+      18
+     ]
+    },
+    {
+     "hash": "453f35dea056",
+     "anchor": "Dieser Meinungsstreit kann dahinstehen, wenn ein schwerwiege",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "45fac1ee22cb",
+     "anchor": "3. Rehabilitationsinteresse",
+     "refs": []
+    },
+    {
+     "hash": "89e388e2946b",
+     "anchor": "Es kann daher dahinstehen, ob sich ein rechtliches Interesse",
+     "refs": [
+      19,
+      20
+     ]
+    },
+    {
+     "hash": "5cccf47ac26f",
+     "anchor": "**Zwischenergebnis:** Demnach hat K vorliegend ein besondere",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "6a5e38fd18bf",
+     "anchor": "VII. Klagegegner",
+     "refs": []
+    },
+    {
+     "hash": "7ec7b845de75",
+     "anchor": "Gemäß § 78 I Nr. 1 VwGO ist die Klage gegen den Rechtsträger",
+     "refs": []
+    },
+    {
+     "hash": "b401c7fd546b",
+     "anchor": "Verwaltungsakt („weisen Sie sich aus!“) von den Beamten der ",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "c936477c6adb",
+     "anchor": "VIII. Beteiligten- und Prozessfähigkeit",
+     "refs": []
+    },
+    {
+     "hash": "0d30dc261806",
+     "anchor": "K ist als natürliche Personen gem. § 61 Nr. 1 1.Alt. VwGO be",
+     "refs": [
+      21
+     ]
+    },
+    {
+     "heading": 3,
+     "hash": "16108bd7b0d5",
+     "anchor": "IX. Zuständiges Gericht",
+     "refs": []
+    },
+    {
+     "hash": "0817aceb0c87",
+     "anchor": "Zuständig ist gem. §§ 45, 52 Nr. 2 bzw. 5 VwGO i.V.m. § 1 II",
+     "refs": []
+    },
+    {
+     "hash": "476e1efd2fb9",
+     "anchor": "**Anmerkung:** Vorliegend hat die Bundespolizei gehandelt. D",
+     "refs": []
+    },
+    {
+     "hash": "127ded46c24e",
+     "anchor": "**Zwischenergebnis:** Da auch die sonstigen Voraussetzungen ",
+     "refs": []
+    },
+    {
+     "hash": "f0d9fb3e8b86",
+     "anchor": "**B.**",
+     "refs": []
+    },
+    {
+     "hash": "0bb1e4a0d22e",
+     "anchor": "**Begründetheit der Klage**",
+     "refs": []
+    },
+    {
+     "hash": "1ae6b282be67",
+     "anchor": "Die Klage ist begründet, soweit die gegen K gerichtete Ident",
+     "refs": []
+    },
+    {
+     "hash": "11159bb7b9c6",
+     "anchor": "**Anmerkung:** Aus dem Wortlaut von § 113 I 4 VwGO ergibt si",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "d66953c8cc33",
+     "anchor": "I. Rechtmäßigkeit der Maßnahme",
+     "refs": []
+    },
+    {
+     "hash": "95f055eb7781",
+     "anchor": "Die polizeiliche Maßnahme ist rechtmäßig, soweit die tatbest",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "033b298838cd",
+     "anchor": "1.  Ermächtigungsgrundlage",
+     "refs": []
+    },
+    {
+     "hash": "e17a442a178d",
+     "anchor": "Einschlägige Ermächtigungsgrundlage für die Identitätskontro",
+     "refs": []
+    },
+    {
+     "footnote": 17,
+     "hash": "18662dc6085a",
+     "anchor": "BVerwG, NVwZ 2025, 87 (88); NVwZ 2024, 1008 (1010); BVerfG, "
+    },
+    {
+     "footnote": 18,
+     "hash": "fdff9e2098ad",
+     "anchor": "Eibenstein, JA 2025, 845 (846); Muckel, JA 2024, 347 (349)."
+    },
+    {
+     "footnote": 19,
+     "hash": "98935327bd41",
+     "anchor": "BVerwG, NVwZ-RR 2017, 381 (383)."
+    },
+    {
+     "footnote": 20,
+     "hash": "26700506ec2d",
+     "anchor": "Kopp/Schenke, § 113 VwGO, Rn. 142."
+    },
+    {
+     "footnote": 21,
+     "hash": "1224c1089a37",
+     "anchor": "§ 58 BPolG i.V.m. § 2 Nr. 5 BPolZV bzw. VertAnO BMI."
+    }
+   ]
+  },
+  {
+   "id": "s15",
+   "source": "raw/Klausuren/OeR/2131_Lösung_OeffentlichesRecht_Hessen.pdf",
+   "page": 7,
+   "layout": "two columns, recovered footnotes 30-32",
+   "note": "Body tail merged into footnote 33 (adjacent lines, no gap signal).",
+   "blocks": [
+    {
+     "hash": "932adaf19f74",
+     "anchor": "Das Kriterium sorgt außerdem dafür, dass der Erwerb eines Gr",
+     "refs": [
+      29
+     ]
+    },
+    {
+     "heading": 6,
+     "hash": "b6fb1267774a",
+     "anchor": "(4) Rechtfertigung",
+     "refs": []
+    },
+    {
+     "hash": "77362f983d66",
+     "anchor": "Fraglich ist allerdings, ob der Eingriff in die Arbeitnehmer",
+     "refs": [
+      30,
+      31
+     ]
+    },
+    {
+     "hash": "70491c6a25d3",
+     "anchor": "bzw. Rein wirtschaftspolitische und protektionistische Erwäg",
+     "refs": []
+    },
+    {
+     "hash": "df74542e260a",
+     "anchor": "**EuGH, EuZW 2013, 507 (508) = JuS 2013, 1051 (Anm. Ruffert)",
+     "refs": []
+    },
+    {
+     "hash": "ea81cc3a4668",
+     "anchor": "Bau- und wohnungspolitische Maßnahmen können nach der Rechts",
+     "refs": [
+      32,
+      33
+     ]
+    },
+    {
+     "hash": "30095e37304c",
+     "anchor": "**Anmerkung:** Rein soziokulturelle Erwägungen (Kriterien wi",
+     "refs": []
+    },
+    {
+     "hash": "f1eb1f553ece",
+     "anchor": "**EuGH, DVBl 2013, 1041 = JuS 2013, 1051** (Anm. **Ruffert):",
+     "refs": []
+    },
+    {
+     "hash": "59bc8ff6d60c",
+     "anchor": "Eine Rechtfertigung der versteckten Diskriminierung aus zwin",
+     "refs": []
+    },
+    {
+     "hash": "3b9d034caa01",
+     "anchor": "**d.**",
+     "refs": []
+    },
+    {
+     "hash": "858ff440453e",
+     "anchor": "**Zwischenergebnis** Da nach alledem ein Verstoß gegen Union",
+     "refs": []
+    },
+    {
+     "footnote": 29,
+     "hash": "3544f7b2d37f",
+     "anchor": "EuGH, JuS 2013, 1051 (1052) = EuZW 2013, 507; Stellhorn, Bay"
+    },
+    {
+     "footnote": 30,
+     "hash": "a8d2441ebdf1",
+     "anchor": "EuGH, JuS 2013, 1051 (1052) = EuZW 2013, 507."
+    },
+    {
+     "footnote": 31,
+     "hash": "235ab099fe85",
+     "anchor": "Beyerbach, JA 2018, 121 (127); Cremer, Jura 2015, 39 (52); M"
+    },
+    {
+     "footnote": 32,
+     "hash": "fc3c98cf01d1",
+     "anchor": "Weinmann/Peteler, VBlBW 2024, 183 (184); Stellhorn, BayVBl. "
+    },
+    {
+     "footnote": 33,
+     "hash": "4be07ab9f682",
+     "anchor": "EuGH, EuZW 2013, 507 (510). Beyerbach, JA 2018, 121 (127). p"
+    }
+   ]
+  },
+  {
+   "id": "s16",
+   "source": "raw/Klausuren/OeR/2135_Zusatzmaterial_OeffentlichesRecht_Hessen.pdf",
+   "page": 1,
+   "layout": "six outdented margin labels",
+   "note": "Long bold headings stay glued to their prose; all six margin labels are correct.",
+   "blocks": [
+    {
+     "hash": "3306897a44b1",
+     "anchor": "**Rechtsprobleme der Versammlungsfreiheit / Hessen**",
+     "refs": []
+    },
+    {
+     "hash": "246791dceeb2",
+     "anchor": "**A.**",
+     "refs": []
+    },
+    {
+     "hash": "f61b528c1e0c",
+     "anchor": "**Versammlungsbegriffe**",
+     "refs": []
+    },
+    {
+     "hash": "a533228b7f14",
+     "anchor": "Bezüglich des Begriffs der Versammlung ist zwischen dem des ",
+     "refs": []
+    },
+    {
+     "hash": "6db3811a3ce9",
+     "anchor": "✔ eine (vorübergehende) örtliche Zusammenkunft mehrerer Pers",
+     "refs": []
+    },
+    {
+     "hash": "59f5a3b4d8f6",
+     "anchor": "Anmerkung: Umstritten ist die erforderliche Anzahl der Perso",
+     "refs": []
+    },
+    {
+     "hash": "ad4126e2a9a3",
+     "anchor": "✔ die in innerer Verbundenheit stehen (sonst Ansammlung)",
+     "refs": []
+    },
+    {
+     "hash": "20df130dbf33",
+     "anchor": "✔ zur Verfolgung eines gemeinsamen Zwecks",
+     "refs": []
+    },
+    {
+     "hash": "3b50bf923a4e",
+     "anchor": "Anmerkung: Umstritten ist die Frage, wie dieser Zweck ausges",
+     "refs": []
+    },
+    {
+     "hash": "e1ac37478771",
+     "anchor": "✔ friedlich und ohne Waffen (sog. Schutzbereichsrestriktion)",
+     "refs": []
+    },
+    {
+     "hash": "6b65c53ca950",
+     "anchor": "Anmerkung: § 2 III VersG konkretisiert den Begriff Waffen. U",
+     "refs": []
+    },
+    {
+     "hash": "348fdcfdf5e7",
+     "anchor": "✔ § 1 I HVersFG gewährt die Versammlungsfreiheit jedermann.",
+     "refs": []
+    },
+    {
+     "hash": "962d123aef42",
+     "anchor": "✔ Das HVersFG kennt trotz § 1 I HVersFG keinen Friedlichkeit",
+     "refs": []
+    },
+    {
+     "hash": "1e6c6e985bf3",
+     "anchor": "Anmerkung: Im Unterschied zum VersG des Bundes ist das HVers",
+     "refs": []
+    },
+    {
+     "hash": "f0d9fb3e8b86",
+     "anchor": "**B.**",
+     "refs": []
+    },
+    {
+     "hash": "39e1c239140d",
+     "anchor": "**Arten von Versammlungen**",
+     "refs": []
+    },
+    {
+     "hash": "5379423b7709",
+     "anchor": "Die Versammlungsfreiheit differenziert hinsichtlich ihrer Sc",
+     "refs": []
+    },
+    {
+     "hash": "913d9fc2a667",
+     "anchor": "**I. Versammlung unter freiem Himmel kontra Versammlung in g",
+     "refs": []
+    },
+    {
+     "hash": "a96334b9a0d9",
+     "anchor": "Anmerkung: Es ist offensichtlich, dass Versammlungen unter f",
+     "refs": []
+    },
+    {
+     "hash": "4dad998b92fe",
+     "anchor": "**II.  Öffentliche Versammlung kontra nichtöffentliche Versa",
+     "refs": []
+    },
+    {
+     "hash": "b3c60b75eaff",
+     "anchor": "Anmerkung: Das Ausgeben von Eintrittskarten und/oder das Erh",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "f4d3ba38ec21",
+     "anchor": "III. Beispiele",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "7595524c4bae",
+     "anchor": "1. Öffentliche Versammlung unter freiem Himmel",
+     "refs": []
+    },
+    {
+     "hash": "601aa285e15f",
+     "anchor": "Wahlkampfveranstaltung auf einem Marktplatz; Aufmarsch Recht",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "1da497c31824",
+     "anchor": "2. Nichtöffentliche Versammlung unter freiem Himmel",
+     "refs": []
+    },
+    {
+     "hash": "f324805c4969",
+     "anchor": "Beispiele zu nichtöffentlichen Versammlungen unter freiem Hi",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s17",
+   "source": "raw/Klausuren/OeR/2143_Zusatzmaterial_OeffentlichesRecht_Hessen.pdf",
+   "page": 3,
+   "layout": "five margin labels, inline and outdented",
+   "blocks": [
+    {
+     "hash": "a8e5a5c85f2c",
+     "anchor": "✔ Sprache = Muttersprache Bsp.: eine Einbürgerung kann von K",
+     "refs": []
+    },
+    {
+     "hash": "e99b3cfceb6d",
+     "anchor": "✔ Heimat = örtliche Herkunft nach Geburt oder Ansässigkeit i",
+     "refs": []
+    },
+    {
+     "hash": "a25e58a51a78",
+     "anchor": "Anmerkung: Nicht erfasst ist der Wohnsitz. Hier kommt folgli",
+     "refs": []
+    },
+    {
+     "hash": "45934c7c6190",
+     "anchor": "✔ Herkunft = die von den Vorfahren hergeleitete soziale Verw",
+     "refs": []
+    },
+    {
+     "hash": "6d1fbe468acf",
+     "anchor": "✔ Glaube = Religion und Weltanschauung i.S.v. Art. 4 I, II G",
+     "refs": []
+    },
+    {
+     "hash": "8d0be1ae5da7",
+     "anchor": "✔ politische Anschauungen = Überzeugung im Hinblick auf Vorg",
+     "refs": []
+    },
+    {
+     "hash": "ea350960621a",
+     "anchor": "Beachte: In Abgrenzung zu den Freiheitsgrundrechten des Art.",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "764c06c6382d",
+     "anchor": "2. Exkurs: Richterrechtlich entwickelte Quasi-Merkmale",
+     "refs": []
+    },
+    {
+     "hash": "036b7494a68e",
+     "anchor": "In der Rechtsprechung des BVerfG wurden über den Katalog des",
+     "refs": []
+    },
+    {
+     "hash": "c57c60448dfc",
+     "anchor": "Anmerkung: Diese drei Merkmale sind für den Einzelnen nicht ",
+     "refs": []
+    },
+    {
+     "hash": "44278141004c",
+     "anchor": "Anmerkung: In Abgrenzung hierzu beschreiben Abstammung, Heim",
+     "refs": []
+    },
+    {
+     "hash": "61aff8f94b7d",
+     "anchor": "BVerfG, NJW 2012, 1711 - Landeserziehungsgeld: Es ist dem Ge",
+     "refs": []
+    },
+    {
+     "hash": "70640c42df8a",
+     "anchor": "Anmerkung: In Abgrenzung hierzu beschreibt die sexuelle Iden",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "8b493ac4def9",
+     "anchor": "3. Sonderproblem: Verhältnis Art. 3 II 1 GG zu Art. 3 III GG",
+     "refs": []
+    },
+    {
+     "hash": "2f8303a34f93",
+     "anchor": "Werden Männer und Frauen ungleich behandelt, stellt sich das",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s18",
+   "source": "raw/Klausuren/OeR/2131_SV_OeffentlichesRecht_Hessen.pdf",
+   "page": 1,
+   "layout": "clean single column, no headings (negative control)",
+   "blocks": [
+    {
+     "hash": "5257f6b881e2",
+     "anchor": "**Klausur-Nr. 2131 - Öffentliches Recht - Bayern**",
+     "refs": []
+    },
+    {
+     "hash": "1f1a01e6ce7f",
+     "anchor": "Übungsklausur für die Erste Juristische Staatsprüfung",
+     "refs": []
+    },
+    {
+     "hash": "ec1b47fd0480",
+     "anchor": "Sachverhalt Klausur 2131 (Öffentliches Recht)",
+     "refs": []
+    },
+    {
+     "hash": "74c9bd1e7ebe",
+     "anchor": "Bearbeitungszeit: 5 Stunden",
+     "refs": []
+    },
+    {
+     "hash": "59505012e62c",
+     "anchor": "Teil 1",
+     "refs": []
+    },
+    {
+     "hash": "51b4f550d8eb",
+     "anchor": "Am 14.10.2022 wurde die Richtlinie 576/10 der Europäischen e",
+     "refs": []
+    },
+    {
+     "hash": "9684bc872917",
+     "anchor": "Im Bundestag hatte sich ein parteiübergreifender Konsens dah",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s19",
+   "source": "raw/Klausuren/OeR/2131_Zusatzmaterial_OeffentlichesRecht_Hessen.pdf",
+   "page": 1,
+   "layout": "dense outline, twelve headings, single column",
+   "blocks": [
+    {
+     "hash": "256101b14066",
+     "anchor": "**Examensrelevante Problemkreise im Europarecht**",
+     "refs": []
+    },
+    {
+     "hash": "f5d1ee36ee78",
+     "anchor": "In den drei Bundesländern wurden bislang nur die nachfolgend",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "caf0857d7e86",
+     "anchor": "1. Kollision zwischen Unionsrecht und nationalem Recht",
+     "refs": []
+    },
+    {
+     "hash": "14ace733eb15",
+     "anchor": "Leitentscheidung zum Anwendungsvorrang: EuGH, NJW 1964, 2371",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "3f894a9ed441",
+     "anchor": "2. Problematik der Inländerdiskriminierung",
+     "refs": []
+    },
+    {
+     "hash": "b6cead4e8799",
+     "anchor": "Schroeder, Europarecht, 8. Aufl. 2024, § 12 Rn. 4-5.",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "d5e97b8d9f86",
+     "anchor": "3. Einfluss des EU-Rechts auf die Grundrechtsfähigkeit",
+     "refs": []
+    },
+    {
+     "hash": "71aff73a6f2a",
+     "anchor": "Leitentscheidung zu den Deutschengrundrechten: BVerfG, NJW 2",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "a730d5ef86f8",
+     "anchor": "4. Verletzung des Justizgrundrechts aus Art. 101 I 2 GG",
+     "refs": []
+    },
+    {
+     "hash": "f84378cfa87a",
+     "anchor": "**(Nichtvorlage entgegen Art. 267 III AEUV)**",
+     "refs": []
+    },
+    {
+     "hash": "d359ea0328ff",
+     "anchor": "Drechsler, Die Pflicht zur Vorlage an den Europäischen Geric",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "e07827dcd135",
+     "anchor": "5. Einfluss der Grundfreiheiten auf deutsches Behördenhandel",
+     "refs": []
+    },
+    {
+     "hash": "b2b7a59f59b4",
+     "anchor": "**(= Prüfung der Grundfreiheiten)**",
+     "refs": []
+    },
+    {
+     "hash": "5025bbfeb436",
+     "anchor": "Ruffert/Grischek/Schramm, Europarecht im Examen - Die Grundf",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "941e0854c575",
+     "anchor": "6. Rücknahme gegen Unionsrecht verstoßender Subventionen übe",
+     "refs": []
+    },
+    {
+     "hash": "9d2f82f7ad36",
+     "anchor": "**§ 48 VwVfG (Alcan)**",
+     "refs": []
+    },
+    {
+     "hash": "3e06aa9641d3",
+     "anchor": "Hauptkurs RLP/SL Fall 3 bzw. Frankfurt/Marburg/OK Fall 4. Sc",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "e4ce61e8e8c6",
+     "anchor": "7. Unmittelbare Wirkung von Richtlinien",
+     "refs": []
+    },
+    {
+     "hash": "34bbcdb054b2",
+     "anchor": "Schroeder, Europarecht, 8. Aufl. 2024, § 6 Rn. 39-68. Fallbe",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "fdeb6674a9f1",
+     "anchor": "8. Schadensersatz bei europarechtswidrigem Verhalten eines",
+     "refs": []
+    },
+    {
+     "hash": "1400970b7291",
+     "anchor": "**Mitgliedstaats**",
+     "refs": []
+    },
+    {
+     "hash": "9021b6b171b7",
+     "anchor": "Fallbearbeitungen: Böttner/Böttner, Ansprüche für Verletzung",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "7ce8c77f93b6",
+     "anchor": "9. Grundrechtsschutz in der EU (GRCh)",
+     "refs": []
+    },
+    {
+     "hash": "94370df3b4b0",
+     "anchor": "Lorenzen, Grundlagen des Europarechts: Europäische Grundrech",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "5fdf1d42c615",
+     "anchor": "10. Rechtsschutzsystem des Unionsrechts",
+     "refs": []
+    },
+    {
+     "hash": "0d1270e0d20c",
+     "anchor": "Lorenzen, Grundlagen des Europarechts: Europäischer Rechtssc",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "99d8540a2b15",
+     "anchor": "11. Durchbrechung der Bestandskraft bei Europarechtswidrigke",
+     "refs": []
+    },
+    {
+     "hash": "054fba551e7f",
+     "anchor": "**(§ 51 oder § 48 VwVfG)**",
+     "refs": []
+    },
+    {
+     "hash": "23aa338d95cd",
+     "anchor": "Leitentscheidung: BVerwG, NVwZ 2007, 709 - Arcor. Fallbearbe",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "8f528ab60caf",
+     "anchor": "12. Anordnung der sofortigen Vollziehung nach § 80 II 1 Nr. ",
+     "refs": []
+    },
+    {
+     "hash": "e34137720bd0",
+     "anchor": "**VwGO bei „unionsrechtlich motiviertem“ VA**",
+     "refs": []
+    },
+    {
+     "hash": "522a7f331753",
+     "anchor": "EuGH, EuZW 1990, 384 - Tafelwein.",
+     "refs": []
+    },
+    {
+     "hash": "3b2acf92e9d3",
+     "anchor": "**13. Antrag nach § 80 V VwGO (oder § 123 VwGO) bei „unionsr",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s20",
+   "source": "raw/Klausuren/OeR/2135_Lösung_OeffentlichesRecht_Hessen.pdf",
+   "page": 2,
+   "layout": "two columns, stacked box, footnote block",
+   "blocks": [
+    {
+     "hash": "1ce52f2bed3e",
+     "anchor": "Verband ausgeübt werden. Die Antragsbefugnis ist gegeben.",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "3f377ea3836a",
+     "anchor": "IV. Allgemeines Rechtsschutzbedürfnis",
+     "refs": []
+    },
+    {
+     "hash": "bb1340676a3b",
+     "anchor": "Dem Ortsverband muss das allgemeine Rechtsschutzbedürfnis zu",
+     "refs": []
+    },
+    {
+     "hash": "4bfaec804e06",
+     "anchor": "**BVerfG, Beschl. v. 10.06.2020 - 2 BvR 11/20**",
+     "refs": []
+    },
+    {
+     "hash": "5c30639861a0",
+     "anchor": "**= JuS 2021, 92 (Anm. Sachs):** Mit dem Gebot, effektiven R",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "4b6d5a6d31dd",
+     "anchor": "1. Vorherige Klageerhebung",
+     "refs": []
+    },
+    {
+     "hash": "14e6a74b1a01",
+     "anchor": "Eine vorherige Klageerhebung in der Hauptsache ist gem. § 80",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "a64c237dd0c7",
+     "anchor": "2.  Vorheriges Widerspruchsverfahren",
+     "refs": []
+    },
+    {
+     "hash": "6de7d3b6b9e9",
+     "anchor": "Umstritten ist, ob die Antragstellung gem. § 80 V 1 VwGO vor",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "79b37c926a4a",
+     "anchor": "3.  Antragserfordernis gem. § 80 IV 1 VwGO",
+     "refs": []
+    },
+    {
+     "hash": "fb849a5c8265",
+     "anchor": "Fraglich könnte zudem sein, ob der Antrag nicht am fehlenden",
+     "refs": []
+    },
+    {
+     "hash": "f50abbfb8d4c",
+     "anchor": "gem. § 80 IV 1 und § 80 V 1 VwGO zu. Zudem soll hier das Ger",
+     "refs": [
+      3
+     ]
+    },
+    {
+     "heading": 3,
+     "hash": "1e588e8958b9",
+     "anchor": "V.  Fristbindung",
+     "refs": []
+    },
+    {
+     "hash": "39ce73c4bede",
+     "anchor": "Mangels spezialgesetzlicher Normierung ist der vorliegende A",
+     "refs": []
+    },
+    {
+     "hash": "ca9fc4af44f3",
+     "anchor": "**Anmerkung:** Ausnahmen finden sich vereinzelt in Spezialge",
+     "refs": []
+    },
+    {
+     "hash": "7bf725f400bc",
+     "anchor": "Zumal die streitgegenständlichen Verwaltungsakte durch die f",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "bd87d799a3d7",
+     "anchor": "VI. Antragsgegner",
+     "refs": []
+    },
+    {
+     "hash": "f6e392d3b836",
+     "anchor": "§ 80 VwGO enthält keine eigenständige Regelung bzgl. des Ant",
+     "refs": [
+      4
+     ]
+    },
+    {
+     "heading": 3,
+     "hash": "74837c4b06cf",
+     "anchor": "VII.  Beteiligten- und Prozessfähigkeit",
+     "refs": []
+    },
+    {
+     "hash": "9700ea774ed4",
+     "anchor": "Dem Ortsverband können als Teil einer politischen Partei jed",
+     "refs": []
+    },
+    {
+     "hash": "ee180fb00f7b",
+     "anchor": "gem. § 61 Nr. 1 2. Alt. VwGO beteiligtenfähig. Sie muss sich",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "769cb4cdd385",
+     "anchor": "VIII. Zuständiges Gericht",
+     "refs": []
+    },
+    {
+     "hash": "42d5caa4464d",
+     "anchor": "Örtlich und sachlich zuständig ist gem. § 80 V 1 i.V.m. §§ 4",
+     "refs": []
+    },
+    {
+     "hash": "21c920bffacb",
+     "anchor": "**Zwischenergebnis:** Der Antrag ist zulässig.",
+     "refs": []
+    },
+    {
+     "hash": "f0d9fb3e8b86",
+     "anchor": "**B.**",
+     "refs": []
+    },
+    {
+     "hash": "209c959c31d4",
+     "anchor": "**Antragshäufung**",
+     "refs": []
+    },
+    {
+     "hash": "0f0f0fd4f2c8",
+     "anchor": "Da der Ortsverband zwei Antragsziele verfolgt, sind die Antr",
+     "refs": [
+      5
+     ]
+    },
+    {
+     "hash": "5cf99792cee1",
+     "anchor": "**Anmerkung:** Der Veranstalter der geplanten Gegendemonstra",
+     "refs": []
+    },
+    {
+     "heading": 2,
+     "hash": "f80d415e6970",
+     "anchor": "C.  Begründetheit des Antrags",
+     "refs": []
+    },
+    {
+     "hash": "65cdef2a2a0d",
+     "anchor": "Der Antrag gem. § 80 V 1, 2. Alt. VwGO ist begründet, wenn d",
+     "refs": []
+    },
+    {
+     "footnote": 3,
+     "hash": "ebada143fee3",
+     "anchor": "Kopp/Schenke, § 80 VwGO, Rn. 78."
+    },
+    {
+     "footnote": 4,
+     "hash": "64a3ed560af4",
+     "anchor": "Kopp/Schenke, § 80 VwGO, Rn. 140; Diesterhöft/Sinder, JuS 20"
+    },
+    {
+     "footnote": 5,
+     "hash": "fb33ef767682",
+     "anchor": "BVerwG, NVwZ 2018, 414 (415); Tappe, Jura 2021, 820 (823)."
+    }
+   ]
+  }
+ ]
+}
