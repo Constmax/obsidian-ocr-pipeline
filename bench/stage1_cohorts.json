@@ -1,0 +1,358 @@
+{
+ "words": [
+  {
+   "file": "raw/Klausuren/OeR/2131_Lösung_OeffentlichesRecht_Hessen.pdf",
+   "page": 4,
+   "two_column": true
+  },
+  {
+   "file": "raw/Klausuren/OeR/2131_Zusatzmaterial_OeffentlichesRecht_Hessen.pdf",
+   "page": 3,
+   "two_column": true
+  },
+  {
+   "file": "raw/Klausuren/OeR/2135_SV_OeffentlichesRecht_Hessen.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/OeR/2139_SV_OeffentlichesRecht_Hessen.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/OeR/2143_SV_OeffentlichesRecht_Hessen.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/OeR/2147_SV_OeffentlichesRecht_Hessen.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/OeR/Klausur_2131_OeffentlichesRecht_Hessen_Zusatzmaterial.pdf",
+   "page": 3,
+   "two_column": true
+  },
+  {
+   "file": "raw/Klausuren/OeR/Klausur_2143_korrigiert.pdf",
+   "page": 9,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/OeR/UNIREP_KK_OER_LH_05_12_2025.pdf",
+   "page": 9,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/OeR/UNIREP_KK_OER_SV_05_12_2025.pdf",
+   "page": 3,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/OeR/UNIREP_KK_OER_SV_19_12_2025.pdf",
+   "page": 3,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/OeR/UNIREP_KK_ZR_LH_07_11_2025 (aktualisiert).pdf",
+   "page": 8,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/StR/Klausur_2133_Strafrecht_Folien.pdf",
+   "page": 15,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/StR/Klausur_2137_Strafrecht.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/StR/Klausur_2137_Strafrecht_Loesung.pdf",
+   "page": 7,
+   "two_column": true
+  },
+  {
+   "file": "raw/Klausuren/StR/Klausur_2141_Strafrecht_Folien.pdf",
+   "page": 18,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/StR/Klausur_2145_Strafrecht.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/StR/Klausur_2149_Strafrecht.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/StR/UNIREP_KK_SR_LH_12_12_2025.pdf",
+   "page": 8,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/StR/UNIREP_KK_SR_SV_12_12_2025.pdf",
+   "page": 3,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/StR/UNIREP_KK_SR_SV_21_11_2025.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/StR/Unirep_FK_SR_LH_18_02_2026.pdf",
+   "page": 14,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/StR/klausur-erbe-auf-umwegen.pdf",
+   "page": 5,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2130_Zivilrecht_Loesung.pdf",
+   "page": 8,
+   "two_column": true
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2134_Zivilrecht.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2136_Zivilrecht.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2138_Zivilrecht.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2140_Zivilrecht_Loesung.pdf",
+   "page": 6,
+   "two_column": true
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2142_Zivilrecht_Loesung.pdf",
+   "page": 7,
+   "two_column": true
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2144_Zivilrecht.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2146_Zivilrecht.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/UNIREP_KK_SV_31_10_2025.pdf",
+   "page": 1,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/UNIREP_KK_ZR_LH_16_01_2026.pdf",
+   "page": 13,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/UNIREP_KK_ZR_LH_23_02_2026.pdf",
+   "page": 11,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/UNIREP_KK_ZR_LH_30_01_2026.pdf",
+   "page": 9,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/UNIREP_KK_ZR_SV_01_05_2026.pdf",
+   "page": 1,
+   "two_column": true
+  },
+  {
+   "file": "raw/Klausuren/ZR/UNIREP_KK_ZR_SV_16_01_2025.pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/UNIREP_KK_ZR_SV_23_02_2026.pdf",
+   "page": 3,
+   "two_column": false
+  },
+  {
+   "file": "raw/Klausuren/ZR/UNIREP_KK_ZR_SV_30_01_2026 (aktualisiert).pdf",
+   "page": 2,
+   "two_column": false
+  },
+  {
+   "file": "raw/OeR/Verwaltungsrecht-AT/grundrechtstraegerschaft-juristische-personen.pdf",
+   "page": 4,
+   "two_column": false
+  }
+ ],
+ "short": [
+  {
+   "file": "raw/Klausuren/OeR/2151_SV_OeffentlichesRecht_Hessen.pdf",
+   "page": 4,
+   "kind": "short"
+  },
+  {
+   "file": "raw/Klausuren/StR/Klausur_2153_Strafrecht.pdf",
+   "page": 3,
+   "kind": "short"
+  },
+  {
+   "file": "raw/Klausuren/StR/klausur-2149-folien-hemmer.pdf",
+   "page": 1,
+   "kind": "short"
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2142_korrigiert.pdf",
+   "page": 1,
+   "kind": "short"
+  },
+  {
+   "file": "raw/Klausuren/ZR/klausur-2150-korrigiert.pdf",
+   "page": 1,
+   "kind": "short"
+  },
+  {
+   "file": "raw/StR/Strafrecht-AT/StrR Teil II202526.pdf",
+   "page": 1,
+   "kind": "short"
+  },
+  {
+   "file": "raw/StR/Strafrecht-AT/Strafrecht AT IV - Irrtuemer I.pdf",
+   "page": 22,
+   "kind": "short"
+  },
+  {
+   "file": "raw/StR/Strafrecht-BT/strafrecht-bt-diebstahl-skript-1-2026.pdf",
+   "page": 1,
+   "kind": "short"
+  },
+  {
+   "file": "raw/ZR/BGB-AT/3_BGB_AT_Teil_3 2026 neuXXL.pdf",
+   "page": 43,
+   "kind": "short"
+  },
+  {
+   "file": "raw/ZR/Schuldrecht-AT/fall04-dsl-angestellter.pdf",
+   "page": 1,
+   "kind": "short"
+  },
+  {
+   "file": "raw/ZR/Schuldrecht-AT/fall10-ruecktritt-systematik.pdf",
+   "page": 1,
+   "kind": "short"
+  },
+  {
+   "file": "raw/ZR/Schuldrecht-AT/fall21-inzahlunggabe.pdf",
+   "page": 1,
+   "kind": "short"
+  },
+  {
+   "file": "raw/ZR/BGB-AT/2-BGB_AT_Teil__2 2026.pdf",
+   "page": 14,
+   "kind": "graphic"
+  },
+  {
+   "file": "raw/ZR/BGB-AT/3_BGB_AT_Teil_3 2026 neuXXL.pdf",
+   "page": 40,
+   "kind": "graphic"
+  },
+  {
+   "file": "raw/ZR/BGB-AT/4_BGB_AT_Teil_ 4_StellV 2026 NEU.pdf",
+   "page": 4,
+   "kind": "graphic"
+  },
+  {
+   "file": "raw/ZR/Erbrecht/pruefungsstoff-erbrecht-hessen-saarland.pdf",
+   "page": 2,
+   "kind": "graphic"
+  },
+  {
+   "file": "raw/ZR/Erbrecht/zusatzuebersichten-erbrecht-2026.pdf",
+   "page": 17,
+   "kind": "graphic"
+  },
+  {
+   "file": "raw/ZR/Schuldrecht-AT/Fall01-§§ 275 Abs. 2, 313 BGB – Die zwei Waagen des Leistungsstörungsrechts.pdf",
+   "page": 5,
+   "kind": "graphic"
+  },
+  {
+   "file": "raw/ZR/Schuldrecht-AT/schuldrecht-at-teil-2-sekundaeransprueche-2026.pdf",
+   "page": 1,
+   "kind": "graphic"
+  },
+  {
+   "file": "raw/ZR/Schuldrecht-BT/bereicherungsrecht-2026.pdf",
+   "page": 5,
+   "kind": "graphic"
+  }
+ ],
+ "skew": [
+  {
+   "file": "raw/Klausuren/OeR/2131_Lösung_OeffentlichesRecht_Hessen.pdf",
+   "page": 4,
+   "angle": 1.5
+  },
+  {
+   "file": "raw/Klausuren/OeR/2143_SV_OeffentlichesRecht_Hessen.pdf",
+   "page": 2,
+   "angle": -2.5
+  },
+  {
+   "file": "raw/Klausuren/OeR/UNIREP_KK_OER_LH_05_12_2025.pdf",
+   "page": 9,
+   "angle": 4.0
+  },
+  {
+   "file": "raw/Klausuren/StR/Klausur_2133_Strafrecht_Folien.pdf",
+   "page": 15,
+   "angle": 90.0
+  },
+  {
+   "file": "raw/Klausuren/StR/Klausur_2145_Strafrecht.pdf",
+   "page": 2,
+   "angle": 180.0
+  },
+  {
+   "file": "raw/Klausuren/StR/UNIREP_KK_SR_SV_21_11_2025.pdf",
+   "page": 2,
+   "angle": 1.5
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2134_Zivilrecht.pdf",
+   "page": 2,
+   "angle": -2.5
+  },
+  {
+   "file": "raw/Klausuren/ZR/Klausur_2142_Zivilrecht_Loesung.pdf",
+   "page": 7,
+   "angle": 4.0
+  },
+  {
+   "file": "raw/Klausuren/ZR/UNIREP_KK_ZR_LH_16_01_2026.pdf",
+   "page": 13,
+   "angle": 90.0
+  },
+  {
+   "file": "raw/Klausuren/ZR/UNIREP_KK_ZR_SV_16_01_2025.pdf",
+   "page": 2,
+   "angle": 180.0
+  }
+ ]
+}
