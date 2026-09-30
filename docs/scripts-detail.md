@@ -394,6 +394,15 @@ replace positional runner state. Temporary files and repeated-header context are
 scoped to one request. Tests can provide a lightweight OCR adapter and collect
 structured events without invoking argparse or intercepting `sys.exit`.
 
+One page's lines become its page block in one place,
+`page_block(lines, context, meta) -> PageBlock` in `conversion.py`: assembly,
+the dictionary pass of an OCR page, the page marker and the diagram callout.
+`BlockContext` holds what a run shares (running lines, wordbook,
+`--dictionary-correct`, `--diagram-image-only`), `PageMeta` what the page adds
+(number, source, marker detail, diagram image name). The conversion and the
+`--pages` merge both call it, and it needs neither the model nor the PDF, so a
+page-cache entry can be turned into its block again.
+
 Run `python3 -m pytest pdf2md/test -q` for the conversion and pure-function
 tests. Heavy dependencies (`fitz`, `numpy`, `PIL`, `mlx_vlm`) remain loaded
 inside their runtime boundaries; importing the conversion interface does not
