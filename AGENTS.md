@@ -67,6 +67,9 @@ The plugin is where the user meets this code. Domain terms: `CONTEXT.md`.
 - `make test-fast`: unit tests, a few seconds. `make check`: everything CI
   runs, one target per CI job. Mark a test `@pytest.mark.slow` when it runs a
   CLI or pipeline end to end.
+- `make check-cases [ISSUE=n]`: replays the page cases of the vault
+  (`VAULT_ROOT`). Cases hold page text, so it is never part of `make check`
+  or CI; see `pdf2md/AGENTS.md`.
 - `./setup.sh` is the one installation path (idempotent); `install.sh` and
   `plugin/install-plugin.sh` are building blocks it calls. venvs live under
   `VENV_ROOT` (default `~/.venvs`): `ocrmypdf` and `mlxocr`.

@@ -387,6 +387,7 @@ pdf2md.py (argparse / console / exit translation)
        ├── assembly.py   Markdown reassembly (pure functions)
        ├── dictionary.py Dictionary verification post-reassembly
        └── page_cache.py Atomic per-page JSON cache and input fingerprints
+cases.py (`pdf2md case …`)  Page cases: capture, replay and comparison
 ```
 
 `ConversionRequest`, `AnalyzedPage`, `AssemblyResult`, and `ConversionResult`
@@ -510,6 +511,125 @@ The optional range of `--refresh-cache` (German alias `--neu`) uses the
 same grammar and validation as `--pages`. Dictionary reporting/correction and
 Markdown formatting are intentionally not part of the key: they are rerun from
 the cached raw lines on every invocation.
+
+## Page Cases: `pdf2md case` (Stage 2)
+
+A **page case** is a page the user marked as wrong, kept with the page block
+Stage 2 produced and the page block the user expects (terms: `CONTEXT.md`).
+A **replay** produces the block again from the case's recognized lines,
+without the model, and compares it with the expected block. `pdf2md/cases.py`
+owns the format; the plugin only spawns `stash` and `add`.
+
+```bash
+pdf2md case stash _ocr-preview/skript.md --page 12
+pdf2md case add   _ocr-preview/skript.md --page 12 --note "footnote tail lost" --issue 130
+pdf2md case run   [FOLDER ...] [--issue 130] [--promote]
+make check-cases  [ISSUE=130] [PROMOTE=1]      # = case run "$VAULT_ROOT"
+```
+
+Cases hold page text, so they live in the vault and are never committed:
+
+```
+<preview folder>/.cases/<stem>/pNNN.json          the case, id <stem>/pNNN
+<preview folder>/.cases/<stem>/.stash/pNNN.json   the stash
+```
+
+The block a preview holds for a page always comes from the page's current
+page-cache entry. A stash or case made from other recognized lines therefore
+belongs to an earlier version of the page (before a rerun that read other
+lines, or before the preview was accepted and converted again) and is not
+used for the block the preview holds now.
+
+**`stash <preview> --page N`** keeps the page's page-cache entry and the
+produced block, called before the first edit is saved. The produced block is
+the replay of the entry's lines, not the text in the preview: that may be
+edited already, and nothing in the file tells.
+
+| Output | Meaning |
+|---|---|
+| `stashed` | The lines and the produced block are kept; a stash of other lines is replaced |
+| `stash kept` | The page has a stash of these lines; a rerun that reads the same lines does not replace it |
+| `not stashed, the case holds the produced block` | The page's case was made from these lines |
+
+`add` removes the stash; `run` removes the stashes of previews that left the
+preview folder (accepted or deleted).
+
+**`add <preview> --page N [--note TEXT] [--issue N] [--fault-stage
+assembly|upstream]`** marks the page: the current page block becomes the
+expected block. Recognized lines and produced block come from the stash;
+without a stash from the case the page already has (marking again updates the
+expected block); without either, or when they were made from other lines,
+from the current page-cache entry. Note and issue of an existing case stay
+unless given. A changed expected block sets the case back to `open`.
+
+Capturing a page needs its page-cache entry and the source named in
+`quelle-pdf`, unchanged since the conversion; a relative `quelle-pdf` is
+looked up from the working directory and from every folder above the preview.
+`stash` exits with code 1 and one line on stderr without them. `add` then
+works from the stash or the existing case and fails only when there is
+neither. The page cache stays in the preview folder, so a page is stashed
+and first marked while its preview is under review, before it is accepted.
+
+A case file (`schema: 1`) holds:
+
+| Key | Content |
+|---|---|
+| `pdf`, `pdf_sha256` | Source path and the SHA-256 it had when the lines were recognized |
+| `page` | The page-cache entry: recognized lines, source, layout, mode, trace |
+| `diagram_image`, `diagram_image_only` | What the page block needs besides the lines |
+| `running_lines` | Frozen copy of the source's running lines |
+| `produced`, `expected` | The two page blocks, marker line included |
+| `note`, `issue` | The user's note and an optional issue number |
+| `status` | `open` or `fixed` |
+| `fault_stage`, `fault_stage_by` | `assembly` or `upstream`; set by `coverage` or by the `user` |
+| `marked` | When the page was last marked |
+
+A case with an older `schema` is upgraded when it is read (`_UPGRADES` in
+`cases.py`); one with a newer schema is `unreadable` and fails the run.
+
+**Fault stage.** A word of the expected block that no recognized line holds
+means `upstream`: recognition, tiling or ordering lost it, and no assembly
+can produce it. Otherwise the fault is in `assembly`. A word hyphenated
+across two lines counts as held, and so does what assembly adds itself (the
+diagram callout title). `--fault-stage` overrides the result and stays when
+the page is marked again. Upstream cases are counted but not replayed.
+
+**Replay** runs `page_block` on the case's lines. Running lines are
+recomputed from the source with the current code, so a running-line fix
+reaches the case. When the source is missing, or its SHA-256 changed (the
+case is reported as stale), the frozen copy is used. The dictionary pass is
+not replayed: it depends on the machine's word lists, and a word it corrected
+is an upstream fault.
+
+**Comparison** is block by block, marker line excluded. Each block is
+described as `bench/structure.py` describes a reference block (text
+fingerprint, kind, heading level, footnote number, the footnote marks it
+carries), and the two sequences must be equal: order, paragraph boundaries,
+kind (text, heading, table, footnote), heading level, footnote numbers and
+the paragraph a footnote mark sits in count; bold, case and whitespace do
+not. The report names the blocks that differ.
+
+**`run [FOLDER ...] [--issue N] [--promote]`** replays every case below the
+folders (default: `$VAULT_ROOT`; exit code 2 when neither is given).
+
+| Reported | Meaning | Fails the run |
+|---|---|---|
+| `fixed` | A fixed case still matches | no |
+| `open` | An open case still differs: a known failure | no |
+| `now matching` | An open case matches; `--promote` makes it `fixed` (`promoted`) | no |
+| `regressed` | A fixed case differs | yes (exit 1) |
+| `uncorrected` | The expected block equals the produced one for the comparer: the page was marked without a correction. Not replayed, never promoted | no |
+| `upstream` | Not replayed | no |
+| `unreadable` | The file cannot be read by this version | yes (exit 1) |
+| `error` | The replay raised: a damaged case, or the code under repair | yes (exit 1) |
+
+`--promote` also rewrites the frozen running lines with the ones the case
+matched with, so a case fixed by a running-line fix stays fixed once its
+source is moved or changed.
+
+`make check-cases` runs this with `~/.venvs/mlxocr` (pymupdf; no model is
+loaded) on `VAULT_ROOT` and stops with a message when `VAULT_ROOT` is unset.
+It is not part of `make check` or CI.
 
 ## Cancellation and Result Writing (Stage 2)
 
