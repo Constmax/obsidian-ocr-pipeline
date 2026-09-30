@@ -534,6 +534,11 @@
 	color: var(--text-on-accent);
 }
 
+.ocr-badge-marked {
+	background: var(--color-red);
+	color: var(--text-on-accent);
+}
+
 /* ── Leerzustaende ──────────────────────────────────────────────────────── */
 
 .ocr-leer {
@@ -681,6 +686,18 @@
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 	font-style: italic;
+}
+
+.ocr-mark-note {
+	width: 100%;
+	margin-top: 8px;
+}
+
+.ocr-md-mark {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
 }
 
 .ocr-md-quelltext {

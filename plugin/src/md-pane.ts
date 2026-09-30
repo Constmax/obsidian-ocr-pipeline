@@ -1,4 +1,4 @@
-import { App, Component, MarkdownRenderer, TFile } from "obsidian";
+import { App, Component, MarkdownRenderer, TFile, setIcon } from "obsidian";
 
 import type { PageBlock, Preview } from "./types.ts";
 
@@ -24,6 +24,10 @@ export class MarkdownColumn {
 	private preview: Preview | null = null;
 	private file: TFile | null = null;
 	private run = 0;
+	private markable = false;
+	/** Pages that have a page case, with the tooltip of their badge. */
+	private marked: ReadonlyMap<number, string> = new Map();
+	private markSlots = new Map<number, HTMLElement>();
 
 	/** Called when heights may have changed. */
 	onMeasurementNeeded: (() => void) | null = null;
@@ -31,6 +35,8 @@ export class MarkdownColumn {
 	onChange: ((block: PageBlock, newText: string) => void) | null = null;
 	/** Called when an editor field loses focus. */
 	onFocusLost: (() => void) | null = null;
+	/** Called when the user asks to mark a page as wrong. */
+	onMark: ((pageNumber: number) => void) | null = null;
 
 	constructor(
 		private app: App,
@@ -81,6 +87,17 @@ export class MarkdownColumn {
 		return this.editable;
 	}
 
+	/**
+	 * Page cases of the open preview (Issue #140): whether its pages can be
+	 * marked as wrong, and which ones have a case. A freshly opened preview
+	 * starts without either.
+	 */
+	setPageCases(markable: boolean, marked: ReadonlyMap<number, string>): void {
+		this.markable = markable;
+		this.marked = marked;
+		for (const [pageNumber, slot] of this.markSlots) this.renderMark(slot, pageNumber);
+	}
+
 	async open(
 		file: TFile,
 		preview: Preview,
@@ -89,6 +106,8 @@ export class MarkdownColumn {
 		this.file = file;
 		this.preview = preview;
 		this.representation = representation;
+		this.markable = false;
+		this.marked = new Map();
 		await this.render();
 	}
 
@@ -97,9 +116,12 @@ export class MarkdownColumn {
 		this.renderChild?.unload();
 		this.renderChild = null;
 		this.blocks.clear();
+		this.markSlots.clear();
 		this.container.empty();
 		this.preview = null;
 		this.file = null;
+		this.markable = false;
+		this.marked = new Map();
 		if (emptyText !== undefined) {
 			this.container.createDiv({ cls: "ocr-leer", text: emptyText });
 		}
@@ -117,6 +139,7 @@ export class MarkdownColumn {
 		this.renderChild = child;
 
 		this.blocks.clear();
+		this.markSlots.clear();
 		this.container.empty();
 
 		if (preview.blocks.length === 0) {
@@ -235,6 +258,27 @@ export class MarkdownColumn {
 		if (block.layout !== undefined) {
 			header.createSpan({ cls: "ocr-md-layout", text: block.layout });
 		}
+		const slot = header.createSpan({ cls: "ocr-md-mark" });
+		this.markSlots.set(block.pageNumber, slot);
+		this.renderMark(slot, block.pageNumber);
+	}
+
+	/** The "Marked" badge and the control that marks the page as wrong. */
+	private renderMark(slot: HTMLElement, pageNumber: number): void {
+		slot.empty();
+		const tooltip = this.marked.get(pageNumber);
+		if (tooltip !== undefined) {
+			const badge = slot.createSpan({ cls: "ocr-badge ocr-badge-marked", text: "Marked" });
+			badge.setAttribute("aria-label", tooltip);
+		}
+		if (!this.markable) return;
+		const label = tooltip === undefined ? "Mark page as wrong" : "Mark page again";
+		const button = slot.createEl("button", {
+			cls: "ocr-ikonknopf",
+			attr: { "aria-label": label, title: label },
+		});
+		setIcon(button.createSpan({ cls: "ocr-ikon" }), "flag");
+		button.addEventListener("click", () => this.onMark?.(pageNumber));
 	}
 
 	private fixEmbeds(root: HTMLElement, source: TFile): void {
