@@ -1,5 +1,5 @@
 ---
-titel: Verwaltungsrecht AT Fall 8
+titel: "Verwaltungsrecht AT Fall 8"
 quelle-pdf: "raw/VwR/Verwaltungsrecht AT Fall 8.pdf"
 seiten: 3
 seiten-textlayer: 1

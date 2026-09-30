@@ -96,7 +96,7 @@ mv "raw/assets/_processed/Verwaltungsrecht AT.pdf" "raw/verwaltungsrecht-at.pdf"
 
 ## Special Case: Obsidian iCloud Sync
 
-Stage 2 stores resumable page results in `_ocr-vorschau/.cache/` (or the
+Stage 2 stores resumable page results in `_ocr-preview/.cache/` (or the
 corresponding configured output folder). Add that directory to the vault's
 `.gitignore` and, if the cache should not appear in search, to Obsidian's
 excluded-files setting. The cache is reproducible and must not be committed;

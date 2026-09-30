@@ -9,6 +9,7 @@ import { join } from "node:path";
 import {
 	convertPdf,
 	abortChild,
+	checkEngine,
 	createSearchableCopy,
 	stage1Path,
 	terminateProcessGroup,
@@ -23,13 +24,16 @@ class FakeChild extends EventEmitter {
 	signalCode: NodeJS.Signals | null = null;
 	signals: NodeJS.Signals[] = [];
 	exitOnSigterm?: number;
+	/** Which SIGTERM makes the child exit with `exitOnSigterm`. */
+	sigtermsToExit = 1;
 	kill = (signal?: NodeJS.Signals) => {
 		this.signals.push(signal ?? "SIGTERM");
+		const sigterms = this.signals.filter((sent) => sent === "SIGTERM").length;
 		if (signal === "SIGKILL") {
 			this.signalCode = "SIGKILL";
 			this.emit("exit", null, "SIGKILL");
 			this.emit("close", null, "SIGKILL");
-		} else if (this.exitOnSigterm !== undefined) {
+		} else if (this.exitOnSigterm !== undefined && sigterms >= this.sigtermsToExit) {
 			this.exitCode = this.exitOnSigterm;
 			this.emit("exit", this.exitOnSigterm, null);
 			this.emit("close", this.exitOnSigterm, null);
@@ -182,7 +186,7 @@ test("onChild reports child process", async () => {
 	assert.equal(reported, child);
 });
 
-test("timeout: hanging child gets SIGTERM, after grace period SIGKILL, timeout: true", async () => {
+test("timeout: hanging child gets SIGTERM twice, then SIGKILL, timeout: true", async () => {
 	const child = new FakeChild();
 	const promise = convertPdf(
 		"raw/hanging.pdf",
@@ -190,13 +194,13 @@ test("timeout: hanging child gets SIGTERM, after grace period SIGKILL, timeout: 
 		"/Users/test/bin/pdf2md",
 		"/vault",
 		spawnMock([], child),
-		{ timeoutMs: 20, gracePeriodMs: 30 },
+		{ idleTimeoutMs: 20, gracePeriodMs: 30, killDelayMs: 30 },
 	);
 
 	child.stdout.emit("data", "→ p.1: 12.3 s\n");
 
 	const result = await promise;
-	assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+	assert.deepEqual(child.signals, ["SIGTERM", "SIGTERM", "SIGKILL"]);
 	assert.equal(result.timeout, true);
 	assert.equal(result.code, null);
 	assert.equal(result.signal, "SIGKILL");
@@ -212,7 +216,7 @@ test("timeout: child exits cleanly on SIGTERM (code 6), no SIGKILL", async () =>
 		"/Users/test/bin/pdf2md",
 		"/vault",
 		spawnMock([], child),
-		{ timeoutMs: 20, gracePeriodMs: 200 },
+		{ idleTimeoutMs: 20, gracePeriodMs: 200 },
 	);
 
 	const result = await promise;
@@ -222,14 +226,58 @@ test("timeout: child exits cleanly on SIGTERM (code 6), no SIGKILL", async () =>
 	assert.equal(result.signal, null);
 });
 
-test("abortChild: hanging child gets SIGTERM, after grace period SIGKILL", async () => {
+test("abortChild: hanging child gets a second SIGTERM after the grace period, then SIGKILL", async () => {
 	const child = new FakeChild();
 
-	abortChild(child as unknown as ChildProcess, 20);
+	abortChild(child as unknown as ChildProcess, 20, 40);
 	assert.deepEqual(child.signals, ["SIGTERM"]);
 
+	await new Promise((done) => setTimeout(done, 35));
+	assert.deepEqual(child.signals, ["SIGTERM", "SIGTERM"]);
+
 	await new Promise((done) => setTimeout(done, 50));
-	assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+	assert.deepEqual(child.signals, ["SIGTERM", "SIGTERM", "SIGKILL"]);
+});
+
+test("abortChild: a child writing its partial file on the second SIGTERM gets no SIGKILL", async () => {
+	// Issue #105: pdf2md stops the current page on the second signal and
+	// exits 6 with the pages before it; SIGKILL would lose that file.
+	const child = new FakeChild();
+	child.exitOnSigterm = 6;
+	child.sigtermsToExit = 2;
+
+	abortChild(child as unknown as ChildProcess, 20, 20);
+	await new Promise((done) => setTimeout(done, 80));
+
+	assert.deepEqual(child.signals, ["SIGTERM", "SIGTERM"]);
+	assert.equal(child.exitCode, 6);
+});
+
+test("idle timeout: a long run is not stopped while it keeps writing", async () => {
+	// Issue #105: a 60-page document runs far past any fixed limit; only
+	// silence means the child hangs.
+	const child = new FakeChild();
+	const promise = convertPdf(
+		"raw/long.pdf",
+		"_ocr-preview",
+		"/Users/test/bin/pdf2md",
+		"/vault",
+		spawnMock([], child),
+		{ idleTimeoutMs: 40 },
+	);
+
+	for (let page = 1; page <= 60; page++) {
+		await new Promise((done) => setTimeout(done, 5));
+		child.stderr.emit(
+			"data",
+			`{"typ": "seite", "nr": ${page}, "von": 60, "sekunden": 55.0, "herkunft": "ocr", "entgleist": false}\n`,
+		);
+	}
+	child.emit("close", 0, null);
+
+	const result = await promise;
+	assert.equal(result.timeout, false);
+	assert.deepEqual(child.signals, []);
 });
 
 test("abortChild: exited child receives no signal", () => {
@@ -400,6 +448,31 @@ test("searchable copy: defaults pass only source and destination", async () => {
 	assert.deepEqual(calls[0]!.args, ["raw/case-01.pdf", "--output", "raw/case-01-ocr.pdf"]);
 });
 
+test("searchable copy: PaddleOCR always runs in fast mode (issue #73)", async () => {
+	const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
+	const child = new FakeChild();
+	const promise = createSearchableCopy(
+		"raw/case-01.pdf",
+		"raw/case-01-ocr.pdf",
+		"/Users/test/bin/reprocess-raw",
+		"/vault",
+		spawnMock(calls, child),
+		{ engine: "paddle", splitColumns: false },
+	);
+
+	child.emit("close", 0);
+	await promise;
+	assert.deepEqual(calls[0]!.args, [
+		"raw/case-01.pdf",
+		"--output",
+		"raw/case-01-ocr.pdf",
+		"--engine",
+		"paddle",
+		"--paddle-mode",
+		"fast",
+	]);
+});
+
 test("searchable copy: spawn errors and ordinary failure are results, not exceptions", async () => {
 	const thrown = await createSearchableCopy("a.pdf", "b.pdf", "/x/reprocess-raw", "/vault", () => {
 		throw new Error("spawn not available");
@@ -555,3 +628,42 @@ test(
 		}
 	},
 );
+
+// ── Stage 1: checkEngine (issue #73) ───────────────────────────────────────
+
+test("engine check: usable engine resolves to null", async () => {
+	const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
+	const child = new FakeChild();
+	const promise = checkEngine("paddle", "/Users/test/bin/reprocess-raw", "/vault", spawnMock(calls, child));
+
+	child.stdout.emit("data", "✅ Engine usable\n   🧠 Engine:    PaddleOCR fast (manual)\n");
+	child.emit("close", 0);
+	assert.equal(await promise, null);
+	assert.equal(calls[0]!.command, "/Users/test/bin/reprocess-raw");
+	assert.deepEqual(calls[0]!.args, ["--check-engine", "--engine", "paddle", "--paddle-mode", "fast"]);
+	const options = calls[0]!.options as { cwd: string; env: NodeJS.ProcessEnv };
+	assert.equal(options.cwd, "/vault");
+	assert.equal(options.env.PATH, stage1Path(process.env.PATH ?? ""));
+});
+
+test("engine check: a failed check returns the CLI's reason", async () => {
+	const child = new FakeChild();
+	const promise = checkEngine("paddle", "/x/reprocess-raw", "/vault", spawnMock([], child));
+
+	child.stdout.emit("data", "🔍 Checking dependencies...\n");
+	child.stderr.emit("data", "❌ PaddleOCR engine is not ready:\n  model file missing: /m/x.onnx\n");
+	child.emit("close", 4);
+	assert.equal(await promise, "PaddleOCR engine is not ready: model file missing: /m/x.onnx");
+});
+
+test("engine check: a CLI that cannot start is a reason too", async () => {
+	const child = new FakeChild();
+	const promise = checkEngine("paddle", "/x/reprocess-raw", "/vault", spawnMock([], child));
+
+	child.emit("error", new Error("spawn /x/reprocess-raw ENOENT"));
+	assert.equal(await promise, "Error: spawn /x/reprocess-raw ENOENT");
+	const silent = new FakeChild();
+	const quiet = checkEngine("apple", "/x/reprocess-raw", "/vault", spawnMock([], silent));
+	silent.emit("close", 1);
+	assert.equal(await quiet, "reprocess-raw --check-engine failed (exit code 1)");
+});

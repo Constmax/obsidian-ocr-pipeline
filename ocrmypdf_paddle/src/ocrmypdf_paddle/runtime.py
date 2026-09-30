@@ -46,6 +46,11 @@ MODEL_DIR_ENV = "OCRMYPDF_PADDLE_MODEL_DIR"
 class ModelFile:
     name: str
     sha256: str
+    #: Where setup fetches it (fetch_models); OCR never downloads.
+    url: str = ""
+
+
+_MODEL_BASE = "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/"
 
 
 #: Model files of RapidOCR 3.9.2 as recorded in the spike. RapidOCR loads the
@@ -54,14 +59,17 @@ MODEL_FILES = (
     ModelFile(
         "ch_PP-OCRv5_det_mobile.onnx",
         "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae",
+        _MODEL_BASE + "PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx",
     ),
     ModelFile(
         "latin_PP-OCRv5_rec_mobile.onnx",
         "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a",
+        _MODEL_BASE + "PP-OCRv5/rec/latin_PP-OCRv5_rec_mobile.onnx",
     ),
     ModelFile(
         "ch_ppocr_mobile_v2.0_cls_mobile.onnx",
         "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
+        _MODEL_BASE + "PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
     ),
 )
 
@@ -120,6 +128,37 @@ def check_models(directory: Path) -> list[str]:
         elif _sha256(path) != model.sha256:
             problems.append(f"model file does not match the pinned SHA-256: {path}")
     return problems
+
+
+def download_url(url: str) -> bytes:
+    import urllib.request
+
+    with urllib.request.urlopen(url, timeout=60) as response:
+        return response.read()
+
+
+def fetch_models(directory: Path, download: Callable[[str], bytes] = download_url) -> list[str]:
+    """Fetches every missing or mismatching model file into `directory`.
+
+    Run by setup (`python -m ocrmypdf_paddle fetch-models`), so that an OCR
+    run never downloads. A download is checked against the pinned SHA-256
+    before it replaces anything; a mismatch raises and leaves no file.
+    Returns the names fetched.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    fetched = []
+    for model in MODEL_FILES:
+        path = directory / model.name
+        if path.is_file() and _sha256(path) == model.sha256:
+            continue
+        data = download(model.url)
+        if hashlib.sha256(data).hexdigest() != model.sha256:
+            raise RuntimeError(f"download does not match the pinned SHA-256: {model.url}")
+        partial = path.with_name(path.name + ".partial")
+        partial.write_bytes(data)
+        partial.replace(path)
+        fetched.append(model.name)
+    return fetched
 
 
 def _sha256(path: Path) -> str:
@@ -245,12 +284,28 @@ class RecognizedPage:
     lines: list[TextLine]
 
 
+def line_reading(result: Any) -> tuple[str, float]:
+    """Text and score of a recognizer-only result for one line image.
+
+    ("", nan) when it read nothing; several pieces are joined and scored by
+    the weakest.
+    """
+    txts = _as_list(getattr(result, "txts", None))
+    scores = _as_list(getattr(result, "scores", None))
+    pieces = [(text.strip(), _score(score)) for text, score in zip(txts, scores)
+              if isinstance(text, str) and text.strip()]
+    if not pieces:
+        return "", math.nan
+    return " ".join(text for text, _ in pieces), min(score for _, score in pieces)
+
+
 class Recognizer:
     """One RapidOCR pipeline per process, created on first use.
 
     A lock serializes creation and every recognition call. OCRmyPDF runs this
     engine with one job, but the pinned runtime is not proven thread-safe, so
-    the lock also holds if that policy is bypassed.
+    the lock also holds if that policy is bypassed. Fast mode reads its
+    citation lines through recognize_line() of the same instance.
     """
 
     def __init__(self, factory: Callable[[], Any] | None = None) -> None:
@@ -262,8 +317,7 @@ class Recognizer:
         from PIL import Image
 
         with self._lock:
-            if self._engine is None:
-                self._engine = self._factory()
+            self._ensure_engine()
             with Image.open(image_path) as image:
                 width, height = image.size
                 factor = downscale_factor(width, height)
@@ -280,6 +334,17 @@ class Recognizer:
                     scale_x = scale_y = 1.0
             result = self._run(source, image_path)
         return RecognizedPage(width, height, lines_from_result(result, scale_x, scale_y))
+
+    def recognize_line(self, image: Any) -> tuple[str, float]:
+        """The recognizer alone on one upright line image: (text, score)."""
+        with self._lock:
+            self._ensure_engine()
+            result = self._engine(image, use_det=False, use_cls=False, use_rec=True)
+        return line_reading(result)
+
+    def _ensure_engine(self) -> None:
+        if self._engine is None:
+            self._engine = self._factory()
 
     def _run(self, source: Any, image_path: Path) -> Any:
         try:

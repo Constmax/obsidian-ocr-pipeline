@@ -29,9 +29,19 @@ if [ ! -x "$PDF_COMBINE" ]; then
     PDF_COMBINE="$SCRIPT_DIR/pdf-combine.sh"
 fi
 
+# --check-engine [--engine E] [--paddle-mode M]: is the engine usable here?
+if [ "${1:-}" = "--check-engine" ]; then
+    shift
+    while [ $# -gt 0 ]; do
+        parse_common_option "$@"; shift "$OPTION_SHIFT"
+    done
+    check_engine "$ENGINE"
+fi
+
 if [ $# -lt 1 ]; then
     cat <<EOF
 Usage: $(basename "$0") <raw-pdf-file> [--output FILE] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
+       $(basename "$0") --check-engine [--engine E] [--paddle-mode M]
 
 Re-processes an existing raw/ PDF file using the current pipeline
 and accepts the result ONLY after passing B5 verification:
@@ -47,6 +57,9 @@ Options:
    --min-chars N        Minimum characters per page (Default: 50)
    --allow-pages LIST   Exempt pages from check 2, e.g. "1,5-7"
                         (known cover/diagram pages without body text)
+
+--check-engine reports whether a run with this engine would start here and
+exits: 0 usable, 4 not usable (reason on stderr). No file is read or written.
 
 All other flags are passed through 1:1 to pdf-combine
 (e.g. --engine, --split-columns, --force-ocr, --dpi).

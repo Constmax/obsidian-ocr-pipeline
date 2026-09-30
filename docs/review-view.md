@@ -2,13 +2,14 @@
 
 Three-column Obsidian view for inspecting OCR preview files from
 Stage 2: Original PDF and generated Markdown file coupled page by page, with
-**Accept / Reject**, notes, editing, and Undo. The plugin is named `ocr-vorschau` and
-is located in `plugin/`.
+**Accept / Reject**, notes, editing, and Undo. The plugin id is `ocr-preview` (`ocr-vorschau`
+before the English rename) and the code is located in `plugin/`.
 
-What this is about: 15% of pages derail (repetition loops or aborts)
-and drag accuracy down from 98.2% to 93.3% (measured against `ddf69e9`) — see `README.md`,
-"Status". This view is the tool used to locate exactly those pages when
-reviewing before anything moves into the wiki.
+What this is about: OCR pages can contain word errors, and a derailed tile
+(repetition loop, abort) is repaired only when the retry succeeds — see
+`README.md`, "Stand". This view is where those pages are found and decided
+before anything moves into the wiki. The code calls it the comparison view
+(`OcrComparisonView`).
 
 ## The Three Columns
 
@@ -34,9 +35,9 @@ number of open entries. Two operating modes share the same controls:
 
 ## Opening
 
-- Ribbon icon (column icon) or command palette: **"Open OCR Review View"**
+- Ribbon icon (column icon) or command palette: **"Open OCR comparison"**
 - File menu on a preview `.md` or on a PDF with a matching stem:
-  "Open in OCR Review"
+  "Open in OCR comparison"
 - File menu on any PDF: **"OCR → Markdown"** opens the page-selection dialog
   for that file and starts conversion. While another conversion is running, the
   item remains visible but shows a notice instead of starting another one.
@@ -70,7 +71,7 @@ Applies only when the view has focus:
   to the next matching entry.
 - **⋯**: Note… · Replace old version (only when `re-generated`) · Reset status · Copy path.
 - **Assign PDF…**: Appears in error banner if no original was found;
-  opens a suggestion list of all vault PDFs. The assignment lands
+  opens a suggestion list of all vault PDFs and displayable images. The assignment lands
   in the manifest (`manual-source-pdf`), never in frontmatter — the `.md` is
   generated output.
 
@@ -84,7 +85,7 @@ a file to match JSON — doing so would silently undo a deliberate manual move.
 Six reconciliation rules (triggered on open, settings change, and debounced vault events):
 
 1. **Exact `parent.path` comparison** during listing — no `startsWith`:
-   `_akzeptiert` lives *inside* `_ocr-vorschau`; a prefix test would list accepted files as open.
+   `_accepted` lives *inside* `_ocr-preview`; a prefix test would list accepted files as open.
 2. **Folder location ≠ Status → folder location wins.** `note`,
    `checked-until`, and `manually-edited` are kept; "Status adopted from folder location" is logged once.
 3. **File without entry** → Create entry; metadata from metadata cache (frontmatter).
@@ -107,6 +108,8 @@ pdf.js library bundled with Obsidian itself — including the pre-wired worker (
 
 Lazy rendering with pre-measured geometry: After `getDocument`, the column fetches **all** viewports at scale 1 (page dictionary only, no rasterization) and assigns each page its aspect ratio as a CSS custom property. Height and width follow via `aspect-ratio` — scrollbars have correct geometry from frame one, preventing layout shifts during lazy loading rather than compensating for them. Rasterization runs via `IntersectionObserver` (rootMargin 200%), max 2 parallel, with pixel scale `min(width/page · devicePixelRatio, pdfZoomMax)` and LRU eviction at 12 canvases (on eviction `canvas.width = height = 0`, otherwise buffer remains allocated). `doc.destroy()` on file switch and view close; `RenderTask.cancel()` before re-renders. **Error degradation:** Banners in PDF header offer "Open in PDF viewer" and "Assign PDF…" — never a dead pane.
 
+**What the source column accepts (Issue #101):** PDFs, rendered through pdf.js as above, and PNG, JPG/JPEG and BMP images. An image bypasses pdf.js: it becomes a single `<img>` page whose aspect ratio comes from its natural size after the image loads, so zoom and page/scroll coupling treat it as a one-page document. TIFF converts (Stage 2 accepts it) but Chromium cannot decode it, so a TIFF source shows a banner naming the reason instead. When a PDF and an image share the preview's basename, the PDF wins.
+
 ### Fallback if `loadPdfJs` is ever removed
 
 Documented reserve: Bundle `pdfjs-dist` and inline the worker as a Blob URL via esbuild text loader. Cost: Bundle grows to ~2.5 MB, CSP adjustments may be needed, and Obsidian's fork differs from npm package. As long as `loadPdfJs` exists, this fallback remains unbuilt.
@@ -117,7 +120,7 @@ Documented reserve: Bundle `pdfjs-dist` and inline the worker as a Blob URL via 
   images are post-processed after rendering (image embeds via `getFirstLinkpathDest` + `<img>`). Should Obsidian resolve them natively in the future, the post-processing loop is a no-op.
 - **Block-by-block rendering instead of a single block:** Required because `%%…%%` is invisible in preview mode (no DOM node at marker); the page container acts as sync anchor. Positive side-effect: Footnote collisions across page boundaries are eliminated.
 - **12-canvas cap** (~4.5 MB per A4 canvas): Distant pages are re-rasterized when scrolling back.
-- **Zoom is layout zoom** (CSS `zoom`), not re-render: Zoomed-in pages may appear softer. For pixel-exact inspection, use "Open in PDF viewer".
+- **Zoom scales the page width** (the stack is `zoom` × the column width; not CSS `zoom`, which a `width: 100%` page cancels out). Above 100 % the column scrolls horizontally. Visible pages re-render at the new width, but the pixel scale stays capped at `pdfZoomMax`, so strongly zoomed pages may appear softer. For pixel-exact inspection, use "Open in PDF viewer".
 - **minAppVersion 1.8.7** instead of originally planned 1.5.3: `revealLeaf` and current `Notice` layout require newer versions. The original plan specified 1.5.3, but actual API surface requires more — documented transparently.
 - Code that is untestable headless (anything touching `window.pdfjsLib`, `MarkdownRenderer`, DOM) is untestable here as well — see smoke test below.
 
@@ -129,16 +132,24 @@ folder is missing), Markdown column default, scroll sync, PDF render factor,
 Markdown eager limit, and column widths.
 
 **Searchable copy** (for the Stage-1 action, #66): OCR engine (Automatic,
-Apple Vision, Tesseract; default Automatic) and Split two-column pages
-(default off). `parseOcrSettings()` in `src/ocr-settings.ts` validates both on
-load: data from before these settings and invalid values (such as an engine
-this version does not offer) fall back to the defaults field by field.
-PaddleOCR is not offered yet. Obsidian on mobile shows only a desktop-only
-notice in this section.
+Apple Vision, Tesseract, PaddleOCR (fast); default Automatic) and Split
+two-column pages (default off). `parseOcrSettings()` in `src/ocr-settings.ts`
+validates both on load: data from before these settings and invalid values
+(such as an engine this version does not know) fall back to the defaults field
+by field. Obsidian on mobile shows only a desktop-only notice in this section.
 
-The action itself is **Create searchable copy (OCR)**: in the PDF file menu,
-as a command that asks for a PDF, and in the view's More menu for the open
-preview's original PDF. It writes `<stem>-ocr.pdf` beside the source with
+PaddleOCR (#73) runs as `--engine paddle --paddle-mode fast` and appears in the
+list only after `reprocess-raw --check-engine` passes on this machine (the
+settings tab runs it each time it opens); otherwise the setting names the
+reason. A stored PaddleOCR is checked again before every run: when it is not
+usable (another Mac, a removed venv), the run uses Automatic and a notice says
+why. The benchmark in #71 retained it (`bench/ERGEBNIS.md`, Nachtrag 26).
+PaddleOCR always reads whole pages: with it, the Split two-column pages toggle
+has no effect (#153).
+
+The action itself is **Create searchable copy (OCR)**: in the PDF file menu
+and as a command that asks for a PDF. The comparison view offers no entry for
+it (#96): pure OCR never opens or requires the view. It writes `<stem>-ocr.pdf` beside the source with
 `reprocess-raw --output`, stops if that file already exists, never touches the
 source, and opens the new PDF.
 

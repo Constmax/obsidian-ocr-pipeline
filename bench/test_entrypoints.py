@@ -20,6 +20,7 @@ SUPPORTED_ENTRYPOINTS = (
     "randlabel_debug.py",
     "reading_order.py",
     "structure_bench.py",
+    "stage1_bench.py",
 )
 
 

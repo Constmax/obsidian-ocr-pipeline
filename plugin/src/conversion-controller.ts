@@ -22,7 +22,18 @@ import {
 	type SpawnFunction,
 } from "./conversion.ts";
 
-export const CONVERSION_TIMEOUT_MS = 30 * 60 * 1000;
+/**
+ * pdf2md is stopped after this long without any output. A page takes 15–60 s
+ * and a document may have hundreds, so no limit on the total run fits
+ * (Issue #105); a quarter hour of silence leaves room for derailment retries.
+ */
+export const CONVERSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+/** pdf2md exit codes the plugin tells apart; pinned in contracts/cli-contract.json. */
+export const EXIT_CODES = {
+	checkFailed: 4,
+	cancelledPartial: 6,
+	cancelledEmpty: 7,
+} as const;
 export const INDEX_WAIT_STEPS = 10;
 export const INDEX_WAIT_MS = 200;
 
@@ -44,8 +55,15 @@ export interface ConversionHost {
 	showProgress(message: string, onCancel: () => void): ProgressDisplay;
 	/** Vault root on disk, or null without file-system access. */
 	vaultBasePath(): string | null;
-	/** Paths of other vault PDFs with the same basename. */
+	/** Paths of other convertible vault files with the same basename. */
 	pdfsWithSameBasename(pdf: PdfSource): string[];
+	/**
+	 * Where the existing preview `entryName` came from, or null when there is
+	 * none and nothing can be overwritten. A preview that records no source
+	 * returns its own path, which matches no input: an unknown origin counts
+	 * as foreign rather than as safe to overwrite.
+	 */
+	previewSource(entryName: string, folder: string): string | null;
 	/** Preview folder as configured and normalized for vault lookups. */
 	previewFolder(): { configured: string; normalized: string };
 	reconcile(): Promise<void>;
@@ -78,7 +96,7 @@ export interface ControllerDependencies {
 	/** Stops a Stage-2 child. */
 	abort?: (child: ChildProcess) => void;
 	resolveExecutable?: () => string;
-	timeoutMs?: number;
+	idleTimeoutMs?: number;
 	searchableCopy?: SearchableCopyFunction;
 	/** Stops a Stage-1 child together with its process group. */
 	abortGroup?: (child: ChildProcess) => void;
@@ -139,7 +157,7 @@ export function resolvePdf2md(
 /** Maps a non-zero pdf2md result to the user-facing failure message. */
 export function classifyFailure(
 	result: ConversionResult,
-	timeoutMs: number = CONVERSION_TIMEOUT_MS,
+	idleTimeoutMs: number = CONVERSION_IDLE_TIMEOUT_MS,
 ): FailureDescription {
 	const stderrLast = result.stderrLast;
 	const stdoutLast = result.stdoutLast.filter((line) => !line.startsWith("→"));
@@ -150,10 +168,10 @@ export function classifyFailure(
 
 	let kind: FailureKind;
 	let codeText: string;
-	if (result.code === 6) {
+	if (result.code === EXIT_CODES.cancelledPartial) {
 		kind = "partial-output";
 		codeText = "cancelled — partial file created (incomplete)";
-	} else if (result.code === 7) {
+	} else if (result.code === EXIT_CODES.cancelledEmpty) {
 		kind = "cancelled-before-output";
 		codeText = "cancelled — before first page (no partial file)";
 	} else if (result.signal === "SIGKILL") {
@@ -161,17 +179,17 @@ export function classifyFailure(
 		codeText = "cancelled — force terminated after grace period (SIGKILL)";
 	} else if (result.timeout) {
 		kind = "timeout";
-		codeText = `cancelled after ${timeoutMs / 60000} min`;
+		codeText = `cancelled — no output for ${idleTimeoutMs / 60000} min`;
 	} else if (result.code === null && result.signal !== null) {
 		kind = "signal";
 		codeText = `cancelled (Signal ${result.signal})`;
 	} else if (result.code === null) {
 		kind = "start-error";
 		codeText = "Start error";
-	} else if (result.code === 4) {
+	} else if (result.code === EXIT_CODES.checkFailed) {
 		// pdf2md's EXIT_CHECK: a dependency check failed.
 		kind = "missing-dependency";
-		codeText = "Code 4";
+		codeText = `Code ${EXIT_CODES.checkFailed}`;
 	} else {
 		kind = "exit-code";
 		codeText = `Code ${result.code}`;
@@ -222,7 +240,7 @@ export class ConversionController {
 	private readonly convert: ConvertFunction;
 	private readonly abort: (child: ChildProcess) => void;
 	private readonly resolveExecutable: () => string;
-	private readonly timeoutMs: number;
+	private readonly idleTimeoutMs: number;
 	private readonly searchableCopy: SearchableCopyFunction;
 	private readonly abortGroup: (child: ChildProcess) => void;
 	private readonly resolveReprocessRaw: () => string;
@@ -240,7 +258,7 @@ export class ConversionController {
 		this.convert = dependencies.convert ?? convertPdf;
 		this.abort = dependencies.abort ?? ((child) => abortChild(child));
 		this.resolveExecutable = dependencies.resolveExecutable ?? (() => resolvePdf2md());
-		this.timeoutMs = dependencies.timeoutMs ?? CONVERSION_TIMEOUT_MS;
+		this.idleTimeoutMs = dependencies.idleTimeoutMs ?? CONVERSION_IDLE_TIMEOUT_MS;
 		this.searchableCopy = dependencies.searchableCopy ?? createSearchableCopy;
 		this.abortGroup =
 			dependencies.abortGroup ?? ((child) => void terminateProcessGroup(child));
@@ -265,19 +283,32 @@ export class ConversionController {
 		this.begin(pdf.basename, this.abort);
 		const name = pdf.basename;
 		try {
+			const folder = this.host.previewFolder();
+			const entryName = `${name}.md`;
 			const duplicates = this.host.pdfsWithSameBasename(pdf);
 			if (duplicates.length > 0) {
+				// A shared basename costs something only once it destroys
+				// something: a preview that exists and came from one of the
+				// rivals. Vetoing on the mere existence of a rival was
+				// tolerable while only PDFs could be sources; since images
+				// convert too (Issue #100), any same-named vault attachment
+				// would block a conversion that overwrites nothing.
+				const existing = this.host.previewSource(entryName, folder.normalized);
+				if (existing !== null && existing !== pdf.path) {
+					this.host.notify(
+						`OCR Preview: "${entryName}" was not converted from ${pdf.path} — converting would overwrite it. Please rename one of ${[pdf.path, ...duplicates].join(", ")}.`,
+					);
+					return;
+				}
 				this.host.notify(
-					`OCR Preview: "${name}" also exists as ${duplicates.join(", ")} — output would overwrite. Please rename one of the files.`,
+					`OCR Preview: "${name}" also exists as ${duplicates.join(", ")} — all of them write "${entryName}".`,
 				);
-				return;
 			}
 			const base = this.host.vaultBasePath();
 			if (base === null) {
 				this.host.notify("OCR Preview: Conversion requires file system access (Desktop).");
 				return;
 			}
-			const folder = this.host.previewFolder();
 			const progress = this.host.showProgress(`OCR Preview: Converting "${name}" …`, () =>
 				this.cancel(),
 			);
@@ -289,7 +320,7 @@ export class ConversionController {
 				base,
 				undefined,
 				{
-					timeoutMs: this.timeoutMs,
+					idleTimeoutMs: this.idleTimeoutMs,
 					...(pages && pages.length > 0 ? { pages } : {}),
 					onChild: (child) => {
 						this.child = child;
@@ -307,7 +338,7 @@ export class ConversionController {
 			progress.hide();
 			this.progress = null;
 			if (result.code !== 0) {
-				this.host.notify(classifyFailure(result, this.timeoutMs).message);
+				this.host.notify(classifyFailure(result, this.idleTimeoutMs).message);
 				return;
 			}
 			await this.openResult(name, folder);

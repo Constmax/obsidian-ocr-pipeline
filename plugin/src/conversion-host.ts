@@ -1,13 +1,28 @@
 // Obsidian side of the ConversionController and the searchable-copy action:
 // Notices, vault paths, the inventory, the comparison view, and opening files.
 
-import { FileSystemAdapter, Notice, Platform, normalizePath, type App } from "obsidian";
+import { FileSystemAdapter, Notice, Platform, TFile, normalizePath, type App } from "obsidian";
 
-import type { ConversionHost } from "./conversion-controller.ts";
+import { homedir } from "os";
+
+import { resolveCli, type ConversionHost } from "./conversion-controller.ts";
+import { checkEngine } from "./conversion.ts";
+import { isConvertible } from "./input-formats.ts";
 import type { Inventory } from "./file-actions.ts";
 import { ExemptionModal } from "./exemption-modal.ts";
 import type { SearchableCopyHost } from "./searchable-copy.ts";
+import type { OcrEngine } from "./ocr-settings.ts";
 import type { Settings } from "./settings.ts";
+
+/**
+ * `reprocess-raw --check-engine` for this machine, run from the vault folder
+ * like a searchable copy: null when `engine` is usable, otherwise the reason.
+ */
+export function checkEngineHere(app: App, engine: OcrEngine): Promise<string | null> {
+	const adapter = app.vault.adapter;
+	const cwd = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : homedir();
+	return checkEngine(engine, resolveCli("reprocess-raw"), cwd);
+}
 
 export function createSearchableCopyHost(app: App, settings: () => Settings): SearchableCopyHost {
 	return {
@@ -25,6 +40,7 @@ export function createSearchableCopyHost(app: App, settings: () => Settings): Se
 			return true;
 		},
 		wait: (ms) => new Promise((done) => window.setTimeout(done, ms)),
+		checkEngine: (engine) => checkEngineHere(app, engine),
 		offerExemptions(offer) {
 			// Stays until the user acts on it or clicks it away.
 			const notice = new Notice(offer.message, 0);
@@ -72,10 +88,27 @@ export function createConversionHost(
 			return adapter instanceof FileSystemAdapter ? adapter.getBasePath() : null;
 		},
 		pdfsWithSameBasename(pdf) {
+			// Any convertible source, not just PDFs: `scan.png` and `scan.pdf`
+			// both write `scan.md` and would overwrite each other (Issue #100).
 			return app.vault
 				.getFiles()
-				.filter((f) => f.extension === "pdf" && f.basename === pdf.basename && f.path !== pdf.path)
+				.filter((f) => isConvertible(f) && f.basename === pdf.basename && f.path !== pdf.path)
 				.map((f) => f.path);
+		},
+		previewSource(entryName, folder) {
+			const item = inventory().entries.find(
+				(entry) => entry.name === entryName && entry.file.parent?.path === folder,
+			);
+			if (item === undefined) return null;
+			const recorded = item.entry["source-pdf"] ?? item.entry["manual-source-pdf"];
+			if (recorded === null || recorded.length === 0) return item.file.path;
+			// `quelle-pdf` holds the path pdf2md was called with, but a
+			// hand-written `Source: [[…]]` link resolves the same way the
+			// comparison view resolves it.
+			const byPath = app.vault.getFileByPath(normalizePath(recorded));
+			if (byPath instanceof TFile) return byPath.path;
+			const dest = app.metadataCache.getFirstLinkpathDest(recorded, item.file.path);
+			return dest?.path ?? item.file.path;
 		},
 		previewFolder() {
 			const configured = settings().previewFolder;
