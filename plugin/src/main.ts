@@ -109,6 +109,17 @@ export default class OcrPreviewPlugin extends Plugin {
 			callback: () => this.selectPdfForSearchableCopy(),
 		});
 
+		this.addCommand({
+			id: "mark-page-as-wrong",
+			name: "Mark page as wrong",
+			checkCallback: (checking) => {
+				const view = this.app.workspace.getActiveViewOfType(OcrComparisonView);
+				if (view === null || !view.canMarkPage()) return false;
+				if (!checking) view.markCurrentPage();
+				return true;
+			},
+		});
+
 		this.registerEvent(
 			this.app.workspace.on("file-menu", (menu, file) => {
 				this.populateFileMenu(menu, file);

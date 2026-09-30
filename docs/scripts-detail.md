@@ -518,11 +518,13 @@ A **page case** is a page the user marked as wrong, kept with the page block
 Stage 2 produced and the page block the user expects (terms: `CONTEXT.md`).
 A **replay** produces the block again from the case's recognized lines,
 without the model, and compares it with the expected block. `pdf2md/cases.py`
-owns the format; the plugin only spawns `stash` and `add`.
+owns the format; the plugin only spawns `stash`, `add` and `list`
+(`docs/cli-contract.md`, "Page cases").
 
 ```bash
 pdf2md case stash _ocr-preview/skript.md --page 12
 pdf2md case add   _ocr-preview/skript.md --page 12 --note "footnote tail lost" --issue 130
+pdf2md case list  _ocr-preview/skript.md
 pdf2md case run   [FOLDER ...] [--issue 130] [--promote]
 make check-cases  [ISSUE=130] [PROMOTE=1]      # = case run "$VAULT_ROOT"
 ```
@@ -569,6 +571,16 @@ looked up from the working directory and from every folder above the preview.
 works from the stash or the existing case and fails only when there is
 neither. The page cache stays in the preview folder, so a page is stashed
 and first marked while its preview is under review, before it is accepted.
+
+On success `add` prints `case <stem>/pNNN: <status>, fault stage <stage>`,
+then what it has to say besides: the words that made the fault stage
+`upstream`, and that the expected block equals the produced one.
+
+**`list <preview>`** prints that line for every case of the preview, in page
+order, and nothing when there is none. It reads the case files only, so it
+needs neither the preview nor the page cache. A case it cannot read is named
+on stderr and left out; the exit code stays 0. The review view asks it which
+pages to badge.
 
 A case file (`schema: 1`) holds:
 

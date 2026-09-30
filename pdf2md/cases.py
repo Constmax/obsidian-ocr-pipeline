@@ -13,8 +13,9 @@ Cases live beside the preview, never in the repository (they hold page text):
     <preview folder>/.cases/<stem>/pNNN.json          the case
     <preview folder>/.cases/<stem>/.stash/pNNN.json   the stash
 
-This module owns that format. The plugin spawns `pdf2md case stash | add` and
-knows neither the page-cache path nor the case format.
+This module owns that format. The plugin spawns `pdf2md case stash | add |
+list` and knows neither the page-cache path nor the case format; what it
+reads of their output is pinned in contracts/cli-contract.json.
 
 The dictionary pass is not part of a replay: it depends on the word lists of
 the machine, and a word it corrected was recognized wrongly — an upstream
@@ -292,6 +293,26 @@ def add(preview: Path, number: int, note: str | None = None,
     _write(target, case)
     stashed.unlink(missing_ok=True)
     return target, case, missing
+
+
+def list_cases(preview: Path) -> tuple[list[tuple[Path, dict]], list[str]]:
+    """The cases of a preview's pages in page order, and why others were
+    left out.
+
+    Reads the case files only: neither the preview nor the page cache is
+    needed, so the review view can ask which pages to badge at any time.
+    """
+    def number(path: Path) -> int:
+        digits = path.stem[1:]
+        return int(digits) if digits.isdigit() else 0
+
+    found, unreadable = [], []
+    for path in sorted(cases_directory(preview).glob("p*.json"), key=number):
+        try:
+            found.append((path, load_case(path)))
+        except CaseError as error:
+            unreadable.append(str(error))
+    return found, unreadable
 
 
 # --- Replay and comparison --------------------------------------------------
@@ -575,6 +596,13 @@ def _print_run(outcomes, promote):
         print("now matching: run again with --promote to mark them fixed")
 
 
+def case_line(path: Path, case: dict) -> str:
+    """The line `add` and `list` print for a case. The plugin reads the page,
+    the status and the fault stage from it (contracts/cli-contract.json)."""
+    return (f"case {case_id(path)}: {case['status']}, "
+            f"fault stage {case['fault_stage']}")
+
+
 def _parser():
     parser = argparse.ArgumentParser(
         prog="pdf2md case",
@@ -594,6 +622,10 @@ def _parser():
     add_parser.add_argument(
         "--fault-stage", choices=FAULT_STAGES,
         help="override the fault stage found by word coverage")
+
+    list_parser = commands.add_parser(
+        "list", help="name the pages of a preview that have a case")
+    list_parser.add_argument("preview", type=Path)
 
     run_parser = commands.add_parser(
         "run", help="replay the cases below a folder")
@@ -617,8 +649,7 @@ def main(argv=None) -> int:
         if args.command == "add":
             path, case, missing = add(args.preview, args.page, args.note,
                                       args.issue, args.fault_stage)
-            print(f"case {case_id(path)}: {case['status']}, "
-                  f"fault stage {case['fault_stage']}")
+            print(case_line(path, case))
             if missing:
                 print("   not in the recognized lines: "
                       + ", ".join(missing[:8])
@@ -626,6 +657,13 @@ def main(argv=None) -> int:
             if uncorrected(case):
                 print("   the expected block equals the produced one — "
                       "correct the page and mark it again")
+            return 0
+        if args.command == "list":
+            found, unreadable = list_cases(args.preview)
+            for path, case in found:
+                print(case_line(path, case))
+            for reason in unreadable:
+                print(f"pdf2md case: {reason}", file=sys.stderr)
             return 0
 
         roots = args.roots
