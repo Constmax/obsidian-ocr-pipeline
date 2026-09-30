@@ -25,6 +25,7 @@ bench/pages.json
 # die weiter nach bench/ schreiben.
 bench/bench-lauf/
 bench/reading-order-lauf/
+bench/structure-lauf/
 bench/apple-vision-lauf/
 bench/stage1-lauf/
 bench/defekt-lauf/
