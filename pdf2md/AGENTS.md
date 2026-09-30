@@ -3,7 +3,8 @@
 Stage 2: PDF or page image → preview. `pdf2md.py` is the CLI,
 `conversion.py` runs a document page by page, `layout.py` finds columns and
 boxes, `ocr.py` tiles pages and runs the model, `assembly.py` turns recognized
-lines into page blocks, `page_cache.py` keeps each page's recognized lines.
+lines into page blocks, `page_cache.py` keeps each page's recognized lines,
+`cases.py` keeps and replays page cases.
 Page images are normalized to a one-page PDF in `open_document()`.
 `dictionary.py` checks OCR pages afterwards (reports by default, corrects
 only unambiguous cases with `--dictionary-correct`).
@@ -36,9 +37,10 @@ the page block Stage 2 produced and the one the user expects (terms:
 `CONTEXT.md`). Cases live in the vault under `<preview folder>/.cases/`,
 hold page text, and stay out of the repo.
 
-Not yet available: `make check-cases` and the `pdf2md case` commands arrive
-with #139, which removes this note. Until then there are no cases to replay;
-a Stage-2 assembly fix names its target pages by id and how it measured them.
+`cases.py` owns the case format, capture, replay and comparison, reached
+through `pdf2md case stash | add | run` (`docs/scripts-detail.md`, "Page
+cases"). A replay runs `page_block` on the case's recognized lines and
+compares block by block with `bench/structure.py`.
 
 For a Stage-2 assembly fix:
 

@@ -284,7 +284,9 @@ def _run_preflight(args, parser):
 
 
 def _parser():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        epilog="Page cases: pdf2md case stash | add | run "
+               "(pdf2md case --help).")
     accepted = ", ".join(sorted(INPUT_SUFFIXES))
     parser.add_argument("source", nargs="?", default=None, metavar="INPUT",
                         help=f"Input file — PDF or image ({accepted})")
@@ -321,6 +323,11 @@ def _parser():
 
 
 def main():
+    # `pdf2md case stash | add | run` (Issue #139). Imported only here: the
+    # conversion runs without cases.py.
+    if sys.argv[1:2] == ["case"]:
+        import cases
+        sys.exit(cases.main(sys.argv[2:]))
     parser = _parser()
     args = parser.parse_args()
     if args.check:
