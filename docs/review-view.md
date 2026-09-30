@@ -17,7 +17,7 @@ before anything moves into the wiki. The code calls it the comparison view
 |---|---|
 | **Previews** | File list with status filter (Open · Accepted · Rejected · All), text filter, refresh, and progress for lists of at least five entries. Mixed-status lists are grouped in the same order used by `j`/`k`. Below each line: `14 p. · 9 OCR · 2 Diagram`, colored side marking by status, yellow dot on OCR pages. Three separate empty states: Folder missing (→ Settings), Folder empty (→ copyable pdf2md command), Filter empty. |
 | **Original PDF** | Pages of the original PDF, lazy-rendered. Header with filename, `p. n / m`, zoom −/+, "Open in PDF viewer". |
-| **Markdown** | The generated `.md`, page by page, with provenance badge (`Text layer` / `OCR` / `Diagram`) and layout info. Toggle **Rendered \| Source**. |
+| **Markdown** | The generated `.md`, page by page, with provenance badge (`Text layer` / `OCR` / `Diagram`) and layout info, a **Marked** badge on pages that have a page case, and a flag button that marks the page as wrong. Toggle **Rendered \| Source**. |
 
 Clicking a list entry opens both panes. Scrolling is linked:
 scrolling the PDF causes the Markdown to follow (and vice versa), fractionally instead of
@@ -42,6 +42,8 @@ number of open entries. Two operating modes share the same controls:
   for that file and starts conversion. While another conversion is running, the
   item remains visible but shows a notice instead of starting another one.
 - Second command: **"Jump to next preview entry"** (customizable shortcut)
+- **"Mark page as wrong"** (command palette, while the view has focus): marks
+  the page the view shows, see "Marking a Page as Wrong"
 
 The view survives `Cmd+R`: the last opened file is restored.
 
@@ -74,6 +76,37 @@ Applies only when the view has focus:
   opens a suggestion list of all vault PDFs and displayable images. The assignment lands
   in the manifest (`manual-source-pdf`), never in frontmatter — the `.md` is
   generated output.
+
+## Marking a Page as Wrong
+
+A page whose block Stage 2 assembled wrongly becomes a **page case**: the
+recognized lines of the page, the block Stage 2 produced from them, and the
+block the user expects. `make check-cases` replays it without the model, so an
+assembly fix is checked against the pages it was made for (terms:
+`CONTEXT.md`; format and replay: `docs/scripts-detail.md`, "Page Cases"). The
+plugin only spawns `pdf2md case stash | add | list` (`docs/cli-contract.md`,
+"Page Cases").
+
+1. **Correct the page** in Workbench mode (`e`). The first edit of a page
+   runs `pdf2md case stash` in the background, before that edit is saved, once
+   per page each time the preview is opened. It keeps the produced block, so
+   a rerun of the source cannot lose it. A failed stash is logged to the
+   console and the edit is saved anyway.
+2. **Mark it:** the flag button in the page's header, or the command **"Mark
+   page as wrong"** for the page the view shows. A dialog takes an optional
+   one-line note. Pending edits are saved first, then `pdf2md case add` makes
+   the page's current block the expected one. A notice reports the case's
+   status and fault stage, and says so when the page was marked without a
+   correction the comparison sees.
+3. The page shows a **Marked** badge; its tooltip names status and fault
+   stage. The badges come from `pdf2md case list` when the preview is opened.
+   Marking again updates the expected block (and the note, when one is given).
+
+Marking is offered for previews under review, in the preview folder: the page
+cache and the cases (`<preview folder>/.cases/`) stay there, so a preview
+under `_accepted/` or `_rejected/` shows neither the button nor badges. Mark
+the pages before accepting or rejecting. There is no count in the sidebar and
+no overview of cases; `make check-cases` lists them.
 
 ## Folder & Manifest Model
 
@@ -179,3 +212,7 @@ Obsidian), `npm run build`.
 14. In Workbench, press `e`, edit Markdown, then press `e` again → the file is
     saved, the one-time overwrite warning appears only for the current revision,
     and Review flow does not expose editing.
+15. Edit a page, click its flag button, enter a note, **Mark** → a notice
+    names status and fault stage, the page shows **Marked**, and
+    `_ocr-preview/.cases/<stem>/pNNN.json` holds `produced` ≠ `expected`.
+    Reopen the preview → the badge is still there. ⇒ verifies stash, add, list.

@@ -9,6 +9,7 @@ import {
 	Scope,
 	Setting,
 	SuggestModal,
+	TextComponent,
 	TFile,
 	ViewStateResult,
 	WorkspaceLeaf,
@@ -29,6 +30,8 @@ import { Coupling } from "./sync.ts";
 import type { FolderLocation, Preview } from "./types.ts";
 import { parsePreview, buildPreview, previewFormatWarning } from "./preview-parser.ts";
 import { LatestTaskQueue } from "./open-queue.ts";
+import { createPageCases } from "./conversion-host.ts";
+import type { PageCase, PageCases } from "./page-cases.ts";
 
 export const VIEW_TYPE = "ocr-preview-comparison";
 
@@ -85,6 +88,9 @@ export class OcrComparisonView extends ItemView {
 	private mdWriteChain: Promise<void> = Promise.resolve();
 	private editButton!: HTMLButtonElement;
 	private editTracker = new EditStateTracker();
+	private readonly pageCases: PageCases | null;
+	private marked = new Map<number, PageCase>();
+	private pageCaseRun = 0;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -97,6 +103,7 @@ export class OcrComparisonView extends ItemView {
 		// own scope, registerHotkeys crashes on `undefined` and the hotkeys
 		// never fire.
 		this.scope = new Scope(this.app.scope);
+		this.pageCases = createPageCases(this.app);
 	}
 
 	getViewType(): string {
@@ -202,7 +209,8 @@ export class OcrComparisonView extends ItemView {
 			() => this.plugin.settings.mdEagerLimit,
 		);
 		this.mdColumn.onMeasurementNeeded = () => this.coupling?.remeasure();
-		this.mdColumn.onChange = () => this.triggerSaveChange();
+		this.mdColumn.onChange = (block) => this.triggerSaveChange(block.pageNumber);
+		this.mdColumn.onMark = (pageNumber) => this.markPage(pageNumber);
 		this.mdColumn.onFocusLost = () => void this.saveChangeImmediately();
 		this.highlightToggle(this.plugin.settings.markdownView);
 		this.updateEditButton();
@@ -413,6 +421,8 @@ export class OcrComparisonView extends ItemView {
 				this.plugin.settings.markdownView,
 			);
 			if (this.closed || run !== this.openRun) return;
+			this.pageCases?.reset();
+			void this.refreshPageCases();
 
 			const pdfFile = await this.findOriginal(item, preview);
 			if (this.closed || run !== this.openRun) return;
@@ -539,7 +549,11 @@ export class OcrComparisonView extends ItemView {
 		undoBtn.addEventListener("click", () => void this.undo());
 
 		this.update();
-		if (location === "open") return;
+		if (location === "open") {
+			// Back in the preview folder, its pages can be marked again.
+			void this.refreshPageCases();
+			return;
+		}
 		if (this.sidebar.selectedName() !== name) return;
 		if (this.requestedName !== null && this.requestedName !== name) return;
 		if (nextItem !== null) this.safelyOpenPreview(nextItem);
@@ -655,7 +669,8 @@ export class OcrComparisonView extends ItemView {
 		}, CHECKED_UNTIL_MS);
 	}
 
-	private triggerSaveChange(): void {
+	private triggerSaveChange(pageNumber: number): void {
+		this.stashBeforeSave(pageNumber);
 		this.markManualEdit();
 		if (this.mdSaveTimer !== null) window.clearTimeout(this.mdSaveTimer);
 		this.mdSaveTimer = window.setTimeout(() => {
@@ -669,6 +684,115 @@ export class OcrComparisonView extends ItemView {
 		const item = this.inventory.entries.find((entry) => entry.name === this.activeName);
 		if (item === undefined || item.entry["manually-edited"]) return;
 		void this.inventory.updateEntry(item.name, { "manually-edited": true });
+	}
+
+	/**
+	 * The file of the open preview while page cases apply to it: on desktop,
+	 * and under review. The page cache and `.cases/` stay in the preview
+	 * folder, so an accepted or rejected preview has neither.
+	 */
+	private caseFile(): TFile | null {
+		if (this.pageCases === null) return null;
+		const file = this.mdColumn?.currentFile() ?? null;
+		if (file === null) return null;
+		const folder = normalizePath(this.plugin.settings.previewFolder);
+		return file.parent?.path === folder ? file : null;
+	}
+
+	/**
+	 * The first edit of a page is saved only after `pdf2md case stash` ran,
+	 * so the stash reads the preview as it was. A failed stash is logged and
+	 * the save goes on.
+	 */
+	private stashBeforeSave(pageNumber: number): void {
+		const file = this.caseFile();
+		if (file === null || this.pageCases === null) return;
+		const stash = this.pageCases.stashBeforeEdit(file.path, pageNumber);
+		if (stash !== null) this.mdWriteChain = this.mdWriteChain.then(() => stash);
+	}
+
+	/**
+	 * Asks `pdf2md case list` which pages of the open preview have a case.
+	 * Only the latest query counts, so an answer from before a page was marked
+	 * cannot take its badge away. `keepShown` leaves the badges up meanwhile.
+	 */
+	private async refreshPageCases(keepShown = false): Promise<void> {
+		const run = ++this.pageCaseRun;
+		const file = this.caseFile();
+		if (!keepShown) this.marked = new Map();
+		this.showPageCases();
+		if (file === null || this.pageCases === null) return;
+		const marked = await this.pageCases.list(file.path);
+		if (this.closed || run !== this.pageCaseRun || this.caseFile() !== file) return;
+		this.marked = marked;
+		this.showPageCases();
+	}
+
+	private showPageCases(): void {
+		const tooltips = new Map<number, string>();
+		for (const [pageNumber, pageCase] of this.marked) {
+			tooltips.set(
+				pageNumber,
+				`Page case: ${pageCase.status}, fault stage ${pageCase.faultStage}`,
+			);
+		}
+		this.mdColumn.setPageCases(this.caseFile() !== null, tooltips);
+	}
+
+	canMarkPage(): boolean {
+		return (
+			!this.closed &&
+			this.activeName !== null &&
+			this.requestedName === null &&
+			this.caseFile() !== null
+		);
+	}
+
+	/**
+	 * "Mark page as wrong" for the page at the top of the Markdown column.
+	 * Not `currentPage`: that follows the source column and stands still when
+	 * the source is missing.
+	 */
+	markCurrentPage(): void {
+		this.markPage(this.mdColumn.visiblePage() ?? this.currentPage);
+	}
+
+	private markPage(pageNumber: number): void {
+		if (!this.canMarkPage()) return;
+		const file = this.caseFile();
+		const preview = this.mdColumn.currentPreview();
+		if (file === null || preview === null) return;
+		if (!preview.blocks.some((block) => block.pageNumber === pageNumber)) {
+			new Notice(`OCR Preview: The preview has no page ${pageNumber}.`);
+			return;
+		}
+		const modal = new MarkPageModal(this.app, pageNumber, this.marked.has(pageNumber));
+		modal.onMark = (note) => void this.runMark(file, pageNumber, note);
+		modal.open();
+	}
+
+	private async runMark(file: TFile, pageNumber: number, note: string): Promise<void> {
+		if (this.pageCases === null) return;
+		// The page's block in the saved preview is the expected one.
+		await this.saveChangeImmediately();
+		const result = await this.pageCases.mark(file.path, pageNumber, note);
+		if (!result.ok) {
+			new Notice(
+				`OCR Preview: Page ${pageNumber} could not be marked — ${result.reason}.`,
+				10000,
+			);
+			return;
+		}
+		const pageCase = result.pageCase;
+		const state =
+			pageCase === null ? "" : ` (${pageCase.status}, fault stage ${pageCase.faultStage})`;
+		new Notice(
+			[`OCR Preview: Page ${pageNumber} marked as wrong${state}.`, ...result.hints].join("\n"),
+			8000,
+		);
+		if (this.closed || this.caseFile() !== file) return;
+		if (pageCase !== null) this.marked.set(pageNumber, pageCase);
+		void this.refreshPageCases(true);
 	}
 
 	private async saveChangeImmediately(): Promise<void> {
@@ -1131,6 +1255,50 @@ class NoteModal extends Modal {
 		saveBtn.addEventListener("click", () => {
 			this.onSaved?.(field.value);
 			this.close();
+		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+class MarkPageModal extends Modal {
+	onMark: ((note: string) => void) | null = null;
+
+	constructor(
+		app: App,
+		private pageNumber: number,
+		private markedBefore: boolean,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		this.titleEl.setText(`Mark page ${this.pageNumber} as wrong`);
+		this.contentEl.createDiv({
+			cls: "setting-item-description",
+			text: this.markedBefore
+				? "This page has a page case. Marking it again makes the page's current text the expected page block."
+				: "The page's current text becomes the expected page block of a page case. Correct the page first; a later fix is checked against it.",
+		});
+		const field = new TextComponent(this.contentEl.createDiv()).inputEl;
+		field.addClass("ocr-mark-note");
+		field.placeholder = this.markedBefore
+			? "Note (optional) — empty keeps the note the case has"
+			: "Note (optional) — one line on what is wrong";
+		window.setTimeout(() => field.focus(), 0);
+		const row = this.contentEl.createDiv({ cls: "modal-button-container" });
+		const cancelBtn = row.createEl("button", { text: "Cancel" });
+		cancelBtn.addEventListener("click", () => this.close());
+		const markBtn = row.createEl("button", { cls: "mod-cta", text: "Mark" });
+		const execute = () => {
+			this.onMark?.(field.value);
+			this.close();
+		};
+		markBtn.addEventListener("click", () => execute());
+		field.addEventListener("keydown", (e) => {
+			if (e.key === "Enter" && !e.isComposing) execute();
 		});
 	}
 

@@ -586,6 +586,90 @@ def test_run_needs_a_folder_or_the_vault_root(corrected, monkeypatch, capsys):
     assert cases.main(["run", str(root / "missing")]) == 1
 
 
+# --- What the plugin reads (contracts/cli-contract.json, Issue #140) ---------
+
+CONTRACT = json.loads((REPOSITORY / "contracts" / "cli-contract.json")
+                      .read_text(encoding="utf-8"))
+PAGE_CASES = CONTRACT["pageCases"]
+
+
+def test_list_names_the_cases_of_a_preview_in_page_order(corrected, capsys):
+    _, _, preview = corrected
+    _edit(preview, "%% S. 2 | textlayer %%\n\n" + FIRST + " ",
+          "%% S. 2 | textlayer %%\n\n" + FIRST + " Bereicherungsrecht ")
+    cases.add(preview, 2)
+    cases.stash_path(preview, 1).parent.mkdir()
+    cases.stash_path(preview, 1).write_text("{}", encoding="utf-8")
+    capsys.readouterr()
+
+    assert cases.main(["list", str(preview)]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "case skript/p001: open, fault stage assembly",
+        "case skript/p002: open, fault stage upstream"]
+
+
+def test_list_needs_neither_cases_nor_the_preview(vault, capsys):
+    root, _, preview = vault
+
+    assert cases.main(["list", str(preview)]) == 0
+    assert cases.main(["list", str(root / "_accepted" / "skript.md")]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_list_leaves_out_a_case_it_cannot_read_and_says_so(corrected, capsys):
+    _, _, preview = corrected
+    cases.case_path(preview, 2).write_text("{", encoding="utf-8")
+
+    assert cases.main(["list", str(preview)]) == 0
+    printed = capsys.readouterr()
+    assert printed.out.splitlines() == [
+        "case skript/p001: open, fault stage assembly"]
+    assert "p002.json" in printed.err
+
+
+@pytest.mark.parametrize("line", PAGE_CASES["caseLines"])
+def test_the_case_line_is_the_one_the_contract_pins(line):
+    path = cases.case_path(Path(PAGE_CASES["list"]["args"][2]), line["page"])
+
+    assert cases.case_line(path, {"status": line["status"],
+                                  "fault_stage": line["faultStage"]}
+                           ) == line["stdout"]
+    assert line["faultStage"] in cases.FAULT_STAGES
+
+
+def test_the_plugins_calls_run_as_the_contract_pins_them(
+        vault, monkeypatch, capsys):
+    """stash, add, list and a failing call with the contract's own argv,
+    from the vault root as the plugin spawns them."""
+    root, _, preview = vault
+    monkeypatch.chdir(root)
+    codes = CONTRACT["exitCodes"]
+    wanted = PAGE_CASES["caseLines"][0]["stdout"]
+
+    def call(name):
+        arguments = PAGE_CASES[name]["args"]
+        assert arguments[0] == "case"
+        code = cases.main(arguments[1:])
+        return code, capsys.readouterr()
+
+    assert call("list") == (codes["success"], ("", ""))
+    assert call("stash")[0] == codes["success"]
+    _split_first_sentence(preview)
+    code, printed = call("add")
+    assert code == codes["success"]
+    assert printed.out.splitlines()[0] == wanted
+    assert _stored(preview)["note"] == PAGE_CASES["add"]["note"]
+    code, printed = call("addWithoutNote")
+    assert (code, printed.out.splitlines()[0]) == (codes["success"], wanted)
+    assert _stored(preview)["note"] == PAGE_CASES["add"]["note"]
+    code, printed = call("list")
+    assert (code, printed.out.splitlines()) == (codes["success"], [wanted])
+
+    code, printed = call("failure")
+    assert code == codes[PAGE_CASES["failure"]["exitCode"]]
+    assert printed.err.splitlines() == PAGE_CASES["failure"]["stderr"]
+
+
 # --- Entry points -----------------------------------------------------------
 
 def _clean_environment():

@@ -38,8 +38,10 @@ the page block Stage 2 produced and the one the user expects (terms:
 hold page text, and stay out of the repo.
 
 `cases.py` owns the case format, capture, replay and comparison, reached
-through `pdf2md case stash | add | run` (`docs/scripts-detail.md`, "Page
-cases"). A replay runs `page_block` on the case's recognized lines and
+through `pdf2md case stash | add | list | run` (`docs/scripts-detail.md`,
+"Page cases"). The review view spawns `stash`, `add` and `list`
+(`plugin/src/page-cases.ts`); their argv and the case line it reads are
+contract (`contracts/`, `docs/cli-contract.md`). A replay runs `page_block` on the case's recognized lines and
 compares block by block with `bench/structure.py`.
 
 For a Stage-2 assembly fix:
