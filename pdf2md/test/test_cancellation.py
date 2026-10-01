@@ -226,18 +226,21 @@ def test_sigint_halfway_through_run():
             text=True,
         )
 
-        start = threading.Event()
+        # Wait for a finished page, not the start event: under load the signal
+        # would otherwise land before page 1 and the run exits 7, not 6.
+        first_page = threading.Event()
         stderr_lines: list[str] = []
 
         def read_stderr():
             for line in proc.stderr:
                 stderr_lines.append(line)
-                if '"typ": "start"' in line:
-                    start.set()
+                event = json.loads(line) if line.startswith("{") else {}
+                if event.get("typ") == "seite":
+                    first_page.set()
 
         thread = threading.Thread(target=read_stderr, daemon=True)
         thread.start()
-        assert start.wait(timeout=120), "no start event — run hanging?"
+        assert first_page.wait(timeout=120), "no page event — run hanging?"
         os.kill(proc.pid, signal.SIGINT)
         proc.wait(timeout=120)
         stdout = proc.stdout.read() if proc.stdout else ""
