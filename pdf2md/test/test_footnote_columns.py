@@ -10,7 +10,7 @@ from dataclasses import replace
 
 import page_cache
 from assembly import (RecognizedLine, assemble_paragraphs,
-                      attach_footnote_numbers, footnotes_obsidian)
+                      _attach_footnote_numbers, _footnotes_obsidian)
 from layout import split_columns
 
 
@@ -103,11 +103,11 @@ def test_same_number_in_both_columns_the_citing_column_decides():
                   "5 Vgl. Muster, Lehrbuch, Rn. 5.",
                   "Der Bescheid ist rechtswidrig.6",
                   "6 Beispiel, Zeitschrift 2016, 7. 5 Vgl. auch Probe 2015."]
-    out = footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}])
+    out = _footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}])
     assert "[^5]: Vgl. Muster, Lehrbuch, Rn. 5." in out
     assert "[^6]: Beispiel, Zeitschrift 2016, 7. 5 Vgl. auch Probe 2015." in out
     # Unknown columns fall back to reading order, but lose no digit.
-    merged = footnotes_obsidian(paragraphs)
+    merged = _footnotes_obsidian(paragraphs)
     assert ("[^5]: Vgl. Muster, Lehrbuch, Rn. 5. 5 Vgl. auch Probe 2015."
             in merged)
 
@@ -118,7 +118,7 @@ def test_same_number_in_both_columns_right_column_owns_it():
                   "6 Beispiel, Zeitschrift 2012, 7 (9).",
                   "Die Behörde hat ihr Ermessen nicht ausgeübt.7",
                   "7 Muster, Lehrbuch, Rn. 12."]
-    out = footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}])
+    out = _footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}])
     assert out[-2:] == ["[^6]: Beispiel, Zeitschrift 2012, 7 (9).",
                         "[^7]: Muster, Lehrbuch, Rn. 12."]
 
@@ -132,7 +132,7 @@ def test_stray_opening_its_column_goes_under_no_other_number():
                   "Sie ist auch begründet.6",
                   "5 Vgl. auch Probe 2015.",
                   "6 Beispiel, Zeitschrift 2016, 7."]
-    out = footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}, {1}])
+    out = _footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}, {1}])
     assert "[^5]: Muster, Lehrbuch, Rn. 5." in out
     assert "5 Vgl. auch Probe 2015." in out
     assert "[^6]: Beispiel, Zeitschrift 2016, 7." in out
@@ -146,7 +146,7 @@ def test_no_citing_column_the_neighbour_number_decides():
                   "2 Vgl. Probe 2015.",
                   "1 Muster, Lehrbuch, Rn. 1.",
                   "2 Beispiel, Zeitschrift 2016, 7."]
-    out = footnotes_obsidian(paragraphs, [set(), {1}, {0}, {0}])
+    out = _footnotes_obsidian(paragraphs, [set(), {1}, {0}, {0}])
     assert "[^2]: Beispiel, Zeitschrift 2016, 7." in out
     assert "2 Vgl. Probe 2015." in out
 
@@ -159,7 +159,7 @@ def test_paragraph_across_the_gutter_cites_for_both_columns():
                   "2 Muster, Lehrbuch, Rn. 2. 4 Vgl. Probe 2015.",
                   "4 Beispiel, Zeitschrift 2016, 7.",
                   "5 Autor, Kommentar, Rn. 5."]
-    out = footnotes_obsidian(paragraphs, [{0, 1}, {0}, {1}, {1}])
+    out = _footnotes_obsidian(paragraphs, [{0, 1}, {0}, {1}, {1}])
     assert "[^4]: Beispiel, Zeitschrift 2016, 7." in out
     assert "[^2]: Muster, Lehrbuch, Rn. 2. 4 Vgl. Probe 2015." in out
 
@@ -167,9 +167,9 @@ def test_paragraph_across_the_gutter_cites_for_both_columns():
 def test_number_is_not_attached_to_text_of_the_other_column():
     number = z("4", 95, 930, 109, column=0)
     other = z("Muster, Lehrbuch, Rn. 12.", 557, 930, 900, column=1)
-    assert attach_footnote_numbers([number, other]) == [number, other]
+    assert _attach_footnote_numbers([number, other]) == [number, other]
     same = replace(other, box=(128, 930, 480, 939), column=0)
-    assert attach_footnote_numbers([number, same])[0].text \
+    assert _attach_footnote_numbers([number, same])[0].text \
         == "4 Muster, Lehrbuch, Rn. 12."
 
 
@@ -178,7 +178,7 @@ def test_number_sorted_after_its_text_on_the_same_row():
     lines = [z("Muster, Lehrbuch, Rn. 82.", 557, 917, 758),
              z("Muster, Lehrbuch, Rn. 84f.", 557, 927, 908),
              z("12", 523, 929, 545)]
-    out = attach_footnote_numbers(lines)
+    out = _attach_footnote_numbers(lines)
     assert [line.text for line in out] == ["Muster, Lehrbuch, Rn. 82.",
                                          "12 Muster, Lehrbuch, Rn. 84f."]
 
@@ -188,7 +188,7 @@ def test_page_number_beside_the_running_footer_stays_apart():
     footer would no longer be recognized as a running line."""
     lines = [z("Autorin A, Kursanbieter - 01/2026", 651, 948, 832),
              z("**1**", 445, 949, 454)]
-    assert attach_footnote_numbers(lines) == lines
+    assert _attach_footnote_numbers(lines) == lines
 
 
 def test_cache_keeps_columns(tmp_path):

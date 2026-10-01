@@ -5,7 +5,7 @@
       "raw/StR/Strafrecht-AT/Strafrecht AT VI - Fahrlaessigkeit.pdf" 3
 
 Gedruckt wird je Zeile x0, y0 und der Anfang des Textes, dazu der Rumpfeinzug,
-den `promote_margin_labels` als Median der Nachbarschaft bildet. Damit ist auf
+den `_promote_margin_labels` als Median der Nachbarschaft bildet. Damit ist auf
 einen Blick zu sehen, ob die Marke geometrisch ueberhaupt im Rand steht.
 """
 import sys
