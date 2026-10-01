@@ -438,7 +438,8 @@ def test_in_place_cancellation_leaves_source(sb, phase):
         env["FAKE_BLOCK"] = str(blocked)
     else:
         # Block before the rename: the hidden copy exists, the source is old.
-        _write_exe(sb.override / "mv", f'touch "{blocked}"\nsleep 60\n')
+        # `cp -p` only runs there; the rename itself ignores SIGTERM.
+        _write_exe(sb.override / "cp", f'[ "$1" = -p ] && {{ touch "{blocked}"; sleep 60; }}\nexec /bin/cp "$@"\n')
 
     proc = subprocess.Popen(
         _command(sb, ["--in-place"]), env=env, start_new_session=True,
@@ -471,3 +472,25 @@ def test_in_place_and_output_exclude_each_other(sb):
     assert "exclude each other" in result.output, result.output
     assert not sb.log.exists()
     _assert_clean(sb, ["casebook.pdf"])
+
+
+def test_in_place_sigterm_during_rename_still_finishes(sb):
+    blocked = sb.root / "blocked"
+    _write_exe(sb.override / "mv", f'touch "{blocked}"\nsleep 1\nexec /bin/mv "$@"\n')
+
+    proc = subprocess.Popen(
+        _command(sb, ["--in-place"]), env=sb.env, start_new_session=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    deadline = time.monotonic() + 20
+    while not blocked.exists():
+        assert proc.poll() is None, proc.communicate()[0]
+        assert time.monotonic() < deadline, "script never reached the rename"
+        time.sleep(0.05)
+    os.killpg(proc.pid, signal.SIGTERM)
+    output = proc.communicate(timeout=20)[0]
+
+    # A run that reached the rename reports what happened: the PDF was replaced.
+    assert proc.returncode == 0, output
+    assert sb.source.read_text() == sb.result.read_text()
+    _assert_only_source(sb)

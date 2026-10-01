@@ -4,6 +4,12 @@ Turns scanned legal study materials into searchable PDFs (Stage 1) and reviewabl
 
 ## Language
 
+### Stage 1
+
+**OCR text layer**:
+The invisible text Stage 1 adds to the user's PDF itself, replacing the file only after all checks pass (#180).
+_Avoid_: searchable copy, -ocr.pdf
+
 ### Recognition
 
 **Recognized line**:

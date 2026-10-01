@@ -4,7 +4,7 @@
 
 import { App, Modal, Setting } from "obsidian";
 
-import { normalizePageList, type ExemptionOffer } from "./searchable-copy.ts";
+import { normalizePageList, type ExemptionOffer } from "./text-layer.ts";
 
 export class ExemptionModal extends Modal {
 	constructor(

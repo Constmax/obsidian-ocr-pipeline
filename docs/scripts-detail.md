@@ -372,8 +372,8 @@ Four consequences worth knowing:
 
 Stage 1 (`bin/`) remains PDF-only: `pdf-auto`, `pdf-combine`, the column split
 and the text-layer checks all assume PDF input. In the plugin this is the
-difference between **OCR → Markdown** (PDF or image) and **Create searchable
-copy (OCR)** (PDF only).
+difference between **OCR → Markdown** (PDF or image) and **Add OCR text
+layer** (PDF only).
 
 ## Stage 2: Module Structure (`pdf2md/`)
 

@@ -15,14 +15,14 @@ import {
 	type ConvertFunction,
 	type PdfSource,
 	type ProgressDisplay,
-	type SearchableCopyFunction,
-	type SearchableCopyRequest,
+	type TextLayerFunction,
+	type TextLayerRequest,
 } from "../src/conversion-controller.ts";
 import type {
 	ConversionOptions,
 	ConversionResult,
 	ProgressEvent,
-	SearchableCopyOptions,
+	TextLayerOptions,
 } from "../src/conversion.ts";
 
 const PDF: PdfSource = { path: "raw/case-01.pdf", basename: "case-01" };
@@ -106,7 +106,7 @@ function page(num: number, total: number, derailed = false): ProgressEvent {
 interface OcrCall {
 	args: [string, string, string];
 	spawnFn: unknown;
-	options: SearchableCopyOptions;
+	options: TextLayerOptions;
 	/** Missing shortPages default to none. */
 	finish: (result: ConversionResult & { shortPages?: number[] }) => void;
 }
@@ -120,7 +120,7 @@ function setup(host = new FakeHost()) {
 		new Promise((finish) => {
 			calls.push({ args: [pdf, out, pdf2md, cwd], spawnFn, options, finish });
 		});
-	const searchableCopy: SearchableCopyFunction = (source, cli, cwd, spawnFn, options = {}) =>
+	const addTextLayer: TextLayerFunction = (source, cli, cwd, spawnFn, options = {}) =>
 		new Promise((resolve) => {
 			ocrCalls.push({
 				args: [source, cli, cwd],
@@ -135,7 +135,7 @@ function setup(host = new FakeHost()) {
 			aborted.push(child);
 		},
 		resolveExecutable: () => "/home/test/bin/pdf2md",
-		searchableCopy,
+		addTextLayer,
 		abortGroup: (child) => {
 			groupAborted.push(child);
 		},
@@ -144,7 +144,7 @@ function setup(host = new FakeHost()) {
 	return { host, calls, ocrCalls, aborted, groupAborted, controller };
 }
 
-const OCR_REQUEST: SearchableCopyRequest = {
+const OCR_REQUEST: TextLayerRequest = {
 	source: PDF,
 	engine: "apple",
 	splitColumns: true,
@@ -594,7 +594,7 @@ test("runOcr: refused while any conversion runs, and without file-system access"
 test("runOcr: a rejected call is reported and the controller is idle again", async () => {
 	const host = new FakeHost();
 	const controller = new ConversionController(host, {
-		searchableCopy: () => Promise.reject(new Error("boom")),
+		addTextLayer: () => Promise.reject(new Error("boom")),
 		resolveReprocessRaw: () => "/home/test/bin/reprocess-raw",
 	});
 

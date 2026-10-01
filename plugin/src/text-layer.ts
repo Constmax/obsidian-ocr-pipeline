@@ -7,7 +7,7 @@
 // "Run with page exemptions…" and reruns only with the list the user
 // confirms. Nothing here touches the Stage-2 preview inventory. Free of
 // Obsidian imports so it runs under `node --test`; the plugin supplies a
-// SearchableCopyHost.
+// TextLayerHost.
 
 import { type ConversionController, type PdfSource } from "./conversion-controller.ts";
 import { DESKTOP_ONLY_MESSAGE, type OcrEngine, type OcrSettings } from "./ocr-settings.ts";
@@ -25,7 +25,7 @@ export interface ExemptionOffer {
 }
 
 /** Everything the action needs from Obsidian. */
-export interface SearchableCopyHost {
+export interface TextLayerHost {
 	/** False on Obsidian mobile, where no CLI can be spawned. */
 	isDesktop: boolean;
 	notify(message: string): void;
@@ -85,7 +85,7 @@ function shortPagesMessage(source: PdfSource, pages: number[]): string {
  * is not usable, the run takes Automatic and says so. The other engines are
  * reported by the CLI itself.
  */
-async function usableEngine(engine: OcrEngine, host: SearchableCopyHost): Promise<OcrEngine> {
+async function usableEngine(engine: OcrEngine, host: TextLayerHost): Promise<OcrEngine> {
 	if (engine !== "paddle") return engine;
 	const problem = await host.checkEngine(engine);
 	if (problem === null) return engine;
@@ -100,10 +100,10 @@ async function usableEngine(engine: OcrEngine, host: SearchableCopyHost): Promis
  * Runs the action for one PDF. `allowPages` is set only by a confirmed
  * exemption rerun; the B5 gate still checks every page not in that list.
  */
-export async function runSearchableCopy(
+export async function runAddTextLayer(
 	source: PdfSource,
 	controller: Pick<ConversionController, "ensureIdle" | "runOcr">,
-	host: SearchableCopyHost,
+	host: TextLayerHost,
 	allowPages?: string,
 ): Promise<void> {
 	if (!host.isDesktop) {
@@ -132,7 +132,7 @@ export async function runSearchableCopy(
 				prefill: mergePageLists(allowPages, result.shortPages),
 				confirm: async (pages) => {
 					const list = normalizePageList(pages);
-					if (list !== null) await runSearchableCopy(source, controller, host, list);
+					if (list !== null) await runAddTextLayer(source, controller, host, list);
 				},
 			});
 		}

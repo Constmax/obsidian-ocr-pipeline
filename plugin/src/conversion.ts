@@ -49,7 +49,7 @@ export interface ConversionOptions {
 import type { OcrEngine } from "./ocr-settings.ts";
 export type { OcrEngine };
 
-export interface SearchableCopyOptions {
+export interface TextLayerOptions {
 	/** Omitted: the CLI default (`auto`). */
 	engine?: OcrEngine;
 	splitColumns?: boolean;
@@ -498,13 +498,13 @@ export async function checkEngine(
  * terminateProcessGroup reaches every descendant. No timeout in the first
  * release: OCR time grows with page count, and the user can cancel.
  */
-export function createSearchableCopy(
+export function addTextLayer(
 	source: string,
 	cli: string,
 	cwd: string,
 	spawnFn: SpawnFunction = spawn,
-	options: SearchableCopyOptions = {},
-): Promise<SearchableCopyResult> {
+	options: TextLayerOptions = {},
+): Promise<TextLayerResult> {
 	const args = [source, "--in-place"];
 	if (options.engine !== undefined) args.push(...engineArgs(options.engine));
 	if (options.splitColumns) args.push("--split-columns");
@@ -530,7 +530,7 @@ export function createSearchableCopy(
 }
 
 /** A Stage-1 result with the pages the B5 gate reported as too short. */
-export interface SearchableCopyResult extends ConversionResult {
+export interface TextLayerResult extends ConversionResult {
 	/** Ascending page numbers; empty unless the B5 gate failed. */
 	shortPages: number[];
 }

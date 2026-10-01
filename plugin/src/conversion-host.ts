@@ -1,4 +1,4 @@
-// Obsidian side of the ConversionController and the searchable-copy action:
+// Obsidian side of the ConversionController and the "Add OCR text layer" action:
 // Notices, vault paths, the inventory, the comparison view, and opening files.
 
 import { FileSystemAdapter, Notice, Platform, TFile, normalizePath, type App } from "obsidian";
@@ -11,7 +11,7 @@ import { PageCases } from "./page-cases.ts";
 import { isConvertible } from "./input-formats.ts";
 import type { Inventory } from "./file-actions.ts";
 import { ExemptionModal } from "./exemption-modal.ts";
-import type { SearchableCopyHost } from "./searchable-copy.ts";
+import type { TextLayerHost } from "./text-layer.ts";
 import type { OcrEngine } from "./ocr-settings.ts";
 import type { Settings } from "./settings.ts";
 
@@ -37,7 +37,7 @@ export function createPageCases(app: App): PageCases | null {
 	return new PageCases((args) => runPageCase(args, resolvePdf2md(), cwd));
 }
 
-export function createSearchableCopyHost(app: App, settings: () => Settings): SearchableCopyHost {
+export function createTextLayerHost(app: App, settings: () => Settings): TextLayerHost {
 	return {
 		isDesktop: Platform.isDesktopApp,
 		notify(message) {
