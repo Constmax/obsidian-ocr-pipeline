@@ -240,7 +240,8 @@ export class SettingsTab extends PluginSettingTab {
 			.setDesc(
 				"Detects two-column pages, recognizes each column on its own, and merges " +
 					"the pages back. Recommended for two-column scripts with Apple Vision or " +
-					"Tesseract; needs pikepdf. PaddleOCR always reads whole pages.",
+					"Tesseract; needs pikepdf. Apple Vision + RapidOCR (Paddle fast) always " +
+					"reads whole pages.",
 			)
 			.addToggle((t) =>
 				t
@@ -267,8 +268,8 @@ export class SettingsTab extends PluginSettingTab {
 		const reason = problem.replace(/\.$/, "");
 		const text =
 			this.plugin.settings.ocrEngine === "paddle"
-				? `PaddleOCR is not usable here: ${reason}. Searchable copies use Automatic until it is.`
-				: `PaddleOCR is not offered: ${reason}.`;
+				? `${ENGINE_LABELS.paddle} is not usable here: ${reason}. Searchable copies use Automatic until it is.`
+				: `${ENGINE_LABELS.paddle} is not offered: ${reason}.`;
 		setting.descEl.createDiv({ cls: "ocr-einstellungen-hinweis", text });
 	}
 

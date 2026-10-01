@@ -104,7 +104,7 @@ async function usableEngine(engine: OcrEngine, host: SearchableCopyHost): Promis
 	const problem = await host.checkEngine(engine);
 	if (problem === null) return engine;
 	host.notify(
-		`OCR Preview: This copy uses Automatic, because PaddleOCR cannot run here — ${problem.replace(/\.$/, "")}. ` +
+		`OCR Preview: This copy uses Automatic, because Apple Vision + RapidOCR (Paddle fast) cannot run here — ${problem.replace(/\.$/, "")}. ` +
 			"Choose another engine in the settings.",
 	);
 	return "auto";
