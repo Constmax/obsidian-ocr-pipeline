@@ -11,6 +11,7 @@ import pytest
 
 import page_cache
 import pdf2md as pdf2md_cli
+from assembly import RecognizedLine
 
 
 REPO = Path(__file__).resolve().parent.parent.parent
@@ -60,15 +61,18 @@ def test_roundtrip_and_mismatched_key_is_a_miss(tmp_path):
         "characters": 0,
         "layout": "single-column",
         "mode": "whole",
-        "lines": [["Text", [10, 20, 900, 40]]],
+        "lines": [RecognizedLine("Text", (10, 20, 900, 40), 0, "kasten1")],
         "trace": ["retry at depth 1"],
     }
 
     target = page_cache.write_page(directory, context, page)
 
     assert target.name == "001.json"
-    assert page_cache.read_page(
-        directory, 1, page_cache.page_key(context, 1)) == page
+    stored = page_cache.read_page(directory, 1, page_cache.page_key(context, 1))
+    assert stored == {**page, "line_format": 2, "lines": [
+        {"text": "Text", "box": [10, 20, 900, 40], "column": 0,
+         "container": "kasten1"}]}
+    assert page_cache.recognized_lines(stored) == page["lines"]
     changed = page_cache.build_context(pdf, {"dpi": 300, "model": "test@1"})
     assert page_cache.read_page(
         directory, 1, page_cache.page_key(changed, 1)) is None
@@ -145,7 +149,7 @@ def test_cached_ocr_page_does_not_import_model(tmp_path, monkeypatch):
         "characters": 0,
         "layout": "einspaltig",
         "mode": "ganz",
-        "lines": [["Cached OCR text", [100, 100, 900, 120]]],
+        "lines": [RecognizedLine("Cached OCR text", (100, 100, 900, 120))],
         "trace": [],
     })
     blocker = tmp_path / "blocked-import"
@@ -235,7 +239,7 @@ def test_checked_in_page_cache_fixture_is_assemblable_without_mlx():
         )
         page = page_cache.read_page(fixture, number, expected_key)
         assert page is not None, f"{path.name}: fixture must pass read_page"
-        result = assemble_paragraphs(page["lines"])
+        result = assemble_paragraphs(page_cache.recognized_lines(page))
         assert result.paragraphs
         paragraphs.append(result.paragraphs)
     assert "§ 985 BGB" in " ".join(paragraphs[0])
@@ -268,7 +272,7 @@ def test_corrupt_box_is_a_miss(tmp_path):
         "characters": 0,
         "layout": "single-column",
         "mode": "whole",
-        "lines": [["Text", [10, 20, 900, 40]]],
+        "lines": [RecognizedLine("Text", (10, 20, 900, 40))],
         "trace": [],
     })
     expected = page_cache.page_key(context, 1)
@@ -276,7 +280,7 @@ def test_corrupt_box_is_a_miss(tmp_path):
 
     payload = json.loads(page_cache.page_path(directory, 1).read_text(
         encoding="utf-8"))
-    payload["page"]["lines"] = [["Text", "not-a-box"]]
+    payload["page"]["lines"] = [{"text": "Text", "box": "not-a-box"}]
     page_cache.page_path(directory, 1).write_text(
         json.dumps(payload), encoding="utf-8")
 
@@ -292,7 +296,7 @@ def test_textlayer_cache_survives_model_upgrade(tmp_path):
     page = AnalyzedPage(
         number=1, image_path=None, text_characters=200,
         layout_type="vektoriell", gutter=None,
-        textlayer_lines=[["Text", [0, 0, 10, 10]]], boxes=[],
+        textlayer_lines=[RecognizedLine("Text", (0, 0, 10, 10))], boxes=[],
         is_diagram=False,
     )
     old_full, old_text = _cache_contexts(ConversionRequest(
@@ -322,3 +326,59 @@ def test_textlayer_entry_without_columns_is_recalculated(tmp_path):
         if key != "column_version"}}
     assert page_cache.page_key(text, 1) != page_cache.page_key(before, 1)
     assert "column_version" not in full["parameters"]
+
+
+def _old_entry(directory, context, page):
+    """An entry as pdf2md wrote it before Issue #144: lines as lists."""
+    directory.mkdir(parents=True, exist_ok=True)
+    page_cache.page_path(directory, page["number"]).write_text(json.dumps({
+        "schema": page_cache.CACHE_SCHEMA,
+        "key": page_cache.page_key(context, page["number"]),
+        "context": context, "page": page}), encoding="utf-8")
+    return page_cache.read_page(directory, page["number"],
+                                page_cache.page_key(context, page["number"]))
+
+
+@pytest.mark.parametrize("columns, expected", [
+    (None, [None, None]),          # before Issue #14
+    ([0, 1], [0, 1]),              # Issue #14: a parallel columns array
+])
+def test_an_old_entry_is_read_as_recognized_lines(tmp_path, columns, expected):
+    """An entry without `line_format` stays a hit and is upgraded on read."""
+    pdf = tmp_path / "source.pdf"
+    pdf.write_bytes(b"pdf contents")
+    context = page_cache.build_context(pdf, {"dpi": 150})
+    page = {"number": 1, "source": "textlayer", "characters": 10,
+            "layout": "vektoriell", "mode": "textlayer", "trace": [],
+            "lines": [["Links", [10, 20, 400, 40]],
+                      ["Im Kasten", [600, 20, 900, 40], "kasten0"]]}
+    if columns is not None:
+        page["columns"] = columns
+    entry = _old_entry(tmp_path / "cache", context, page)
+
+    assert entry is not None
+    assert page_cache.recognized_lines(entry) == [
+        RecognizedLine("Links", (10, 20, 400, 40), expected[0]),
+        RecognizedLine("Im Kasten", (600, 20, 900, 40), expected[1], "kasten0")]
+
+
+@pytest.mark.parametrize("change", [
+    {"line_format": 3},
+    {"line_format": 2, "columns": [None]},
+    {"line_format": 2, "lines": [{"text": "x", "column": True}]},
+    {"columns": [0, 1]},
+])
+def test_a_line_format_it_cannot_read_is_a_miss(tmp_path, change):
+    pdf = tmp_path / "source.pdf"
+    pdf.write_bytes(b"pdf contents")
+    context = page_cache.build_context(pdf, {"dpi": 150})
+    page = {"number": 1, "source": "ocr", "characters": 0, "layout": "x",
+            "mode": "ganz", "trace": [], "lines": [["Text", None]]}
+    assert _old_entry(tmp_path / "cache", context, {**page, **change}) is None
+
+
+def test_a_columns_array_that_does_not_fit_leaves_every_line_unknown():
+    """A page case is not validated like a cache entry; no line is lost."""
+    page = {"lines": [["a", None], ["b", None, "kasten0"]], "columns": [0]}
+    assert page_cache.recognized_lines(page) == [
+        RecognizedLine("a"), RecognizedLine("b", container="kasten0")]

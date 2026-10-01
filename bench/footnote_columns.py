@@ -55,18 +55,18 @@ def words(text):
 
 
 def build(page, context):
-    """Text-layer path of pdf2md: lines, columns, assembly result."""
+    """Text-layer path of pdf2md: raw lines, lines in reading order with
+    their column, assembly result."""
     boxes, _ = L.detect_boxes(page, False,
                               [t[2] for t in L.tables_markdown(page)])
     raw = L.assign_boxes(C.textlayer_lines(page), boxes)
-    lines, columns = L.split_columns_indexed(raw)
-    result = A.assemble_paragraphs(lines, context, columns=columns)
-    return raw, lines, columns, result
+    lines = L.split_columns(raw)
+    return raw, lines, A.assemble_paragraphs(lines, context)
 
 
 def lost(raw, result):
-    return sum((letters(line[0] for line in raw) - letters(result.paragraphs)
-                - letters(result.discarded)).values())
+    return sum((letters(line.text for line in raw) - letters(result.paragraphs)
+                - letters(line.text for line, _ in result.discarded)).values())
 
 
 def blocks(raw, columns):
@@ -78,9 +78,9 @@ def blocks(raw, columns):
     """
     numbers = {}
     for line in raw:
-        m = A.FN_NUMBER.match(line[0].strip())
-        if m and line[1] and line[1][1] >= 800:
-            numbers.setdefault(int(m.group(1)), line[1])
+        m = A.FN_NUMBER.match(line.text.strip())
+        if m and line.box and line.box[1] >= 800:
+            numbers.setdefault(int(m.group(1)), line.box)
     column_of = {n: c for c, ns in enumerate(columns) for n in ns}
     gutter = GUTTER
     out = {}
@@ -93,10 +93,10 @@ def blocks(raw, columns):
         bottom = min(below, default=numbers[n][1] + 200) - 3
         inside = (lambda b: b[2] <= gutter) if column == 0 \
             else (lambda b: b[0] >= gutter)
-        text = [line[0] for line in raw
-                if line[1] and top <= line[1][1] < bottom and inside(line[1])
-                and line[1] != numbers[n]
-                and not A.FN_NUMBER.match(line[0].strip())]
+        text = [line.text for line in raw
+                if line.box and top <= line.box[1] < bottom and inside(line.box)
+                and line.box != numbers[n]
+                and not A.FN_NUMBER.match(line.text.strip())]
         out[n] = (column, " ".join(text))
     return out
 
@@ -115,11 +115,11 @@ def score():
     totals = Counter()
     for entry in truth["pages"]:
         doc, context = open_document(entry["file"])
-        raw, lines, columns, result = build(doc[entry["page"] - 1], context)
+        raw, lines, result = build(doc[entry["page"] - 1], context)
         found = blocks(raw, entry["columns"])
         columns_ok = all(
-            {col for line, col in zip(lines, columns)
-             if line[0].strip() == str(n) and line[1] and line[1][1] >= 800}
+            {line.column for line in lines
+             if line.text.strip() == str(n) and line.box and line.box[1] >= 800}
             == {c} for n, (c, _) in found.items())
         defs = {int(m.group(1)): m.group(2) for p in result.paragraphs
                 for m in [re.match(r"\[\^(\d+)\]: (.*)", p)] if m}
@@ -162,7 +162,7 @@ def regress():
             if number > doc.page_count:
                 continue
             try:
-                raw, _, _, result = build(doc[number - 1], context)
+                raw, _, result = build(doc[number - 1], context)
             except Exception as e:  # noqa: BLE001 - one bad page must not stop the run
                 print(f"  ERROR {name} S.{number}: {e}")
                 continue

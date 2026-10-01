@@ -6,12 +6,11 @@ abbreviation, a box edge or a repeated label (Issue #163).
 """
 import pytest
 
-from assembly import ENUMERATION, assemble_paragraphs
+from assembly import ENUMERATION, RecognizedLine, assemble_paragraphs
 
 
 def z(text, y0, x0=100, x1=900, marker=None):
-    line = [text, (x0, y0, x1, y0 + 12)]
-    return line + [marker] if marker else line
+    return RecognizedLine(text, (x0, y0, x1, y0 + 12), container=marker)
 
 
 @pytest.mark.parametrize("text", [
@@ -181,9 +180,9 @@ def test_box_edge_after_a_sentence_splits_a_model_page():
 def test_label_read_twice_is_dropped():
     out = assemble_paragraphs([
         z("A. Vorbemerkung", 100, x1=400),
-        ["2. Wann ist ein Vertrag ueber den Kauf einer", (60, 130, 800, 146)],
-        ["**2.**", (62, 133, 90, 145)],
-        ["Sache wirksam geschlossen?", (120, 147, 480, 159)],
+        RecognizedLine("2. Wann ist ein Vertrag ueber den Kauf einer", (60, 130, 800, 146)),
+        RecognizedLine("**2.**", (62, 133, 90, 145)),
+        RecognizedLine("Sache wirksam geschlossen?", (120, 147, 480, 159)),
     ], ocr_page=True).paragraphs
     assert out[-1] == ("2. Wann ist ein Vertrag ueber den Kauf einer "
                        "Sache wirksam geschlossen?")
@@ -191,17 +190,17 @@ def test_label_read_twice_is_dropped():
 
 def test_label_of_its_own_line_is_kept():
     out = assemble_paragraphs(filler(40) + [
-        ["**1.**", (79, 100, 107, 112)],
-        ["Begruendetheit", (139, 100, 400, 112)],
+        RecognizedLine("**1.**", (79, 100, 107, 112)),
+        RecognizedLine("Begruendetheit", (139, 100, 400, 112)),
     ], ocr_page=True).paragraphs
     assert out[1] == "**1.**"
 
 
 def test_abbreviation_at_line_end_continues_without_coordinates():
     out = assemble_paragraphs([
-        ["Der Verein hat nichts erlangt, vgl.", None],
-        ["§ 843 IV BGB.", None],
-        ["Ein neuer Absatz beginnt hier.", None],
+        RecognizedLine("Der Verein hat nichts erlangt, vgl.", None),
+        RecognizedLine("§ 843 IV BGB.", None),
+        RecognizedLine("Ein neuer Absatz beginnt hier.", None),
     ]).paragraphs
     assert out == ["Der Verein hat nichts erlangt, vgl. § 843 IV BGB.",
                    "Ein neuer Absatz beginnt hier."]

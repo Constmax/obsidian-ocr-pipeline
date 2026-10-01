@@ -395,14 +395,26 @@ replace positional runner state. Temporary files and repeated-header context are
 scoped to one request. Tests can provide a lightweight OCR adapter and collect
 structured events without invoking argparse or intercepting `sys.exit`.
 
+A page's recognized lines are `RecognizedLine` records (`assembly.py`,
+Issue #144): `text` (bold as `**`), `box` in thousandths or None, `column`
+and `container`. The column is the tile index of a vertical tile (left 0,
+right 1) or what `split_columns()` finds on a text-layer page or a page read
+whole, and None where neither knows it (horizontal tiles, full-width lines).
+The container is `tabelle` or the `kasten{i}` that `assign_boxes()` puts the
+line in. Boxes pass through as recognition gives them:
+`tile_local_axis(mode)` in `conversion.py` names the axis that is still
+measured in the tile (x of either vertical tile, y of either horizontal
+tile); until #146 the boxes of a tiled page are not in page coordinates.
+
 One page's lines become its page block in one place,
 `page_block(lines, context, meta) -> PageBlock` in `conversion.py`: assembly,
 the dictionary pass of an OCR page, the page marker and the diagram callout.
 `BlockContext` holds what a run shares (running lines, wordbook,
 `--dictionary-correct`, `--diagram-image-only`), `PageMeta` what the page adds
-(number, source, marker detail, diagram image name, each line's column);
+(number, source, marker detail, diagram image name);
 `PageMeta.from_cache_entry(entry, diagram_image)` reads it from a page-cache
-entry. The conversion builds every block this way, and the `--pages` merge
+entry. The block also returns the lines assembly discarded, each with its
+reason: `running_line`, `page_number` or `boilerplate`. The conversion builds every block this way, and the `--pages` merge
 counts a kept page's dictionary findings through the same assembly and
 dictionary step. `page_block` needs neither the model nor the PDF, so a
 page-cache entry can be turned into its block again. A block carries no
@@ -519,9 +531,15 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --pages "1,3-5" --out _ocr-preview
 ## Page Cache and `--refresh-cache` (Stage 2)
 
 Every completed page is written atomically below
-`<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains parsed lines with
-their boxes, each line's column (`columns`, Issue #14; None where unknown),
-source and layout metadata, and derailment/repair traces. Each
+`<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains the page's
+recognized lines, source and layout metadata, and derailment/repair traces.
+Lines are stored in `line_format: 2`, one object per line with `text` and,
+where set, `box`, `column` and `container`. Entries written before Issue #144
+have no `line_format`: their lines are `[text, box, container?]` lists, with
+the columns in a parallel `columns` array (Issue #14) or not at all. They stay
+valid and are read through `page_cache.recognized_lines()`, the one upgrade
+path, which page cases use too; a missing column is None. `--lines-dump`
+writes each page's lines in the same object form. Each
 run persists its pages while assembling from memory; a resumed or repeated run
 reads matching pages back from disk instead of recomputing them. Consequently,
 a stopped run resumes at the first missing page by default and a second pass
@@ -630,11 +648,12 @@ A case file (`schema: 2`) holds:
 | Key | Content |
 |---|---|
 | `pdf`, `pdf_sha256` | Source path and the SHA-256 it had when the lines were recognized |
-| `page` | The page-cache entry: recognized lines, source, layout, mode, trace |
+| `page` | The page-cache entry: recognized lines, source, layout, mode, trace; an entry from before Issue #144 is read through `page_cache.recognized_lines()` |
 | `diagram_image`, `diagram_image_only` | What the page block needs besides the lines |
 | `running_lines` | Frozen copy of the source's running lines |
 | `footer_lines` | The running lines among them found in the footer zone; a schema-1 case is upgraded with all its running lines |
 | `produced`, `expected` | The two page blocks, marker line included |
+| `discarded` | The lines the produced block discarded, each a line object with its `reason` (`running_line`, `page_number`, `boilerplate`); missing in cases from before Issue #144 |
 | `note`, `issue` | The user's note and an optional issue number |
 | `status` | `open` or `fixed` |
 | `fault_stage`, `fault_stage_by` | `assembly` or `upstream`; set by `coverage` or by the `user` |

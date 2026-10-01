@@ -3,7 +3,7 @@
 
   python3 -m pytest pdf2md/test/test_outline_headings.py
 """
-from assembly import format_headings
+from assembly import _format_headings as format_headings
 
 
 def test_heading_ending_in_a_legal_form():
