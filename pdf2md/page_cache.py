@@ -31,6 +31,8 @@ class CacheParameters(TypedDict, total=False):
     prompt: str | None
     diagram_image_only: bool
     diagram_pages: list[int]
+    # Textlayer pages only: version of the column assignment they carry.
+    columns: int
 
 
 class CacheContext(TypedDict):

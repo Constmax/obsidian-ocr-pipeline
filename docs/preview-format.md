@@ -84,7 +84,8 @@ Pages marked as diagrams (`herkunft: diagramm`) receive a collapsed callout cont
 
 - Footnotes use Obsidian syntax: `[^1]` inline, `[^1]: ...` at block end.
 - Footnotes are collected per page (block-level rendering prevents footnote collision across page boundaries).
-- Format is generated via `footnotes_obsidian(paragraphs)` in `pdf2md/assembly.py`.
+- Format is generated via `footnotes_obsidian(paragraphs, columns)` in `pdf2md/assembly.py`.
+- A number has one definition per page. When several definitions carry it, the one in the column whose text cites it wins, else the first; the others are appended, number included, to the previous definition of their own column (or to the winner). No digit is dropped.
 
 ## 6. Code Block Edge Case
 

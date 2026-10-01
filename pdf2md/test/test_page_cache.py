@@ -307,3 +307,18 @@ def test_textlayer_cache_survives_model_upgrade(tmp_path):
         page, 1, new_full, new_text)
     assert page_cache.page_key(old_full, 1) != page_cache.page_key(
         new_full, 1)
+
+
+def test_textlayer_entry_without_columns_is_recalculated(tmp_path):
+    """Issue #14: a textlayer entry from before line columns is a miss."""
+    from conversion import ConversionRequest, _cache_contexts
+
+    pdf = tmp_path / "source.pdf"
+    pdf.write_bytes(b"pdf contents")
+    full, text = _cache_contexts(ConversionRequest(
+        pdf=pdf, output_dir=tmp_path / "out"))
+    before = {**text, "parameters": {
+        key: value for key, value in text["parameters"].items()
+        if key != "columns"}}
+    assert page_cache.page_key(text, 1) != page_cache.page_key(before, 1)
+    assert "columns" not in full["parameters"]
