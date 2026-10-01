@@ -556,7 +556,10 @@ def diagram_image_name(pdf: Path, number: int) -> str:
     return f"{pdf.stem}-s{number:03d}.png".replace(" ", "-")
 
 
-def diagram_image(pdf: Path, number: int, image_dir: Path, max_edge=1800):
+DIAGRAM_IMAGE_MAX_EDGE = 1800
+
+
+def diagram_image(pdf: Path, number: int, image_dir: Path):
     """Save a page image and return its filename and path."""
     import fitz
 
@@ -565,7 +568,7 @@ def diagram_image(pdf: Path, number: int, image_dir: Path, max_edge=1800):
     with open_document(pdf) as doc:
         page = doc[number - 1]
         long_side = max(page.rect.width, page.rect.height) or 1
-        zoom = min(max_edge / long_side, 4.0)
+        zoom = min(DIAGRAM_IMAGE_MAX_EDGE / long_side, 4.0)
         page.get_pixmap(matrix=fitz.Matrix(zoom, zoom)).save(image_dir / name)
     return name, image_dir / name
 

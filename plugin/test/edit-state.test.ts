@@ -12,11 +12,16 @@ test("editing from rendered switches to source and back", () => {
 	assert.deepEqual(tracker.toggle("source", true), { editable: false, representationToSet: null });
 });
 
-test("an explicit view switch or a reset cancels the restore", () => {
-	for (const cancel of ["onExplicitRepresentationChange", "reset"] as const) {
-		const tracker = new EditStateTracker();
-		tracker.toggle("rendered", false);
-		tracker[cancel]();
-		assert.deepEqual(tracker.toggle("source", true), { editable: false, representationToSet: null });
-	}
+test("an explicit view switch cancels the restore", () => {
+	const tracker = new EditStateTracker();
+	tracker.toggle("rendered", false);
+	tracker.onExplicitRepresentationChange();
+	assert.deepEqual(tracker.toggle("source", true), { editable: false, representationToSet: null });
+});
+
+test("a reset cancels the restore", () => {
+	const tracker = new EditStateTracker();
+	tracker.toggle("rendered", false);
+	tracker.reset();
+	assert.deepEqual(tracker.toggle("source", true), { editable: false, representationToSet: null });
 });
