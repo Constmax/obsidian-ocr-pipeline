@@ -84,7 +84,6 @@ export type ConvertFunction = (
 
 export type SearchableCopyFunction = (
 	source: string,
-	destination: string,
 	cli: string,
 	cwd: string,
 	spawnFn?: SpawnFunction,
@@ -106,7 +105,6 @@ export interface ControllerDependencies {
 /** A Stage-1 run; paths are vault-relative. */
 export interface SearchableCopyRequest {
 	source: PdfSource;
-	destination: string;
 	engine: OcrEngine;
 	splitColumns: boolean;
 	/** Pages exempt from the B5 gate, e.g. "1,5-7". */
@@ -232,7 +230,7 @@ export function classifyOcrFailure(result: ConversionResult): FailureDescription
 	}
 
 	const extra = detail.length > 0 ? ` — ${detail.replace(/\.$/, "")}` : "";
-	return { kind, message: `OCR Preview: Searchable copy failed (${codeText})${extra}.` };
+	return { kind, message: `OCR Preview: OCR text layer failed (${codeText})${extra}.` };
 }
 
 export class ConversionController {
@@ -350,11 +348,11 @@ export class ConversionController {
 	}
 
 	/**
-	 * Stage 1: writes a searchable copy of the source to `request.destination`
-	 * with `reprocess-raw --output`. Progress is indeterminate. Cancellation and
+	 * Stage 1: adds a text layer to the source PDF itself with
+	 * `reprocess-raw --in-place`. Progress is indeterminate. Cancellation and
 	 * failures are reported here, except a B5 failure with short pages: that one
-	 * and success are left to the caller, which offers page exemptions or opens
-	 * the new PDF. Resolves with the CLI result, or null if nothing ran.
+	 * and success are left to the caller, which offers page exemptions or
+	 * reports success. Resolves with the CLI result, or null if nothing ran.
 	 */
 	async runOcr(request: SearchableCopyRequest): Promise<SearchableCopyResult | null> {
 		if (!this.ensureIdle()) return null;
@@ -363,17 +361,16 @@ export class ConversionController {
 		try {
 			const base = this.host.vaultBasePath();
 			if (base === null) {
-				this.host.notify("OCR Preview: A searchable copy requires file system access (Desktop).");
+				this.host.notify("OCR Preview: An OCR text layer requires file system access (Desktop).");
 				return null;
 			}
 			const progress = this.host.showProgress(
-				`OCR Preview: Creating searchable copy of "${name}" …`,
+				`OCR Preview: Adding OCR text layer to "${name}" …`,
 				() => this.cancel(),
 			);
 			this.progress = progress;
 			const result = await this.searchableCopy(
 				request.source.path,
-				request.destination,
 				this.resolveReprocessRaw(),
 				base,
 				undefined,
@@ -393,7 +390,7 @@ export class ConversionController {
 			this.progress = null;
 			if (result.code !== 0) {
 				if (this.cancelRequested) {
-					this.host.notify(`OCR Preview: Searchable copy of "${name}" cancelled — no file written.`);
+					this.host.notify(`OCR Preview: OCR text layer for "${name}" cancelled — the PDF is unchanged.`);
 					// A cancelled run never leads to page exemptions.
 					return { ...result, shortPages: [] };
 				}
@@ -403,7 +400,7 @@ export class ConversionController {
 			}
 			return result;
 		} catch (err) {
-			this.host.notify(`OCR Preview: Searchable copy failed — ${String(err)}.`);
+			this.host.notify(`OCR Preview: OCR text layer failed — ${String(err)}.`);
 			return null;
 		} finally {
 			this.end();
