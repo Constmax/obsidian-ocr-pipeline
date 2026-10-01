@@ -23,7 +23,7 @@ from assembly import (RUNNING_FOOTER_ZONE, RUNNING_HEADER_ZONE,
                       build_frontmatter, clean_text, merge_fragments,
                       page_marker, running_text, split_preview)
 from layout import (assign_boxes, detect_boxes, detect_layout, image_ratio,
-                    split_columns, tables_markdown)
+                    split_columns_indexed, tables_markdown)
 from ocr import (CHARACTERS_PER_INK, OVERLAP, TOKEN_MAX, _ink_amount,
                  tile_horizontally, tile_lines, tile_vertically, trim_overlap)
 
@@ -279,13 +279,16 @@ class PageMeta:
     source_detail: str = ""
     # File name of the page image; set for a diagram page only.
     diagram_image: str | None = None
+    # Each line's column, None where unknown (Issue #14).
+    columns: list[int | None] | None = None
 
     @classmethod
     def from_cache_entry(cls, entry, diagram_image: str | None = None) -> PageMeta:
         """The meta of a page as its page-cache entry describes it."""
         return cls(number=entry["number"], source=entry["source"],
                    source_detail=f"{entry['layout']}, {entry['mode']}",
-                   diagram_image=diagram_image)
+                   diagram_image=diagram_image,
+                   columns=entry.get("columns"))
 
 
 @dataclass(frozen=True)
@@ -296,13 +299,14 @@ class PageBlock:
     findings: list[dictionary.Finding]
 
 
-def _page_content(lines, context: BlockContext, source: str):
+def _page_content(lines, context: BlockContext, source: str, columns=None):
     """Assemble a page's lines and run the dictionary pass of an OCR page.
 
     Returns `(paragraphs, discarded, findings)`.
     """
     ocr_page = source == "ocr"
-    assembled = assemble_paragraphs(lines, context.assembly, ocr_page)
+    assembled = assemble_paragraphs(
+        lines, context.assembly, ocr_page, columns)
     paragraphs, findings = assembled.paragraphs, []
     if ocr_page and lines:
         paragraphs, findings = dictionary.check(
@@ -320,7 +324,7 @@ def page_block(lines, context: BlockContext, meta: PageMeta) -> PageBlock:
     no PDF and no file access.
     """
     paragraphs, discarded, findings = _page_content(
-        lines, context, meta.source)
+        lines, context, meta.source, meta.columns)
 
     diagram = meta.diagram_image is not None
     markdown = page_marker(meta.number, "diagramm" if diagram else (
@@ -598,10 +602,12 @@ def _cache_contexts(request: ConversionRequest) -> tuple[dict, dict]:
         "diagram_pages": sorted(request.forced_diagram_pages),
     }
     full = page_cache.build_context(request.pdf, parameters)
+    # A textlayer page is cheap to rebuild, so one written before it carried
+    # its line columns (Issue #14) is recalculated; OCR pages are kept.
     textlayer = page_cache.build_context(
         request.pdf,
         {key: value for key, value in parameters.items()
-         if key not in _TEXTLAYER_IGNORED_KEYS},
+         if key not in _TEXTLAYER_IGNORED_KEYS} | {"column_version": 1},
     )
     return full, textlayer
 
@@ -698,7 +704,7 @@ def _merged_document(request, existing, finished, cache_dir, block_context,
                     block_context,
                     wordbook=dictionary.load(list(request.dictionaries)))
             _, _, findings = _page_content(
-                entry["lines"], block_context, source)
+                entry["lines"], block_context, source, entry.get("columns"))
             corrected += sum(item.count for item in findings if item.corrected)
             suspect += sum(item.count for item in findings if not item.corrected)
     for page in fresh.values():
@@ -874,8 +880,10 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 entry = cache_hit(page)
                 reused = entry is not None
 
+                columns = None
                 if reused:
                     lines = entry["lines"]
+                    columns = entry.get("columns")
                     trace = list(entry.get("trace", []))
                     source = entry["source"]
                     layout_type = entry["layout"]
@@ -885,7 +893,8 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                                      "Textlayer, without model" if source == "textlayer"
                                      else f"{layout_type}, {mode}")
                 elif page.textlayer_lines is not None:
-                    lines = split_columns(assign_boxes(page.textlayer_lines, page.boxes))
+                    lines, columns = split_columns_indexed(
+                        assign_boxes(page.textlayer_lines, page.boxes))
                     source = "textlayer"
                     layout_type, mode = page.layout_type, "textlayer"
                     source_detail = "Textlayer, without model"
@@ -927,7 +936,9 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         factor = (page.text_characters / ink
                                   if calibrated else CHARACTERS_PER_INK)
                     lines = []
-                    for part, window in tiles:
+                    # A vertical tile is a column; horizontal bands are not.
+                    columns = [] if mode != "waagerecht" else None
+                    for column, (part, window) in enumerate(tiles):
                         parsed, tile_trace = tile_lines(
                             part, ocr_adapter, not request.no_bold, factor,
                             dpi or request.dpi, calibrated,
@@ -936,11 +947,17 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         trace += tile_trace
                         if window:
                             parsed = assign_boxes(parsed, page.boxes, window)
-                        ordered = (split_columns(parsed) if len(tiles) == 1
-                                   else sorted(parsed,
-                                               key=lambda line: line[1][1]
-                                               if line[1] else 0))
-                        lines += trim_overlap(lines, ordered)
+                        if len(tiles) == 1:
+                            ordered, tile_columns = split_columns_indexed(parsed)
+                        else:
+                            ordered = sorted(parsed, key=lambda line: line[1][1]
+                                             if line[1] else 0)
+                            tile_columns = [column] * len(ordered)
+                        kept = trim_overlap(lines, ordered)
+                        lines += kept
+                        if columns is not None:
+                            # trim_overlap drops lines from the front only.
+                            columns += tile_columns[len(ordered) - len(kept):]
                     source = "ocr"
                     layout_type = page.layout_type
                     source_detail = f"{page.layout_type}, {mode}"
@@ -952,6 +969,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         "number": page.number, "source": source,
                         "characters": page.text_characters, "layout": layout_type,
                         "mode": mode, "lines": lines, "trace": trace,
+                        "columns": columns,
                     }
                     page_cache.write_page(cache_dir, write_context, cached_page)
                     entry = cached_page

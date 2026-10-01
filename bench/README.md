@@ -17,6 +17,7 @@ directly inside the vault, the parent directory is detected automatically.
 | `python bench/regress_steg.py` | Compare the current column-gap heuristic with its previous implementation across vector pages | No |
 | `python bench/regress_randlabel.py` | Check margin-label promotion across vector pages | No |
 | `python bench/regress_randmarke.py` | Check the margin-label heading exception across vector pages | No |
+| `python bench/footnote_columns.py [--all]` | Check the footnote blocks of two-column pages against `footnote_columns_truth.json` (issue #14); `--all` counts letters lost on every vector page | No |
 | `python bench/randlabel_debug.py PDF PAGE` | Inspect OCR line geometry around a margin label | Yes |
 | `python bench/reading_order.py COMMAND` | Build the hand-checked reading-order truth set and compare Stage-1 workflows on it (`prepare`, `recognize`, `overlay`, `run`, `score`; issue #69) | `recognize` and the Paddle workflows |
 | `python bench/structure_bench.py run` | Assemble the 20 hand-checked structure-truth pages through the real pipeline and score headings, paragraph boundaries, footnotes, and order (issue #20) | No (vector pages; the Issue #11 page cache serves repeats) |

@@ -50,9 +50,11 @@ def test_no_phantom_definitions():
                    "77 (78); Michl, Jura 2015."]
 
 
-def test_duplicate_number_appends():
+def test_duplicate_number_appends_with_its_digits():
+    # A number stands once on a page; a second definition keeps its digits
+    # so no text is lost (Issue #14).
     out = footnotes_obsidian(["Text.1", "1 First source.", "1 Second source."])
-    assert out == ["Text.[^1]", "", "[^1]: First source. Second source."]
+    assert out == ["Text.[^1]", "", "[^1]: First source. 1 Second source."]
 
 
 def test_mark_after_abbreviation_ending_in_roman_letter():

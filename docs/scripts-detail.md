@@ -400,7 +400,7 @@ One page's lines become its page block in one place,
 the dictionary pass of an OCR page, the page marker and the diagram callout.
 `BlockContext` holds what a run shares (running lines, wordbook,
 `--dictionary-correct`, `--diagram-image-only`), `PageMeta` what the page adds
-(number, source, marker detail, diagram image name);
+(number, source, marker detail, diagram image name, each line's column);
 `PageMeta.from_cache_entry(entry, diagram_image)` reads it from a page-cache
 entry. The conversion builds every block this way, and the `--pages` merge
 counts a kept page's dictionary findings through the same assembly and
@@ -519,7 +519,8 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --pages "1,3-5" --out _ocr-preview
 
 Every completed page is written atomically below
 `<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains parsed lines with
-their boxes, source and layout metadata, and derailment/repair traces. Each
+their boxes, each line's column (`columns`, Issue #14; None where unknown),
+source and layout metadata, and derailment/repair traces. Each
 run persists its pages while assembling from memory; a resumed or repeated run
 reads matching pages back from disk instead of recomputing them. Consequently,
 a stopped run resumes at the first missing page by default and a second pass
@@ -529,7 +530,10 @@ The cache key includes the PDF SHA-256 digest, DPI, tiling threshold, bold and
 OCR-only modes, retry count, prompt, diagram-image mode, and the OCR model name
 and locally resolved revision. Textlayer pages never touch the model, so their
 key excludes the model name, revision, and prompt — a model upgrade does not
-discard them. An unresolvable model revision never reuses a cached OCR page:
+discard them. It carries a column version instead, so textlayer pages cached
+before line columns existed are recalculated. OCR pages cached before then
+are kept and assemble without columns; `--refresh-cache` recognizes them
+again with columns. An unresolvable model revision never reuses a cached OCR page:
 the fingerprint is unique per run, so unknown versions are always recalculated.
 A changed input or parameter is otherwise a cache miss; corrupt entries, invalid
 boxes, and older-schema entries are likewise recalculated.

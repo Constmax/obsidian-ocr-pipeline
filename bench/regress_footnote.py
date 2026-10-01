@@ -80,7 +80,7 @@ def main():
             n += 1
             try:
                 new = seite_bauen(page, context)
-                A.footnotes_obsidian = lambda ps: alt_footnotes(ps)
+                A.footnotes_obsidian = lambda ps, columns=None: alt_footnotes(ps)
                 old = seite_bauen(page, context)
             except Exception as e:  # noqa: BLE001 - one bad page must not stop the run
                 print(f"  ERROR {datei} S.{nr}: {e}")
