@@ -61,7 +61,7 @@ const ENGINE_LABELS: Record<OcrEngine, string> = {
 	auto: "Automatic",
 	apple: "Apple Vision",
 	tesseract: "Tesseract",
-	paddle: "PaddleOCR (fast)",
+	paddle: "Apple Vision + RapidOCR (Paddle fast)",
 };
 
 export class SettingsTab extends PluginSettingTab {
@@ -213,8 +213,10 @@ export class SettingsTab extends PluginSettingTab {
 			.setName("OCR engine")
 			.setDesc(
 				"Used for new OCR text layers. Automatic uses Apple Vision when its " +
-					"OCRmyPDF plugin is installed and Tesseract otherwise. PaddleOCR (fast) " +
-					"keeps two-column pages in reading order without a column split; it is " +
+					"OCRmyPDF plugin is installed and Tesseract otherwise. Apple Vision + " +
+					"RapidOCR (Paddle fast) reads with Apple Vision, re-reads citations with " +
+					"RapidOCR, and keeps two-column pages in reading order without a column " +
+					"split; it is " +
 					"offered once the installation check passes.",
 			)
 			.addDropdown((d) => {
@@ -238,7 +240,8 @@ export class SettingsTab extends PluginSettingTab {
 			.setDesc(
 				"Detects two-column pages, recognizes each column on its own, and merges " +
 					"the pages back. Recommended for two-column scripts with Apple Vision or " +
-					"Tesseract; needs pikepdf. PaddleOCR always reads whole pages.",
+					"Tesseract; needs pikepdf. Apple Vision + RapidOCR (Paddle fast) always " +
+					"reads whole pages.",
 			)
 			.addToggle((t) =>
 				t
@@ -265,8 +268,8 @@ export class SettingsTab extends PluginSettingTab {
 		const reason = problem.replace(/\.$/, "");
 		const text =
 			this.plugin.settings.ocrEngine === "paddle"
-				? `PaddleOCR is not usable here: ${reason}. OCR text layers use Automatic until it is.`
-				: `PaddleOCR is not offered: ${reason}.`;
+				? `${ENGINE_LABELS.paddle} is not usable here: ${reason}. OCR text layers use Automatic until it is.`
+				: `${ENGINE_LABELS.paddle} is not offered: ${reason}.`;
 		setting.descEl.createDiv({ cls: "ocr-einstellungen-hinweis", text });
 	}
 
