@@ -6,9 +6,7 @@ abbreviation, a box edge or a repeated label (Issue #163).
 """
 import pytest
 
-from assembly import ENUMERATION, AssemblyContext, assemble_paragraphs
-
-OCR = AssemblyContext(ocr_page=True)
+from assembly import ENUMERATION, assemble_paragraphs
 
 
 def z(text, y0, x0=100, x1=900, marker=None):
@@ -63,7 +61,7 @@ def bold_run_in_a_sentence():
 
 
 def test_bold_line_inside_a_sentence_continues_on_a_model_page():
-    out = assemble_paragraphs(bold_run_in_a_sentence(), OCR).paragraphs
+    out = assemble_paragraphs(bold_run_in_a_sentence(), ocr_page=True).paragraphs
     assert out[1] == ("Der Mieter darf die Wohnung untervermieten, wenn es "
                       "um einen **kurzen Zeitraum** geht, vgl. § 540 I BGB.")
 
@@ -74,7 +72,7 @@ def test_bold_line_after_an_article_continues_on_a_model_page():
         z("**Pflicht zur Herausgabe aus § 667 BGB**", 112, x1=600),
         z("unmittelbar.", 124, x1=200),
     ]
-    out = assemble_paragraphs(lines, OCR).paragraphs
+    out = assemble_paragraphs(lines, ocr_page=True).paragraphs
     assert out[1] == ("Nach einer Ansicht folgt die **Pflicht zur "
                       "Herausgabe aus § 667 BGB** unmittelbar.")
 
@@ -90,7 +88,7 @@ def test_body_after_a_bold_heading_may_start_lowercase_on_a_model_page():
         z("**Meinungsstreit**", 76, x1=300),
         z("h.M.: Der Anspruch ist ausgeschlossen, weil", 88, x1=700),
         z("die Frist abgelaufen ist.", 100, x1=400),
-    ], OCR).paragraphs
+    ], ocr_page=True).paragraphs
     assert out[1:] == ["**Meinungsstreit**",
                        "h.M.: Der Anspruch ist ausgeschlossen, weil die "
                        "Frist abgelaufen ist."]
@@ -100,7 +98,7 @@ def test_bold_heading_after_a_sentence_still_separates_on_a_model_page():
     out = assemble_paragraphs(filler(40) + [
         z("**II. Anspruch aus § 823 I BGB**", 100, x1=500),
         z("Der Anspruch setzt eine Rechtsgutsverletzung voraus.", 112),
-    ], OCR).paragraphs
+    ], ocr_page=True).paragraphs
     assert out[1:] == ["### II. Anspruch aus § 823 I BGB",
                        "Der Anspruch setzt eine Rechtsgutsverletzung voraus."]
 
@@ -110,7 +108,7 @@ def test_wrapped_heading_ending_on_preposition_stays_one_on_a_model_page():
         z("**1. Anspruch auf Kaufpreiszahlung aus**", 100, x1=500),
         z("**dem Kaufvertrag gem. § 433 II BGB**", 112, x1=500),
         z("Es muesste ein wirksamer Vertrag vorliegen.", 124, x1=600),
-    ], OCR).paragraphs
+    ], ocr_page=True).paragraphs
     assert out[1:] == ["#### 1. Anspruch auf Kaufpreiszahlung aus dem "
                        "Kaufvertrag gem. § 433 II BGB",
                        "Es muesste ein wirksamer Vertrag vorliegen."]
@@ -126,7 +124,7 @@ def box_crossing():
 
 
 def test_box_edge_inside_a_sentence_does_not_split_a_model_page():
-    out = assemble_paragraphs(box_crossing(), OCR).paragraphs
+    out = assemble_paragraphs(box_crossing(), ocr_page=True).paragraphs
     assert len(out) == 1
 
 
@@ -140,7 +138,7 @@ def test_box_edge_mid_sentence_does_not_split_a_model_page(last):
         z(last, 100),
         z("Schadensersatz statt der Leistung verlangen.", 112, x1=600,
           marker="kasten1"),
-    ], OCR).paragraphs
+    ], ocr_page=True).paragraphs
     assert len(out) == 1
 
 
@@ -151,7 +149,7 @@ def test_lowercase_line_after_a_period_crosses_a_box_edge_on_a_model_page():
           x1=600),
         z("insoweit gilt dasselbe wie beim Herausgabeanspruch.", 124,
           x1=600, marker="kasten1"),
-    ], OCR).paragraphs
+    ], ocr_page=True).paragraphs
     assert len(out) == 1
 
 
@@ -166,7 +164,7 @@ def test_box_edge_after_a_colon_or_a_scheme_line_splits_a_model_page(last):
         z(last, 100, x1=500),
         z("Voraussetzung ist ein wirksamer Vertrag.", 112, x1=500,
           marker="kasten1"),
-    ], OCR).paragraphs
+    ], ocr_page=True).paragraphs
     assert out[1:] == [last, "Voraussetzung ist ein wirksamer Vertrag."]
 
 
@@ -176,7 +174,7 @@ def test_box_edge_after_a_sentence_splits_a_model_page():
         z("Ob der Kaeufer den Mangel spaeter verursacht hat, ist", 112,
           marker="kasten1"),
         z("durch Beweisaufnahme zu klaeren.", 124, x1=400, marker="kasten1"),
-    ], OCR).paragraphs
+    ], ocr_page=True).paragraphs
     assert len(out) == 2
 
 
@@ -186,7 +184,7 @@ def test_label_read_twice_is_dropped():
         ["2. Wann ist ein Vertrag ueber den Kauf einer", (60, 130, 800, 146)],
         ["**2.**", (62, 133, 90, 145)],
         ["Sache wirksam geschlossen?", (120, 147, 480, 159)],
-    ], OCR).paragraphs
+    ], ocr_page=True).paragraphs
     assert out[-1] == ("2. Wann ist ein Vertrag ueber den Kauf einer "
                        "Sache wirksam geschlossen?")
 
@@ -195,7 +193,7 @@ def test_label_of_its_own_line_is_kept():
     out = assemble_paragraphs(filler(40) + [
         ["**1.**", (79, 100, 107, 112)],
         ["Begruendetheit", (139, 100, 400, 112)],
-    ], OCR).paragraphs
+    ], ocr_page=True).paragraphs
     assert out[1] == "**1.**"
 
 
