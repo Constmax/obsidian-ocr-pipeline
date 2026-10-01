@@ -293,7 +293,6 @@ def _parser():
     parser.add_argument("--dpi", type=int, default=150)
     parser.add_argument("--tile-from", "--kachel-ab", dest="tile_from", type=int,
                         default=TILE_THRESHOLD)
-    parser.add_argument("--no-bold", "--kein-fett", dest="no_bold", action="store_true")
     parser.add_argument("--ocr-only", "--nur-ocr", dest="ocr_only", action="store_true")
     parser.add_argument("--retries", "--neuversuche", dest="retries", type=int, default=1)
     parser.add_argument("--lines-dump", "--zeilen-dump", dest="lines_dump", type=Path)
@@ -307,8 +306,6 @@ def _parser():
                         dest="dictionary_report", type=Path, metavar="FILE")
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--image-dir", "--bild-dir", dest="image_dir", type=Path)
-    parser.add_argument("--image-max-edge", "--bild-max-kante",
-                        dest="image_max_edge", type=int, default=1800)
     parser.add_argument("--diagram-pages", "--diagramm-seiten",
                         dest="diagram_pages", default="")
     parser.add_argument("--diagram-image-only", "--diagramm-nur-bild",
@@ -359,12 +356,11 @@ def main():
     cancellation.install()
     request = ConversionRequest(
         pdf=source, output_dir=args.out, dpi=args.dpi, tile_from=args.tile_from,
-        no_bold=args.no_bold, ocr_only=args.ocr_only, retries=args.retries,
+        ocr_only=args.ocr_only, retries=args.retries,
         lines_dump=args.lines_dump, no_dictionary=args.no_dictionary,
         dictionaries=tuple(args.dictionary),
         dictionary_correct=args.dictionary_correct,
         dictionary_report=args.dictionary_report, image_dir=args.image_dir,
-        image_max_edge=args.image_max_edge,
         forced_diagram_pages=frozenset(forced),
         selected_pages=frozenset(selection) if selection is not None else None,
         diagram_image_only=args.diagram_image_only, model_name=MODEL,

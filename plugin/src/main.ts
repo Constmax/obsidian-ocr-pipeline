@@ -8,7 +8,6 @@ import { VIEW_TYPE, OcrComparisonView, PdfSelectModal, PageSelectModal } from ".
 import { Inventory } from "./file-actions.ts";
 import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
 import { parseOcrSettings } from "./ocr-settings.ts";
-import { LEGACY_FOLDERS, LEGACY_PLUGIN_ID, legacyStart } from "./legacy-install.ts";
 import { ConversionController } from "./conversion-controller.ts";
 import { isConvertible } from "./input-formats.ts";
 import { createConversionHost, createSearchableCopyHost } from "./conversion-host.ts";
@@ -136,84 +135,45 @@ export default class OcrPreviewPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		let saved = (await this.loadData()) as Record<string, unknown> | null;
-		// A fresh install may follow the pre-rename plugin (Issue #104): start
-		// from its data or its folders instead of hiding existing previews.
-		// The adapter checks the disk directly — the vault index is not
-		// complete this early in onload.
-		let carriedOver = false;
-		if (!saved) {
-			const adapter = this.app.vault.adapter;
-			saved = legacyStart(await this.readLegacyData(), {
-				legacyFolder: await adapter.exists(LEGACY_FOLDERS.previewFolder),
-				currentFolder: await adapter.exists(DEFAULT_SETTINGS.previewFolder),
-			});
-			carriedOver = saved !== null;
-		}
+		const saved = (await this.loadData()) as Record<string, unknown> | null;
 		if (saved) {
-			const migrated: Partial<Settings> = {};
+			const loaded: Partial<Settings> = {};
 			const str = (k: string): string | undefined => {
 				const val = saved[k];
 				return typeof val === "string" ? val : undefined;
 			};
-			const previewFolder = str("previewFolder") ?? str("vorschauOrdner");
-			if (previewFolder) migrated.previewFolder = previewFolder;
+			const previewFolder = str("previewFolder");
+			if (previewFolder) loaded.previewFolder = previewFolder;
 
-			const acceptedFolder = str("acceptedFolder") ?? str("akzeptiertOrdner");
-			if (acceptedFolder) migrated.acceptedFolder = acceptedFolder;
+			const acceptedFolder = str("acceptedFolder");
+			if (acceptedFolder) loaded.acceptedFolder = acceptedFolder;
 
-			const rejectedFolder = str("rejectedFolder") ?? str("abgelehntOrdner");
-			if (rejectedFolder) migrated.rejectedFolder = rejectedFolder;
+			const rejectedFolder = str("rejectedFolder");
+			if (rejectedFolder) loaded.rejectedFolder = rejectedFolder;
 
-			const statusFile = str("statusFile") ?? str("statusDatei");
-			if (statusFile) migrated.statusFile = statusFile;
+			const statusFile = str("statusFile");
+			if (statusFile) loaded.statusFile = statusFile;
 
-			if (saved["markdownView"]) migrated.markdownView = saved["markdownView"] as "rendered" | "source";
-			else if (saved["markdownAnsicht"]) migrated.markdownView = saved["markdownAnsicht"] === "quelltext" ? "source" : "rendered";
+			if (saved["markdownView"]) loaded.markdownView = saved["markdownView"] as "rendered" | "source";
 
-			const operationMode = str("operationMode") ?? str("bedienmodus");
-			if (operationMode) {
-				migrated.operationMode =
-					operationMode === "workbench" || operationMode === "werkbank"
-						? "workbench"
-						: "review-flow";
-			}
+			const operationMode = str("operationMode");
+			if (operationMode) loaded.operationMode = operationMode === "workbench" ? "workbench" : "review-flow";
 
-			if (saved["columnWidths"]) migrated.columnWidths = saved["columnWidths"] as [number, number, number];
-			else if (saved["spaltenbreiten"]) migrated.columnWidths = saved["spaltenbreiten"] as [number, number, number];
+			if (saved["columnWidths"]) loaded.columnWidths = saved["columnWidths"] as [number, number, number];
 
-			if (typeof saved["pdfZoomMax"] === "number") migrated.pdfZoomMax = saved["pdfZoomMax"];
-			if (typeof saved["syncActive"] === "boolean") migrated.syncActive = saved["syncActive"];
-			else if (typeof saved["syncAktiv"] === "boolean") migrated.syncActive = saved["syncAktiv"];
+			if (typeof saved["pdfZoomMax"] === "number") loaded.pdfZoomMax = saved["pdfZoomMax"];
+			if (typeof saved["syncActive"] === "boolean") loaded.syncActive = saved["syncActive"];
 
-			if (typeof saved["mdEagerLimit"] === "number") migrated.mdEagerLimit = saved["mdEagerLimit"];
+			if (typeof saved["mdEagerLimit"] === "number") loaded.mdEagerLimit = saved["mdEagerLimit"];
 
 			// OCR engine and column split: data from before these settings and
 			// invalid values (e.g. an engine this version does not offer) fall
 			// back to the defaults field by field.
-			Object.assign(migrated, parseOcrSettings(saved));
+			Object.assign(loaded, parseOcrSettings(saved));
 
-			this.settings = { ...DEFAULT_SETTINGS, ...migrated };
+			this.settings = { ...DEFAULT_SETTINGS, ...loaded };
 		} else {
 			this.settings = { ...DEFAULT_SETTINGS };
-		}
-		if (carriedOver) {
-			await this.saveSettings();
-			new Notice(
-				`OCR Preview: Settings taken over from the former install (${LEGACY_PLUGIN_ID}) — previews stay in ${this.settings.previewFolder}.`,
-			);
-		}
-	}
-
-	/** data.json of the pre-rename plugin id, or null if absent or unreadable. */
-	private async readLegacyData(): Promise<unknown> {
-		const path = normalizePath(
-			`${this.app.vault.configDir}/plugins/${LEGACY_PLUGIN_ID}/data.json`,
-		);
-		try {
-			return JSON.parse(await this.app.vault.adapter.read(path)) as unknown;
-		} catch {
-			return null;
 		}
 	}
 

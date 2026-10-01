@@ -141,8 +141,7 @@ if not isinstance(enabled, list):
     enabled = []
 updated = [entry for entry in enabled if entry != legacy_id]
 if legacy_id in enabled:
-    print(f"   disabled: {legacy_id} (pre-rename copy; its settings are taken over"
-          " on first start, then its folder can be deleted)")
+    print(f"   disabled: {legacy_id} (pre-rename copy; its folder can be deleted)")
 if plugin_id in updated:
     print(f"   already active: {plugin_id}")
 else:

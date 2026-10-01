@@ -152,10 +152,6 @@ VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh --enable
 - `--enable` also enables the plugin in `community-plugins.json` and disables
   the pre-rename id `ocr-vorschau`. Without it: Settings → Community Plugins →
   Enable "OCR Preview". Reload once (`Cmd+R`) either way.
-- Coming from the pre-rename install (`plugins/ocr-vorschau/`): on its first
-  start the plugin takes over that install's `data.json`, or — without one —
-  keeps an existing `_ocr-vorschau/` folder. Delete `plugins/ocr-vorschau/`
-  afterwards.
 - Usage: [review-view.md](review-view.md).
 
 ## Verification
