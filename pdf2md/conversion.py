@@ -17,9 +17,11 @@ from typing import Any, Callable, Protocol
 import cancellation
 import dictionary
 import page_cache
-from assembly import (AssemblyContext, PreviewFormatError, as_callout,
-                      assemble_paragraphs, build_document, build_frontmatter,
-                      clean_text, merge_fragments, page_marker, split_preview)
+from assembly import (RUNNING_FOOTER_ZONE, RUNNING_HEADER_ZONE,
+                      RUNNING_LABEL_ZONE, AssemblyContext, PreviewFormatError,
+                      as_callout, assemble_paragraphs, build_document,
+                      build_frontmatter, clean_text, merge_fragments,
+                      page_marker, running_text, split_preview)
 from layout import (assign_boxes, detect_boxes, detect_layout, image_ratio,
                     split_columns, tables_markdown)
 from ocr import (CHARACTERS_PER_INK, OVERLAP, TOKEN_MAX, _ink_amount,
@@ -299,9 +301,10 @@ def _page_content(lines, context: BlockContext, source: str):
 
     Returns `(paragraphs, discarded, findings)`.
     """
-    assembled = assemble_paragraphs(lines, context.assembly)
+    ocr_page = source == "ocr"
+    assembled = assemble_paragraphs(lines, context.assembly, ocr_page)
     paragraphs, findings = assembled.paragraphs, []
-    if source == "ocr" and lines:
+    if ocr_page and lines:
         paragraphs, findings = dictionary.check(
             paragraphs, context.wordbook, context.dictionary_correct)
     return paragraphs, assembled.discarded, findings
@@ -367,31 +370,63 @@ class ConversionResult:
     dictionary_findings: tuple[dict[str, Any], ...] = ()
 
 
-def running_lines(doc, header_zone=0.09, footer_zone=0.93, min_pages=2):
-    """Return repeated header/footer texts for one document."""
+# A line in the header or footer zone is a running line once it repeats on
+# this many pages; a course label under the header rule on this many and on
+# two thirds of the pages (Issue #161).
+RUNNING_MIN_PAGES = 2
+LABEL_MIN_PAGES = 3
+
+
+def assembly_context(doc) -> AssemblyContext:
+    """The running lines of one document, found in its text layer.
+
+    A line in the header or footer zone counts once it repeats on
+    `RUNNING_MIN_PAGES` pages. A course label under the header rule
+    ("Kursreihe-B-7", Issue #161) sits lower, down to `RUNNING_LABEL_ZONE`,
+    where slide titles and body lines repeat as well; there a line counts
+    only when it repeats on two thirds of the pages, and on at least
+    `LABEL_MIN_PAGES`. The running lines of the footer zone are its footer
+    lines.
+    """
     from collections import Counter
 
-    counter = Counter()
+    edge_pages, label_pages, footer_pages = Counter(), Counter(), Counter()
     for i in range(doc.page_count):
         page = doc[i]
         height = page.rect.height or 1
-        seen = set()
+        at_edge, under_rule, at_footer = set(), set(), set()
         for block in page.get_text("dict")["blocks"]:
             if block.get("type") != 0:
                 continue
             for line in block["lines"]:
-                rel = ((line["bbox"][1] + line["bbox"][3]) / 2) / height
-                if not (rel <= header_zone or rel >= footer_zone):
+                centre = ((line["bbox"][1] + line["bbox"][3]) / 2) / height
+                header = centre <= RUNNING_HEADER_ZONE / 1000
+                footer = centre >= RUNNING_FOOTER_ZONE / 1000
+                label = centre <= RUNNING_LABEL_ZONE / 1000
+                if not (label or footer):
                     continue
-                text = re.sub(
-                    r"\s+", " ",
-                    "".join(span["text"] for span in line["spans"]),
-                ).strip()
+                text = running_text(
+                    "".join(span["text"] for span in line["spans"]))
                 if len(text) < 6 or re.fullmatch(r"[\d\s\-–—.]+", text):
                     continue
-                seen.add(text)
-        counter.update(seen)
-    return frozenset(text for text, count in counter.items() if count >= min_pages)
+                if header or footer:
+                    at_edge.add(text)
+                if label:
+                    under_rule.add(text)
+                if footer:
+                    at_footer.add(text)
+        edge_pages.update(at_edge)
+        label_pages.update(under_rule)
+        footer_pages.update(at_footer)
+
+    def repeated(pages):
+        return {text for text, count in pages.items()
+                if count >= RUNNING_MIN_PAGES}
+
+    labels = {text for text, count in label_pages.items()
+              if count >= LABEL_MIN_PAGES and 3 * count >= 2 * doc.page_count}
+    return AssemblyContext(frozenset(repeated(edge_pages) | labels),
+                           frozenset(repeated(footer_pages)))
 
 
 def _remove_rotation(doc):
@@ -400,15 +435,15 @@ def _remove_rotation(doc):
             page.remove_rotation()
 
 
-def source_running_lines(source: Path) -> frozenset[str]:
+def source_assembly_context(source: Path) -> AssemblyContext:
     """The running lines of a source, as a conversion of it finds them.
 
-    A replay of a page case calls this, so a change to `running_lines`
+    A replay of a page case calls this, so a change to `assembly_context`
     reaches the case.
     """
     with open_document(source) as doc:
         _remove_rotation(doc)
-        return running_lines(doc)
+        return assembly_context(doc)
 
 
 def textlayer_lines(page):
@@ -477,7 +512,7 @@ def analyze_pages(request: ConversionRequest, temporary_dir: Path):
     pages: list[AnalyzedPage] = []
     with open_document(request.pdf) as doc:
         _remove_rotation(doc)
-        context = AssemblyContext(running_lines(doc))
+        context = assembly_context(doc)
         for index in range(doc.page_count):
             number = index + 1
             if (request.selected_pages is not None

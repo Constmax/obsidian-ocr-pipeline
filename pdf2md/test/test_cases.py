@@ -16,6 +16,7 @@ import fitz
 import pytest
 
 import cases
+from assembly import AssemblyContext
 from conversion import ConversionRequest, convert_document
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -36,13 +37,15 @@ PRODUCED = (
     "mehr hat.")
 
 
-def _write_pdf(path: Path, header=HEADER, body=BODY):
+def _write_pdf(path: Path, header=HEADER, body=BODY, footer=None):
     """Two pages that share a running line above the same body."""
     with fitz.open() as doc:
         for _ in range(2):
             page = doc.new_page(width=600, height=800)
             if header:
                 page.insert_text(fitz.Point(60, 40), header, fontsize=9)
+            if footer:
+                page.insert_text(fitz.Point(60, 770), footer, fontsize=9)
             y = 200
             for line in body:
                 if line is None:
@@ -113,13 +116,14 @@ def test_a_marked_page_becomes_a_case_with_produced_and_expected_block(vault):
                     / "p001.json").resolve()
     assert cases.case_id(path) == "skript/p001"
     assert _stored(preview) == case
-    assert case["schema"] == 1
+    assert case["schema"] == 2
     assert case["pdf"] == str(pdf.resolve())
     assert len(case["pdf_sha256"]) == 64
     assert case["page"]["number"] == 1
     assert case["page"]["source"] == "textlayer"
     assert [line[0] for line in case["page"]["lines"]][0] == HEADER
     assert case["running_lines"] == [HEADER]
+    assert case["footer_lines"] == []
     assert case["produced"] == PRODUCED
     assert case["expected"] == PRODUCED.replace(FIRST + " ", FIRST + "\n\n")
     assert (case["note"], case["issue"]) == ("one paragraph too few", 130)
@@ -372,11 +376,33 @@ def test_running_lines_are_recomputed_from_the_source(corrected, monkeypatch):
 
     # A change to running-line detection reaches the case: here it no longer
     # finds the header, which then stays in the block.
-    monkeypatch.setattr(cases, "source_running_lines", lambda _pdf: frozenset())
+    monkeypatch.setattr(cases, "source_assembly_context",
+                        lambda _pdf: AssemblyContext())
 
     (outcome,) = cases.run([root])
     assert outcome.state == "open"
     assert outcome.differing == ("+ replayed block 1: " + HEADER,)
+
+
+def test_a_case_freezes_its_footer_lines_for_a_stale_source(tmp_path):
+    footer = "Kursreihe Musterrecht - 2026"
+    root = tmp_path / "vault"
+    pdf = root / "raw" / "skript.pdf"
+    pdf.parent.mkdir(parents=True)
+    _write_pdf(pdf, footer=footer)
+    _convert(pdf, root / "_ocr-preview")
+    preview = root / "_ocr-preview" / "skript.md"
+    _split_first_sentence(preview)
+
+    _, case, _ = cases.add(preview, 1)
+
+    assert case["running_lines"] == sorted([footer, HEADER])
+    assert case["footer_lines"] == [footer]
+    _write_pdf(pdf, header=None)
+    context, state = cases._Sources().context(case)
+    assert state == "stale"
+    assert (context.running_lines, context.footer_lines) == (
+        {footer, HEADER}, {footer})
 
 
 def test_a_changed_source_is_stale_and_replays_the_frozen_lines(
@@ -411,12 +437,14 @@ def test_promoting_freezes_the_running_lines_the_case_matched_with(
     fixed once its source is gone."""
     root, pdf, preview = corrected
     path = cases.case_path(preview, 1)
-    path.write_text(json.dumps({**_stored(preview), "running_lines": []}),
+    path.write_text(json.dumps({**_stored(preview), "running_lines": [],
+                                "footer_lines": [HEADER]}),
                     encoding="utf-8")
     _fix_assembly(monkeypatch)
 
     assert _states(root, promote=True) == {"skript/p001": "promoted"}
     assert _stored(preview)["running_lines"] == [HEADER]
+    assert _stored(preview)["footer_lines"] == []
     pdf.unlink()
     assert _states(root) == {"skript/p001": "fixed"}
 
@@ -527,22 +555,36 @@ def test_a_stash_is_dropped_once_its_preview_left_the_folder(vault, capsys):
 def test_an_older_schema_is_upgraded_instead_of_rejected(
         corrected, monkeypatch):
     root, _, preview = corrected
-    monkeypatch.setattr(cases, "SCHEMA", 2)
+    current = cases.SCHEMA
+    monkeypatch.setattr(cases, "SCHEMA", current + 1)
     monkeypatch.setattr(cases, "_CASE_KEYS", (*cases._CASE_KEYS, "reviewer"))
-    monkeypatch.setitem(cases._UPGRADES, 1,
+    monkeypatch.setitem(cases._UPGRADES, current,
                         lambda record: {**record, "reviewer": None})
 
     case = cases.load_case(cases.case_path(preview, 1))
 
-    assert (case["schema"], case["reviewer"]) == (2, None)
-    assert _stored(preview)["schema"] == 1
+    assert (case["schema"], case["reviewer"]) == (current + 1, None)
+    assert _stored(preview)["schema"] == current
     # Marking again writes the upgraded record, with the key the newer
     # schema added.
     _edit(preview, "Schaden. ", "Schaden.\n\n")
     cases.add(preview, 1)
     assert (_stored(preview)["schema"], _stored(preview)["reviewer"]) == (
-        2, None)
+        current + 1, None)
     assert _states(root) == {"skript/p001": "open"}
+
+
+def test_a_schema_1_case_counts_all_running_lines_as_footer_lines(corrected):
+    """Schema 1 did not tell footer lines apart; all of them counted."""
+    _, _, preview = corrected
+    path = cases.case_path(preview, 1)
+    record = {key: value for key, value in _stored(preview).items()
+              if key != "footer_lines"}
+    path.write_text(json.dumps({**record, "schema": 1}), encoding="utf-8")
+
+    case = cases.load_case(path)
+
+    assert (case["schema"], case["footer_lines"]) == (2, [HEADER])
 
 
 def test_a_case_this_version_cannot_read_fails_the_run(corrected, capsys):

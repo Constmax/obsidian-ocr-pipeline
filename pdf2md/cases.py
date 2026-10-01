@@ -41,9 +41,9 @@ import page_cache
 from assembly import (PREVIEW_MARKER, AssemblyContext, PreviewFormatError,
                       split_preview)
 from conversion import (BlockContext, PageMeta, diagram_image_name,
-                        page_block, source_running_lines)
+                        page_block, source_assembly_context)
 
-SCHEMA = 1
+SCHEMA = 2
 CASES_DIR = ".cases"
 STASH_DIR = ".stash"
 FAULT_STAGES = ("assembly", "upstream")
@@ -51,11 +51,18 @@ FAULT_STAGES = ("assembly", "upstream")
 # Upgrades by the schema they start from; each returns the record as the next
 # schema holds it. The loader applies them in turn, so an older case is
 # upgraded instead of rejected.
-_UPGRADES: dict[int, Callable[[dict], dict]] = {}
+_UPGRADES: dict[int, Callable[[dict], dict]] = {
+    # Schema 2 names the footer lines among the running lines (Issue #161).
+    # A schema-1 record does not tell them apart, so all of them count, as
+    # they did when it was written.
+    1: lambda record: {**record,
+                       "footer_lines": record.get("running_lines", [])},
+}
 
 _CASE_KEYS = ("pdf", "pdf_sha256", "page", "diagram_image",
-              "diagram_image_only", "running_lines", "produced", "expected",
-              "note", "issue", "status", "fault_stage", "fault_stage_by")
+              "diagram_image_only", "running_lines", "footer_lines",
+              "produced", "expected", "note", "issue", "status",
+              "fault_stage", "fault_stage_by")
 _STASH_KEYS = _CASE_KEYS[:_CASE_KEYS.index("expected")]
 
 
@@ -184,8 +191,21 @@ def _capture(preview: Path, fields: dict, page) -> dict:
                           if page.origin == "diagramm" else None),
         "diagram_image_only": bool(
             context["parameters"].get("diagram_image_only")),
-        "running_lines": sorted(source_running_lines(pdf)),
+        **_frozen_lines(source_assembly_context(pdf)),
     }
+
+
+def _frozen_lines(context: AssemblyContext) -> dict:
+    """The running lines of a context as a case freezes them."""
+    return {"running_lines": sorted(context.running_lines),
+            "footer_lines": sorted(context.footer_lines)}
+
+
+def _frozen_context(record: dict) -> AssemblyContext:
+    """The running lines a stash or case froze. A footer line is one of the
+    running lines, even in a record edited by hand."""
+    running = frozenset(record["running_lines"])
+    return AssemblyContext(running, running & frozenset(record["footer_lines"]))
 
 
 def _same_page(record: dict | None, captured: dict) -> bool:
@@ -210,7 +230,7 @@ def _with_produced(captured: dict) -> dict:
     in the file tells. The replay is what Stage 2 makes of these lines.
     """
     return {**captured,
-            "produced": replay(captured, captured["running_lines"])}
+            "produced": replay(captured, _frozen_context(captured))}
 
 
 def stash(preview: Path, number: int) -> str:
@@ -285,7 +305,7 @@ def add(preview: Path, number: int, note: str | None = None,
         case["fault_stage"], case["fault_stage_by"] = kept["fault_stage"], "user"
     else:
         missing = uncovered_words(
-            case, replay(case, case["running_lines"]))
+            case, replay(case, _frozen_context(case)))
         case["fault_stage"] = "upstream" if missing else "assembly"
         case["fault_stage_by"] = "coverage"
     case["marked"] = datetime.now().isoformat(timespec="seconds")
@@ -317,10 +337,10 @@ def list_cases(preview: Path) -> tuple[list[tuple[Path, dict]], list[str]]:
 
 # --- Replay and comparison --------------------------------------------------
 
-def replay(case: dict, running_lines) -> str:
+def replay(case: dict, assembly: AssemblyContext) -> str:
     """The page block the current code makes of the case's lines."""
     context = BlockContext(
-        assembly=AssemblyContext(frozenset(running_lines)),
+        assembly=assembly,
         diagram_image_only=case["diagram_image_only"])
     meta = PageMeta.from_cache_entry(case["page"], case["diagram_image"])
     return page_block(case["page"]["lines"], context, meta).markdown
@@ -419,9 +439,10 @@ class _Sources:
     """Running lines per source, computed once per run."""
 
     def __init__(self):
-        self._lines: dict[tuple[str, str], tuple[frozenset[str] | None, str]] = {}
+        self._lines: dict[tuple[str, str],
+                          tuple[AssemblyContext | None, str]] = {}
 
-    def running_lines(self, case: dict):
+    def context(self, case: dict) -> tuple[AssemblyContext, str]:
         """`(running lines, source state)` for a replay of `case`.
 
         Recomputed from the source with the current code, so a running-line
@@ -436,10 +457,9 @@ class _Sources:
             elif page_cache.file_sha256(pdf) != case["pdf_sha256"]:
                 self._lines[key] = (None, "stale")
             else:
-                self._lines[key] = (source_running_lines(pdf), "current")
+                self._lines[key] = (source_assembly_context(pdf), "current")
         lines, state = self._lines[key]
-        return (frozenset(case["running_lines"]) if lines is None else lines,
-                state)
+        return (_frozen_context(case) if lines is None else lines, state)
 
 
 # --- Run --------------------------------------------------------------------
@@ -529,8 +549,8 @@ def run(roots, issue: int | None = None, promote: bool = False) -> list[Outcome]
             if case["status"] != "fixed" and uncorrected(case):
                 outcomes.append(outcome("uncorrected"))
                 continue
-            running, source = sources.running_lines(case)
-            differing = compare(case["expected"], replay(case, running))
+            assembly, source = sources.context(case)
+            differing = compare(case["expected"], replay(case, assembly))
         except CaseError:
             raise
         except Exception as error:  # a damaged case, or the code under repair
@@ -545,7 +565,7 @@ def run(roots, issue: int | None = None, promote: bool = False) -> list[Outcome]
             # with, so it still matches once its source is gone.
             fixed = {**case, "status": "fixed"}
             if source == "current":
-                fixed["running_lines"] = sorted(running)
+                fixed.update(_frozen_lines(assembly))
             _write(path, fixed)
             state = "promoted"
         else:

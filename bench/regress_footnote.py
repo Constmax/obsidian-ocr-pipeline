@@ -72,7 +72,7 @@ def main():
         for page in doc:
             if page.rotation:
                 page.remove_rotation()
-        context = A.AssemblyContext(frozenset(C.running_lines(doc)))
+        context = C.assembly_context(doc)
         for nr in sorted(by_file[datei]):
             if nr > doc.page_count:
                 continue
