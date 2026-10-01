@@ -63,3 +63,20 @@ def test_reprocess_raw_reports_its_failure_on_a_contract_line(tmp_path):
 
     assert result.returncode == CONTRACT["exitCodes"]["error"]
     assert result.stdout.splitlines() == spec["stdout"]
+
+
+def test_check_engine_reports_an_unusable_engine_on_contract_lines(tmp_path):
+    spec = STAGE1["checkEngine"]
+    stubs = tmp_path / "stubs"
+    stubs.mkdir()
+    for tool, body in [("ocrmypdf", "exit 1\n"), ("qpdf", ""), ("gs", ""), ("pdftotext", "")]:
+        (stubs / tool).write_text("#!/bin/bash\n" + body)
+        (stubs / tool).chmod(0o755)
+    env = dict(os.environ, PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}")
+
+    result = subprocess.run(
+        ["bash", str(BIN / "reprocess-raw.sh"), *spec["args"]],
+        cwd=tmp_path, capture_output=True, text=True, env=env, timeout=30, check=False)
+
+    assert result.returncode == CONTRACT["exitCodes"][spec["notUsable"]["exitCode"]]
+    assert result.stderr.splitlines() == spec["notUsable"]["stderr"]

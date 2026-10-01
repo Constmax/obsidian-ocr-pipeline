@@ -2,9 +2,10 @@
 // validation of loaded plugin data, and the engines the settings tab offers.
 // Free of Obsidian imports so it runs under `node --test`.
 
-/** Engines offered in the settings. PaddleOCR joins only after its retention
- *  and installation gates pass (docs/paddle-textlayer.md). */
-export const OCR_ENGINES = ["auto", "apple", "tesseract"] as const;
+/** Engines the settings can store. PaddleOCR runs in fast mode and is offered
+ *  only where `reprocess-raw --check-engine` finds it usable (issue #73); the
+ *  benchmark in #71 decides whether it stays (docs/paddle-textlayer.md). */
+export const OCR_ENGINES = ["auto", "apple", "tesseract", "paddle"] as const;
 export type OcrEngine = (typeof OCR_ENGINES)[number];
 
 export interface OcrSettings {
@@ -30,7 +31,7 @@ export function isOcrEngine(value: unknown): value is OcrEngine {
 
 /**
  * OCR settings from saved plugin data. Data from before these settings existed
- * has neither key; an unknown engine (for example "paddle") or a non-boolean
+ * has neither key; an unknown engine (for example "easyocr") or a non-boolean
  * flag is invalid. Missing and invalid values fall back to the defaults field
  * by field, so one bad value does not reset the other.
  */

@@ -25,7 +25,9 @@ bench/pages.json
 # die weiter nach bench/ schreiben.
 bench/bench-lauf/
 bench/reading-order-lauf/
+bench/structure-lauf/
 bench/apple-vision-lauf/
+bench/stage1-lauf/
 bench/defekt-lauf/
 bench/nachspiel-lauf/
 bench/kachel-debug/
@@ -44,6 +46,8 @@ pdf2md/out-C/
 # Pipeline-Temporärdateien
 _tmp_ocr/
 **/.cache/
+# Page cases hold page text and stay in the vault (pdf2md/cases.py)
+**/.cases/
 map_page*.json
 *_FAILED_*.pdf
 *.bak
@@ -58,3 +62,6 @@ plugin/node_modules/
 plugin/main.js.map
 plugin/data.json
 plugin/*.tsbuildinfo
+
+# Editable install of ocrmypdf_paddle (install-paddle.sh)
+*.egg-info/

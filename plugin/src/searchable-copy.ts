@@ -1,5 +1,5 @@
-// "Create searchable copy (OCR)": the Stage-1 action behind the PDF file menu,
-// the command, and the comparison view. Proposes `<stem>-ocr.pdf` beside the
+// "Create searchable copy (OCR)": the Stage-1 action behind the PDF file menu
+// and the command (never the comparison view). Proposes `<stem>-ocr.pdf` beside the
 // source, refuses an existing destination before anything is spawned, runs
 // `reprocess-raw --output` through the ConversionController with the saved OCR
 // settings, and opens the new PDF. When the B5 gate reports pages with too
@@ -14,7 +14,7 @@ import {
 	type ConversionController,
 	type PdfSource,
 } from "./conversion-controller.ts";
-import { DESKTOP_ONLY_MESSAGE, type OcrSettings } from "./ocr-settings.ts";
+import { DESKTOP_ONLY_MESSAGE, type OcrEngine, type OcrSettings } from "./ocr-settings.ts";
 
 /** A failed B5 gate, offered to the user as "Run with page exemptions…". */
 export interface ExemptionOffer {
@@ -41,6 +41,8 @@ export interface SearchableCopyHost {
 	wait(ms: number): Promise<void>;
 	/** Shows the short pages with a way to rerun; nothing reruns unless `offer.confirm` is called. */
 	offerExemptions(offer: ExemptionOffer): void;
+	/** `reprocess-raw --check-engine`: null when the engine is usable here, otherwise the reason. */
+	checkEngine(engine: OcrEngine): Promise<string | null>;
 }
 
 /** `raw/case.pdf` → `raw/case-ocr.pdf`, in the source's own folder. */
@@ -92,6 +94,23 @@ function shortPagesMessage(source: PdfSource, pages: number[]): string {
 }
 
 /**
+ * The engine this run uses. A stored PaddleOCR is checked first, because the
+ * setting can outlive its installation (another Mac, a removed venv): if it
+ * is not usable, the run takes Automatic and says so. The other engines are
+ * reported by the CLI itself.
+ */
+async function usableEngine(engine: OcrEngine, host: SearchableCopyHost): Promise<OcrEngine> {
+	if (engine !== "paddle") return engine;
+	const problem = await host.checkEngine(engine);
+	if (problem === null) return engine;
+	host.notify(
+		`OCR Preview: This copy uses Automatic, because PaddleOCR cannot run here — ${problem.replace(/\.$/, "")}. ` +
+			"Choose another engine in the settings.",
+	);
+	return "auto";
+}
+
+/**
  * Runs the action for one PDF. `allowPages` is set only by a confirmed
  * exemption rerun; the B5 gate still checks every page not in that list.
  */
@@ -116,11 +135,13 @@ export async function runSearchableCopy(
 	}
 
 	const { ocrEngine, splitColumns } = host.settings();
+	const engine = await usableEngine(ocrEngine, host);
 	const result = await controller.runOcr({
 		source,
 		destination,
-		engine: ocrEngine,
-		splitColumns,
+		engine,
+		// PaddleOCR orders both columns itself; splitting costs words and order (#153).
+		splitColumns: engine === "paddle" ? false : splitColumns,
 		...(allowPages ? { allowPages } : {}),
 	});
 	if (result === null) return;

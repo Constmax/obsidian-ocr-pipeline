@@ -117,6 +117,18 @@ mkdir -p "$HOME/bin"
 ln -sfn "$VENV_ROOT/ocrmypdf/bin/ocrmypdf" "$HOME/bin/ocrmypdf"
 ok "ocrmypdf + Apple Vision plugin"
 
+# PaddleOCR (retained by #71): into the same venv, but it may only add
+# packages, never change the ones above. A failure leaves Apple Vision and
+# Tesseract as they are and is reported in ⑧. Skip with SETUP_PADDLE=0.
+PADDLE_OK=0
+if [ "${SETUP_PADDLE:-1}" = 0 ]; then
+    warn "PaddleOCR skipped (SETUP_PADDLE=0)"
+elif bash "$REPO/install-paddle.sh"; then
+    PADDLE_OK=1
+else
+    warn "PaddleOCR not installed — Stage 1 runs with Apple Vision and Tesseract (see above)"
+fi
+
 # ─────────────────────────────────────────────── ④ PATH (~/bin)
 say "PATH (~/bin)"
 if grep -q 'HOME/bin' "$HOME/.zshrc" 2>/dev/null; then
@@ -223,6 +235,12 @@ if tesseract --list-langs 2>/dev/null | grep -qx deu; then
 else
     echo "   MISSING Tesseract 'deu'"
     FAIL=1
+fi
+if [ "$PADDLE_OK" = 1 ] && ocrmypdf --plugin ocrmypdf_paddle --paddle-check fast >/dev/null 2>&1; then
+    ok "PaddleOCR (fast mode)"
+else
+    warn "PaddleOCR not ready (optional; bash $REPO/install-paddle.sh)"
+    WARN=1
 fi
 if [ "$MLX_OK" = 1 ] && "$VENV_ROOT/mlxocr/bin/python" -c "import mlx_vlm" 2>/dev/null; then
     ok "mlx-vlm importable"

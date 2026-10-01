@@ -9,7 +9,7 @@ import shutil
 import tempfile
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -17,9 +17,11 @@ from typing import Any, Callable, Protocol
 import cancellation
 import dictionary
 import page_cache
-from assembly import (AssemblyContext, PreviewFormatError, as_callout,
-                      assemble_paragraphs, build_document, build_frontmatter,
-                      clean_text, merge_fragments, page_marker, split_preview)
+from assembly import (RUNNING_FOOTER_ZONE, RUNNING_HEADER_ZONE,
+                      RUNNING_LABEL_ZONE, AssemblyContext, PreviewFormatError,
+                      as_callout, assemble_paragraphs, build_document,
+                      build_frontmatter, clean_text, merge_fragments,
+                      page_marker, running_text, split_preview)
 from layout import (assign_boxes, detect_boxes, detect_layout, image_ratio,
                     split_columns_indexed, tables_markdown)
 from ocr import (CHARACTERS_PER_INK, OVERLAP, TOKEN_MAX, _ink_amount,
@@ -259,6 +261,89 @@ class PageResult:
 
 
 @dataclass(frozen=True)
+class BlockContext:
+    """What every page block of one run shares."""
+    assembly: AssemblyContext
+    wordbook: dictionary.Dictionary | None = None
+    dictionary_correct: bool = False
+    diagram_image_only: bool = False
+
+
+@dataclass(frozen=True)
+class PageMeta:
+    """What a page block needs besides the page's recognized lines."""
+    number: int
+    # "textlayer" or "ocr"
+    source: str
+    # Layout and tiling mode of an OCR page, as its marker shows them.
+    source_detail: str = ""
+    # File name of the page image; set for a diagram page only.
+    diagram_image: str | None = None
+    # Each line's column, None where unknown (Issue #14).
+    columns: list[int | None] | None = None
+
+    @classmethod
+    def from_cache_entry(cls, entry, diagram_image: str | None = None) -> PageMeta:
+        """The meta of a page as its page-cache entry describes it."""
+        return cls(number=entry["number"], source=entry["source"],
+                   source_detail=f"{entry['layout']}, {entry['mode']}",
+                   diagram_image=diagram_image,
+                   columns=entry.get("columns"))
+
+
+@dataclass(frozen=True)
+class PageBlock:
+    markdown: str
+    paragraphs: list[str]
+    discarded: list[str]
+    findings: list[dictionary.Finding]
+
+
+def _page_content(lines, context: BlockContext, source: str, columns=None):
+    """Assemble a page's lines and run the dictionary pass of an OCR page.
+
+    Returns `(paragraphs, discarded, findings)`.
+    """
+    ocr_page = source == "ocr"
+    assembled = assemble_paragraphs(
+        lines, context.assembly, ocr_page, columns)
+    paragraphs, findings = assembled.paragraphs, []
+    if ocr_page and lines:
+        paragraphs, findings = dictionary.check(
+            paragraphs, context.wordbook, context.dictionary_correct)
+    return paragraphs, assembled.discarded, findings
+
+
+def page_block(lines, context: BlockContext, meta: PageMeta) -> PageBlock:
+    """Turn one page's recognized lines into its page block.
+
+    The one path from lines to the preview: assembly, the dictionary pass of
+    an OCR page, the page marker and the diagram callout. A conversion and a
+    replay both call it, so they cannot drift apart. The block carries no
+    trailing whitespace, which is how `split_preview` reads it back. No model,
+    no PDF and no file access.
+    """
+    paragraphs, discarded, findings = _page_content(
+        lines, context, meta.source, meta.columns)
+
+    diagram = meta.diagram_image is not None
+    markdown = page_marker(meta.number, "diagramm" if diagram else (
+        "textlayer" if meta.source == "textlayer"
+        else f"ocr | {meta.source_detail}" if meta.source_detail else "ocr"))
+    if diagram:
+        parts = [f"![[{meta.diagram_image}]]"]
+        if not context.diagram_image_only and paragraphs:
+            parts.append(as_callout(
+                paragraphs,
+                "Text der Seite (Reihenfolge nicht verlässlich)",
+            ))
+        markdown += "\n\n".join(parts)
+    else:
+        markdown += "\n\n".join(paragraphs)
+    return PageBlock(markdown.rstrip(), paragraphs, discarded, findings)
+
+
+@dataclass(frozen=True)
 class _FinishedPage:
     """Everything one page contributes to the result, committed at once."""
     result: PageResult
@@ -289,31 +374,80 @@ class ConversionResult:
     dictionary_findings: tuple[dict[str, Any], ...] = ()
 
 
-def running_lines(doc, header_zone=0.09, footer_zone=0.93, min_pages=2):
-    """Return repeated header/footer texts for one document."""
+# A line in the header or footer zone is a running line once it repeats on
+# this many pages; a course label under the header rule on this many and on
+# two thirds of the pages (Issue #161).
+RUNNING_MIN_PAGES = 2
+LABEL_MIN_PAGES = 3
+
+
+def assembly_context(doc) -> AssemblyContext:
+    """The running lines of one document, found in its text layer.
+
+    A line in the header or footer zone counts once it repeats on
+    `RUNNING_MIN_PAGES` pages. A course label under the header rule
+    ("Kursreihe-B-7", Issue #161) sits lower, down to `RUNNING_LABEL_ZONE`,
+    where slide titles and body lines repeat as well; there a line counts
+    only when it repeats on two thirds of the pages, and on at least
+    `LABEL_MIN_PAGES`. The running lines of the footer zone are its footer
+    lines.
+    """
     from collections import Counter
 
-    counter = Counter()
+    edge_pages, label_pages, footer_pages = Counter(), Counter(), Counter()
     for i in range(doc.page_count):
         page = doc[i]
         height = page.rect.height or 1
-        seen = set()
+        at_edge, under_rule, at_footer = set(), set(), set()
         for block in page.get_text("dict")["blocks"]:
             if block.get("type") != 0:
                 continue
             for line in block["lines"]:
-                rel = ((line["bbox"][1] + line["bbox"][3]) / 2) / height
-                if not (rel <= header_zone or rel >= footer_zone):
+                centre = ((line["bbox"][1] + line["bbox"][3]) / 2) / height
+                header = centre <= RUNNING_HEADER_ZONE / 1000
+                footer = centre >= RUNNING_FOOTER_ZONE / 1000
+                label = centre <= RUNNING_LABEL_ZONE / 1000
+                if not (label or footer):
                     continue
-                text = re.sub(
-                    r"\s+", " ",
-                    "".join(span["text"] for span in line["spans"]),
-                ).strip()
+                text = running_text(
+                    "".join(span["text"] for span in line["spans"]))
                 if len(text) < 6 or re.fullmatch(r"[\d\s\-–—.]+", text):
                     continue
-                seen.add(text)
-        counter.update(seen)
-    return frozenset(text for text, count in counter.items() if count >= min_pages)
+                if header or footer:
+                    at_edge.add(text)
+                if label:
+                    under_rule.add(text)
+                if footer:
+                    at_footer.add(text)
+        edge_pages.update(at_edge)
+        label_pages.update(under_rule)
+        footer_pages.update(at_footer)
+
+    def repeated(pages):
+        return {text for text, count in pages.items()
+                if count >= RUNNING_MIN_PAGES}
+
+    labels = {text for text, count in label_pages.items()
+              if count >= LABEL_MIN_PAGES and 3 * count >= 2 * doc.page_count}
+    return AssemblyContext(frozenset(repeated(edge_pages) | labels),
+                           frozenset(repeated(footer_pages)))
+
+
+def _remove_rotation(doc):
+    for page in doc:
+        if page.rotation:
+            page.remove_rotation()
+
+
+def source_assembly_context(source: Path) -> AssemblyContext:
+    """The running lines of a source, as a conversion of it finds them.
+
+    A replay of a page case calls this, so a change to `assembly_context`
+    reaches the case.
+    """
+    with open_document(source) as doc:
+        _remove_rotation(doc)
+        return assembly_context(doc)
 
 
 def textlayer_lines(page):
@@ -345,19 +479,23 @@ def textlayer_lines(page):
                 continue
             parts = []
             for span in line["spans"]:
-                text = clean_text(span["text"])
-                if not text.strip():
-                    parts.append(text)
+                raw = span["text"]
+                if not raw.strip():
+                    parts.append(" " if raw else "")
                     continue
-                if (text.strip() in ("o", "O")
+                text = clean_text(raw.strip())
+                if (text in ("o", "O")
                         and "courier" in span.get("font", "").lower()):
                     parts.append("-")
                     continue
                 bold = (bool(span.get("flags", 0) & 16)
                         or "bold" in span.get("font", "").lower())
-                before = text[:len(text) - len(text.lstrip())]
-                after = text[len(text.rstrip()):]
-                parts.append(f"{before}**{text.strip()}**{after}" if bold else text)
+                before = raw[:len(raw) - len(raw.lstrip())]
+                after = raw[len(raw.rstrip()):]
+                if bold:
+                    parts.append(f"{before}**{text}**{after}")
+                else:
+                    parts.append(f"{before}{text}{after}")
             text = "".join(parts).strip()
             if not text:
                 continue
@@ -377,10 +515,8 @@ def analyze_pages(request: ConversionRequest, temporary_dir: Path):
     source_is_image = is_image_input(request.pdf)
     pages: list[AnalyzedPage] = []
     with open_document(request.pdf) as doc:
-        for page in doc:
-            if page.rotation:
-                page.remove_rotation()
-        context = AssemblyContext(running_lines(doc))
+        _remove_rotation(doc)
+        context = assembly_context(doc)
         for index in range(doc.page_count):
             number = index + 1
             if (request.selected_pages is not None
@@ -422,12 +558,16 @@ def analyze_pages(request: ConversionRequest, temporary_dir: Path):
     return pages, context
 
 
+def diagram_image_name(pdf: Path, number: int) -> str:
+    return f"{pdf.stem}-s{number:03d}.png".replace(" ", "-")
+
+
 def diagram_image(pdf: Path, number: int, image_dir: Path, max_edge=1800):
     """Save a page image and return its filename and path."""
     import fitz
 
     image_dir.mkdir(parents=True, exist_ok=True)
-    name = f"{pdf.stem}-s{number:03d}.png".replace(" ", "-")
+    name = diagram_image_name(pdf, number)
     with open_document(pdf) as doc:
         page = doc[number - 1]
         long_side = max(page.rect.width, page.rect.height) or 1
@@ -530,8 +670,8 @@ def _existing_preview(request: ConversionRequest):
             "convert without --pages to replace it") from None
 
 
-def _merged_document(request, existing, finished, cache_dir, assembly_context,
-                     wordbook, model_name):
+def _merged_document(request, existing, finished, cache_dir, block_context,
+                     model_name):
     """Put the recomputed pages into the existing preview (Issue #106).
 
     Every other page block stays verbatim, manual edits included. The counts
@@ -542,7 +682,7 @@ def _merged_document(request, existing, finished, cache_dir, assembly_context,
     """
     blocks = {page.number: page.text for page in existing.pages}
     fresh = {page.result.number: page for page in finished}
-    blocks.update((number, page.block.rstrip()) for number, page in fresh.items())
+    blocks.update((number, page.block) for number, page in fresh.items())
 
     textlayer = diagram = derailed = suspect = corrected = 0
     for page in existing.pages:
@@ -557,13 +697,12 @@ def _merged_document(request, existing, finished, cache_dir, assembly_context,
             continue
         derailed += bool(entry["trace"])
         if source == "ocr" and entry["lines"] and not request.no_dictionary:
-            if wordbook is None:
-                wordbook = dictionary.load(list(request.dictionaries))
-            paragraphs = assemble_paragraphs(
-                entry["lines"], assembly_context,
-                entry.get("columns")).paragraphs
-            _, findings = dictionary.check(
-                paragraphs, wordbook, request.dictionary_correct)
+            if block_context.wordbook is None:
+                block_context = replace(
+                    block_context,
+                    wordbook=dictionary.load(list(request.dictionaries)))
+            _, _, findings = _page_content(
+                entry["lines"], block_context, source, entry.get("columns"))
             corrected += sum(item.count for item in findings if item.corrected)
             suspect += sum(item.count for item in findings if not item.corrected)
     for page in fresh.values():
@@ -700,6 +839,10 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
             wordbook = dictionary.load(list(request.dictionaries))
             emit({"type": "dictionary", "wordbook": wordbook,
                   "correct": request.dictionary_correct})
+        block_context = BlockContext(
+            assembly=assembly_context, wordbook=wordbook,
+            dictionary_correct=request.dictionary_correct,
+            diagram_image_only=request.diagram_image_only)
 
         # Load the model before the clock starts, so neither the first page's
         # duration nor the total carries the one-off load. Pages the cache
@@ -731,7 +874,6 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 diagram = (page.is_diagram
                            or page.number in request.forced_diagram_pages)
                 trace: list[str] = []
-                findings = []
                 image_only = False
                 entry = cache_hit(page)
                 reused = entry is not None
@@ -828,44 +970,31 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         "columns": columns,
                     }
                     page_cache.write_page(cache_dir, write_context, cached_page)
+                    entry = cached_page
 
                 dump = None if image_only else {
                     "seite": page.number,
                     "quelle": source if source == "textlayer" else source_detail,
                     "zeilen": lines,
                 }
-                assembled = assemble_paragraphs(lines, assembly_context, columns)
-                paragraphs = assembled.paragraphs
-                if source == "ocr" and lines:
-                    paragraphs, findings = dictionary.check(
-                        paragraphs, wordbook, request.dictionary_correct)
-
-                marker_extra = "diagramm" if diagram else (
-                    "textlayer" if source == "textlayer"
-                    else f"ocr | {source_detail}")
-                block = page_marker(page.number, marker_extra)
+                block = page_block(
+                    lines, block_context, PageMeta.from_cache_entry(
+                        entry, diagram_image_name(request.pdf, page.number)
+                        if diagram else None))
+                findings = block.findings
                 image_path = None
                 if diagram:
-                    name, image_path = diagram_image(
+                    _, image_path = diagram_image(
                         request.pdf, page.number, image_dir, request.image_max_edge)
-                    parts = [f"![[{name}]]"]
-                    if not request.diagram_image_only and paragraphs:
-                        parts.append(as_callout(
-                            paragraphs,
-                            "Text der Seite (Reihenfolge nicht verlässlich)",
-                        ))
-                    block += "\n\n".join(parts)
-                else:
-                    block += "\n\n".join(paragraphs)
                 seconds = 0.0 if reused else time.perf_counter() - page_started
                 result = PageResult(
-                    number=page.number, source=source, paragraphs=paragraphs,
-                    discarded=assembled.discarded, trace=trace,
-                    is_diagram=diagram, seconds=seconds,
+                    number=page.number, source=source,
+                    paragraphs=block.paragraphs, discarded=block.discarded,
+                    trace=trace, is_diagram=diagram, seconds=seconds,
                     text_characters=page.text_characters,
                 )
                 finished.append(_FinishedPage(
-                    result=result, block=block, lines_dump=dump,
+                    result=result, block=block.markdown, lines_dump=dump,
                     report=tuple(
                         {"seite": page.number, "wort": item.word,
                          "anzahl": item.count, "vorschlag": item.suggestion,
@@ -915,8 +1044,8 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
             )
         else:
             markdown = _merged_document(
-                request, existing, finished, cache_dir, assembly_context,
-                wordbook, model_name,
+                request, existing, finished, cache_dir, block_context,
+                model_name,
             )
         target = _write_result(request, markdown, lines_dump, report, emit)
         pages_textlayer = sum(page.source == "textlayer" for page in page_results)

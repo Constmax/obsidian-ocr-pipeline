@@ -2366,3 +2366,308 @@ Je Seite (`*` = Textspalten verschränkt):
 - **Fehlende Seitenart (#120):** Eine Vollbreite-Überschrift zwischen zwei Spaltenbereichen fand sich im Bestand nicht; sie ist weiter nur synthetisch getestet.
 - **Wahrheit auf schiefer Spalte:** Auf q10 ist die rechte Spalte gegen die linke gedreht. Die Wahrheit liest Zeilen nach der Höhe ihres linken Endes; das an der rechten Kante abgetrennte „vor,“ der ersten Zeile steht deshalb vor seiner Zeile. `order_lines` und `unsplit-paddle` erreichen dort trotzdem 100,0 %.
 - **Laufzeit:** `unsplit-paddle` brauchte 138 s für die 13 Seiten, `split-paddle` 115 s; nur ein Richtwert, gemessen wird in Schritt 5.
+
+## Nachtrag 2026-09-28 (25): Lesereihenfolge — Rubrikzeile, Einzelwörter und einspaltige Fußnoten (#124, #125) und vierte Prüfseiten
+
+**Ergebnis: keep split mode.** Die Korrektur behebt q03, q06 und q07 und auf den neuen Seiten zwei weitere Rubrikzeilen (r02, r06 in `order_lines`, r06 auch im echten Lauf). Auf den 13 neuen Seiten steht keine Vollbreite-Zeile mehr falsch. Zwei Gate-Kriterien bleiben verletzt: 3 Kopfzeilen fehlen im echten Lauf (Erkennung), und r07 gilt als verschränkt, mit einer neuen Ursache (#127). `--engine paddle --split-columns` bleibt der unterstützte Befehl.
+
+Vorgänger: Nachtrag 24 (Befund), Issues #124 und #125.
+
+### Korrektur (`a3a911b`)
+
+**Befund:** Bestätigt wie in #124 und #125 beschrieben.
+- **q07:** „Familienrecht“ (Mitte 376 px) und „Fall 2 - Lösung - Seite 3“ (406 px) überlappen sich senkrecht, stehen aber 30 px versetzt. Vom tieferen Teil gemessen liegt die Zeile 64 px über dem ersten Spaltenpaar (470 px), die Schwelle ist 1,5 × 46,9 = 70,3 px.
+- **q06 (echter Lauf):** Keine Box der rechten Spalte erreicht 0,7 der Spaltenbreite, `_right_edge()` nimmt den Median aller Wortanfänge (1714 px). Zusätzlich ist dort der Zeilenabstand kaputt: Die Wörter einer Zeile liegen 1–5 px auseinander, `_pitch()` ergibt 1,2 px. Auf q03 (Wahrheitsgeometrie) ebenso 1,3 px.
+- **q03:** Das Fußband enthält nur die vier Zeilen der linken Fußnoten 7 und 8, kein Spaltenpaar.
+
+**Änderung:**
+- **Rubrikzeile:** Die unterste gewachsene Kopfzeile wird an ihrem oberen Teil gemessen (kleinste Mitte der Boxen neben der untersten Box mit höchstens 25 % abweichender Höhe), so wie das erste Spaltenpaar. q07: 94 px ≥ 70,3 px.
+- **Einzelwörter:** `_edge()` (vorher `_right_edge()`) und `_pitch()` rechnen auf visuellen Zeilen (`_row_groups()`), eine in Wörter zerfallene Zeile zählt als eine Zeile ab ihrem ersten Wort.
+- **Einspaltige Fußnoten:** Führende Fußzeilen gehen auch dann an ihre Spalte zurück, wenn sie alle auf einer Seite des Stegs stehen, die erste Box eine Fußnotenziffer ist (höchstens eine Zeilenhöhe breit, mindestens eine Viertelzeile links der Textkante der Spalte, daneben ihr Text an der Kante; die Ziffer steht oft etwas höher und bildet dann eine eigene Zeile, so auf q03) und jede Zeile an der Textkante beginnt. Seitenzahlen, Randmarken („I“ auf m07), linksbündige oder rechtsbündige Fußteile haben keine hängende Ziffer und bleiben im Fuß. Die in #125 vorgeschlagene Bedingung „keine spätere Zeile kreuzt den Steg“ wurde nicht übernommen: Die Schleife endet ohnehin an der ersten kreuzenden Zeile, und Fußnoten über einer zentrierten Fußzeile gehören ebenso in ihre Spalte.
+
+**Grenze:** Einspaltige Fußnoten, deren Ziffer mit dem Text in einer Box steht oder die keine Ziffer haben, bleiben weiter im Fußband.
+
+**Tests:** fünf synthetische Tests in `ocrmypdf_paddle/test/test_paddle_ordering.py`: schiefe Rubrikzeile (q07), rechte Spalte in Zeilendritteln (q06), eingerückte erste Spaltenzeile neben einer in Wörter zerfallenen linken Spalte (Zeilenabstand), linke Fußnoten ohne Fußzeile (q03), dazu einseitige Fußteile, die im Fuß bleiben (rechtsbündiger Teil, Randmarke, Seitenzahl an der linken und rechten Textkante). Die ersten vier scheitern mit `main`. Zwei weitere Regressionstests aus dem Review folgen unten. Gegenproben ohne Rückschritt gegenüber `main`: eingerückte erste Zeile mit Versatz −20…+20 px und 3–10 Zeilenhöhen Einzug (88 Fälle), einzelne Fußbox an 44 x-Positionen in drei Höhen (132 Fälle), zweiteilige Kopfzeile mit Abstand, Schräglage ±30 px und drei Höhen (225 Fälle; wo `main` den Kopf als Kopf liest, tut es die Korrektur auch; in 4 Fällen mit höherem rechtem Teil liest sie beide Teile im Kopf, aber den rechten zuerst, wo `main` ihn in die rechte Spalte stellt). 149 Paddle-Tests und `make test-fast` bestehen.
+
+**Nachtrag aus dem Review von PR #128:** Die erste Fassung (`a3a911b`) hatte zwei synthetische Rückschritte gegenüber `main`:
+- **Fußnotenregel zu weit:** Sie verlangte nur, dass jede Zeile an der Textkante beginnt und eine Zeile ein Drittel der Spalte einnimmt. Ein linksbündiger Fußteil (eine Zeile „Kurs …“ oder zwei Zeilen Copyright und Kurs) wurde damit zwischen die Spalten gelesen. Jetzt ist die hängende Fußnotenziffer Bedingung (siehe oben).
+- **Kopfmessung bei gemischter Größe:** Neben einer hohen linken Überschrift (60–100 px) und einer eingerückten rechten Zeile normaler Größe in der ersten Spaltenzeile wurde vom Mittelpunkt der kleineren Box gemessen; in 12 von 108 Fällen einer Parameterreihe kam die erste Zeile dadurch in den Kopf. Jetzt zählen nur Teile ähnlicher Höhe.
+
+Beide Fälle sind als Regressionstests aufgenommen (sie scheitern mit `a3a911b` und bestehen mit `main` und der endgültigen Fassung); 151 Paddle-Tests und `make test-fast` bestehen. Die Review-Parameterreihen zeigen keinen Fall mehr, den `main` richtig und die Korrektur falsch liest. Die Änderung folgt aus synthetischen Fällen, nicht aus einer Prüfseite, und ändert kein Ergebnis: `order_lines` ergibt auf allen 94 Zeilensätzen (55 gesehene Seiten auf der Wahrheitsgeometrie, 13 q- und 13 r-Seiten im echten Lauf, 13 r-Seiten auf der Wahrheitsgeometrie) exakt dieselbe Reihenfolge wie mit `a3a911b`. Alle Zahlen dieses Nachtrags gelten deshalb unverändert für die endgültige Fassung; keine r-Seite hat sich geändert.
+
+**55 gesehene Seiten (t, n, m, q), `order_lines` auf der Wahrheitsgeometrie und auf den Zeilen des echten `unsplit-paddle`-Laufs der q-Seiten, alt → neu:** Keine Seite wird schlechter, alle übrigen Seiten ergeben dieselbe Bewertung.
+- **q03:** 97,9 %* → 98,6 % (Wahrheitsgeometrie und echter Lauf).
+- **q06 (echter Lauf):** 98,5 %, 1 Vollbreite-Zeile falsch → 99,2 %, keine.
+- **q07:** 99,2 %, 1 Vollbreite-Zeile falsch → 100,0 % (Wahrheitsgeometrie und echter Lauf).
+
+### Neue Prüfseiten (`6db7298`)
+
+**Set:** `bench/reading_order_holdout4.json`, 13 Zweispalterseiten aus 13 Dokumenten, die in keinem der vier bisherigen Sets vorkommen, auch nicht als Original-Scan in `raw/assets/` oder als zweite Fassung desselben Falls; keine Anzeigenseiten.
+- **Auswahl:** nach dem Commit der Korrektur, auf Übersichtsbildern, je Dokument eine Seite.
+- **Seitenarten:** Fußnoten nur links mit Fußzeile (r11); lange rechte Fußnoten weit über der linken (r03); auf gleicher Höhe (r01, r07, r09, r12, r13) oder verschieden hoch (r02, r04, r05, r06, r08); schiefe Rubrikzeile (r06, r07); rechte Spalte endet in der Seitenmitte (r10); graue spaltenbreite Überschriften (r10, r11); Zeilen in Einzelwörter zerlegt (r01, r07, r13); Klausurenkurs-Kopf (r13); dunkler Rand (r08).
+- **Vollbreite-Überschrift zwischen zwei Spaltenbereichen (#120):** auf den Übersichtsbildern der 13 Dokumente nicht gefunden; #120 bleibt offen.
+
+**Ablauf:** wie in Nachtrag 24. Regionen auf den Rasterbildern gezeichnet, Zeilen nahe einer Regionsgrenze als Text geprüft, Overlays von Hand geprüft; keine erkannte Zeile liegt außerhalb aller Regionen. Die Wahrheit wurde committet, erst danach liefen `run` und `score`.
+
+**Umgebung:** Repo-Stand `6db7298`. Shell-Workflows mit `ocrmypdf` aus `~/.venvs/ocrmypdf`, Paddle-Workflows, `recognize` und `score` in `~/.venvs/docling`, `run --optimize 3`, Netz über einen toten Proxy-Port gesperrt. Kein Lauf zeigt einen Engine-Fallback. Bewertet mit der Metrik aus Nachtrag 23.
+
+### Messwerte
+
+| Workflow | Seiten | Median | Mittel | Min | Median (gemeinsame Zeilen) | verschränkte Seiten | Vollbreite falsch / doppelt / fehlt (von 93) | nicht gefunden (von 1493) | doppelt | Seitenprüfung fehlgeschlagen | Größe |
+|---|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| `split-apple` | 13 | 94,7 % | 95,1 % | 91,1 % | 94,4 % | 0 | 67 / 0 / 2 | 13 | 35 | 0 | 8,7 MB |
+| `split-tesseract` | 13 | 95,2 % | 94,9 % | 90,8 % | 94,9 % | 0 | 66 / 0 / 8 | 47 | 33 | 0 | 8,7 MB |
+| `unsplit-apple` | 13 | 98,2 % | 96,9 % | 91,0 % | 98,8 % | 7 | 17 / 0 / 1 | 4 | 34 | 0 | 7,9 MB |
+| `unsplit-tesseract` | 13 | 92,6 % | 90,0 % | 74,2 % | 92,3 % | 8 | 2 / 0 / 9 | 66 | 30 | 0 | 8,0 MB |
+| `split-paddle` | 13 | 95,2 % | 95,1 % | 91,1 % | 94,9 % | 0 | 68 / 0 / 3 | 3 | 35 | 0 | 8,7 MB |
+| `unsplit-paddle` | 13 | 100,0 % | 97,8 % | 78,5 % | 100,0 % | 1 | 0 / 0 / 3 | 6 | 35 | 0 | 8,9 MB |
+| `rapidocr-order` | 13 | 77,3 % | 78,1 % | 75,9 % | 77,4 % | 13 | 0 / 0 / 0 | 0 | 17 | – | – |
+| `order_lines` | 13 | 100,0 % | 97,9 % | 78,8 % | 100,0 % | 1 | 0 / 0 / 0 | 0 | 35 | – | – |
+
+Je Seite (`*` = Textspalten verschränkt):
+
+| Seite | `split-apple` | `split-tesseract` | `unsplit-apple` | `unsplit-tesseract` | `split-paddle` | `unsplit-paddle` | `rapidocr-order` | `order_lines` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| r01 | 91,1 % | 90,8 % | 93,4 %* | 95,0 % | 91,1 % | 95,3 % | 77,6 %* | 95,3 % |
+| r02 | 94,7 % | 91,6 % | 99,1 % | 79,6 %* | 94,7 % | 100,0 % | 78,6 %* | 100,0 % |
+| r03 | 95,3 % | 95,3 % | 98,2 %* | 97,3 % | 95,3 % | 100,0 % | 81,9 %* | 100,0 % |
+| r04 | 94,1 % | 94,3 % | 95,1 %* | 91,4 %* | 94,3 % | 100,0 % | 77,3 %* | 100,0 % |
+| r05 | 93,9 % | 95,2 % | 95,3 % | 87,9 %* | 95,2 % | 100,0 % | 76,7 %* | 100,0 % |
+| r06 | 98,9 % | 98,8 % | 97,3 %* | 100,0 % | 98,9 % | 100,0 % | 77,2 %* | 100,0 % |
+| r07 | 96,1 % | 96,6 % | 99,2 % | 92,6 %* | 95,4 % | 78,5 %* | 78,3 %* | 78,8 %* |
+| r08 | 95,4 % | 95,4 % | 99,2 % | 79,4 %* | 95,4 % | 100,0 % | 77,3 %* | 100,0 % |
+| r09 | 96,6 % | 96,1 % | 99,3 %* | 74,2 %* | 96,6 % | 100,0 % | 77,2 %* | 100,0 % |
+| r10 | 97,3 % | 97,1 % | 91,0 %* | 100,0 % | 97,3 % | 100,0 % | 75,9 %* | 100,0 % |
+| r11 | 94,7 % | 94,9 % | 99,2 % | 77,8 %* | 94,9 % | 100,0 % | 77,3 %* | 100,0 % |
+| r12 | 94,6 % | 94,1 % | 99,1 % | 99,1 % | 94,5 % | 100,0 % | 81,9 %* | 100,0 % |
+| r13 | 93,1 % | 93,1 % | 94,9 %* | 96,2 %* | 93,1 % | 98,2 % | 77,7 %* | 98,8 % |
+
+### Befunde
+
+**Gate für `unsplit-paddle`:**
+- **Median:** 100,0 % gegen die beste Split-Baseline 95,2 % (`split-tesseract`). Das Kriterium ist erfüllt.
+- **Seitenprüfungen:** Seitenzahl und B5 bestehen auf allen 13 Seiten.
+- **Vollbreite-Zeilen falsch oder doppelt:** keine. Das Kriterium ist erfüllt.
+- **Vollbreite-Zeilen nicht gefunden:** Das Kriterium ist verfehlt, 3 von 93. Es sind Zeilen der Städteliste am oberen Bildrand (r07: 1, r09: 2), die der echte Lauf auf der entzerrten Seite nicht erkennt. Die Reihenfolge ist daran nicht beteiligt; dieselbe Art Erkennungsunterschied wie in Nachtrag 20 und 21.
+- **Keine Verschränkung:** Das Kriterium ist verfehlt, r07 gilt als verschränkt, in `unsplit-paddle` (78,5 %) und in `order_lines` (78,8 %), unverändert gegenüber `main`. Echter Fehler mit neuer Ursache (#127): Die Seite ist um etwa 2° gedreht (auch auf dem entzerrten Bild des echten Laufs misst `_skew()` −2,0°). Zwischen den Kopf- und Fußanteilen kreuzt keine schmale Zeile den Steg, aber die hängenden Fußnotenziffern der rechten Spalte (26–29) ragen in ihn hinein. Der freie Streifen ist auf der Wahrheitsgeometrie 21 px breit, im echten Lauf 11 px, verlangt sind eine halbe Zeilenhöhe (28,9 bzw. 26,6 px). `_gutter()` findet keinen Steg, die Seite wird zeilenweise gelesen.
+- **Wirkung der Korrektur auf den neuen Seiten:** r02 (`order_lines`) und r06 (`order_lines` und echter Lauf) hatten mit dem Stand vor der Korrektur je eine falsche Vollbreite-Zeile (Rubrikteil in der rechten Spalte), mit der Korrektur keine. r11 (Fußnote nur links, darunter eine Fußzeile) ist mit beiden Ständen richtig. Auf den übrigen Seiten ändert die Korrektur nichts.
+- **r01 bei 95,3 %:** kein Ordnungsfehler. Die Seite zerfällt in Einzelwörter (278 Zeilen, 142 bewertbar); die Wahrheitsreihenfolge selbst erreicht mit der Metrik nur 95,3 %, weil kurze wiederholte Wörter der Textsuche mehrdeutig sind.
+- **Metrik:** Der Rückfall aus Nachtrag 23 greift auf keiner der neuen Seiten.
+
+**Split-Baselines:** 66–68 Vollbreite-Zeilen falsch, Median 94,7–95,2 %; derselbe Kopfschnitt wie in Nachtrag 19 bis 24.
+
+**Native ungeteilte OCR:** keine Alternative. Apple verschränkt 7 Seiten, Tesseract 8.
+
+### Einschränkungen und nächster Schritt
+
+- **Keine Nachjustierung auf diesen Seiten:** Die Ursache auf r07 ist beschrieben (#127), aber nicht behoben; eine Korrektur bräuchte wieder eigene, ungesehene Seiten.
+- **Verbleibender Bestand:** Nach der Dokumentliste bleiben grob 80 unbenutzte Dokumente mit Zweispalterseiten (Fallösungen der Rechtsgebiete, Original-Scans in `raw/assets/` ohne benutzte Fassung, Klausurlösungen), nicht Seite für Seite geprüft. Der Vorrat reicht für weitere Prüfsätze.
+- **Fehlende Seitenart (#120):** weiter nur synthetisch getestet.
+- **Laufzeit:** `unsplit-paddle` brauchte 142 s für die 13 Seiten, `split-paddle` 119 s; nur ein Richtwert.
+
+## Nachtrag 2026-09-30 (26): Stufe-1-Benchmark — PaddleOCR behalten, Spaltentrennung für Paddle entfernen (#71)
+
+**Ergebnis:**
+- **Entscheidung behalten/verwerfen: behalten**, und zwar `--engine paddle --paddle-mode fast` (der Modus, den das Plugin seit #73 anbietet). Das Gate ist formal an einem Kriterium verfehlt (ein neuer B5-Fall auf einer um 90° gedrehten Seite, siehe unten). Diese Ausnahme ist bewusst entschieden und hier begründet.
+- **Entscheidung Spaltentrennung: für PaddleOCR entfernen.** Paddle läuft immer ungeteilt (#153). Für Apple und Tesseract bleibt die Spaltentrennung, wie sie ist.
+- **Lesereihenfolge:** Auf 68 handgeprüften Zweispalterseiten verschränkt `unsplit-paddle-fast` 4 Seiten, der bisherige Plugin-Standard `unsplit-apple` 30. Vollbreite-Zeilen stehen bei Paddle-fast 2-mal falsch, bei `unsplit-apple` 108-mal und mit Spaltentrennung rund 300-mal (von 438).
+- **Textlayer:** `paddle-fast` liest Normzitate deutlich treuer als Apple (78,9 gegen 69,4 % auf den 40 Vektorseiten, 95,2 gegen 77,0 % auf kurzen Seiten), Wörter etwas besser (97,5 gegen 96,9 %), bei gleicher Geschwindigkeit (3,2 gegen 3,3 s/Seite).
+- **Genauer Modus:** noch treuer bei Zitaten (83,6 %), aber doppelt so langsam und mit 1,9 GB Spitze statt 0,6 GB. Er bleibt aus dem Plugin draußen.
+
+### Aufbau
+
+Zwei Teile. Der zweite ist neu (`bench/stage1_bench.py`).
+
+**Lesereihenfolge** mit `bench/reading_order.py` auf allen fünf handgeprüften Sätzen (t 16, n 13, m 13, q 13, r 13 Seiten; `reading_order_truth.json`, `…_holdout.json` bis `…_holdout4.json`), Workflows `split-apple`, `split-tesseract`, `unsplit-apple`, `unsplit-tesseract`, `split-paddle`, `unsplit-paddle`, `unsplit-paddle-fast`, `--optimize 3`. Repo-Stand `7483102` (vor #134; #134 ändert laut PR die Reihenfolge des Rohtexts nicht).
+
+**Textlayer der Stufe 1** mit `bench/stage1_bench.py`: Vektorseiten werden mit 300 dpi grau gerendert, als reines Bild-PDF durch `reprocess-raw --output --min-chars 0` geschickt (den Weg des Plugins, mit Seitenzahlprüfung und Quality Gate) und je Seite per `pdftotext -raw` mit dem Textlayer der Originalseite verglichen (`vergleiche()` aus `bench_ocr.py`). B5 wird je Seite ausgewertet: Fehler, wenn die Wahrheit mindestens 50 Zeichen hat und die Ausgabe weniger. Kohorten (`bench/stage1_cohorts.json`):
+
+| Kohorte | Seiten | Inhalt |
+|---|---:|---|
+| `words` | 40 | die Vektorseiten aus `bench/bench-lauf/` (Nachtrag 17, 22); 32 einspaltig, 8 zweispaltig nach Textgeometrie |
+| `short` | 12 + 8 | kurze Vektorseiten (1–300 Zeichen: Titel-, Trenn- und Schlussfolien) und grafische (über 80 Pfade, unter 1.500 Zeichen), je Datei eine |
+| `skew` | 10 | zehn `words`-Seiten, gedreht um +1,5°, −2,5°, +4°, 90° und 180° (je 2) |
+
+Workflows: `tesseract` (heutige Politik mit Split-Wiederholung bei Gate-Fehler), `tesseract-split`, `apple`, `apple-split`, `paddle-fast`, `paddle-fast-split`, `paddle-accurate`, `paddle-accurate-split`; `paddle-fast` und `paddle-accurate` ein zweites Mal für die Stabilität. Repo-Stand `1f744c8` (mit #134). Alle Läufe nacheinander, nie zwei zugleich; vor jedem Workflow mindestens 25 % RAM frei.
+
+```text
+VAULT_ROOT=~/JuraExamenVault python bench/stage1_bench.py select
+VAULT_ROOT=~/JuraExamenVault python bench/stage1_bench.py prepare
+python bench/stage1_bench.py run && python bench/stage1_bench.py run --repeat
+python bench/stage1_bench.py score --json bench/stage1-lauf/scores.json
+python bench/reading_order.py --truth bench/reading_order_<set>.json --run-dir <dir> \
+    prepare|recognize|run --optimize 3 <workflows>|score
+```
+
+**Umgebung:** M1, 8 GB, macOS 26.2; `~/.venvs/ocrmypdf` (Python 3.12) mit ocrmypdf 17.8.0, ocrmypdf-appleocr 0.3.4, rapidocr 3.9.2, onnxruntime 1.26.0, pyobjc-framework-Vision 12.2.1, pikepdf 10.9.1, pypdfium2 5.11.0; Tesseract 5.5.2. `ocrmypdf_paddle` aus dem jeweiligen Checkout (`PYTHONPATH`). Modelle `ch_PP-OCRv5_det_mobile.onnx`, `latin_PP-OCRv5_rec_mobile.onnx`, `ch_ppocr_mobile_v2.0_cls_mobile.onnx` (SHA-256 wie Nachtrag 18).
+
+### Schwellen
+
+Der Plan nennt vorläufig 2 Punkte Gewinn und 1 Punkt Toleranz und verlangt, sie aus der Streuung von Seite zu Seite abzuleiten. Festgelegt vor dem vollen Lauf: **Schwelle = 1,96 Standardfehler der Seitenwerte der besten bestehenden Engine auf derselben Kohorte**, also das, was die Kohorte überhaupt auflösen kann. Verglichen wird gepaart je Seite, mit 95-%-Bootstrap-Intervall (10.000 Ziehungen). Auf `words` sind das 1,3 Punkte für Wörter und 12,6 Punkte für Zitate (Apple streut bei Zitaten stark: 0–100 % je Seite).
+
+### Lesereihenfolge (68 Seiten)
+
+| Workflow | Median je Satz (t / n / m / q / r) | verschränkte Seiten | Vollbreite falsch | Seitenprüfung fehlgeschlagen |
+|---|---|---:|---:|---:|
+| `split-apple` | 96,0 / 94,8 / 95,3 / 94,9 / 94,7 % | 1 | 306 von 431 | 2 |
+| `split-tesseract` | 96,5 / 94,8 / 95,8 / 94,7 / 95,2 % | 1 | 304 von 431 | 2 |
+| `unsplit-apple` | 99,5 / 98,9 / 94,5 / 97,6 / 97,3 % | 30 | 108 von 438 | 0 |
+| `unsplit-tesseract` | 99,8 / 91,4 / 96,1 / 84,3 / 92,6 % | 37 | 26 von 438 | 0 |
+| `split-paddle` | 96,1 / 94,9 / 95,0 / 94,9 / 95,2 % | 1 | 312 von 438 | 0 |
+| `unsplit-paddle` | 100,0 / 100,0 / 100,0 / 100,0 / 100,0 % | 2 | 0 von 438 | 0 |
+| `unsplit-paddle-fast` | 100,0 / 100,0 / 99,5 / 100,0 / 100,0 % | 4 | 2 von 438 | 0 |
+
+Die zwei fehlgeschlagenen Seitenprüfungen der Split-Läufe liegen im n-Satz (Seiten fehlen im Ergebnis). Das Gate aus Nachtrag 19 für `unsplit-paddle` sagt für t und q „unsplit is supported“, für n, m und r „keep split mode“. Es scheitert dort an einzelnen Kriterien: je eine verschränkte Seite in n und r (r07: #127) und einzelne nicht gefundene Vollbreite-Zeilen. Dieses Gate prüft allein die Reihenfolge; die Split-Entscheidung unten wägt zusätzlich den Textlayer.
+
+### Textlayer
+
+| Kohorte | Workflow | Wörter | Reihenfolge | Zitate | B5 | s/Seite | Spitze RSS |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `words` (40) | `tesseract` | 96,1 % | 93,0 % | 4,2 % | 0 | 4,4 | 326 MB |
+| | `apple` | 96,9 % | 95,0 % | 69,4 % | 0 | 3,3 | 309 MB |
+| | `apple-split` | 94,5 % | 91,9 % | 64,3 % | 0 | 3,4 | 281 MB |
+| | `paddle-fast` | 97,5 % | 95,4 % | 78,9 % | 0 | 3,2 | 585 MB |
+| | `paddle-fast-split` | 94,7 % | 92,0 % | 68,7 % | 0 | 3,0 | 536 MB |
+| | `paddle-accurate` | 97,9 % | 95,8 % | 83,6 % | 0 | 6,8 | 1.878 MB |
+| `words`, zweispaltig (8) | `apple` | 96,1 % | 94,9 % | 65,4 % | 0 | | |
+| | `paddle-fast` | 97,9 % | 96,3 % | 74,7 % | 0 | | |
+| | `paddle-fast-split` | 89,2 % | 84,3 % | 60,8 % | 0 | | |
+| `short` (12) | `apple` | 92,8 % | 71,7 % | 77,0 % | 0 | 2,5 | 298 MB |
+| | `paddle-fast` | 93,6 % | 68,2 % | 95,2 % | 0 | 2,4 | 491 MB |
+| | `paddle-fast-split` | Quality Gate gescheitert, keine Ausgabe | | | 12 | | |
+| grafisch (8) | `apple` | 94,6 % | 86,7 % | 71,7 % | 0 | | |
+| | `paddle-fast` | 94,4 % | 64,3 % | 77,5 % | 0 | | |
+| | `paddle-accurate` | 98,0 % | 74,6 % | 93,7 % | 0 | | |
+| `skew` (10) | `tesseract` | 93,1 % | 83,8 % | 3,8 % | 0 | 4,8 | 318 MB |
+| | `apple` | 87,7 % | 86,6 % | 61,0 % | 0 | 3,2 | 398 MB |
+| | `paddle-fast` | 87,5 % | 86,5 % | 63,9 % | 1 | 3,5 | 638 MB |
+| | `paddle-fast-split` | 58,4 % | 56,1 % | 51,7 % | 4 | 2,6 | 572 MB |
+
+Vollständige Tabelle mit allen Workflows, Teilkohorten und Drehwinkeln: Ausgabe von `score` (nicht im Repo, Kursmaterial).
+
+**Stabilität:** `paddle-fast` und `paddle-accurate` liefern im zweiten Lauf auf allen 70 Seiten byte-gleichen Text.
+
+**Speicher:** kein Swap-Druck. Freier RAM nie unter 51 %; Auslagerungen während `paddle-accurate` 41.396 Seiten (≈ 650 MB), während `paddle-fast-split` 8.108, sonst 0.
+
+### Gate für `paddle-fast` gegen die beste bestehende Engine
+
+| Kriterium | Befund |
+|---|---|
+| Wort- oder Zitatgenauigkeit um die Schwelle besser | **erfüllt** auf `short`, Zitate +18,3 Punkte (Schwelle 14,7; Intervall +7,1 … +29,4). Auf `words` signifikant besser, aber unter der Schwelle: Zitate +9,5 (Schwelle 12,6; +2,7 … +17,7), Wörter +0,6 (Schwelle 1,3; +0,1 … +1,2) |
+| kein Rückschritt über die Toleranz auf einer geschützten Kohorte | **erfüllt.** Größter Abstand: `skew`, Wörter −5,6 gegen Tesseract (Toleranz 6,4), allein durch eine 90°-Seite; gegen Apple −0,2. Lesereihenfolge deutlich besser |
+| kein neuer B5- oder Seitenabdeckungsfehler | **formal verfehlt**, ein Fall (unten) |
+| Laufzeit und Speicher in den Grenzen aus #62 (15 s/Seite, halber RAM, kein Swap-Druck) | **erfüllt:** 2,4–3,5 s/Seite, höchstens 638 MB |
+
+**Der B5-Fall:** `skew`, Seite 9 (`UNIREP_KK_ZR_LH_16_01_2026.pdf`, S. 13, um 90° gedreht). Die Ausrichtung kommt bei allen Engines aus Tesseracts OSD (`ocrmypdf_paddle` gibt `get_orientation` an Tesseract weiter), und keine Engine dreht diese Seite zurück. Apple schreibt 2.258 Zeichen, von denen 7 % der Wörter stimmen, und besteht B5 still. Paddle schreibt 2 Zeichen, B5 schlägt an. Der Fehler liegt in der Drehungserkennung, nicht in der Erkennung; für den Nutzer ist der Paddle-Ausgang der sicherere, weil `reprocess-raw` nichts schreibt und die Seitenausnahme anbietet. Deshalb wird PaddleOCR trotzdem behalten. Die Drehungserkennung ist #152.
+
+**Genauer Modus:** erfüllt das Hauptkriterium schon auf `words` (Zitate +14,1, Schwelle 12,6; grafisch Wörter +3,4 und Zitate +22,0), hat denselben B5-Fall und kostet doppelt so viel Zeit und dreimal so viel Speicher. Er bleibt eine CLI-Option.
+
+### Spaltentrennung für Paddle
+
+Durchweg schlechter als ungeteilt:
+- **Reihenfolge:** Median um 95 % statt 100 %, 312 falsche Vollbreite-Zeilen statt 0 (derselbe Kopfschnitt wie in Nachtrag 19–25).
+- **Wörter auf Zweispaltern:** 89,2 statt 97,9 %.
+- **Folien:** Die ganze `short`-Kohorte scheitert am Quality Gate („One-sided text loss on split page“); ungeteilt besteht sie.
+- **Um 180° gedrehte Seiten:** 0,5–0,8 % statt 100 %, weil `--rotate-pages` auf Hälften abgeschaltet ist.
+
+Entscheidung: **entfernen** (#153).
+
+### Einschränkungen
+
+- **Keine Hand-Kohorte:** Harte Scans (Durchschlag, Handschrift, `03-durchschlag-handschrift`) sind nicht bewertet, weil keine geprüfte Transkription vorliegt. Die Scan-Seiten gehen nur über die Lesereihenfolge ein, deren Wahrheitszeilen RapidOCR-Zeilen sind (Heimvorteil bei „nicht gefunden“).
+- **Kleine Teilkohorten:** 8 Zweispalter-Vektorseiten, 8 grafische Seiten, je 2 Seiten pro Drehwinkel. Die Schwellen dort sind entsprechend grob.
+- **Zwei Code-Stände:** Die Lesereihenfolge lief vor #134, der Textlayer danach.
+- **Wandzeit:** Tesseract und Apple laufen mit mehreren Jobs, Paddle mit einem. Die Sekunden gelten für ganze Kohorten-PDFs, nicht für eine warme Einzelseite.
+
+## Nachtrag 2026-09-21 (27): Struktur-Referenzkorpus für die Zusammenbau-Schicht (Issue #20)
+
+`bench/structure_bench.py`, Wahrheit in `bench/structure_truth.json`. 20
+handgeprüfte Vektorseiten quer durch alle Layouts: Einspalter, Zweispalter,
+Fußnotenblöcke (ein- und zweispaltig), tiefe Gliederung (bis Ebene 6),
+Randmarken in beiden Bauformen (ausgerückt und inline), Tabellen (6×3,
+DSL-Vergleich, QA-Raster), Diagrammseiten (linearisiert, mit Bild-Callout
+in der echten Ausgabe) und Trennstrich-Auflösung. Gemessen wird Struktur,
+nicht Wörter: Überschriften (Anzahl und Ebene), Absatzgrenzen, korrekt
+zugeordnete Fußnoten, Reihenfolge auf Absatzebene — als exakte
+Fingerabdrücke (SHA-1 über normalisiertem Text), nicht als Text: kein
+urheberrechtlich geschütztes Material im Repo, dieselbe Regel wie
+`BENCHMARK-SET.md` und `reading_order_truth.json`.
+
+Stand: **20 von 20 Seiten bestehen.** Der Lauf braucht kein Modell
+(Vektorseiten, Textlayer-Pfad) und wiederholt sich über den Seiten-Cache
+aus #11; fünf aufeinanderfolgende Läufe liefern byte-identische Kandidaten.
+
+### Drei Fehler, gefunden durch das Handprüfen
+
+Jeder wurde erst repariert, dann geblesst — die Referenzen enthalten keinen
+einzigen bekannten Fehler:
+
+1. **Wortverschmelzung an Span-Grenzen** (`conversion.textlayer_lines`):
+   `clean_text` entfernte nachstehende Leerzeichen jedes Spans, bevor die
+   Naht gelesen wurde — aus `Gläubigerrechte stärken` wurde
+   `Gläubigerrechtestärken`, aus `**Reformziel:** Die` wurde
+   `**Reformziel:**Die`. Jetzt stammt der Randabstand aus dem Roh-Span.
+2. **Klausur-Boilerplate** (`assembly.is_boilerplate`): `Klausurenkurs/…`,
+   `Lösung - Klausur Nr. N, Seite M` und `Klausur Nr. N - Lösung, Seite M`
+   standen als eigene Absätze in jeder Ausgabe. Zwei verankerte Muster.
+3. **Phantom-Fußnoten im Splitter** (`assembly.split_footnote_defs`): die
+   Trennung nach jedem Punkt/Leerzeichen zerlegte Zitate — aus
+   `Kopp/Ramsauer, § 35 VwVfG, Rn. 18` wurden die Definitionen 8 (gekürzt)
+   und 35 (Phantom). Jetzt trennt nur Satzzeichen plus Leerzeichen, und
+   ein Zitatwort davor schützt die Zahl. (Review 2026-09-30: die römischen
+   Ziffern sind aus dem Schutzmuster wieder entfernt — im Splitter wirkungslos,
+   im Fließtext verschluckten sie Fußnotenzeichen nach `AEUV`, `BImSchV`.
+   Korpus danach erneut 20/20 gegen `main` `af29c16`.)
+   Regression über alle 1404 Vektorseiten (`bench/regress_footnote.py`):
+   **1026 unverändert, 378 neu gruppiert, 294 Phantom-Doppelpunkte weg,
+   0 Zeichen verloren.**
+
+### Bewusst nicht enthalten
+
+- **Scanseiten** (Kachelschnitt): Die OCR-Ausbeute schwankt zwischen Läufen
+  leicht — exakte Fingerabdrücke würden flakken. Die Naht-Entdopplung ist
+  über `pdf2md/test/test_seam.py` abgedeckt.
+- **Drei Zweispalter ohne erkennbaren Steg** (2131_Lösung S. 1/4, 2135_Lösung
+  S. 1): `_column_gap` findet dort keinen Spalt, die Spalten verschränken
+  sich zeilenweise. Als Referenz unbrauchbar — das ist offener Fehler #12,
+  kein Korpusfall. Ersetzt durch Seiten mit gefundenem Steg.
+- **Bekannte Restfehler mit Vermerk** statt Austausch: linearisierte
+  Diagrammseiten (Box-Reihenfolge), ein in Fußnote 33 eingehängter
+  Fließtext-Rest, zwei am Fließtext klebende Langüberschriften. Die
+  `note`-Felder im Truth-File benennen sie; jede künftige Reparatur bricht
+  gezielt diese Fingerabdrücke.
+
+## Nachtrag 2026-10-01 (28): Fußnotenblöcke zweier Spalten getrennt halten (#14, PR #129)
+
+Stand nach dem Zusammenführen mit `main` (Seitenfälle, #99-Splitter,
+#161/#163). Alle Messungen ohne Modell.
+
+| Messung | `main` | PR #129 |
+|---|---|---|
+| `footnote_columns.py`, 26 Zweispalter (2131/2135/2143): Spalten richtig | – | 26/26 |
+| Definitionen mit Text der anderen Spalte | 5 | 0 |
+| Definitionen exakt | 88/127 | 119/127 |
+| verlorene Buchstaben | 0 | 0 |
+| `structure_bench.py`, 20 Seiten | 20/20 | 20/20 (s15 neu gesegnet) |
+| `make check-cases`, 12 Scan-Seitenfälle, abweichende Blöcke | 109 | 109 |
+
+- **s15** (2131, S. 7): der bekannte Restfehler aus Nachtrag 27 ist behoben —
+  der Fließtext-Rest hängt nicht mehr in Fußnote 33, sondern setzt den
+  Absatz der linken Spalte fort (Trennstrich aufgelöst). Fingerabdrücke
+  nach Handprüfung neu gesegnet, `note` angepasst.
+- **Beim Zusammenführen gefunden:** Die neue Regel „Nummer sortiert nach
+  ihrem Text“ klebte auf 2135 Zusatzmaterial S. 1 die Seitenzahl an die
+  Fußzeile; die Fußzeile wurde nicht mehr als laufende Zeile erkannt und
+  landete im Fließtext (s16 brach). Eine nachsortierte Nummer gehört jetzt
+  nur zu einem Text, der höchstens 40 Tausendstel rechts von ihr beginnt.
+  Ein Ausschluss laufender Zeilen half nicht: auf 2135 Lösung S. 6/7 gilt
+  eine wiederholte Fußnoten-Fundstelle selbst als laufende Zeile
+  (119 → 116 exakt).
+- **Seitenfälle:** die zwölf Scan-Fälle tragen keine Spaltenzuordnung
+  (vor #14 erfasst); sie messen hier nur, dass der Zusammenbau ohne
+  Spalten unverändert bleibt. Für die Textlayer-Seiten von #14 gibt es
+  keinen Seitenfall; die Messung dafür ist `footnote_columns.py`.
+
+Nicht gelaufen: `footnote_columns.py --all` und `regress_steg/randlabel/
+randmarke` (brauchen `bench/pages.json`, das auf diesem Rechner fehlt),
+OCR-Benchmark `bench_ocr.py`.

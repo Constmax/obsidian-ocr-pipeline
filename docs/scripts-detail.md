@@ -6,10 +6,11 @@ All three scripts share these flags:
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--engine auto\|apple\|tesseract` | `auto` | OCR engine selection |
+| `--engine auto\|apple\|tesseract\|paddle` | `auto` | OCR engine selection |
+| `--paddle-mode accurate\|fast` | `accurate` | PaddleOCR mode; only with `--engine paddle` |
 | `--dpi N` | `300` | Pre-OCR downscaling (0 = disabled) |
 | `--jobs N` | by RAM (1–4) | Parallel OCR workers |
-| `--split-columns` | off | Automatically detect two-column pages, split, then re-merge back into original page layout |
+| `--split-columns` | off | Automatically detect two-column pages, split, then re-merge back into original page layout (ignored with `--engine paddle`) |
 | `--split-columns-all` | off | Same as `--split-columns`, but without detection — splits every page |
 | `--keep-split` | off | Suppress re-merge (output remains split into half-pages) |
 | `--no-quality-gate` | off | Disable automated quality check + auto-retry |
@@ -26,6 +27,9 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 - `auto`: Uses Apple Vision if `ocrmypdf-appleocr` is installed, otherwise Tesseract
 - `apple`: Forces Apple Vision (fails with error if plugin is missing)
 - `tesseract`: Forces Tesseract (automatically applies `--tesseract-pagesegmode 1` for column detection and `--clean` when `unpaper` is available)
+- `paddle`: PaddleOCR PP-OCRv5 through the `ocrmypdf_paddle` plugin (fails with an error before any OCR if the plugin does not load or `--paddle-check` finds its runtime, models or, in fast mode, Apple Vision not ready; an `ocrmypdf_paddle` from before that option is reported as too old). Never chosen by `auto`; the Stage-1 benchmark (#71) retained it in fast mode, which the plugin offers. Runs one OCR job whatever `--jobs` says (`--jobs` still applies to a fallback engine). `--paddle-mode fast` lets Apple Vision read the lines and PP-OCRv5 re-read only citation lines (macOS 13+, see [paddle-textlayer.md](paddle-textlayer.md)). `setup.sh` installs the plugin into the Stage-1 venv through `install-paddle.sh` ([installation.md](installation.md#paddleocr-install-paddlesh)).
+
+`resolve_engine` in `pdf-lib.sh` turns the requested engine into one resolved value (`apple`, `tesseract` or `paddle`); the OCR arguments and the fallbacks below are derived from that value alone.
 
 ### DPI Tuning
 
@@ -73,7 +77,15 @@ After every OCR run, the pipeline automatically validates:
 
 Threshold 0.40 instead of 0.30: Tolerates unavoidable OCR artifacts in older Hemmer scans (e.g., "eaglen" for "hemmer") while reliably catching structural failures.
 
-On failure: Auto-retry with column split (when using Tesseract and `pikepdf` is available, including re-merge to original format), followed by retry with alternative engine (apple ↔ tesseract).
+On failure the gate walks a fixed fallback matrix:
+
+| Engine | Then | Then |
+|---|---|---|
+| Apple Vision | Tesseract | Tesseract with column split |
+| Tesseract | Tesseract with column split | Apple Vision (if installed) |
+| PaddleOCR | Apple Vision, or Tesseract without it | — |
+
+The column-split retry needs `pikepdf`, re-merges to the original format and is skipped when `--split-columns` already splits. PaddleOCR never splits: it orders both columns itself, and `--split-columns`/`--split-columns-all` with `--engine paddle` are ignored with a warning, for the fallback engine too (#153; split mode cost words and order in `bench/ERGEBNIS.md`, Nachtrag 26). An engine switch re-runs OCR with `--force-ocr`. Every switch is printed on stderr with its reason (`🔄 Fallback: PaddleOCR accurate → Apple Vision (quality gate failed)`), and the summary names the engine that produced the file (`pdf-auto`: per file, plus a fallback count). If every attempt fails, no file is written.
 
 ### Multi-Part File Detection
 
@@ -137,6 +149,7 @@ Alphanumeric with Natural Sort. Use numerical prefixes for explicit ordering: `0
 
 ```bash
 reprocess-raw <raw-pdf-file> [--output FILE] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
+reprocess-raw --check-engine [--engine E] [--paddle-mode M]
 ```
 
 Wrapper around `pdf-combine` for the scenario "re-process an existing `raw/` file with the updated pipeline" (e.g. after bug fixes). Workflow:
@@ -158,6 +171,10 @@ The interface for GUI callers such as the Obsidian plugin. The same checks run, 
 - Publication never overwrites. The result is copied to a hidden `.<FILE>.XXXXXX` file in the destination folder and hard-linked (`ln`) to `FILE`; `ln` fails if `FILE` appeared while OCR was running. Afterwards the script confirms the link really is `FILE`, because BSD `ln` puts the link *inside* a folder that appeared under that name.
 - Hard links were verified inside iCloud Drive vaults (`~/Documents` and the Obsidian iCloud container). There is no `mv` fallback: on a filesystem without hard links, publication fails cleanly instead of accepting a check-then-rename race. macOS `mv -n` also exits 0 when it refuses to overwrite, so it cannot report that race.
 - `SIGKILL` cannot be trapped. If it lands between the hidden copy and its removal, a hidden `.<FILE>.XXXXXX` file can remain; it never carries the `.pdf` suffix. Cancel with `SIGTERM` to the process group first.
+
+### Engine check: `--check-engine`
+
+Resolves the engine exactly as a run would and exits without reading or writing a file: `0` when a run would start on that engine here (prints `🧠 Engine: …`), `4` (`check-failed`) with the reason on stderr otherwise. The plugin runs `reprocess-raw --check-engine --engine paddle --paddle-mode fast` before it offers PaddleOCR (contract: `stage1.checkEngine` in `contracts/cli-contract.json`). For PaddleOCR the check covers what a run needs before its first page: the plugin loads, and `ocrmypdf --plugin ocrmypdf_paddle --paddle-check <mode>` reports the pinned runtime, the model files and (fast mode) Apple Vision ready.
 
 ### `column_tools.py verify-pages`
 
@@ -272,6 +289,18 @@ With automated MediaBox Fix, large scans remain RAM-safe:
 
 `ocrmypdf --max-image-mpixels` is configured to 400 MP in `build_ocr_args` (accommodates edge cases lacking MediaBox Fix) passed as CLI argument rather than environment variable (as ocrmypdf ignores `PILLOW_MAX_IMAGE_PIXELS`).
 
+## Stage 2: Option Names
+
+`pdf2md` options have English names (`--pages`, `--refresh-cache`,
+`--progress`, `--dictionary`, `--dictionary-correct`, `--dictionary-report`,
+`--no-dictionary`, `--lines-dump`, `--diagram-pages`, `--diagram-image-only`,
+`--retries`, `--tile-from`, `--image-dir`, `--image-max-edge`, `--no-bold`,
+`--ocr-only`). The German names they replaced (`--seiten`, `--neu`,
+`--fortschritt`, `--woerterbuch*`, `--zeilen-dump`, `--diagramm-*`,
+`--neuversuche`, `--kachel-ab`, `--bild-*`, `--kein-fett`, `--nur-ocr`) stay
+accepted as aliases; the Obsidian plugin still spawns `--seiten` and
+`--fortschritt`. This document uses the English names.
+
 ## Stage 2: Accepted Input Formats
 
 `pdf2md.py` takes a PDF or a single page image:
@@ -325,7 +354,7 @@ Four consequences worth knowing:
   assumed A4 page instead, keeping every pixel. A file that *does* declare its
   resolution is taken at its word.
 - **One image is one page** — enforced, not assumed: a file carrying more than
-  one frame is rejected (above). Header/footer detection in `running_lines()`
+  one frame is rejected (above). Header/footer detection in `assembly_context()`
   needs at least two pages, so it contributes nothing here. Combining a folder
   of images into one Markdown file is a separate feature.
 - **A shared basename only matters once it overwrites something.** `scan.pdf`
@@ -358,12 +387,26 @@ pdf2md.py (argparse / console / exit translation)
        ├── assembly.py   Markdown reassembly (pure functions)
        ├── dictionary.py Dictionary verification post-reassembly
        └── page_cache.py Atomic per-page JSON cache and input fingerprints
+cases.py (`pdf2md case …`)  Page cases: capture, replay and comparison
 ```
 
 `ConversionRequest`, `AnalyzedPage`, `AssemblyResult`, and `ConversionResult`
 replace positional runner state. Temporary files and repeated-header context are
 scoped to one request. Tests can provide a lightweight OCR adapter and collect
 structured events without invoking argparse or intercepting `sys.exit`.
+
+One page's lines become its page block in one place,
+`page_block(lines, context, meta) -> PageBlock` in `conversion.py`: assembly,
+the dictionary pass of an OCR page, the page marker and the diagram callout.
+`BlockContext` holds what a run shares (running lines, wordbook,
+`--dictionary-correct`, `--diagram-image-only`), `PageMeta` what the page adds
+(number, source, marker detail, diagram image name);
+`PageMeta.from_cache_entry(entry, diagram_image)` reads it from a page-cache
+entry. The conversion builds every block this way, and the `--pages` merge
+counts a kept page's dictionary findings through the same assembly and
+dictionary step. `page_block` needs neither the model nor the PDF, so a
+page-cache entry can be turned into its block again. A block carries no
+trailing whitespace; an empty page is its bare marker.
 
 Run `python3 -m pytest pdf2md/test -q` for the conversion and pure-function
 tests. Heavy dependencies (`fitz`, `numpy`, `PIL`, `mlx_vlm`) remain loaded
@@ -385,6 +428,43 @@ Missing files trigger `ModuleNotFoundError`. For the same reason, legal term
 lists are embedded directly within modules rather than separate data files —
 a `daten/` directory would be lost during flat file copies.
 
+## Stage 2: Headers and Footers (`assembly.py`)
+
+`is_boilerplate()` drops a recognized line as a header or footer before the
+page's paragraphs are assembled, so a header the model glued to the first
+paragraph is dropped too. Besides fixed patterns (`BOILERPLATE`, the city
+lists, bare page numbers near the page edge, and `ZONE_SIGNALS` for short
+lines and lines near the page edge), it drops the document's running lines.
+
+The page zones are constants in thousandths of the page height, in one
+place at the top of `assembly.py`. A recognized line is placed by its top;
+a weaker signal needs a zone nearer the edge: zone signals and city lines
+above 70 or below 950, a bare page number above 80 or below 905.
+
+- `assembly_context()` in `conversion.py` reads the running lines from the
+  PDF's text layer, placing a line by its centre. A line counts when it
+  repeats on two pages in the header (top 9 %) or footer (bottom 7 %) zone.
+  A course label under the header rule (down to 12 %) counts only when it
+  repeats on two thirds of the pages and on at least three: slide titles
+  and body lines repeat there as well (Issue #161). The running lines of the
+  footer zone are also the document's footer lines.
+- Running lines and recognized lines are compared without bold markers and
+  with single spaces (`running_text()`).
+- A running line is dropped anywhere on the page.
+- A scan is read column by column, so a footer spanning both columns comes
+  back in two gutter pieces. On an OCR page, a line whose top lies in the
+  footer band (the bottom 7 %, the footer zone by the line's top) is dropped
+  as well when it is a footer line read with OCR confusions (`i`, `l` and
+  `|` read as `1`), or its start or end. A piece must hold five letters or
+  digits, 40 % of the footer's, and two words; the end piece may start with
+  half a glyph. Only footer lines count: the end of a header ("Fall 9" of
+  "Muster - Fall 9") in the footer band may be a heading. A text layer is
+  not cut, so text-layer pages keep such lines. On a horizontally tiled
+  page y is tile-relative (#146), so the band also reaches into the upper
+  tile.
+- A misread header or footer that is not a running line of the text layer
+  (a scan without one, for example) is dropped only by the fixed patterns.
+
 ## Stage 2: Dictionary Verification (`dictionary.py`)
 
 Executes post-reassembly across **every OCR page** — skipping native textlayer pages whose text is exact and would produce false positives. Unrecognized terms are logged as `⌕` lines in execution output and added to `woerter-verdaechtig` in frontmatter.
@@ -392,14 +472,14 @@ Executes post-reassembly across **every OCR page** — skipping native textlayer
 | Flag | Effect |
 |---|---|
 | *(Default)* | Reporting mode only; document text remains unaltered |
-| `--woerterbuch-korrigieren` | Replaces unambiguous OCR errors (see below) |
-| `--woerterbuch <file>` | Custom wordlist or `.dic` file (repeatable) |
-| `--woerterbuch-bericht <file>` | Export complete findings with page numbers as JSON |
-| `--kein-woerterbuch` | Disable dictionary checking completely |
+| `--dictionary-correct` | Replaces unambiguous OCR errors (see below) |
+| `--dictionary <file>` | Custom wordlist or `.dic` file (repeatable) |
+| `--dictionary-report <file>` | Export complete findings with page numbers as JSON |
+| `--no-dictionary` | Disable dictionary checking completely |
 
 **Unambiguous** definition: term does not exist in dictionary, and exactly *one* substitution variant from OCR confusion table (`m`/`rn`, `ff`/`i`, `l`/`1`, `u`/`ü`, etc.) exists in dictionary. If multiple matches exist (`Hans`/`Haus`), term is preserved and flagged only. Citations, numbers, abbreviations, tables, wikilinks, and footnote markers are skipped — resolving Roman numeral `I` vs `1`/`l`/`|` is explicitly outside module scope.
 
-**Dictionary Resolution Order**: `--woerterbuch`, then `$PDF2MD_WOERTERBUCH` (colon-separated), then first available system dictionary (`/opt/homebrew/share/hunspell`, `/usr/share/hunspell`, `~/Library/Spelling`, LibreOffice bundle). If `hunspell` with German dictionary is present, it takes precedence — evaluating affix rules for higher accuracy than simple fallback substitution rules. If no dictionary is found, execution reports status and skips verification.
+**Dictionary Resolution Order**: `--dictionary`, then `$PDF2MD_DICTIONARY` (colon-separated), then first available system dictionary (`/opt/homebrew/share/hunspell`, `/usr/share/hunspell`, `~/Library/Spelling`, LibreOffice bundle). If `hunspell` with German dictionary is present, it takes precedence — evaluating affix rules for higher accuracy than simple fallback substitution rules. If no dictionary is found, execution reports status and skips verification.
 
 Without system dictionary pre-installed, download files manually:
 
@@ -408,33 +488,34 @@ curl -o ~/.local/share/de_DE.dic \
   https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.dic
 curl -o ~/.local/share/de_DE.aff \
   https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.aff
-export PDF2MD_WOERTERBUCH=~/.local/share/de_DE.dic
+export PDF2MD_DICTIONARY=~/.local/share/de_DE.dic
 ```
 
 The accompanying `.aff` file is required: `SET` header defines encoding (`de_DE_frami.dic` uses ISO-8859-1). If missing, file is parsed as UTF-8, breaking dictionary lookup for all terms with German umlauts.
 
 **Benchmark**: Tested on 202 words of legal German against `de_DE_frami`: 0 false positives, 6 of 7 introduced OCR errors identified. The 7th (`Verhaltungsakte`) demonstrates documented limitation — morphologically well-formed pseudo-word decomposed by compound rule into `verhalten` + `Akte`. Strict rules would cause false positives on compound nouns, as `.dic` dictionaries delegate compound analysis to affix rules.
 
-## --seiten (Stage 2)
+## --pages (Stage 2)
 
 Convert selected pages only. Format as comma-separated list with page ranges (e.g. `1,3-5,8`). Omit or leave empty for all pages.
 
 ```bash
-python pdf2md/pdf2md.py raw/ZR/skript.pdf --seiten "1,3-5" --out _ocr-preview
+python pdf2md/pdf2md.py raw/ZR/skript.pdf --pages "1,3-5" --out _ocr-preview
 ```
 
 - Page numbers are 1-based matching original PDF. Image input has exactly one
-  page, so `--seiten` accepts only `1`.
-- `--diagramm-seiten` uses the same grammar. Whitespace around entries is ignored.
+  page, so `--pages` accepts only `1`.
+- `--diagram-pages` uses the same grammar. Whitespace around entries is ignored.
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
-- `laufende_zeilen()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
+- `assembly_context()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
+- Paragraphs: a line starts a new paragraph at a list label, a heading, a box edge or a wider gap. Letter labels are one letter or one letter repeated (`a)`, `bb)`, `aaa)`) or a lowercase roman numeral (`iv.`), so a line starting with an abbreviation (`gem.`, `vgl.`, `ff.`, `i. V.m.`, `o. ä.`) continues its paragraph. A label that repeats the start of the line above and lies inside that line's box is dropped as read twice. On an OCR page, bold comes per recognized line and boxes come from ruled lines of the image. There a line that carries on the sentence (it starts lowercase, or the text before ends on an article, preposition, conjunction or `gem.`/`vgl.`/`bzw.`/`i. V.m.`) is cut off neither by an all-bold line nor by the heading-like line before it; after a bold heading only the second signal counts. At normal spacing, a box edge on such a page does not split before a line that carries on the sentence, even after a period, nor after text that stops mid-sentence: on a lowercase letter (the end of any word, capitalised or not), a comma, a semicolon or a hyphen or dash, but not on a colon, a digit or an abbreviation in capitals such as `BGB`. Otherwise it splits. Without line coordinates, a period of `gem.`, `vgl.`, `bzw.` or `i. V.m.` ends no paragraph (Issue #163).
 - Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`).
 - **An existing preview is merged, not replaced (Issue #106).** The selected pages replace their blocks, new ones are inserted in page order, and every other block stays verbatim, manual edits included. Without an existing preview only the selected pages are written, and `seiten` counts those.
-- The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--seiten` run adds no note, because pages it did not reach keep their previous blocks.
-- A preview without frontmatter or page markers, or with a page number twice, cannot be merged. The run stops before analysis with exit code 1 and leaves the file untouched; convert without `--seiten` to replace it.
-- Plugin queries selection via `SeitenAuswahlModal` (total page count rendered via pdf.js).
+- The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--pages` run adds no note, because pages it did not reach keep their previous blocks.
+- A preview without frontmatter or page markers, or with a page number twice, cannot be merged. The run stops before analysis with exit code 1 and leaves the file untouched; convert without `--pages` to replace it.
+- Plugin queries selection via `PageSelectModal` (total page count rendered via pdf.js).
 
-## Page Cache and `--neu` (Stage 2)
+## Page Cache and `--refresh-cache` (Stage 2)
 
 Every completed page is written atomically below
 `<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains parsed lines with
@@ -458,16 +539,148 @@ boxes, and older-schema entries are likewise recalculated.
 pdf2md raw/ZR/skript.pdf --out _ocr-preview
 
 # Recalculate every selected page
-pdf2md raw/ZR/skript.pdf --out _ocr-preview --neu
+pdf2md raw/ZR/skript.pdf --out _ocr-preview --refresh-cache
 
 # Recalculate only pages 12-14; reuse all other matching pages
-pdf2md raw/ZR/skript.pdf --out _ocr-preview --neu "12-14"
+pdf2md raw/ZR/skript.pdf --out _ocr-preview --refresh-cache "12-14"
 ```
 
-`--refresh-cache` is the English alias of `--neu`. The optional range uses the
-same grammar and validation as `--seiten`. Dictionary reporting/correction and
+The optional range of `--refresh-cache` (German alias `--neu`) uses the
+same grammar and validation as `--pages`. Dictionary reporting/correction and
 Markdown formatting are intentionally not part of the key: they are rerun from
 the cached raw lines on every invocation.
+
+## Page Cases: `pdf2md case` (Stage 2)
+
+A **page case** is a page the user marked as wrong, kept with the page block
+Stage 2 produced and the page block the user expects (terms: `CONTEXT.md`).
+A **replay** produces the block again from the case's recognized lines,
+without the model, and compares it with the expected block. `pdf2md/cases.py`
+owns the format; the plugin only spawns `stash`, `add` and `list`
+(`docs/cli-contract.md`, "Page cases").
+
+```bash
+pdf2md case stash _ocr-preview/skript.md --page 12
+pdf2md case add   _ocr-preview/skript.md --page 12 --note "footnote tail lost" --issue 130
+pdf2md case list  _ocr-preview/skript.md
+pdf2md case run   [FOLDER ...] [--issue 130] [--promote]
+make check-cases  [ISSUE=130] [PROMOTE=1]      # = case run "$VAULT_ROOT"
+```
+
+Cases hold page text, so they live in the vault and are never committed:
+
+```
+<preview folder>/.cases/<stem>/pNNN.json          the case, id <stem>/pNNN
+<preview folder>/.cases/<stem>/.stash/pNNN.json   the stash
+```
+
+The block a preview holds for a page always comes from the page's current
+page-cache entry. A stash or case made from other recognized lines therefore
+belongs to an earlier version of the page (before a rerun that read other
+lines, or before the preview was accepted and converted again) and is not
+used for the block the preview holds now.
+
+**`stash <preview> --page N`** keeps the page's page-cache entry and the
+produced block, called before the first edit is saved. The produced block is
+the replay of the entry's lines, not the text in the preview: that may be
+edited already, and nothing in the file tells.
+
+| Output | Meaning |
+|---|---|
+| `stashed` | The lines and the produced block are kept; a stash of other lines is replaced |
+| `stash kept` | The page has a stash of these lines; a rerun that reads the same lines does not replace it |
+| `not stashed, the case holds the produced block` | The page's case was made from these lines |
+
+`add` removes the stash; `run` removes the stashes of previews that left the
+preview folder (accepted or deleted).
+
+**`add <preview> --page N [--note TEXT] [--issue N] [--fault-stage
+assembly|upstream]`** marks the page: the current page block becomes the
+expected block. Recognized lines and produced block come from the stash;
+without a stash from the case the page already has (marking again updates the
+expected block); without either, or when they were made from other lines,
+from the current page-cache entry. Note and issue of an existing case stay
+unless given. A changed expected block sets the case back to `open`.
+
+Capturing a page needs its page-cache entry and the source named in
+`quelle-pdf`, unchanged since the conversion; a relative `quelle-pdf` is
+looked up from the working directory and from every folder above the preview.
+`stash` exits with code 1 and one line on stderr without them. `add` then
+works from the stash or the existing case and fails only when there is
+neither. The page cache stays in the preview folder, so a page is stashed
+and first marked while its preview is under review, before it is accepted.
+
+On success `add` prints `case <stem>/pNNN: <status>, fault stage <stage>`,
+then what it has to say besides: the words that made the fault stage
+`upstream`, and that the expected block equals the produced one.
+
+**`list <preview>`** prints that line for every case of the preview, in page
+order, and nothing when there is none. It reads the case files only, so it
+needs neither the preview nor the page cache. A case it cannot read is named
+on stderr and left out; the exit code stays 0. The review view asks it which
+pages to badge.
+
+A case file (`schema: 2`) holds:
+
+| Key | Content |
+|---|---|
+| `pdf`, `pdf_sha256` | Source path and the SHA-256 it had when the lines were recognized |
+| `page` | The page-cache entry: recognized lines, source, layout, mode, trace |
+| `diagram_image`, `diagram_image_only` | What the page block needs besides the lines |
+| `running_lines` | Frozen copy of the source's running lines |
+| `footer_lines` | The running lines among them found in the footer zone; a schema-1 case is upgraded with all its running lines |
+| `produced`, `expected` | The two page blocks, marker line included |
+| `note`, `issue` | The user's note and an optional issue number |
+| `status` | `open` or `fixed` |
+| `fault_stage`, `fault_stage_by` | `assembly` or `upstream`; set by `coverage` or by the `user` |
+| `marked` | When the page was last marked |
+
+A case with an older `schema` is upgraded when it is read (`_UPGRADES` in
+`cases.py`); one with a newer schema is `unreadable` and fails the run.
+
+**Fault stage.** A word of the expected block that no recognized line holds
+means `upstream`: recognition, tiling or ordering lost it, and no assembly
+can produce it. Otherwise the fault is in `assembly`. A word hyphenated
+across two lines counts as held, and so does what assembly adds itself (the
+diagram callout title). `--fault-stage` overrides the result and stays when
+the page is marked again. Upstream cases are counted but not replayed.
+
+**Replay** runs `page_block` on the case's lines. Running lines are
+recomputed from the source with the current code, so a running-line fix
+reaches the case. When the source is missing, or its SHA-256 changed (the
+case is reported as stale), the frozen copy is used. The dictionary pass is
+not replayed: it depends on the machine's word lists, and a word it corrected
+is an upstream fault.
+
+**Comparison** is block by block, marker line excluded. Each block is
+described as `bench/structure.py` describes a reference block (text
+fingerprint, kind, heading level, footnote number, the footnote marks it
+carries), and the two sequences must be equal: order, paragraph boundaries,
+kind (text, heading, table, footnote), heading level, footnote numbers and
+the paragraph a footnote mark sits in count; bold, case and whitespace do
+not. The report names the blocks that differ.
+
+**`run [FOLDER ...] [--issue N] [--promote]`** replays every case below the
+folders (default: `$VAULT_ROOT`; exit code 2 when neither is given).
+
+| Reported | Meaning | Fails the run |
+|---|---|---|
+| `fixed` | A fixed case still matches | no |
+| `open` | An open case still differs: a known failure | no |
+| `now matching` | An open case matches; `--promote` makes it `fixed` (`promoted`) | no |
+| `regressed` | A fixed case differs | yes (exit 1) |
+| `uncorrected` | The expected block equals the produced one for the comparer: the page was marked without a correction. Not replayed, never promoted | no |
+| `upstream` | Not replayed | no |
+| `unreadable` | The file cannot be read by this version | yes (exit 1) |
+| `error` | The replay raised: a damaged case, or the code under repair | yes (exit 1) |
+
+`--promote` also rewrites the frozen running and footer lines with the ones
+the case matched with, so a case fixed by a running-line fix stays fixed once its
+source is moved or changed.
+
+`make check-cases` runs this with `~/.venvs/mlxocr` (pymupdf; no model is
+loaded) on `VAULT_ROOT` and stops with a message when `VAULT_ROOT` is unset.
+It is not part of `make check` or CI.
 
 ## Cancellation and Result Writing (Stage 2)
 
@@ -478,7 +691,7 @@ the cached raw lines on every invocation.
   the partial file holds exactly the pages finished before it (exit 6, or 7
   when there are none). `pdf2md.py` picks the exit code from the result, not
   the signal handler.
-- **Atomic writes:** the `.md`, `--zeilen-dump` and `--woerterbuch-bericht`
+- **Atomic writes:** the `.md`, `--lines-dump` and `--dictionary-report`
   go to a hidden `.<name>.<pid>.tmp` sibling first and replace the target in
   one rename. An interrupted write leaves the previous preview whole; only
   `SIGKILL` can leave the hidden sibling behind.
@@ -486,9 +699,9 @@ the cached raw lines on every invocation.
   `SIGKILL` only if pdf2md is still alive 5 s later. The plugin stops a run
   only after 15 minutes without any output, never after a fixed total time.
 
-## --fortschritt (Stage 2)
+## --progress (Stage 2)
 
-Machine-readable progress emitted as JSON lines to stderr. Default console output (German sentences, emojis, arrows) remains unaffected. Passing `--fortschritt` streams one JSON event per status change to stderr without altering stdout.
+Machine-readable progress emitted as JSON lines to stderr. Default console output (German sentences, emojis, arrows) remains unaffected. Passing `--progress` streams one JSON event per status change to stderr without altering stdout.
 
 ### Emitted Events
 
@@ -530,7 +743,7 @@ pdf2md.py --check --out _ocr-preview
 # fehlgeschlagen
 ```
 
-`--check --progress` (or `--check --fortschritt`) outputs the same as a single JSON document on stdout:
+`--check --progress` (German alias `--fortschritt`) outputs the same as a single JSON document on stdout:
 
 ```json
 {"typ":"check","ok":false,"checks":[{"name":"python","ok":true,"detail":"3.12.4"},…],"warnungen":["speicher: …"]}

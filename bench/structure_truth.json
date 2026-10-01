@@ -1,0 +1,1937 @@
+{
+ "description": "Structure truth set for issue #20: 20 hand-checked vector pages across all assembly layouts. Sources resolve against VAULT_ROOT. Each blessed page holds structural blocks (fingerprints plus short anchors), never page text — the same copyright rule as bench/BENCHMARK-SET.md. Score with `python bench/structure_bench.py score`; bless checked candidates with `bless` (local only, never in CI). Vector pages only: their text-layer input is deterministic, so exact fingerprints are stable across runs. OCR wobble would flake them; tile seams are covered by pdf2md/test/test_seam.py instead.",
+ "pages": [
+  {
+   "id": "s01",
+   "source": "raw/OeR/Verwaltungsrecht-AT/WuV_Verwaltungsrecht 2026.pdf",
+   "page": 1,
+   "layout": "two columns, question-answer grid, hyphenation",
+   "blocks": [
+    {
+     "hash": "19d8daa11d99",
+     "refs": []
+    },
+    {
+     "hash": "feef0a1ba1f0",
+     "refs": []
+    },
+    {
+     "hash": "1410e6b66e93",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "28b52787be33"
+    },
+    {
+     "hash": "d542dceef611",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "6dadd31d4fbc"
+    },
+    {
+     "hash": "4b90bcd112bd",
+     "refs": []
+    },
+    {
+     "hash": "1410e6b66e93",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "0fcb64a8580c"
+    },
+    {
+     "hash": "d542dceef611",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "50eca94e6c67"
+    },
+    {
+     "hash": "98c7a2539eb1",
+     "refs": []
+    },
+    {
+     "hash": "7b4cf3a05dad",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "4a94788c5f18"
+    },
+    {
+     "hash": "22438594a524",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "14a6190de2e2"
+    },
+    {
+     "hash": "43b66914b4d6",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "5c86e90aa00e"
+    },
+    {
+     "hash": "20fae8f3fa88",
+     "refs": []
+    },
+    {
+     "hash": "1410e6b66e93",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "316ea9e5d971"
+    },
+    {
+     "hash": "d9d935752b08",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "2579f886293f"
+    }
+   ]
+  },
+  {
+   "id": "s02",
+   "source": "raw/OeR/Verwaltungsrecht-AT/WuV_Verwaltungsrecht 2026.pdf",
+   "page": 3,
+   "layout": "two columns, grouped answers (grid abstains on non-aligned rows)",
+   "note": "Answers are grouped prose, not y-aligned: the grid correctly abstains and column order (questions, then answers) is kept.",
+   "blocks": [
+    {
+     "table": true,
+     "hash": "0bc5c6eef900"
+    },
+    {
+     "hash": "c14d12033009",
+     "refs": []
+    },
+    {
+     "hash": "1410e6b66e93",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "16a0c29723c0"
+    },
+    {
+     "hash": "d542dceef611",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "efc26fd1118f"
+    },
+    {
+     "hash": "90707349c170",
+     "refs": []
+    },
+    {
+     "hash": "f94591ddaeaf",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "05da04611d59"
+    },
+    {
+     "hash": "3cf2e9219bbb",
+     "refs": []
+    },
+    {
+     "hash": "78e47beb450e",
+     "refs": []
+    },
+    {
+     "hash": "d793e161ce75",
+     "refs": []
+    },
+    {
+     "hash": "29e2ebe037b2",
+     "refs": []
+    },
+    {
+     "hash": "403da81ca521",
+     "refs": []
+    },
+    {
+     "hash": "cb011d6c6720",
+     "refs": []
+    },
+    {
+     "hash": "8af3b8a49598",
+     "refs": []
+    },
+    {
+     "hash": "1410e6b66e93",
+     "refs": []
+    },
+    {
+     "hash": "ed06b1485b6d",
+     "refs": []
+    },
+    {
+     "hash": "d2871e82d52d",
+     "refs": []
+    },
+    {
+     "hash": "130425353a5e",
+     "refs": []
+    },
+    {
+     "hash": "d542dceef611",
+     "refs": []
+    },
+    {
+     "hash": "2ed8739c1bab",
+     "refs": []
+    },
+    {
+     "hash": "f67fc8e1554f",
+     "refs": []
+    },
+    {
+     "hash": "494e483c8b1d",
+     "refs": []
+    },
+    {
+     "hash": "a8ab0c142ed5",
+     "refs": []
+    },
+    {
+     "hash": "8b6ae8c751ba",
+     "refs": []
+    },
+    {
+     "hash": "30b2deeee7a9",
+     "refs": []
+    },
+    {
+     "hash": "97ad12dfa4d4",
+     "refs": []
+    },
+    {
+     "hash": "be024ffcc04f",
+     "refs": []
+    },
+    {
+     "hash": "5be8f3f0ea2c",
+     "refs": []
+    },
+    {
+     "hash": "9e996101b765",
+     "refs": []
+    },
+    {
+     "hash": "b58441b6d6ad",
+     "refs": []
+    },
+    {
+     "hash": "e90232f90e90",
+     "refs": []
+    },
+    {
+     "hash": "ebd5c60fcff5",
+     "refs": []
+    },
+    {
+     "hash": "b4e7a11f057a",
+     "refs": []
+    },
+    {
+     "hash": "71e82f924797",
+     "refs": []
+    },
+    {
+     "hash": "abc7db552071",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s03",
+   "source": "raw/ZR/Schuldrecht-AT/fall12-begleitskript.pdf",
+   "page": 1,
+   "layout": "lined table 6x3, headings, stacked boxes",
+   "blocks": [
+    {
+     "hash": "34c1c7ce9077",
+     "refs": []
+    },
+    {
+     "hash": "976926b7922a",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "f2f72f8fb23b",
+     "refs": []
+    },
+    {
+     "hash": "bd46b8320336",
+     "refs": [
+      1
+     ]
+    },
+    {
+     "hash": "9e5a1172a034",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "bc500f1f8491",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "7ca0dd0357ab"
+    },
+    {
+     "hash": "9f684d578041",
+     "refs": []
+    },
+    {
+     "hash": "411ef777651c",
+     "refs": []
+    },
+    {
+     "footnote": 1,
+     "hash": "499bd36c9e73"
+    }
+   ]
+  },
+  {
+   "id": "s04",
+   "source": "raw/ZR/Schuldrecht-AT/fall12-begleitskript.pdf",
+   "page": 2,
+   "layout": "headings, footnote block, single box",
+   "blocks": [
+    {
+     "heading": 3,
+     "hash": "9a3b894b4894",
+     "refs": []
+    },
+    {
+     "hash": "b0047c5fa27c",
+     "refs": [
+      2
+     ]
+    },
+    {
+     "hash": "9103ae6d2253",
+     "refs": [
+      3
+     ]
+    },
+    {
+     "hash": "34bc7c9a7d24",
+     "refs": []
+    },
+    {
+     "hash": "ce2874cd1092",
+     "refs": []
+    },
+    {
+     "hash": "7e587939c0ce",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "4e4f918f50e6",
+     "refs": []
+    },
+    {
+     "hash": "da53f41e420f",
+     "refs": [
+      4
+     ]
+    },
+    {
+     "hash": "e764a83b0bce",
+     "refs": []
+    },
+    {
+     "hash": "d27daf03ca90",
+     "refs": []
+    },
+    {
+     "hash": "d1367ecf2cae",
+     "refs": []
+    },
+    {
+     "hash": "62b5051850d5",
+     "refs": []
+    },
+    {
+     "hash": "f8e4881e6ed5",
+     "refs": []
+    },
+    {
+     "hash": "afdc0149b21d",
+     "refs": []
+    },
+    {
+     "footnote": 2,
+     "hash": "64f63ae25f5c"
+    },
+    {
+     "footnote": 3,
+     "hash": "63f610044ee5"
+    },
+    {
+     "footnote": 4,
+     "hash": "c6259839b51a"
+    }
+   ]
+  },
+  {
+   "id": "s05",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-teil-2-sekundaeransprueche-2026.pdf",
+   "page": 2,
+   "layout": "mixed diagram and prose page",
+   "note": "Diagram page: box order is interleaved and the vertical label is split into single letters (known box-to-box limitation); the page renders as image plus callout.",
+   "blocks": [
+    {
+     "heading": 3,
+     "hash": "d59417e32a32",
+     "refs": []
+    },
+    {
+     "hash": "a0f1490a20d0",
+     "refs": []
+    },
+    {
+     "hash": "84a516841ba7",
+     "refs": []
+    },
+    {
+     "hash": "27d5482eebd0",
+     "refs": []
+    },
+    {
+     "hash": "51e69892ab49",
+     "refs": []
+    },
+    {
+     "hash": "07c342be6e56",
+     "refs": []
+    },
+    {
+     "hash": "3c363836cf4e",
+     "refs": []
+    },
+    {
+     "hash": "7a38d8cbd20d",
+     "refs": []
+    },
+    {
+     "hash": "58e6b3a414a1",
+     "refs": []
+    },
+    {
+     "hash": "4dc7c9ec434e",
+     "refs": []
+    },
+    {
+     "hash": "27d5482eebd0",
+     "refs": []
+    },
+    {
+     "hash": "961fa22f61a5",
+     "refs": []
+    },
+    {
+     "hash": "07c342be6e56",
+     "refs": []
+    },
+    {
+     "hash": "8efd86fb78a5",
+     "refs": []
+    },
+    {
+     "hash": "d1854cae891e",
+     "refs": []
+    },
+    {
+     "hash": "042dc4512fa3",
+     "refs": []
+    },
+    {
+     "hash": "a0f1490a20d0",
+     "refs": []
+    },
+    {
+     "hash": "6fc1659fd57f",
+     "refs": []
+    },
+    {
+     "hash": "d19f4b7615d1",
+     "refs": []
+    },
+    {
+     "hash": "e504537db668",
+     "refs": []
+    },
+    {
+     "hash": "0583bff858e5",
+     "refs": []
+    },
+    {
+     "hash": "a0526b1f113f",
+     "refs": []
+    },
+    {
+     "hash": "38751b7f6161",
+     "refs": []
+    },
+    {
+     "hash": "45488da34b62",
+     "refs": []
+    },
+    {
+     "hash": "4c7b0c0347c7",
+     "refs": []
+    },
+    {
+     "hash": "3123bd78d997",
+     "refs": []
+    },
+    {
+     "hash": "c7119d6b4cda",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "a24eacdb59a0",
+     "refs": []
+    },
+    {
+     "hash": "4b8aad95cbeb",
+     "refs": []
+    },
+    {
+     "hash": "0878ac6dbd7c",
+     "refs": []
+    },
+    {
+     "hash": "135a9fd02363",
+     "refs": []
+    },
+    {
+     "hash": "d6227f180955",
+     "refs": []
+    },
+    {
+     "hash": "6955fc1035cb",
+     "refs": []
+    },
+    {
+     "hash": "63a7100a86a2",
+     "refs": []
+    },
+    {
+     "hash": "539db146d79d",
+     "refs": []
+    },
+    {
+     "hash": "ccc600d9df4e",
+     "refs": []
+    },
+    {
+     "hash": "fd047fff6120",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s06",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-teil-2-sekundaeransprueche-2026.pdf",
+   "page": 4,
+   "layout": "diagram page, stacked boxes",
+   "note": "Diagram page: linearized box text (known box-to-box limitation); renders as image plus callout.",
+   "blocks": [
+    {
+     "heading": 3,
+     "hash": "7d06dc89001e",
+     "refs": []
+    },
+    {
+     "hash": "14c3d94e8e12",
+     "refs": []
+    },
+    {
+     "hash": "436a7a299568",
+     "refs": []
+    },
+    {
+     "hash": "33c85cdf9eea",
+     "refs": []
+    },
+    {
+     "hash": "2c47a226978b",
+     "refs": []
+    },
+    {
+     "hash": "1d9e25b9b9c5",
+     "refs": []
+    },
+    {
+     "hash": "3a977feb132f",
+     "refs": []
+    },
+    {
+     "hash": "72140228cb41",
+     "refs": []
+    },
+    {
+     "hash": "c37bb20dc291",
+     "refs": []
+    },
+    {
+     "hash": "ce7ed298419a",
+     "refs": []
+    },
+    {
+     "hash": "af5a02f48b2c",
+     "refs": []
+    },
+    {
+     "hash": "ff4878b6f9bb",
+     "refs": []
+    },
+    {
+     "hash": "b692ae08b37d",
+     "refs": []
+    },
+    {
+     "hash": "a979ef10cc6f",
+     "refs": []
+    },
+    {
+     "hash": "c1768d1e893f",
+     "refs": []
+    },
+    {
+     "hash": "71dffebd4d99",
+     "refs": []
+    },
+    {
+     "hash": "1d009bd59c18",
+     "refs": []
+    },
+    {
+     "hash": "b3417cb88a68",
+     "refs": []
+    },
+    {
+     "hash": "e7bb2edbfd1a",
+     "refs": [
+      1
+     ]
+    },
+    {
+     "footnote": 1,
+     "hash": "9b421b079c39"
+    }
+   ]
+  },
+  {
+   "id": "s07",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-teil-5-schadensrecht-2026.pdf",
+   "page": 4,
+   "layout": "mixed diagram page with heading",
+   "note": "Mixed diagram page: box labels interleave with prose (known limitation); renders as image plus callout.",
+   "blocks": [
+    {
+     "heading": 4,
+     "hash": "eab262886900",
+     "refs": []
+    },
+    {
+     "hash": "0be1a626f4d1",
+     "refs": []
+    },
+    {
+     "hash": "652aa442a80c",
+     "refs": []
+    },
+    {
+     "hash": "012b2c1e5766",
+     "refs": []
+    },
+    {
+     "hash": "f6204590a9c3",
+     "refs": []
+    },
+    {
+     "hash": "95134dac8fc3",
+     "refs": []
+    },
+    {
+     "hash": "2b4ae439d1c9",
+     "refs": []
+    },
+    {
+     "hash": "829e77f6882d",
+     "refs": []
+    },
+    {
+     "hash": "e4644ecb8c76",
+     "refs": []
+    },
+    {
+     "hash": "769ca5e33425",
+     "refs": []
+    },
+    {
+     "hash": "285312a2cb8c",
+     "refs": []
+    },
+    {
+     "hash": "81fd63348570",
+     "refs": []
+    },
+    {
+     "hash": "e0c2e85ac7aa",
+     "refs": []
+    },
+    {
+     "hash": "10bdbb746e61",
+     "refs": []
+    },
+    {
+     "hash": "298589f388fc",
+     "refs": []
+    },
+    {
+     "hash": "421fb6b370ff",
+     "refs": []
+    },
+    {
+     "hash": "2cb5b76cea81",
+     "refs": []
+    },
+    {
+     "hash": "3ef4a3305791",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s08",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-teil-5-schadensrecht-2026.pdf",
+   "page": 3,
+   "layout": "prose with inline margin label, unleveled outline marker",
+   "blocks": [
+    {
+     "hash": "6de57f29e7c5",
+     "refs": []
+    },
+    {
+     "hash": "00f30cf55962",
+     "refs": []
+    },
+    {
+     "hash": "088c83b86e08",
+     "refs": []
+    },
+    {
+     "hash": "82eacf175a55",
+     "refs": []
+    },
+    {
+     "hash": "ce9a13fda4e6",
+     "refs": []
+    },
+    {
+     "hash": "ecc8a96c8355",
+     "refs": []
+    },
+    {
+     "hash": "d93747e1bb6a",
+     "refs": []
+    },
+    {
+     "hash": "4716bd2b634c",
+     "refs": []
+    },
+    {
+     "hash": "8749c6d0d71b",
+     "refs": []
+    },
+    {
+     "hash": "0fc795901e5d",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s09",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-zusatzuebersichten.pdf",
+   "page": 4,
+   "layout": "two columns, table, headings",
+   "blocks": [
+    {
+     "hash": "6cc306b03fcc",
+     "refs": []
+    },
+    {
+     "hash": "9d645db1a410",
+     "refs": []
+    },
+    {
+     "hash": "489d29350a2d",
+     "refs": []
+    },
+    {
+     "hash": "4f66559eb378",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "1d325095f654",
+     "refs": []
+    },
+    {
+     "hash": "ec7beb43c51c",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "58efb50b2177",
+     "refs": []
+    },
+    {
+     "hash": "c43239076b6c",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "5c82e157fb5c",
+     "refs": []
+    },
+    {
+     "hash": "05c933995a93",
+     "refs": []
+    },
+    {
+     "hash": "d1b5748cb16c",
+     "refs": []
+    },
+    {
+     "hash": "80d92b0e4791",
+     "refs": []
+    },
+    {
+     "hash": "9cf521f06eac",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "063801ffdf57"
+    }
+   ]
+  },
+  {
+   "id": "s10",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-zusatzuebersichten.pdf",
+   "page": 7,
+   "layout": "diagram grid of equal boxes, margin labels",
+   "note": "Diagram grid rendered as tables via the question-answer grid; fragmented box rows remain (known limitation).",
+   "blocks": [
+    {
+     "hash": "2eba2d2fbaab",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "b26e771dc737"
+    },
+    {
+     "hash": "885225baab11",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "41bad0509cff"
+    },
+    {
+     "hash": "023d2b924cca",
+     "refs": []
+    },
+    {
+     "table": true,
+     "hash": "d215d9ef4b4f"
+    },
+    {
+     "hash": "b9dccba66f2f",
+     "refs": []
+    },
+    {
+     "hash": "9cf623b5cdc8",
+     "refs": []
+    },
+    {
+     "hash": "e8ca9bbc6c14",
+     "refs": []
+    },
+    {
+     "hash": "ce50ac9abcd3",
+     "refs": []
+    },
+    {
+     "hash": "46f3803dcde5",
+     "refs": []
+    },
+    {
+     "hash": "8d2ff1f9a59a",
+     "refs": []
+    },
+    {
+     "hash": "0cd12bfad2b4",
+     "refs": []
+    },
+    {
+     "hash": "b692ae08b37d",
+     "refs": []
+    },
+    {
+     "hash": "f3f2675a3a3b",
+     "refs": []
+    },
+    {
+     "hash": "dbfd9e53bdea",
+     "refs": []
+    },
+    {
+     "hash": "5aa60c22f4c7",
+     "refs": []
+    },
+    {
+     "hash": "023d2b924cca",
+     "refs": []
+    },
+    {
+     "hash": "992b4e907511",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s11",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-zusatzuebersichten.pdf",
+   "page": 3,
+   "layout": "dense outline, heading levels 3 and 4",
+   "blocks": [
+    {
+     "hash": "8baad6505edf",
+     "refs": []
+    },
+    {
+     "hash": "381a47cc18d9",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "ed37a040a892",
+     "refs": []
+    },
+    {
+     "hash": "da02cdfaf202",
+     "refs": []
+    },
+    {
+     "hash": "7054dc72dbef",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "7278bd548493",
+     "refs": []
+    },
+    {
+     "hash": "c36c16f8c5cc",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "413ea8d2d1af",
+     "refs": []
+    },
+    {
+     "hash": "2318b638a267",
+     "refs": []
+    },
+    {
+     "hash": "8764c6bcdf0b",
+     "refs": []
+    },
+    {
+     "hash": "08fdea4dee26",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "d6ca619cf0d4",
+     "refs": []
+    },
+    {
+     "hash": "7f3f87c1eb8d",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "569d9d08dd0a",
+     "refs": []
+    },
+    {
+     "hash": "825c3a006d4c",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "600ee941dbec",
+     "refs": []
+    },
+    {
+     "hash": "bdbe9debd8dc",
+     "refs": []
+    },
+    {
+     "hash": "3a9e7dfadb66",
+     "refs": []
+    },
+    {
+     "hash": "90547b3c9188",
+     "refs": []
+    },
+    {
+     "hash": "0c7bb63f76c6",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s12",
+   "source": "raw/ZR/Schuldrecht-AT/schuldrecht-at-zusatzuebersichten.pdf",
+   "page": 5,
+   "layout": "headings with stacked boxes",
+   "blocks": [
+    {
+     "hash": "aece0b086eb3",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "23e819d2ce95",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "cbc9bea523d6",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "4d15abd7a745",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "7b0f8f56a9a4",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "461979851f61",
+     "refs": []
+    },
+    {
+     "hash": "4bc84a8bcd03",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "574fb7fde70c",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "fb6be9c856a8",
+     "refs": []
+    },
+    {
+     "hash": "d2f3429b9638",
+     "refs": []
+    },
+    {
+     "hash": "12f382e07cf7",
+     "refs": []
+    },
+    {
+     "hash": "62ff758cdf7e",
+     "refs": []
+    },
+    {
+     "hash": "d5f36cfd7be9",
+     "refs": []
+    },
+    {
+     "hash": "294488cef73c",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "78f1cba6d223",
+     "refs": []
+    },
+    {
+     "hash": "5b37825c794e",
+     "refs": []
+    },
+    {
+     "hash": "a4953506f69b",
+     "refs": []
+    },
+    {
+     "hash": "34dc85abe2c4",
+     "refs": []
+    },
+    {
+     "hash": "82f18be34687",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s13",
+   "source": "raw/Klausuren/OeR/2131_Lösung_OeffentlichesRecht_Hessen.pdf",
+   "page": 2,
+   "layout": "two columns, nine footnote definitions, inline margin label",
+   "blocks": [
+    {
+     "hash": "3133751f9e71",
+     "refs": [
+      4
+     ]
+    },
+    {
+     "hash": "0314178d70ab",
+     "refs": [
+      5
+     ]
+    },
+    {
+     "hash": "aca66df54237",
+     "refs": [
+      6
+     ]
+    },
+    {
+     "heading": 4,
+     "hash": "4cafac1be141",
+     "refs": []
+    },
+    {
+     "hash": "5cea5f1839bb",
+     "refs": [
+      7
+     ]
+    },
+    {
+     "hash": "4e29237bb9af",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "e50a2112ac03",
+     "refs": []
+    },
+    {
+     "hash": "7f751252786a",
+     "refs": [
+      8
+     ]
+    },
+    {
+     "hash": "f4d28648d625",
+     "refs": []
+    },
+    {
+     "hash": "9b8f7152842b",
+     "refs": [
+      9
+     ]
+    },
+    {
+     "footnote": 4,
+     "hash": "47b15faeecc9"
+    },
+    {
+     "footnote": 5,
+     "hash": "8607526cba0f"
+    },
+    {
+     "footnote": 6,
+     "hash": "fc1e2a69852a"
+    },
+    {
+     "footnote": 7,
+     "hash": "136f520c3386"
+    },
+    {
+     "footnote": 8,
+     "hash": "70f87c87baca"
+    },
+    {
+     "footnote": 9,
+     "hash": "ba0928d7fbe5"
+    }
+   ]
+  },
+  {
+   "id": "s14",
+   "source": "raw/Klausuren/OeR/2143_Loesung_OeffentlichesRecht_Hessen.pdf",
+   "page": 4,
+   "layout": "ten footnote definitions, margin labels",
+   "blocks": [
+    {
+     "hash": "d681e58aa007",
+     "refs": [
+      17
+     ]
+    },
+    {
+     "hash": "a074e98d1655",
+     "refs": [
+      18
+     ]
+    },
+    {
+     "hash": "453f35dea056",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "45fac1ee22cb",
+     "refs": []
+    },
+    {
+     "hash": "89e388e2946b",
+     "refs": [
+      19,
+      20
+     ]
+    },
+    {
+     "hash": "5cccf47ac26f",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "6a5e38fd18bf",
+     "refs": []
+    },
+    {
+     "hash": "7ec7b845de75",
+     "refs": []
+    },
+    {
+     "hash": "b401c7fd546b",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "c936477c6adb",
+     "refs": []
+    },
+    {
+     "hash": "0d30dc261806",
+     "refs": [
+      21
+     ]
+    },
+    {
+     "heading": 3,
+     "hash": "16108bd7b0d5",
+     "refs": []
+    },
+    {
+     "hash": "0817aceb0c87",
+     "refs": []
+    },
+    {
+     "hash": "476e1efd2fb9",
+     "refs": []
+    },
+    {
+     "hash": "127ded46c24e",
+     "refs": []
+    },
+    {
+     "hash": "f0d9fb3e8b86",
+     "refs": []
+    },
+    {
+     "hash": "0bb1e4a0d22e",
+     "refs": []
+    },
+    {
+     "hash": "1ae6b282be67",
+     "refs": []
+    },
+    {
+     "hash": "11159bb7b9c6",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "d66953c8cc33",
+     "refs": []
+    },
+    {
+     "hash": "95f055eb7781",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "033b298838cd",
+     "refs": []
+    },
+    {
+     "hash": "e17a442a178d",
+     "refs": []
+    },
+    {
+     "footnote": 17,
+     "hash": "18662dc6085a"
+    },
+    {
+     "footnote": 18,
+     "hash": "fdff9e2098ad"
+    },
+    {
+     "footnote": 19,
+     "hash": "98935327bd41"
+    },
+    {
+     "footnote": 20,
+     "hash": "26700506ec2d"
+    },
+    {
+     "footnote": 21,
+     "hash": "1224c1089a37"
+    }
+   ]
+  },
+  {
+   "id": "s15",
+   "source": "raw/Klausuren/OeR/2131_Lösung_OeffentlichesRecht_Hessen.pdf",
+   "page": 7,
+   "layout": "two columns, recovered footnotes 30-32",
+   "note": "Body tail continues after the left footnote block (fixed in #14; before: merged into footnote 33).",
+   "blocks": [
+    {
+     "hash": "932adaf19f74",
+     "refs": [
+      29
+     ]
+    },
+    {
+     "heading": 6,
+     "hash": "b6fb1267774a",
+     "refs": []
+    },
+    {
+     "hash": "6c7b90f1f145",
+     "refs": [
+      30,
+      31
+     ]
+    },
+    {
+     "hash": "df74542e260a",
+     "refs": []
+    },
+    {
+     "hash": "0d2edb6602d2",
+     "refs": [
+      32,
+      33
+     ]
+    },
+    {
+     "hash": "30095e37304c",
+     "refs": []
+    },
+    {
+     "hash": "f1eb1f553ece",
+     "refs": []
+    },
+    {
+     "hash": "59bc8ff6d60c",
+     "refs": []
+    },
+    {
+     "hash": "3b9d034caa01",
+     "refs": []
+    },
+    {
+     "hash": "858ff440453e",
+     "refs": []
+    },
+    {
+     "footnote": 29,
+     "hash": "3544f7b2d37f"
+    },
+    {
+     "footnote": 30,
+     "hash": "a8d2441ebdf1"
+    },
+    {
+     "footnote": 31,
+     "hash": "235ab099fe85"
+    },
+    {
+     "footnote": 32,
+     "hash": "fc3c98cf01d1"
+    },
+    {
+     "footnote": 33,
+     "hash": "8e538888f380"
+    }
+   ]
+  },
+  {
+   "id": "s16",
+   "source": "raw/Klausuren/OeR/2135_Zusatzmaterial_OeffentlichesRecht_Hessen.pdf",
+   "page": 1,
+   "layout": "six outdented margin labels",
+   "note": "Long bold headings stay glued to their prose; all six margin labels are correct.",
+   "blocks": [
+    {
+     "hash": "3306897a44b1",
+     "refs": []
+    },
+    {
+     "hash": "246791dceeb2",
+     "refs": []
+    },
+    {
+     "hash": "f61b528c1e0c",
+     "refs": []
+    },
+    {
+     "hash": "a533228b7f14",
+     "refs": []
+    },
+    {
+     "hash": "6db3811a3ce9",
+     "refs": []
+    },
+    {
+     "hash": "59f5a3b4d8f6",
+     "refs": []
+    },
+    {
+     "hash": "ad4126e2a9a3",
+     "refs": []
+    },
+    {
+     "hash": "20df130dbf33",
+     "refs": []
+    },
+    {
+     "hash": "3b50bf923a4e",
+     "refs": []
+    },
+    {
+     "hash": "e1ac37478771",
+     "refs": []
+    },
+    {
+     "hash": "6b65c53ca950",
+     "refs": []
+    },
+    {
+     "hash": "348fdcfdf5e7",
+     "refs": []
+    },
+    {
+     "hash": "962d123aef42",
+     "refs": []
+    },
+    {
+     "hash": "1e6c6e985bf3",
+     "refs": []
+    },
+    {
+     "hash": "f0d9fb3e8b86",
+     "refs": []
+    },
+    {
+     "hash": "39e1c239140d",
+     "refs": []
+    },
+    {
+     "hash": "5379423b7709",
+     "refs": []
+    },
+    {
+     "hash": "913d9fc2a667",
+     "refs": []
+    },
+    {
+     "hash": "a96334b9a0d9",
+     "refs": []
+    },
+    {
+     "hash": "4dad998b92fe",
+     "refs": []
+    },
+    {
+     "hash": "b3c60b75eaff",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "f4d3ba38ec21",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "7595524c4bae",
+     "refs": []
+    },
+    {
+     "hash": "601aa285e15f",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "1da497c31824",
+     "refs": []
+    },
+    {
+     "hash": "f324805c4969",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s17",
+   "source": "raw/Klausuren/OeR/2143_Zusatzmaterial_OeffentlichesRecht_Hessen.pdf",
+   "page": 3,
+   "layout": "five margin labels, inline and outdented",
+   "blocks": [
+    {
+     "hash": "a8e5a5c85f2c",
+     "refs": []
+    },
+    {
+     "hash": "e99b3cfceb6d",
+     "refs": []
+    },
+    {
+     "hash": "a25e58a51a78",
+     "refs": []
+    },
+    {
+     "hash": "45934c7c6190",
+     "refs": []
+    },
+    {
+     "hash": "6d1fbe468acf",
+     "refs": []
+    },
+    {
+     "hash": "8d0be1ae5da7",
+     "refs": []
+    },
+    {
+     "hash": "ea350960621a",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "764c06c6382d",
+     "refs": []
+    },
+    {
+     "hash": "036b7494a68e",
+     "refs": []
+    },
+    {
+     "hash": "c57c60448dfc",
+     "refs": []
+    },
+    {
+     "hash": "44278141004c",
+     "refs": []
+    },
+    {
+     "hash": "61aff8f94b7d",
+     "refs": []
+    },
+    {
+     "hash": "70640c42df8a",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "8b493ac4def9",
+     "refs": []
+    },
+    {
+     "hash": "2f8303a34f93",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s18",
+   "source": "raw/Klausuren/OeR/2131_SV_OeffentlichesRecht_Hessen.pdf",
+   "page": 1,
+   "layout": "clean single column, no headings (negative control)",
+   "blocks": [
+    {
+     "hash": "5257f6b881e2",
+     "refs": []
+    },
+    {
+     "hash": "1f1a01e6ce7f",
+     "refs": []
+    },
+    {
+     "hash": "ec1b47fd0480",
+     "refs": []
+    },
+    {
+     "hash": "74c9bd1e7ebe",
+     "refs": []
+    },
+    {
+     "hash": "59505012e62c",
+     "refs": []
+    },
+    {
+     "hash": "51b4f550d8eb",
+     "refs": []
+    },
+    {
+     "hash": "9684bc872917",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s19",
+   "source": "raw/Klausuren/OeR/2131_Zusatzmaterial_OeffentlichesRecht_Hessen.pdf",
+   "page": 1,
+   "layout": "dense outline, twelve headings, single column",
+   "blocks": [
+    {
+     "hash": "256101b14066",
+     "refs": []
+    },
+    {
+     "hash": "f5d1ee36ee78",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "caf0857d7e86",
+     "refs": []
+    },
+    {
+     "hash": "14ace733eb15",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "3f894a9ed441",
+     "refs": []
+    },
+    {
+     "hash": "b6cead4e8799",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "d5e97b8d9f86",
+     "refs": []
+    },
+    {
+     "hash": "71aff73a6f2a",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "a730d5ef86f8",
+     "refs": []
+    },
+    {
+     "hash": "f84378cfa87a",
+     "refs": []
+    },
+    {
+     "hash": "d359ea0328ff",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "e07827dcd135",
+     "refs": []
+    },
+    {
+     "hash": "b2b7a59f59b4",
+     "refs": []
+    },
+    {
+     "hash": "5025bbfeb436",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "941e0854c575",
+     "refs": []
+    },
+    {
+     "hash": "9d2f82f7ad36",
+     "refs": []
+    },
+    {
+     "hash": "3e06aa9641d3",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "e4ce61e8e8c6",
+     "refs": []
+    },
+    {
+     "hash": "34bbcdb054b2",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "fdeb6674a9f1",
+     "refs": []
+    },
+    {
+     "hash": "1400970b7291",
+     "refs": []
+    },
+    {
+     "hash": "9021b6b171b7",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "7ce8c77f93b6",
+     "refs": []
+    },
+    {
+     "hash": "94370df3b4b0",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "5fdf1d42c615",
+     "refs": []
+    },
+    {
+     "hash": "0d1270e0d20c",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "99d8540a2b15",
+     "refs": []
+    },
+    {
+     "hash": "054fba551e7f",
+     "refs": []
+    },
+    {
+     "hash": "23aa338d95cd",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "8f528ab60caf",
+     "refs": []
+    },
+    {
+     "hash": "e34137720bd0",
+     "refs": []
+    },
+    {
+     "hash": "522a7f331753",
+     "refs": []
+    },
+    {
+     "hash": "3b2acf92e9d3",
+     "refs": []
+    }
+   ]
+  },
+  {
+   "id": "s20",
+   "source": "raw/Klausuren/OeR/2135_Lösung_OeffentlichesRecht_Hessen.pdf",
+   "page": 2,
+   "layout": "two columns, stacked box, footnote block",
+   "blocks": [
+    {
+     "hash": "1ce52f2bed3e",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "3f377ea3836a",
+     "refs": []
+    },
+    {
+     "hash": "bb1340676a3b",
+     "refs": []
+    },
+    {
+     "hash": "4bfaec804e06",
+     "refs": []
+    },
+    {
+     "hash": "5c30639861a0",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "4b6d5a6d31dd",
+     "refs": []
+    },
+    {
+     "hash": "14e6a74b1a01",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "a64c237dd0c7",
+     "refs": []
+    },
+    {
+     "hash": "6de7d3b6b9e9",
+     "refs": []
+    },
+    {
+     "heading": 4,
+     "hash": "79b37c926a4a",
+     "refs": []
+    },
+    {
+     "hash": "d209c45ae683",
+     "refs": [
+      3
+     ]
+    },
+    {
+     "heading": 3,
+     "hash": "1e588e8958b9",
+     "refs": []
+    },
+    {
+     "hash": "39ce73c4bede",
+     "refs": []
+    },
+    {
+     "hash": "ca9fc4af44f3",
+     "refs": []
+    },
+    {
+     "hash": "7bf725f400bc",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "bd87d799a3d7",
+     "refs": []
+    },
+    {
+     "hash": "f6e392d3b836",
+     "refs": [
+      4
+     ]
+    },
+    {
+     "heading": 3,
+     "hash": "74837c4b06cf",
+     "refs": []
+    },
+    {
+     "hash": "926e04fdfa38",
+     "refs": []
+    },
+    {
+     "heading": 3,
+     "hash": "769cb4cdd385",
+     "refs": []
+    },
+    {
+     "hash": "42d5caa4464d",
+     "refs": []
+    },
+    {
+     "hash": "21c920bffacb",
+     "refs": []
+    },
+    {
+     "hash": "f0d9fb3e8b86",
+     "refs": []
+    },
+    {
+     "hash": "209c959c31d4",
+     "refs": []
+    },
+    {
+     "hash": "0f0f0fd4f2c8",
+     "refs": [
+      5
+     ]
+    },
+    {
+     "hash": "5cf99792cee1",
+     "refs": []
+    },
+    {
+     "heading": 2,
+     "hash": "f80d415e6970",
+     "refs": []
+    },
+    {
+     "hash": "65cdef2a2a0d",
+     "refs": []
+    },
+    {
+     "footnote": 3,
+     "hash": "ebada143fee3"
+    },
+    {
+     "footnote": 4,
+     "hash": "64a3ed560af4"
+    },
+    {
+     "footnote": 5,
+     "hash": "fb33ef767682"
+    }
+   ]
+  }
+ ]
+}

@@ -6,15 +6,16 @@ OCR-Pipeline für gescannte juristische Skripte, Fälle und Klausuren — von de
 Ordnerfotografie bis zur durchsuchbaren Markdown-Seite im Obsidian-Vault.
 
 Entstanden als Werkzeugkasten innerhalb eines Jura-Vaults, hier herausgelöst,
-weil es Code ist und in ein Notizen-Repo nicht gehört. **Fernziel: ein
-Obsidian-Plugin** — siehe [docs/plugin-roadmap.md](docs/plugin-roadmap.md).
+weil es Code ist und in ein Notizen-Repo nicht gehört. Die Bedienung läuft
+über ein **Obsidian-Plugin** (Stufe 3), das die installierten CLIs startet —
+Architekturentscheidung in [docs/plugin-roadmap.md](docs/plugin-roadmap.md).
 
 ## Three Stages
 
 | | Stage 1 — `bin/` | Stage 2 — `pdf2md/` | Stage 3 — `plugin/` |
 |---|---|---|---|
 | Output | searchable PDF (text layer) | Markdown | review inside the vault |
-| Engine | Tesseract / Apple Vision (via ocrmypdf) | PaddleOCR-VL 1.5 4bit via MLX | calls Stage 1 and 2 |
+| Engine | Tesseract / Apple Vision (via ocrmypdf); PaddleOCR opt-in, not yet wired in | PaddleOCR-VL 1.5 4bit via MLX | calls Stage 1 and 2 |
 | State | **stable, in daily use** | works, assembly layer is young | usable, in development |
 | Runtime | seconds to minutes per file | 15–60 s/page on M1 | — |
 | Platform | macOS + Linux (Apple engine macOS only) | Apple Silicon (MLX) | Obsidian desktop |
@@ -100,7 +101,7 @@ Zum Schluss läuft ein **Wörterbuchabgleich** über die OCR-Seiten (nicht über
 die exakten Textlayer-Seiten). Was kein Wörterbuch kennt, steht als `⌕`-Zeile
 im Protokoll und als `woerter-verdaechtig` im Frontmatter — der
 Begutachtungsdurchgang weiß damit, wonach er auf der Seite suchen soll.
-Ersetzt wird nur auf ausdrückliches Verlangen (`--woerterbuch-korrigieren`)
+Ersetzt wird nur auf ausdrückliches Verlangen (`--dictionary-correct`)
 und nur, wenn genau eine Variante aus der Verwechslungstabelle im Wörterbuch
 steht; bei zwei Lesarten bleibt das Wort stehen. Zitate, Zahlen und
 Abkürzungen werden gar nicht erst geprüft. Gemessen an 202 Wörtern echter
@@ -119,7 +120,10 @@ Markdown-Datei seitenweise neben das Original-PDF stellt — links die
 Vorschau-Liste, mittig die Originalseiten, rechts das Markdown, scrollgekoppelt,
 mit **Annehmen / Ablehnen** per Tastatur und Rückgängig. Der
 Begutachtungs-Durchgang, der heute aus zwei Fenstern nebeneinander besteht,
-bekommt damit eine Oberfläche. Zweck und Bedienung:
+bekommt damit eine Oberfläche. Aus dem Vault heraus startet das Plugin auch
+die Konvertierung (**OCR → Markdown**, PDF oder Seitenbild, mit Seitenauswahl)
+und die Stufe-1-Aktion **Create searchable copy (OCR)**, die neben der Quelle
+eine `<name>-ocr.pdf` ablegt und das Original nie anfasst. Zweck und Bedienung:
 [docs/review-view.md](docs/review-view.md).
 
 ## Neuer Laptop — Einmal-Setup
@@ -191,10 +195,10 @@ reprocess-raw "raw/StR/Rep-Faelle/fall-01.pdf" --force-ocr --split-columns
 pdf2md "raw/ZR/skript.pdf" --out _ocr-preview
 
 # PDF → Markdown, nur bestimmte Seiten
-pdf2md "raw/ZR/skript.pdf" --seiten "1,3-5,8" --out _ocr-preview
+pdf2md "raw/ZR/skript.pdf" --pages "1,3-5,8" --out _ocr-preview
 
 # Passende Seitenergebnisse werden automatisch wiederverwendet; Seite 12 neu rechnen
-pdf2md "raw/ZR/skript.pdf" --out _ocr-preview --neu 12
+pdf2md "raw/ZR/skript.pdf" --out _ocr-preview --refresh-cache 12
 ```
 
 Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
@@ -213,14 +217,15 @@ Komplette Flag-Referenz: [docs/scripts-detail.md](docs/scripts-detail.md).
 ```
 bin/             Stufe 1 — pdf-lib.sh + 4 CLIs + column_tools.py
 ocrmypdf_paddle/ Stufe 1 — OCRmyPDF-Engine-Plugin mit PaddleOCR (RapidOCR),
-                 noch nicht von setup.sh installiert (docs/paddle-textlayer.md)
+                 von setup.sh über install-paddle.sh installiert
 pdf2md/          Stufe 2 — pdf2md.py (CLI) + conversion.py (Runner) + layout.py
                  + ocr.py + assembly.py + dictionary.py + page_cache.py,
                  Testsuite in pdf2md/test/
 plugin/          Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
 contracts/       CLI-Vertrag zwischen den Stufen und dem Plugin (docs/cli-contract.md)
 bench/           Benchmark-Harness und Messergebnisse; alte Experimente in bench/archive/
-docs/            Installation, Flag-Referenz, Formate, Vault-Integration
+docs/            Installation, Flag-Referenz, CLI-Vertrag, Vorschau-Format, Plugin-Ansicht,
+                 Pläne (stage1-ui, paddle-textlayer), Vault-Integration des Skills
 skill/           Claude-Code-Skill (SKILL.md) zum Einbinden in einen Vault
 setup.sh         Einmal-Setup (Einstiegstür): Brewfile + venvs + Links + Plugin
 Brewfile         Systempakete für das Setup (brew bundle)
@@ -274,12 +279,14 @@ Die Entgleisungen, die zuletzt 15 % der Seiten trafen und die Gesamtzahl auf
 Seite unter dem Stand davor. Was bleibt, ist gewöhnliche OCR-Ungenauigkeit —
 und eine mehrspaltige Seite, deren Lesereihenfolge noch nicht sitzt.
 
-Nicht umgesetzt: der Bild-Fallback für Diagrammseiten. Die Erkennung
-(`ist_diagramm`) ist auf handgeprüften Seiten kalibriert, und ein Eingriff ohne
+Nicht umgesetzt: der Bild-Fallback für Diagrammseiten (Issue #13). Die Erkennung
+(`is_diagram`) ist auf handgeprüften Seiten kalibriert, und ein Eingriff ohne
 eigene Messreihe würde nur gewonnene Diagrammseiten gegen verlorene Textseiten
-tauschen. Der Ausweg bleibt `--diagramm-seiten <nr>`.
+tauschen. Der Ausweg bleibt `--diagram-pages <nr>`.
 
-Offene Fehler, was noch nicht gebaut ist und die Reihenfolge:
+Offene Fehler, was noch nicht gebaut ist und die Reihenfolge stehen in den
+[GitHub-Issues](https://github.com/Constmax/obsidian-ocr-pipeline/issues); die
+Architekturentscheidung für das Plugin steht in
 [docs/plugin-roadmap.md](docs/plugin-roadmap.md).
 
 ## Lizenz

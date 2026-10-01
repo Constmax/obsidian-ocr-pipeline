@@ -183,6 +183,26 @@ def read_latest_page(directory: Path, page_number: int):
     return _read_entry(directory, page_number, None)
 
 
+def read_latest_context(directory: Path, page_number: int):
+    """The fingerprint context of the run that stored a page's last result.
+
+    A page case takes the source hash and `diagram_image_only` from it.
+    ``None`` when the page has no readable entry.
+    """
+    if _read_entry(directory, page_number, None) is None:
+        return None
+    try:
+        context = json.loads(page_path(directory, page_number).read_text(
+            encoding="utf-8"))["context"]
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+    if (not isinstance(context, dict)
+            or not isinstance(context.get("pdf_sha256"), str)
+            or not isinstance(context.get("parameters"), dict)):
+        return None
+    return context
+
+
 def _read_entry(directory: Path, page_number: int, expected_key: str | None):
     try:
         payload = json.loads(page_path(directory, page_number).read_text(

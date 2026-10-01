@@ -1,6 +1,7 @@
 // Child processes of the pipeline. Stage 2: calls the local pdf2md script with
 // `--out` and collects the last output lines; machine-readable progress is
-// available via the `--fortschritt` flag. Stage 1: calls `reprocess-raw
+// available via the `--fortschritt` flag. `pdf2md case …` keeps and lists page
+// cases. Stage 1: calls `reprocess-raw
 // --output` in its own process group, so cancellation reaches OCRmyPDF and
 // every other descendant.
 
@@ -280,6 +281,8 @@ interface RunOptions {
 	onChild?: (child: ChildProcess) => void;
 	/** Sees every stderr line; returning false keeps it out of `stderrLast`. */
 	onStderrLine?: (line: string) => boolean;
+	/** Sees every stdout line; returning false keeps it out of `stdoutLast`. */
+	onStdoutLine?: (line: string) => boolean;
 }
 
 /** Spawns one CLI call and collects its result; shared by both stages. */
@@ -307,7 +310,7 @@ function runProcess(
 		options.onChild?.(child);
 		const stdoutLast: string[] = [];
 		const stderrLast: string[] = [];
-		const stdoutBuf = lineBuffer(stdoutLast);
+		const stdoutBuf = lineBuffer(stdoutLast, options.onStdoutLine);
 		const stderrBuf = lineBuffer(stderrLast, options.onStderrLine);
 
 		// A fixed limit killed long documents that were still converting
@@ -394,6 +397,41 @@ export function convertPdf(
 	});
 }
 
+/**
+ * A `pdf2md case` call that has written nothing for this long is stopped. The
+ * save of a page's first edit waits for its stash, so a hung call must not
+ * hold it for long.
+ */
+export const PAGE_CASE_TIMEOUT_MS = 15_000;
+
+/** The result of a `pdf2md case` call with every non-empty stdout line. */
+export interface PageCaseResult extends ConversionResult {
+	stdout: string[];
+}
+
+/**
+ * Stage 2: `pdf2md <args>` for a page-case command (Issue #140; the argv is
+ * built in page-cases.ts), with `cwd` as working directory. No model is
+ * loaded, so a call takes about a second. Never rejects.
+ */
+export function runPageCase(
+	args: readonly string[],
+	pdf2md: string,
+	cwd: string,
+	spawnFn: SpawnFunction = spawn,
+): Promise<PageCaseResult> {
+	const stdout: string[] = [];
+	return runProcess(pdf2md, [...args], { cwd, stdio: ["ignore", "pipe", "pipe"] }, spawnFn, {
+		idleTimeoutMs: PAGE_CASE_TIMEOUT_MS,
+		onTimeout: (child) => child.kill("SIGKILL"),
+		// `list` prints one line per case, more than `stdoutLast` keeps.
+		onStdoutLine: (line) => {
+			if (line.trim().length > 0) stdout.push(line.trim());
+			return true;
+		},
+	}).then((result) => ({ ...result, stdout }));
+}
+
 const TOOL_DIRS = (home: string) => [join(home, "bin"), "/opt/homebrew/bin", "/usr/local/bin"];
 const SYSTEM_DIRS = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
 
@@ -407,6 +445,51 @@ export function stage1Path(path: string, home: string = homedir()): string {
 	const parts = path.split(":").filter((part) => part.length > 0);
 	const missing = (dirs: string[]) => dirs.filter((dir) => !parts.includes(dir));
 	return [...missing(TOOL_DIRS(home)), ...parts, ...missing(SYSTEM_DIRS)].join(":");
+}
+
+/**
+ * Stage-1 engine options. PaddleOCR runs in fast mode only: Apple Vision's
+ * lines, citation lines re-read by PP-OCRv5. Accurate mode glued words in
+ * bench/ERGEBNIS.md, Nachtrag 22, and has not been re-measured since.
+ */
+export function engineArgs(engine: OcrEngine): string[] {
+	return engine === "paddle"
+		? ["--engine", "paddle", "--paddle-mode", "fast"]
+		: ["--engine", engine];
+}
+
+/** An engine check that has written nothing for this long is stopped. */
+export const ENGINE_CHECK_TIMEOUT_MS = 60_000;
+
+/**
+ * Stage 1: `reprocess-raw --check-engine` for `engine` (issue #73). Resolves
+ * to null when a searchable copy would run on that engine here, otherwise to
+ * the reason, read from the CLI's stderr. Never throws.
+ */
+export async function checkEngine(
+	engine: OcrEngine,
+	cli: string,
+	cwd: string,
+	spawnFn: SpawnFunction = spawn,
+): Promise<string | null> {
+	const spawnOptions = {
+		cwd,
+		stdio: ["ignore", "pipe", "pipe"],
+		env: { ...process.env, PATH: stage1Path(process.env.PATH ?? "") },
+	};
+	const result = await runProcess(cli, ["--check-engine", ...engineArgs(engine)], spawnOptions, spawnFn, {
+		idleTimeoutMs: ENGINE_CHECK_TIMEOUT_MS,
+		onTimeout: (child) => child.kill("SIGKILL"),
+	});
+	if (result.code === 0) return null;
+	const reason = result.stderrLast
+		.map((line) => line.replace(/^❌\s*/, ""))
+		.join(" ")
+		.trim();
+	if (reason.length > 0) return reason;
+	return result.timeout
+		? "reprocess-raw --check-engine did not answer"
+		: `reprocess-raw --check-engine failed (exit code ${result.code ?? result.signal ?? "unknown"})`;
 }
 
 /**
@@ -424,7 +507,7 @@ export function createSearchableCopy(
 	options: SearchableCopyOptions = {},
 ): Promise<SearchableCopyResult> {
 	const args = [source, "--output", destination];
-	if (options.engine !== undefined) args.push("--engine", options.engine);
+	if (options.engine !== undefined) args.push(...engineArgs(options.engine));
 	if (options.splitColumns) args.push("--split-columns");
 	if (options.allowPages && options.allowPages.length > 0) {
 		args.push("--allow-pages", options.allowPages);

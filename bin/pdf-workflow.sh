@@ -14,7 +14,9 @@ if [ $# -lt 2 ]; then
 Usage: $(basename "$0") <folder> <output-name> [options]
 
 Options:
-   --engine auto|apple|tesseract   OCR engine (Default: auto)
+   --engine auto|apple|tesseract|paddle
+                                   OCR engine (Default: auto; paddle only explicitly)
+   --paddle-mode accurate|fast     PaddleOCR mode (Default: accurate; fast needs macOS 13+)
    --dpi N                         Downscale target (Default: $DEFAULT_DPI, 0 = off)
    --jobs N                        Parallel OCR workers (Default: by RAM, 1–4)
    --split-columns                 Detect two-column pages, split + re-merge
@@ -123,7 +125,7 @@ echo "════════════════════════�
 echo "✅ Done!"
 echo "═══════════════════════════════════════════"
 echo "📄 Output:   $OUTPUT_FILE"
-echo "🧠 Engine:   $ENGINE_DESC"
+echo "🧠 Engine:   $OCR_RESULT_DESC"
 echo "📊 Before:   $ORIGINAL_SIZE → After: $FINAL_SIZE"
 echo ""
 echo "💡 Open: open \"$OUTPUT_FILE\""

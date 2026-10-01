@@ -172,9 +172,14 @@ def test_engine_hocr_parses_and_renders_in_line_order(tmp_path, ocrmypdf, plugin
             yield from walk(child)
 
     parsed = [e for e in walk(page) if e.baseline is not None]
-    assert [" ".join(w.text for w in line.children) for line in parsed] == text.splitlines()
-    assert parsed[-1].baseline.slope == pytest.approx(66 / 950, abs=1e-6)
-    assert parsed[-1].children[0].confidence == pytest.approx(0.87)
+    assert [w.text for line in parsed for w in line.children] == text.split()
+    # Every line is flat; the skewed one becomes pieces stepping down its slope.
+    assert all(line.baseline.slope == 0 for line in parsed)
+    skewed_pieces = parsed[-2:]
+    assert [w.text for line in skewed_pieces for w in line.children] == ["schief", "gedruckt"]
+    first, second = (line.bbox.bottom + line.baseline.intercept for line in skewed_pieces)
+    assert second > first
+    assert skewed_pieces[0].children[0].confidence == pytest.approx(0.87)
 
     pdf = tmp_path / "page.pdf"
     fonts = MultiFontManager(Path(ocrmypdf.__file__).parent / "data")
@@ -405,3 +410,43 @@ def test_an_unknown_mode_is_rejected(plugin, ready):
     with pytest.raises(BadArgsError, match="--paddle-mode must be one of accurate, fast, "
                                            "not 'quick'"):
         plugin.check_options(options(paddle_mode="quick"))
+
+
+# ── --paddle-check: readiness without an input file (issue #73) ─────────────
+
+def paddle_check(ocrmypdf, *args):
+    """Parses `ocrmypdf --plugin ocrmypdf_paddle <args>` as the CLI does."""
+    from ocrmypdf.cli import get_options_and_plugins
+
+    with pytest.raises(SystemExit) as exited:
+        get_options_and_plugins(args=["--plugin", "ocrmypdf_paddle", *args])
+    return exited.value.code
+
+
+def test_paddle_check_passes_when_ready(ocrmypdf, monkeypatch, plugin, capsys):
+    monkeypatch.setattr(plugin.runtime, "missing_runtime", lambda: [])
+    monkeypatch.setattr(plugin.runtime, "check_models", lambda directory: [])
+    monkeypatch.setattr(plugin.apple, "missing_vision", lambda: [])
+
+    assert paddle_check(ocrmypdf, "--paddle-check", "fast") == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""  # OCRmyPDF keeps stdout for the PDF
+    assert captured.err == "PaddleOCR engine is ready (fast mode).\n"
+
+
+def test_paddle_check_names_every_problem(ocrmypdf, monkeypatch, plugin, capsys):
+    monkeypatch.setattr(plugin.runtime, "missing_runtime",
+                        lambda: ["rapidocr==3.9.2 is not installed"])
+    monkeypatch.setattr(plugin.runtime, "check_models", lambda directory: [])
+    monkeypatch.setattr(plugin.apple, "missing_vision",
+                        lambda: ["pyobjc-framework-Vision is not installed"])
+
+    assert paddle_check(ocrmypdf, "--paddle-check", "fast") == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "PaddleOCR engine is not ready:",
+        "  rapidocr==3.9.2 is not installed",
+        "  pyobjc-framework-Vision is not installed",
+    ]
+    # Accurate mode does not consult Apple Vision.
+    assert paddle_check(ocrmypdf, "--paddle-check", "accurate") == 1
+    assert "Vision" not in capsys.readouterr().err
