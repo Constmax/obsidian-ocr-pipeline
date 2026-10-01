@@ -93,9 +93,11 @@ def _column_gap(with_box, second_look=False):
         for a, b in zip(edges, edges[1:]):
             if b - a < width * 0.08:
                 continue
-            pos = emptiest(max(x for x in xs if x < b), b)
             crossings = crossing(b - 0.5)
-            if not balanced(pos) or crossings > 0.02 * len(with_box):
+            if crossings > 0.02 * len(with_box):
+                continue
+            pos = emptiest(max(x for x in xs if x < b), b)
+            if not balanced(pos):
                 continue
             rank = (-crossings, b - a)
             if best is None or rank > best[0]:
