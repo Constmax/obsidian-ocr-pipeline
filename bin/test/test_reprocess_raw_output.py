@@ -60,6 +60,7 @@ FAKE_COMBINE = '''
 echo "$*" >> "$FAKE_LOG"
 if [ -n "${FAKE_CREATE_FILE:-}" ]; then echo intruder > "$FAKE_CREATE_FILE"; fi
 if [ -n "${FAKE_CREATE_DIR:-}" ]; then mkdir "$FAKE_CREATE_DIR"; fi
+if [ -n "${FAKE_READ_ONLY:-}" ]; then chmod 444 "$FAKE_READ_ONLY"; fi
 if [ -n "${FAKE_BLOCK:-}" ]; then touch "$FAKE_BLOCK"; sleep 60; fi
 [ "${FAKE_COMBINE_EXIT:-0}" = 0 ] || exit "$FAKE_COMBINE_EXIT"
 cp "$FAKE_RESULT" "$1/$2.pdf"
@@ -419,6 +420,32 @@ def test_in_place_failure_writes_nothing(sb, failure):
     assert "remains unchanged" in result.output, result.output
     # No _FAILED_ artifact, unlike the legacy mode.
     _assert_clean(sb, ["casebook.pdf"])
+
+
+@pytest.mark.parametrize("mode", [["--in-place"], []], ids=["in-place", "legacy"])
+def test_read_only_source_fails_before_ocr(sb, mode):
+    sb.source.chmod(0o444)
+
+    result = _run(sb, *mode)
+
+    assert result.returncode != 0
+    assert "Source is read-only or locked" in result.output, result.output
+    assert not sb.log.exists()
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+@pytest.mark.parametrize("mode, left", [
+    (["--in-place"], ["casebook.pdf"]),
+    ([], ["casebook.pdf", "casebook_FAILED_readonly.pdf"]),
+], ids=["in-place", "legacy"])
+def test_source_made_read_only_during_ocr_is_not_replaced(sb, mode, left):
+    result = _run(sb, *mode, FAKE_READ_ONLY=str(sb.source))
+
+    assert result.returncode != 0
+    assert "Source became read-only or locked" in result.output, result.output
+    assert sb.source.read_bytes() == sb.source_bytes
+    assert sorted(p.name for p in sb.vault.iterdir()) == left
+    assert list(sb.tmp.iterdir()) == []
 
 
 def test_in_place_refuses_a_source_changed_during_ocr(sb):

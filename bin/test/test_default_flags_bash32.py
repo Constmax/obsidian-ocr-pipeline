@@ -4,7 +4,7 @@ macOS /bin/bash is 3.2, where "${arr[@]}" on an empty array counts as unbound
 under `set -u` and aborts the script. pdf-combine built its OCR arguments from
 such an array, so every run without --force-ocr or --split-columns died before
 OCR: the default path of `reprocess-raw --output` and of the Obsidian
-searchable-copy action. Bash 4.4 and later accept the expansion, so this test
+OCR text layer action. Bash 4.4 and later accept the expansion, so this test
 detects the bug only where /bin/bash is 3.2 (macOS); elsewhere it still checks
 that the default path reaches OCR.
 
