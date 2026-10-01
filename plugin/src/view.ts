@@ -162,7 +162,7 @@ export class OcrComparisonView extends ItemView {
 		this.pdfErrorBanner = pdfCol.createDiv({ cls: "ocr-fehlbanner" });
 		this.pdfErrorBanner.hide();
 
-		this.pdfColumn = new PdfColumn(this.app, pdfCol, () => this.plugin.settings.pdfZoomMax);
+		this.pdfColumn = new PdfColumn(this.app, pdfCol);
 		this.pdfColumn.onMeasurementNeeded = () => this.coupling?.remeasure();
 		this.pdfColumn.onLoaded = (name, pages) => this.pdfLoaded(name, pages);
 		this.pdfColumn.onError = (error) => this.showPdfError(error);
@@ -202,12 +202,7 @@ export class OcrComparisonView extends ItemView {
 		setIcon(moreBtn.createSpan({ cls: "ocr-ikon" }), "horizontal-three-dots");
 		moreBtn.addEventListener("click", (e) => this.moreMenu(e));
 
-		this.mdColumn = new MarkdownColumn(
-			this.app,
-			mdCol,
-			this,
-			() => this.plugin.settings.mdEagerLimit,
-		);
+		this.mdColumn = new MarkdownColumn(this.app, mdCol, this);
 		this.mdColumn.onMeasurementNeeded = () => this.coupling?.remeasure();
 		this.mdColumn.onChange = (block) => this.triggerSaveChange(block.pageNumber);
 		this.mdColumn.onMark = (pageNumber) => this.markPage(pageNumber);
