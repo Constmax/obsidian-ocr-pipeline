@@ -602,10 +602,12 @@ def _cache_contexts(request: ConversionRequest) -> tuple[dict, dict]:
         "diagram_pages": sorted(request.forced_diagram_pages),
     }
     full = page_cache.build_context(request.pdf, parameters)
+    # A textlayer page is cheap to rebuild, so one written before it carried
+    # its line columns (Issue #14) is recalculated; OCR pages are kept.
     textlayer = page_cache.build_context(
         request.pdf,
         {key: value for key, value in parameters.items()
-         if key not in _TEXTLAYER_IGNORED_KEYS},
+         if key not in _TEXTLAYER_IGNORED_KEYS} | {"columns": 1},
     )
     return full, textlayer
 
