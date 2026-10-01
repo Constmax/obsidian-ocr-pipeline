@@ -33,7 +33,7 @@ NODE_MODULES := plugin/node_modules/.package-lock.json
 .PHONY: check check-unlocked check-cases test-fast plugin lint-plugin test-plugin build-plugin shellcheck test-py test-ocrmypdf
 
 check:
-	@echo "make check: waiting for $(CHECK_LOCK) if another run holds it"
+	@$(if $(LOCK_CMD),echo "make check: waiting for $(CHECK_LOCK) if another run holds it",echo "!! neither lockf nor flock found: make check runs unlocked")
 	$(LOCK_CMD) $(MAKE) --no-print-directory check-unlocked
 
 check-unlocked: plugin shellcheck test-py test-ocrmypdf

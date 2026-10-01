@@ -106,7 +106,11 @@ checkout, as `bench/reading_order.py` does.
 
 For development, `make check` also needs Node ≥ 22 and `shellcheck`
 (`brew install node shellcheck`); neither is part of the `Brewfile`, because
-using the pipeline needs neither.
+using the pipeline needs neither. The Python tests run with the `PYTHON` of
+the Makefile (default `python3`), which needs `pytest`, `pyyaml`, `pymupdf`,
+`numpy` and `pillow`; with `pytest-xdist` added they run on all cores
+(`python3 -m pip install pytest-xdist`, or `--user` / a venv where PEP 668
+refuses the system Python).
 
 ## Python 3.12 expat Bug
 
