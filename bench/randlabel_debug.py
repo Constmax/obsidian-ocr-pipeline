@@ -47,20 +47,20 @@ def main():
     print(f"{len(zeilen)} Zeilen\n")
     print(f"{'#':>3s} {'x0':>5s} {'y0':>5s} {'x1':>5s}  Text")
     for i, z in enumerate(zeilen):
-        b = z[1]
-        marke = " ←RANDLABEL" if A.MARGIN_LABEL.match(z[0].strip()) else ""
+        b = z.box
+        marke = " ←RANDLABEL" if A.MARGIN_LABEL.match(z.text.strip()) else ""
         print(f"{i:3d} {b[0] if b else -1:5d} {b[1] if b else -1:5d} "
-              f"{b[2] if b else -1:5d}  {z[0][:70]!r}{marke}")
+              f"{b[2] if b else -1:5d}  {z.text[:70]!r}{marke}")
 
     import statistics
     for i, z in enumerate(zeilen):
-        if not (z[1] and A.MARGIN_LABEL.match(z[0].strip())):
+        if not (z.box and A.MARGIN_LABEL.match(z.text.strip())):
             continue
-        nah = [x for x in zeilen[max(0, i - 8):i + 9] if x[1] and x is not z]
-        rumpf = statistics.median([x[1][0] for x in nah]) if nah else None
-        print(f"\nMarke bei #{i}: x0={z[1][0]}, Rumpfmedian={rumpf}, "
+        nah = [x for x in zeilen[max(0, i - 8):i + 9] if x.box and x is not z]
+        rumpf = statistics.median([x.box[0] for x in nah]) if nah else None
+        print(f"\nMarke bei #{i}: x0={z.box[0]}, Rumpfmedian={rumpf}, "
               f"Schwelle={None if rumpf is None else rumpf - 25}")
-        print("   → im Rand" if rumpf is not None and z[1][0] <= rumpf - 25
+        print("   → im Rand" if rumpf is not None and z.box[0] <= rumpf - 25
               else "   → NICHT im Rand, Regel greift nicht")
 
 

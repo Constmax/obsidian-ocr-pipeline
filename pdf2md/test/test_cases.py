@@ -16,6 +16,7 @@ import fitz
 import pytest
 
 import cases
+import page_cache
 from assembly import AssemblyContext
 from conversion import ConversionRequest, convert_document
 
@@ -121,7 +122,9 @@ def test_a_marked_page_becomes_a_case_with_produced_and_expected_block(vault):
     assert len(case["pdf_sha256"]) == 64
     assert case["page"]["number"] == 1
     assert case["page"]["source"] == "textlayer"
-    assert [line[0] for line in case["page"]["lines"]][0] == HEADER
+    assert page_cache.recognized_lines(case["page"])[0].text == HEADER
+    assert [(line["text"], line["reason"]) for line in case["discarded"]] \
+        == [(HEADER, "running_line")]
     assert case["running_lines"] == [HEADER]
     assert case["footer_lines"] == []
     assert case["produced"] == PRODUCED
@@ -164,7 +167,8 @@ def test_marking_ignores_a_stash_of_other_lines(vault):
 
     _, case, missing = cases.add(preview, 1)
 
-    assert case["page"]["lines"][1][0].startswith("Eine ganz andere Seite")
+    assert page_cache.recognized_lines(case["page"])[1].text.startswith(
+        "Eine ganz andere Seite")
     assert "Eine ganz andere Seite" in case["produced"]
     assert "Eine ganz neue Seite" in case["expected"]
     assert missing == ["neue"]
@@ -217,7 +221,8 @@ def test_marking_again_after_a_rerun_takes_the_new_lines(vault):
     _edit(preview, "geworden. ", "geworden.\n\n")
     _, case, missing = cases.add(preview, 1)
 
-    assert case["page"]["lines"][1][0].startswith("Eine ganz andere Seite")
+    assert page_cache.recognized_lines(case["page"])[1].text.startswith(
+        "Eine ganz andere Seite")
     assert "Eine ganz andere Seite" in case["produced"]
     assert (case["fault_stage"], missing) == ("assembly", [])
     assert (case["note"], case["issue"], case["status"]) == (
@@ -500,6 +505,7 @@ def test_the_fault_stage_can_be_set_and_stays_when_marking_again(vault):
 
 
 def test_markup_and_a_hyphenated_word_are_covered_by_the_lines():
+    # Lines as a case from before Issue #144 holds them.
     case = {
         "page": {"lines": [["Rechtsfolge ist der Schadens-", None],
                            # a decomposed umlaut, as some text layers hold it
