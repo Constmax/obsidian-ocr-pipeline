@@ -354,7 +354,7 @@ Four consequences worth knowing:
   assumed A4 page instead, keeping every pixel. A file that *does* declare its
   resolution is taken at its word.
 - **One image is one page** — enforced, not assumed: a file carrying more than
-  one frame is rejected (above). Header/footer detection in `running_lines()`
+  one frame is rejected (above). Header/footer detection in `assembly_context()`
   needs at least two pages, so it contributes nothing here. Combining a folder
   of images into one Markdown file is a separate feature.
 - **A shared basename only matters once it overwrites something.** `scan.pdf`
@@ -434,24 +434,36 @@ a `daten/` directory would be lost during flat file copies.
 page's paragraphs are assembled, so a header the model glued to the first
 paragraph is dropped too. Besides fixed patterns (`BOILERPLATE`, the city
 lists, bare page numbers near the page edge, and `ZONE_SIGNALS` for short
-lines and lines near the page edge), it drops the document's running lines:
+lines and lines near the page edge), it drops the document's running lines.
 
-- `running_lines()` in `conversion.py` reads them from the PDF's text layer.
-  A line counts when it repeats on two pages in the header (top 9 %) or
-  footer (bottom 7 %) zone. A course label under the header rule (down to
-  12 %) counts only when it repeats on two thirds of the pages and on at
-  least three: slide titles and body lines repeat there as well (Issue #161).
+The page zones are constants in thousandths of the page height, in one
+place at the top of `assembly.py`. A recognized line is placed by its top;
+a weaker signal needs a zone nearer the edge: zone signals and city lines
+above 70 or below 950, a bare page number above 80 or below 905.
+
+- `assembly_context()` in `conversion.py` reads the running lines from the
+  PDF's text layer, placing a line by its centre. A line counts when it
+  repeats on two pages in the header (top 9 %) or footer (bottom 7 %) zone.
+  A course label under the header rule (down to 12 %) counts only when it
+  repeats on two thirds of the pages and on at least three: slide titles
+  and body lines repeat there as well (Issue #161). The running lines of the
+  footer zone are also the document's footer lines.
+- Running lines and recognized lines are compared without bold markers and
+  with single spaces (`running_text()`).
 - A running line is dropped anywhere on the page.
 - A scan is read column by column, so a footer spanning both columns comes
-  back in two pieces. On a page the model read, a line whose top lies in the
-  bottom 7 % is dropped as well when it is a running line read with OCR
-  confusions (`i`, `l` and `|` read as `1`), or its start or end. A piece
-  must hold five letters or digits, 40 % of the line's, and two words; the
-  end piece may start with half a glyph. A text layer is not cut, so
-  text-layer pages keep such lines. On a horizontally tiled page y is
-  tile-relative (#146), so the band also reaches into the upper tile.
-- A misread footer that is not a running line of the text layer (a scan
-  without one, for example) is dropped only by the fixed patterns.
+  back in two gutter pieces. On an OCR page, a line whose top lies in the
+  footer band (the bottom 7 %, the footer zone by the line's top) is dropped
+  as well when it is a footer line read with OCR confusions (`i`, `l` and
+  `|` read as `1`), or its start or end. A piece must hold five letters or
+  digits, 40 % of the footer's, and two words; the end piece may start with
+  half a glyph. Only footer lines count: the end of a header ("Fall 9" of
+  "Muster - Fall 9") in the footer band may be a heading. A text layer is
+  not cut, so text-layer pages keep such lines. On a horizontally tiled
+  page y is tile-relative (#146), so the band also reaches into the upper
+  tile.
+- A misread header or footer that is not a running line of the text layer
+  (a scan without one, for example) is dropped only by the fixed patterns.
 
 ## Stage 2: Dictionary Verification (`dictionary.py`)
 
@@ -495,7 +507,7 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --pages "1,3-5" --out _ocr-preview
   page, so `--pages` accepts only `1`.
 - `--diagram-pages` uses the same grammar. Whitespace around entries is ignored.
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
-- `running_lines()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
+- `assembly_context()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
 - Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`).
 - **An existing preview is merged, not replaced (Issue #106).** The selected pages replace their blocks, new ones are inserted in page order, and every other block stays verbatim, manual edits included. Without an existing preview only the selected pages are written, and `seiten` counts those.
 - The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--pages` run adds no note, because pages it did not reach keep their previous blocks.
@@ -607,7 +619,7 @@ needs neither the preview nor the page cache. A case it cannot read is named
 on stderr and left out; the exit code stays 0. The review view asks it which
 pages to badge.
 
-A case file (`schema: 1`) holds:
+A case file (`schema: 2`) holds:
 
 | Key | Content |
 |---|---|
@@ -615,6 +627,7 @@ A case file (`schema: 1`) holds:
 | `page` | The page-cache entry: recognized lines, source, layout, mode, trace |
 | `diagram_image`, `diagram_image_only` | What the page block needs besides the lines |
 | `running_lines` | Frozen copy of the source's running lines |
+| `footer_lines` | The running lines among them found in the footer zone; a schema-1 case is upgraded with all its running lines |
 | `produced`, `expected` | The two page blocks, marker line included |
 | `note`, `issue` | The user's note and an optional issue number |
 | `status` | `open` or `fixed` |
@@ -660,8 +673,8 @@ folders (default: `$VAULT_ROOT`; exit code 2 when neither is given).
 | `unreadable` | The file cannot be read by this version | yes (exit 1) |
 | `error` | The replay raised: a damaged case, or the code under repair | yes (exit 1) |
 
-`--promote` also rewrites the frozen running lines with the ones the case
-matched with, so a case fixed by a running-line fix stays fixed once its
+`--promote` also rewrites the frozen running and footer lines with the ones
+the case matched with, so a case fixed by a running-line fix stays fixed once its
 source is moved or changed.
 
 `make check-cases` runs this with `~/.venvs/mlxocr` (pymupdf; no model is

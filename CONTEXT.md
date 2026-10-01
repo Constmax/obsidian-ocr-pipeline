@@ -18,6 +18,22 @@ _Avoid_: absolute coordinates, global coordinates
 A part of a page image that the model reads on its own, cut at the gutter or across a dense page.
 _Avoid_: crop, band, Kachel (in English text)
 
+**OCR page / text-layer page**:
+A source page Stage 2 had the model read, as opposed to one whose recognized lines come from the PDF's text layer.
+_Avoid_: model page, scan page
+
+**Running line**:
+A line that repeats near the top or bottom of a document's pages in its text layer, such as a page header, a course label or a footer; Stage 2 drops it from every page block.
+_Avoid_: boilerplate (that also covers fixed patterns), Kopfzeile (in English text)
+
+**Footer line**:
+A running line found at the bottom of the pages.
+_Avoid_: footer piece
+
+**Gutter piece**:
+One end of a footer line that the model read on its own, because a scan is read column by column and the footer spans both columns.
+_Avoid_: fragment, half line
+
 ### Preview and review
 
 **Preview**:
