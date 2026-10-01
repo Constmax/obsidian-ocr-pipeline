@@ -165,8 +165,9 @@ folder is missing), Markdown column default, scroll sync, PDF render factor,
 Markdown eager limit, and column widths.
 
 **Searchable copy** (for the Stage-1 action, #66): OCR engine (Automatic,
-Apple Vision, Tesseract, PaddleOCR (fast); default Automatic) and Split
-two-column pages (default off). `parseOcrSettings()` in `src/ocr-settings.ts`
+Apple Vision, Tesseract, Apple Vision + RapidOCR (Paddle fast), which reads with
+Apple Vision and re-reads citation lines with RapidOCR; default Automatic) and
+Split two-column pages (default off). `parseOcrSettings()` in `src/ocr-settings.ts`
 validates both on load: data from before these settings and invalid values
 (such as an engine this version does not know) fall back to the defaults field
 by field. Obsidian on mobile shows only a desktop-only notice in this section.
