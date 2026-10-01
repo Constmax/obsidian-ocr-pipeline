@@ -11,12 +11,9 @@ where `reprocess-raw --check-engine` passes; #71 decides whether it stays.
 
 **Superseded in part by #180:** the user decided that the action writes the
 text layer into the source PDF instead of a sibling copy. The action is now
-**Add OCR text layer** and runs `reprocess-raw --in-place`, which keeps every
-invariant below except "the source PDF is untouched" and the sibling
-destination: the source is replaced only after all gates pass, in one atomic
-rename, and failure, cancellation or a source changed during OCR leave it
-byte-identical with no artifact. Sections 1 and 3 below describe the original
-copy design.
+**Add OCR text layer** and runs `reprocess-raw --in-place`, with the safety
+invariants below (updated for #180). Sections 1 and 3 below describe the
+original copy design.
 
 ## Goal
 
@@ -30,11 +27,16 @@ engine.
 ## Safety invariants
 
 - The plugin remains a thin desktop client around installed Stage-1 CLIs.
-- The source PDF is untouched by default.
-- A destination appears in the vault only after processing and all quality
-  gates succeed.
-- Failure or cancellation leaves no partial PDF or `_FAILED_` artifact in the
-  vault.
+- The source PDF changes only after processing and all quality gates
+  succeed, in one atomic rename of a hidden same-folder copy over it; it is
+  never a partial file. (Before #180: the source was untouched and a sibling
+  destination appeared only after the gates passed.)
+- Failure or cancellation leaves the source byte-identical and no partial
+  PDF, hidden temporary copy or `_FAILED_` artifact in the vault.
+- A source that changed during OCR, or is read-only or locked, is not
+  replaced.
+- Once the rename starts, cancellation is ignored, so the reported outcome is
+  the real one.
 - Existing text is preserved by default. Destructive force-OCR behavior is a
   separate, exceptional workflow.
 - Cancellation terminates the whole process group, including OCRmyPDF and its

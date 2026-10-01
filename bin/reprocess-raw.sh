@@ -138,6 +138,12 @@ if [ -n "$DEST_ARG" ]; then
     fi
 fi
 
+# Both in-place modes replace the source: refuse a read-only or locked one
+# before OCR rather than after it.
+if [ -z "$DEST" ] && [ ! -w "$(readlink -f "$SRC_ABS")" ]; then
+    echo "❌ Source is read-only or locked, not replacing it: $SRC_ABS"; exit 1
+fi
+
 BASE="$(basename "$SRC_ABS" .pdf)"
 ORIG_PAGES=$(pdfinfo "$SRC_ABS" 2>/dev/null | awk '/^Pages:/ {print $2}')
 if [ -z "$ORIG_PAGES" ]; then
@@ -238,6 +244,11 @@ replace_source() {
     if ! cmp -s "$target" "$WORK_DIR/$(basename "$SRC_ABS")"; then
         echo "❌ Source changed during processing, not replacing it: $SRC_ABS"
         reject_result changed
+    fi
+    # cp -p would carry a read-only mode or lock flag onto the hidden copy.
+    if [ ! -w "$target" ]; then
+        echo "❌ Source became read-only or locked during processing: $SRC_ABS"
+        reject_result readonly
     fi
     TMP_DEST=$(mktemp "$(dirname "$target")/.$(basename "$target").XXXXXX")
     cp -p "$target" "$TMP_DEST"

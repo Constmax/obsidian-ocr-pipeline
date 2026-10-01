@@ -2,7 +2,7 @@
 // `--out` and collects the last output lines; machine-readable progress is
 // available via the `--fortschritt` flag. `pdf2md case …` keeps and lists page
 // cases. Stage 1: calls `reprocess-raw
-// --output` in its own process group, so cancellation reaches OCRmyPDF and
+// --in-place` in its own process group, so cancellation reaches OCRmyPDF and
 // every other descendant.
 
 import { spawn, type ChildProcess } from "child_process";

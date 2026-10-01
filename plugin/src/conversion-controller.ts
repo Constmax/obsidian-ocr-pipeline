@@ -1,5 +1,5 @@
 // Conversion lifecycle for Stage 2 (pdf2md) and Stage 1 (reprocess-raw
-// --output): one conversion at a time, child ownership and cancellation,
+// --in-place): one conversion at a time, child ownership and cancellation,
 // timeout policy, progress messages, result classification, and opening the
 // Stage-2 result. Free of Obsidian imports so it runs under `node --test`; the
 // plugin supplies a ConversionHost.
