@@ -22,7 +22,7 @@ import layout as L
 import assembly as A
 
 
-def alt_steg(mit_box):
+def alt_steg(mit_box, second_look=False):
     """Die Fassung vor der Aenderung: nur die groesste Luecke als Kandidat."""
     if len(mit_box) < 8:
         return None

@@ -244,13 +244,81 @@ def split_footnote_defs(text):
     return [text[a:b] for a, b in zip(bounds, bounds[1:])]
 
 
-def footnotes_obsidian(paragraphs):
-    """Convert footnotes to Obsidian syntax: [^n] in text, [^n]: at block end."""
-    defs, rest = {}, []
+def _reference(s, n):
+    """First footnote mark n in running text s, or None."""
+    for m in re.finditer(rf"(?<=[a-zäöüßA-ZÄÖÜ)\].,;:]){n}(?![\d\]])", s):
+        if not CITATION_BEFORE.search(s[:m.start()]):
+            return m
+    return None
+
+
+def _merge_definitions(definitions, paragraphs, columns):
+    """Definitions `[number, columns, text]` → `({number: text}, strays)`.
+
+    A number stands once on a page (Issue #14). When several definitions
+    carry it, the column decides which one keeps it: the column whose
+    running text cites the number, else the column that holds a neighbour
+    number (n - 1 or n + 1), else the first in reading order. The others are
+    citation page numbers taken for footnote numbers; each goes back, number
+    included, to the definition before it in its own column. One from the
+    winner's column stays under the number. One that opens another column
+    has no definition of its own column to go with: it becomes a stray
+    paragraph, so its text lands under no other column's number.
+    """
+    def cites(i):
+        n, own, _ = definitions[i]
+        return bool(own) and any(own <= c and not p.lstrip().startswith("|")
+                                 and _reference(p, n)
+                                 for p, c in zip(paragraphs, columns))
+
+    def has_neighbour(i):
+        n, own, _ = definitions[i]
+        return any(m in (n - 1, n + 1) and c == own for m, c, _ in definitions)
+
+    winner = {}
+    for n in dict.fromkeys(d[0] for d in definitions):
+        entries = [i for i, d in enumerate(definitions) if d[0] == n]
+        column = definitions[entries[0]][1]
+        for test in (cites, has_neighbour):
+            passing = {definitions[i][1] for i in entries if test(i)}
+            if len(passing) == 1:
+                column = passing.pop()
+                break
+        winner[n] = next(i for i in entries if definitions[i][1] == column)
+
+    home, previous = {}, {}
+    for i, (n, column, _) in enumerate(definitions):
+        if winner[n] == i or column == definitions[winner[n]][1]:
+            home[i] = n
+        elif column in previous:
+            home[i] = home[previous[column]]
+        else:
+            home[i] = ("stray", i)
+        previous[column] = i
+    texts = {n: definitions[i][2] for n, i in winner.items()}
+    for i, (n, _, text) in enumerate(definitions):
+        if winner[n] != i:
+            key = home[i]
+            texts[key] = (texts[key] + " " if key in texts else "") + f"{n} {text}"
+    defs = {k: v for k, v in texts.items() if isinstance(k, int)}
+    return defs, [v for k, v in texts.items() if not isinstance(k, int)]
+
+
+def footnotes_obsidian(paragraphs, columns=None):
+    """Convert footnotes to Obsidian syntax: [^n] in text, [^n]: at block end.
+
+    `columns` gives the set of columns each paragraph covers (empty or None:
+    unknown). Definitions are collected with their column and merged
+    afterwards by _merge_definitions() (Issue #14). No digit is dropped.
+    """
+    columns = [frozenset(c or ()) for c in columns] if columns is not None \
+        else [frozenset()] * len(paragraphs)
+    found, rest, rest_columns = [], [], []   # found: [number, columns, text]
     is_table = lambda p: p.lstrip().startswith("|")
-    for p in paragraphs:
+    for p, column in zip(paragraphs, columns):
         if is_table(p):
             rest.append(p)
+            rest_columns.append(column)
             continue
         p = re.sub(r"\*\*(.+?)\*\*", r"\1", p) if FN_DEF.match(p.strip("* ")) else p
         m = FN_DEF.match(p.strip())
@@ -260,28 +328,26 @@ def footnotes_obsidian(paragraphs):
             for part in parts:
                 mm = FN_DEF.match(part.strip())
                 if mm:
-                    k = int(mm.group(1))
-                    defs[k] = (defs[k] + " " if k in defs else "") \
-                        + mm.group(2).strip()
+                    found.append([int(mm.group(1)), column, mm.group(2).strip()])
                     detected = True
             if detected:
                 continue
         rest.append(p)
+        rest_columns.append(column)
 
-    if not defs:
+    if not found:
         return rest
 
+    defs, strays = _merge_definitions(found, rest, rest_columns)
     nums = sorted(defs)
 
     def mark(s):
         for n in nums:
-            for m in re.finditer(rf"(?<=[a-zäöüßA-ZÄÖÜ)\].,;:]){n}(?![\d\]])", s):
-                if CITATION_BEFORE.search(s[:m.start()]):
-                    continue
+            m = _reference(s, n)
+            if m:
                 s = s[:m.start()] + f"[^{n}]" + s[m.end():]
-                break
         return s
-    rest = [p if is_table(p) else mark(p) for p in rest]
+    rest = [p if is_table(p) else mark(p) for p in rest] + strays
     rest += [""] + [f"[^{n}]: {defs[n]}" for n in nums]
     return rest
 
@@ -395,21 +461,54 @@ FN_NUMBER = re.compile(r"^\**\s*(\d{1,2})\s*\**$")
 FN_TEXT = re.compile(r"^[A-ZÄÖÜ„»§]")
 
 
+def column_of(line):
+    """Column that split_columns() gave the line inside assemble_paragraphs."""
+    return line[3] if len(line) > 3 else None
+
+
+def vertical_overlap(a, b):
+    """How far two boxes (x0, y0, x1, y1) overlap in height; < 0: apart."""
+    return min(a[3], b[3]) - max(a[1], b[1])
+
+
 def attach_footnote_numbers(lines, footer=900, proximity=40):
-    """Attach out-dented footnote number at page footer with its text."""
+    """Attach out-dented footnote number at page footer with its text.
+
+    Number and text must share a column: the next line in reading order can
+    open the neighbouring column's block (Issue #14). A number set a little
+    lower than its text sorts after it; on one row it still belongs to it
+    when it stands right before it: a page number further left on the
+    running footer's row stays apart.
+    """
+    def joined(number, z):
+        box = (min(number[1][0], z[1][0]), min(number[1][1], z[1][1]),
+               max(number[1][2], z[1][2]), max(number[1][3], z[1][3]))
+        return [f"{FN_NUMBER.match(number[0].strip()).group(1)} {z[0].lstrip()}",
+                box] + list(z[2:])
+
+    def text_of(number, z):
+        return (z and z[1] and column_of(number) == column_of(z)
+                and number[1][0] <= z[1][0]
+                and FN_TEXT.match(z[0].lstrip("*").lstrip()))
+
     out, i = [], 0
     while i < len(lines):
         z = lines[i]
         n = lines[i + 1] if i + 1 < len(lines) else None
-        m = FN_NUMBER.match(z[0].strip())
-        if (m and n and z[1] and n[1] and z[1][1] >= footer
-                and z[1][0] <= n[1][0]
-                and abs(n[1][1] - z[1][1]) <= proximity
-                and FN_TEXT.match(n[0].lstrip("*").lstrip())):
-            box = (min(z[1][0], n[1][0]), min(z[1][1], n[1][1]),
-                   max(z[1][2], n[1][2]), max(z[1][3], n[1][3]))
-            out.append([f"{m.group(1)} {n[0].lstrip()}", box] + list(n[2:]))
+        footnote_number = bool(FN_NUMBER.match(z[0].strip()) and z[1]
+                               and z[1][1] >= footer)
+        if (footnote_number and text_of(z, n)
+                and abs(n[1][1] - z[1][1]) <= proximity):
+            out.append(joined(z, n))
             i += 2
+            continue
+        p = out[-1] if out else None
+        if (footnote_number and text_of(z, p)
+                and 0 <= p[1][0] - z[1][2] <= proximity
+                and vertical_overlap(z[1], p[1])
+                > 0.5 * min(z[1][3] - z[1][1], p[1][3] - p[1][1])):
+            out[-1] = joined(z, p)
+            i += 1
             continue
         out.append(z)
         i += 1
@@ -510,15 +609,23 @@ def short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
     return short, block
 
 
-def assemble_paragraphs(lines, context=None, ocr_page=False):
+def assemble_paragraphs(lines, context=None, ocr_page=False, columns=None):
     """Resolve hyphens and merge lines into paragraphs.
 
     `ocr_page`: the model read the page, so a running footer may come back
     misread or cut at the gutter, bold comes per recognized line and boxes
     come from ruled lines of the image.
 
+    `columns` holds each line's column from split_columns_indexed(). With
+    it, a column's footnote block is set aside when the next column begins,
+    so the running text goes on where it stopped instead of inside the last
+    footnote (Issue #14).
+
     Returns an AssemblyResult — read .paragraphs, not the record itself.
     """
+    if columns is not None and len(columns) == len(lines):
+        lines = [[z[0], z[1], z[2] if len(z) > 2 else None, column]
+                 for z, column in zip(lines, columns)]
     lines = drop_repeated_labels(attach_footnote_numbers(lines))
     ys = [z[1][1] for z in lines if z[1]]
     distances = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 200]
@@ -526,16 +633,20 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
     lines = promote_margin_labels(lines, normal)
     short, block = short_lines(lines)
 
+    # out: (paragraph, set of the columns its lines came from)
     out, buffer, last_y, discarded = [], "", None, []
     was_heading, last_marker, prev_idx, buffer_x0 = False, None, None, None
+    buffer_columns, last_column, notes = set(), None, []
     for i, z in enumerate(lines):
         text, box = z[0], z[1]
         marker = z[2] if len(z) > 2 else None
+        column = column_of(z)
+        line_columns = set() if column is None else {column}
         if marker == "tabelle":
             if buffer:
-                out.append(buffer)
+                out.append((buffer, buffer_columns))
                 buffer = ""
-            out.append(text)
+            out.append((text, line_columns))
             was_heading, last_y = False, (box[3] if box else last_y)
             last_marker = marker
             continue
@@ -546,6 +657,20 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
         if is_boilerplate(text, y, context=context, ocr_page=ocr_page):
             discarded.append(text)
             continue
+
+        if (buffer and column is not None and last_column is not None
+                and column != last_column and FN_DEF.match(buffer.strip("* "))):
+            # The previous column ends in its footnote block: keep that block
+            # for the end and pick up the running text where it stopped.
+            held = [(buffer, buffer_columns)]
+            while (out and last_column in out[-1][1]
+                   and FN_DEF.match(out[-1][0].strip("* "))):
+                held.insert(0, out.pop())
+            notes += held
+            buffer, buffer_columns, buffer_x0 = "", set(), None
+            if (out and last_column in out[-1][1]
+                    and not out[-1][0].lstrip().startswith("|")):
+                buffer, buffer_columns = out.pop()
 
         cont = text.lstrip("*")
         hyphen = (buffer.rstrip("*").endswith("-")
@@ -596,10 +721,13 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
                 buffer = buffer.rstrip("*")[:-1] + cont
             else:
                 buffer = buffer + " " + text
+            # A paragraph picked up again in the next column covers both.
+            buffer_columns = buffer_columns | line_columns
         else:
             if buffer:
-                out.append(buffer)
+                out.append((buffer, buffer_columns))
             buffer, buffer_x0 = text, (box[0] if box else None)
+            buffer_columns = line_columns
 
         # On a model page a bold line can join a bold buffer (a heading
         # wrapped over two lines); the heading still ends there.
@@ -610,11 +738,13 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
                        or (short[i] and level(buffer) is not None
                            and (len(without_bold(buffer)) <= 90
                                 or only_bold(buffer))))
-        last_y, last_marker, prev_idx = y, marker, i
+        last_y, last_marker, prev_idx, last_column = y, marker, i, column
     if buffer:
-        out.append(buffer)
-    out = [balance_bold(re.sub(r"\*\*(\s*)\*\*", r"\1", p)) for p in out]
-    paragraphs = format_headings(footnotes_obsidian(out))
+        out.append((buffer, buffer_columns))
+    out += notes
+    paragraphs = format_headings(footnotes_obsidian(
+        [balance_bold(re.sub(r"\*\*(\s*)\*\*", r"\1", p)) for p, _ in out],
+        [covered for _, covered in out]))
     return AssemblyResult(paragraphs=paragraphs, discarded=discarded)
 
 

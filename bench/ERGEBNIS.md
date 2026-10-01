@@ -2636,3 +2636,102 @@ einzigen bekannten Fehler:
   Fließtext-Rest, zwei am Fließtext klebende Langüberschriften. Die
   `note`-Felder im Truth-File benennen sie; jede künftige Reparatur bricht
   gezielt diese Fingerabdrücke.
+
+## Nachtrag 2026-10-01 (28): Fußnotenblöcke zweier Spalten getrennt halten (#14, PR #129)
+
+Stand nach dem Zusammenführen mit `main` (Seitenfälle, #99-Splitter,
+#161/#163). Alle Messungen ohne Modell.
+
+| Messung | `main` | PR #129 |
+|---|---|---|
+| `footnote_columns.py`, 26 Zweispalter (2131/2135/2143): Spalten richtig | – | 26/26 |
+| Definitionen mit Text der anderen Spalte | 5 | 0 |
+| Definitionen exakt | 88/127 | 119/127 |
+| verlorene Buchstaben | 0 | 0 |
+| `structure_bench.py`, 20 Seiten | 20/20 | 20/20 (s15 neu gesegnet) |
+| `make check-cases`, 12 Scan-Seitenfälle, abweichende Blöcke | 109 | 109 |
+
+- **s15** (2131, S. 7): der bekannte Restfehler aus Nachtrag 27 ist behoben —
+  der Fließtext-Rest hängt nicht mehr in Fußnote 33, sondern setzt den
+  Absatz der linken Spalte fort (Trennstrich aufgelöst). Fingerabdrücke
+  nach Handprüfung neu gesegnet, `note` angepasst.
+- **Beim Zusammenführen gefunden:** Die neue Regel „Nummer sortiert nach
+  ihrem Text“ klebte auf 2135 Zusatzmaterial S. 1 die Seitenzahl an die
+  Fußzeile; die Fußzeile wurde nicht mehr als laufende Zeile erkannt und
+  landete im Fließtext (s16 brach). Eine nachsortierte Nummer gehört jetzt
+  nur zu einem Text, der höchstens 40 Tausendstel rechts von ihr beginnt.
+  Ein Ausschluss laufender Zeilen half nicht: auf 2135 Lösung S. 6/7 gilt
+  eine wiederholte Fußnoten-Fundstelle selbst als laufende Zeile
+  (119 → 116 exakt).
+- **Seitenfälle:** die zwölf Scan-Fälle tragen keine Spaltenzuordnung
+  (vor #14 erfasst); sie messen hier nur, dass der Zusammenbau ohne
+  Spalten unverändert bleibt. Für die Textlayer-Seiten von #14 gibt es
+  keinen Seitenfall; die Messung dafür ist `footnote_columns.py`.
+
+Nicht gelaufen: `footnote_columns.py --all` und `regress_steg/randlabel/
+randmarke` (brauchen `bench/pages.json`, das auf diesem Rechner fehlt),
+OCR-Benchmark `bench_ocr.py`.
+
+## Nachtrag 2026-10-01 (29): Review von PR #129 — zweiter Stegblick und Fußnoten-Zuordnung (#14)
+
+Anlass: Zwei-Achsen-Review von PR #129. `bench/pages.json` lag im Vault-Archiv
+(`Sonstiges/archiv/aufraeumen-2026-09-24/`, identisch mit den Worktree-Kopien),
+damit liefen die in Nachtrag 28 offenen Regressionen. Alle Messungen ohne Modell,
+`VAULT_ROOT=~/JuraExamenVault`.
+
+**Befund auf ungesehenen Seiten.** Vergleich der fertigen Absätze aller 1404
+Vektorseiten, `main` gegen PR-Stand `69fda0e`: 100 Seiten geändert, davon 87
+außerhalb der 26 Tuning-Seiten. Drei Fehler des zweiten Stegblicks:
+
+- Er rangierte seine Kandidaten gegen die des ersten Durchgangs, zählt Kreuzer
+  aber an anderer Stelle — und ersetzte so auf 17 Seiten einen richtigen Steg
+  (meist 486 → 326, z. B. `Klausur_2134/p007`). Jetzt nur, wo der erste
+  Durchgang keinen findet.
+- Die Trennung lag in der Mitte zwischen rechter Kante und letztem erkannten
+  Wortstück; ein nicht erkanntes Wortstück am Zeilenende (x 449–480) rutschte in
+  die rechte Spalte (2130 S. 4/5, 2136 S. 7, 2138 S. 9, BGB-AT_20 S. 2,
+  bereicherungsrecht S. 13, schuldrecht-at-teil-4 S. 8). Jetzt im am wenigsten
+  überdeckten Streifen vor der rechten Kante.
+- Innerhalb einer Spalte zerlegte er eine eingerückte Gliederung
+  (`schuldrecht-bt-2-loesung-17/p001`). Jetzt nur auf der ganzen Seite.
+
+| Messung | `main` | PR `69fda0e` | nach Review |
+|---|---|---|---|
+| `footnote_columns.py`, 26 Seiten: Spalten / exakt / verloren | – / 88 / 0 | 26/26 / 119/127 / 0 | 26/26 / 119/127 / 0 |
+| 1404 Vektorseiten: geänderte Seiten ggü. `main` | – | 100 | 82 |
+| verlorene Buchstaben (Seiten) | 9 (5) | 6 (3) | 7 (4) |
+| Seiten mit mehr Verlust als `main` | – | 0 | 0 |
+| `regress_steg.py`: Zeichen verloren / Trennstriche aufgelöst | 0 / 83 | – | 0 / 138 |
+| `regress_footnote.py`, `regress_randlabel.py`, `regress_randmarke.py`: Zeichen verloren | 0 | – | 0 |
+| `structure_bench.py`, 20 Seiten | 20/20 | 20/20 | 20/20 |
+| `make check-cases`, 12 Scan-Fälle | – | – | identisch mit `main` |
+
+Der eine Buchstabe mehr als beim PR-Stand liegt auf
+`schuldrecht-at-zusatzuebersichten/p008`: dort gleicht die Ausgabe wieder
+`main` (Verlust 1, wie in `main`); der PR-Stand hatte ihn nebenbei behoben,
+weil der zweite Blick auch innerhalb einer Spalte lief.
+
+Der Restverlust von 1–2 Zeichen aus der Roadmap ist der `regress_steg`-Verlust
+auf 2131/2135/2143; er steht jetzt bei 0.
+
+**Handprüfung ungesehener Seiten** (Seitenbild und Absatz-Diff gegen `main`):
+
+- 55 Seiten, auf denen erst der zweite Blick einen Steg findet: als Vorschau mit
+  eingezeichnetem Steg geprüft — Zweispalter (Hemmer-Klausuren, Skripte
+  5_BGB_AT_Teil_5 und schuldrecht-at-teil-4), Steg im Spaltenzwischenraum; im
+  Diff lesen sie sich jetzt fortlaufend, wo `main` beide Spalten zeilenweise
+  verschränkte. Unklar bleiben drei Seiten ohne Fließtext-Spalten
+  (1_BGB_AT S. 3 Schaubild, arbeitsrecht S. 60 Tabelle, 2143_korrigiert S. 9
+  Randnotiz): anders, nicht sauber.
+- 14 Seiten, auf denen sich nur die Fußnoten ändern: in allen hängt der
+  Fließtext-Rest nicht mehr an der letzten Fußnote; auf 2134 S. 12 ist eine
+  zerteilte Definition wieder ganz.
+- Zufallsstichprobe (seed 14) von 6 weiteren Seiten: alle besser.
+- `Klausur_2136/p010`: `main` setzt den Steg bei 344 (falsch), der PR fand 486;
+  mit der Einschränkung auf „nur ohne ersten Steg“ gilt wieder `main`.
+
+**Fußnoten-Zuordnung.** Drei weitere Regeln (Streuer am Kopf einer fremden
+Spalte bleibt eigener Absatz; Gleichstand entscheidet die Spalte mit der
+Nachbarnummer; Absatz über den Steg zählt für beide Spalten) ändern auf keiner
+der 1404 Seiten etwas; sie schließen die im Review benannten Fälle synthetisch
+ab.

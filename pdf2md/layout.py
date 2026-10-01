@@ -8,36 +8,100 @@ Imports only from assembly (one direction, no cycle).
 import re
 import statistics
 
-from assembly import ENUMERATION, NO_JOIN, is_boilerplate, clean_text
+from assembly import (ENUMERATION, NO_JOIN, clean_text, is_boilerplate,
+                      vertical_overlap)
 
 
-def _column_gap(with_box):
-    """(Position of column gap, full-width lines) or None."""
+def _column_gap(with_box, second_look=False):
+    """(Position of column gap, full-width lines) or None.
+
+    `second_look`: on the whole page, look again for a clean gutter where
+    the first pass found none (Issue #14); inside a column it would split
+    an indented outline.
+    """
     if len(with_box) < 8:
         return None
     type_set = [z for z in with_box if not is_boilerplate(z[0], z[1][1])] or with_box
+    height = statistics.median(z[1][3] - z[1][1] for z in type_set) or 10
+
+    def continues_row(z):
+        """A word span that goes on with a line on its own row.
+
+        Text layers split justified lines into spans; their starts sit
+        inside the left column and chop the gutter into small gaps.
+        """
+        return any(w is not z and w[1][2] <= z[1][0] < w[1][2] + 1.5 * height
+                   and vertical_overlap(w[1], z[1]) > 0.5 * height
+                   for w in type_set)
+
     starts = sorted(z[1][0] for z in type_set)
     width = max(z[1][2] for z in type_set) - min(z[1][0] for z in type_set)
     if width <= 0:
         return None
     full = [z for z in with_box if z[1][2] - z[1][0] > width * 0.6]
+
+    def crossing(pos):
+        return sum(1 for z in with_box
+                   if z not in full and z[1][0] < pos < z[1][2])
+
+    def emptiest(lo, hi):
+        """Middle of the longest strip in [lo, hi) the fewest lines cover."""
+        spans = [(z[1][0], z[1][2]) for z in type_set if z not in full]
+        cover = [sum(1 for x0, x1 in spans if x0 <= x < x1)
+                 for x in range(int(lo), int(hi))]
+        least, run, best = min(cover, default=0), 0, (0, (lo + hi) / 2)
+        for k, c in enumerate(cover):
+            run = run + 1 if c == least else 0
+            best = max(best, (run, int(lo) + k + 1 - run / 2))
+        return best[1]
+
+    def balanced(pos):
+        n_left = sum(1 for z in with_box if z[1][0] < pos)
+        return min(n_left, len(with_box) - n_left) / len(with_box) >= 0.25
+
     best = None
     for a, b in zip(starts, starts[1:]):
         if b <= a:
             continue
         gap, pos = b - a, (a + b) / 2
-        n_left = sum(1 for z in with_box if z[1][0] < pos)
-        ratio = min(n_left, len(with_box) - n_left) / len(with_box)
-        if ratio < 0.25:
+        if not balanced(pos):
             continue
-        crossings = sum(1 for z in with_box
-                        if z not in full and z[1][0] < pos < z[1][2])
+        crossings = crossing(pos)
         clean = gap >= width * 0.08 and crossings <= 0.02 * len(with_box)
         if not (gap >= width * 0.25 or clean):
             continue
         rank = (-crossings, gap)
         if best is None or rank > best[0]:
             best = (rank, pos)
+
+    # A second look for a clean gutter (Issue #14), on the whole page and
+    # only where the first found none. Above, crossings are counted at the midpoint between two
+    # starts, inside the left column's text, so every left line crosses; and
+    # word spans of justified lines or a centred footer chop the gutter into
+    # small gaps. Here only column edges count as starts (no word span, at
+    # least two lines), and crossings are counted just left of the right
+    # edge, where the fewest lines run through. The split goes into the
+    # strip before that edge that the fewest lines cover: a word span the
+    # span test missed still ends before it, an out-dented number of the
+    # right column starts after it.
+    if best is None and second_look:
+        shared = lambda x: sum(1 for w in type_set if abs(w[1][0] - x) <= 2) >= 2
+        xs = sorted(z[1][0] for z in type_set
+                    if shared(z[1][0]) or continues_row(z))
+        edges = sorted(z[1][0] for z in type_set
+                       if not continues_row(z) and shared(z[1][0]))
+        for a, b in zip(edges, edges[1:]):
+            if b - a < width * 0.08:
+                continue
+            crossings = crossing(b - 0.5)
+            if crossings > 0.02 * len(with_box):
+                continue
+            pos = emptiest(max(x for x in xs if x < b), b)
+            if not balanced(pos):
+                continue
+            rank = (-crossings, b - a)
+            if best is None or rank > best[0]:
+                best = (rank, pos)
     if best is None:
         return None
     return best[1], full
@@ -45,26 +109,52 @@ def _column_gap(with_box):
 
 def split_columns(lines, depth=0):
     """Single column → sorted by y. Two column → left column, then right column."""
+    return [z for z, _ in _split_tagged(lines, depth, ())]
+
+
+def split_columns_indexed(lines):
+    """split_columns() plus the column of every line it returns.
+
+    Columns count 0, 1, … in reading order; a full-width line (header,
+    grid row, a line across the gutter) belongs to none and gets None.
+    The assembly needs this to keep each column's footnote block apart
+    (Issue #14) instead of guessing the gutter a second time.
+    """
+    tagged = _split_tagged(lines, 0, ())
+    ids = {}
+    columns = [None if path is None else ids.setdefault(path, len(ids))
+               for _, path in tagged]
+    return [z for z, _ in tagged], columns
+
+
+def _split_tagged(lines, depth, path):
+    """split_columns() as (line, column path) pairs; None for full width."""
     with_box = [z for z in lines if z[1]]
     y = lambda z: z[1][1]
     if depth >= 2:
-        return sorted(lines, key=lambda z: z[1][1] if z[1] else 0)
-    hit = _column_gap(with_box)
+        return [(z, path) for z in
+                sorted(lines, key=lambda z: z[1][1] if z[1] else 0)]
+    hit = _column_gap(with_box, second_look=depth == 0)
     if hit is None:
-        return sorted(lines, key=lambda z: z[1][1] if z[1] else 0) \
-            if depth or with_box else lines
+        ordered = (sorted(lines, key=lambda z: z[1][1] if z[1] else 0)
+                   if depth or with_box else lines)
+        return [(z, path) for z in ordered]
     pos, full = hit
     left = [z for z in with_box if z not in full and z[1][0] < pos]
     right = [z for z in with_box if z not in full and z[1][0] >= pos]
     header = [z for z in full if y(z) < min([y(z) for z in left + right], default=0)]
     rest_full = [z for z in full if z not in header]
+    spanning = lambda part: [(z, None) for z in part]
 
     if _column_gap(left) is None and _column_gap(right) is None:
         grid = question_answer_grid(left, right)
         if grid is not None:
-            return sorted(header, key=y) + grid + sorted(rest_full, key=y)
-    return (sorted(header, key=y) + split_columns(left, depth + 1)
-            + split_columns(right, depth + 1) + sorted(rest_full, key=y))
+            return (spanning(sorted(header, key=y)) + spanning(grid)
+                    + spanning(sorted(rest_full, key=y)))
+    return (spanning(sorted(header, key=y))
+            + _split_tagged(left, depth + 1, path + (0,))
+            + _split_tagged(right, depth + 1, path + (1,))
+            + spanning(sorted(rest_full, key=y)))
 
 
 def _is_line_start(text):
