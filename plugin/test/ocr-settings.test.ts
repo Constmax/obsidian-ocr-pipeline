@@ -29,7 +29,7 @@ test("data from before these settings existed gets the defaults", () => {
 });
 
 test("invalid values fall back field by field", () => {
-	for (const ocrEngine of ["paddle", "Apple", "", 3, null, ["apple"], {}]) {
+	for (const ocrEngine of ["easyocr", "Paddle", "", 3, null, ["apple"], {}]) {
 		assert.deepEqual(
 			parseOcrSettings({ ocrEngine, splitColumns: true }),
 			{ ocrEngine: "auto", splitColumns: true },
@@ -52,7 +52,11 @@ test("only the two OCR fields are returned", () => {
 	);
 });
 
-test("PaddleOCR is not offered yet", () => {
-	assert.deepEqual([...OCR_ENGINES], ["auto", "apple", "tesseract"]);
-	assert.equal(isOcrEngine("paddle"), false);
+test("PaddleOCR is a valid stored engine (issue #73)", () => {
+	assert.deepEqual([...OCR_ENGINES], ["auto", "apple", "tesseract", "paddle"]);
+	assert.equal(isOcrEngine("paddle"), true);
+	assert.deepEqual(parseOcrSettings({ ocrEngine: "paddle", splitColumns: false }), {
+		ocrEngine: "paddle",
+		splitColumns: false,
+	});
 });

@@ -1,7 +1,12 @@
 # Safe Stage-1 OCR from the Obsidian review view
 
-**Status:** Plan; independently shippable with the existing Apple and Tesseract
-engines.
+**Status:** Implemented (#63 `reprocess-raw --output`, #64 process module, #65
+settings, #66 action and entry points, #67 page exemptions). Kept as the design
+record: the steps below describe the intent, and the *Implemented in* notes
+say where the code landed. Current behavior is documented in
+[`review-view.md`](review-view.md) and [`scripts-detail.md`](scripts-detail.md).
+PaddleOCR in the engine setting (#73): implemented, fast mode only, offered
+where `reprocess-raw --check-engine` passes; #71 decides whether it stays.
 
 ## Goal
 
@@ -125,22 +130,21 @@ The primary action is **Create searchable copy (OCR)**. It:
 
 Expose the action from:
 
-- the PDF file menu;
-- a command that asks the user to select a PDF; and
-- the comparison view for its current PDF.
+- the PDF file menu; and
+- a command that asks the user to select a PDF.
 
-The comparison view should expose a small `currentPdf()` interface rather than
-letting commands reach into private view state.
+Pure OCR stays out of the comparison view: creating a searchable copy never
+opens or requires it, so the view exposes no entry point for this action.
 
 On success, show a notice with an action to open the sibling PDF. Do not run the
 Markdown cache inventory or Stage-2 reconciliation for a Stage-1-only result.
 
 *Implemented in #66* as `runSearchableCopy` in `src/searchable-copy.ts`, reached
-from the PDF file menu, the command **Create searchable copy (OCR)**, and the
-comparison view's More menu through `currentPdf()`. The destination check asks
-the vault adapter, so a file Obsidian has not indexed also counts. Instead of a
-notice button, the action waits up to two seconds for the vault index and opens
-the new PDF in a new tab. On mobile it shows only the desktop-only message.
+from the PDF file menu and the command **Create searchable copy (OCR)**. #66
+also added a comparison-view More-menu entry through `currentPdf()`; #96
+removed it. The destination check asks the vault adapter, so a file Obsidian
+has not indexed also counts. Instead of a notice button, the action waits up
+to two seconds for the vault index and opens the new PDF in a new tab. On mobile it shows only the desktop-only message.
 
 If B5 fails, show the exact short pages. Offer **Run with page exemptions…**,
 which opens a modal prefilled with those page numbers and reruns only after the
@@ -179,6 +183,13 @@ Defaults are `auto` and `false`. Validate loaded values and explicitly migrate
 missing or invalid historical data. Add `paddle` only after the engine plan's
 retention and installation gates pass.
 
+*Implemented in #73, ahead of those gates:* the plugin default (unsplit Apple)
+interleaves 27 of 55 hand-checked two-column pages (`bench/ERGEBNIS.md`,
+Nachtrag 19–25), so `paddle` (fast mode) is offered now, but only where
+`reprocess-raw --check-engine` finds it usable. A stored `paddle` that is not
+usable falls back to `auto` with a notice. If #71 discards the engine, the
+option goes again.
+
 The action is desktop-only because it needs filesystem paths and child
 processes. Resolve paths only through Obsidian's filesystem adapter and show a
 precise unsupported-platform message elsewhere.
@@ -211,7 +222,7 @@ Shell integration tests:
 
 Obsidian smoke tests:
 
-- all three entry points target the correct PDF;
+- both entry points (command and file menu) target the correct PDF;
 - cancellation leaves no OCRmyPDF descendants;
 - success opens the sibling and keeps the source available;
 - duplicate basenames in different folders resolve correctly;
@@ -235,7 +246,7 @@ Commit the regenerated `plugin/main.js` with the source changes.
 2. Implement source-preserving temporary processing and atomic publication.
 3. Extend and test the shared plugin process module.
 4. Add settings and migration.
-5. Add the command, file-menu, and comparison-view entry points.
+5. Add the command and file-menu entry points.
 6. Add the B5 exemption modal and exact-page retry.
 7. Run local process-tree and Obsidian smoke tests.
 8. Run the full plugin, shell, and Python verification suites.

@@ -91,19 +91,20 @@ def test_running_text_continues_past_the_left_footnote_block():
 
 
 def test_same_number_in_both_columns_the_citing_column_decides():
-    """A page number inside a citation ("BayVBl. 2016, 5 (7)") looks like
-    definition 5 in the right column. The left column cites 5 and holds its
-    definition, so that one wins; the right column keeps its text."""
+    """A citation page number after a sentence end ("S. 7. 5 Vgl. ...") looks
+    like definition 5 in the right column. The left column cites 5 and holds
+    its definition, so that one wins; the right column keeps its text."""
     paragraphs = ["Die Klage ist zulässig.5 Sie ist auch begründet.",
                   "5 Vgl. BGH, NJW 2014, 1524.",
                   "Der Bescheid ist rechtswidrig.6",
-                  "6 Stellhorn, BayVBl. 2016, 5 (7)."]
+                  "6 Stellhorn, BayVBl. 2016, 7. 5 Vgl. auch Jura 2015."]
     out = footnotes_obsidian(paragraphs, [0, 0, 1, 1])
     assert "[^5]: Vgl. BGH, NJW 2014, 1524." in out
-    assert "[^6]: Stellhorn, BayVBl. 2016, 5 (7)." in out
+    assert "[^6]: Stellhorn, BayVBl. 2016, 7. 5 Vgl. auch Jura 2015." in out
     # Unknown columns fall back to reading order, but lose no digit.
     merged = footnotes_obsidian(paragraphs)
-    assert "[^5]: Vgl. BGH, NJW 2014, 1524. 5 (7)." in merged
+    assert ("[^5]: Vgl. BGH, NJW 2014, 1524. 5 Vgl. auch Jura 2015."
+            in merged)
 
 
 def test_same_number_in_both_columns_right_column_owns_it():
@@ -134,6 +135,14 @@ def test_number_sorted_after_its_text_on_the_same_row():
     out = attach_footnote_numbers(lines)
     assert [line[0] for line in out] == ["Kopp/Schenke, VwGO, Rn. 82.",
                                          "12 Kopp/Schenke, VwGO, Rn. 84f."]
+
+
+def test_page_number_beside_the_running_footer_stays_apart():
+    """A page number on the footer's row is no footnote number: joined, the
+    footer would no longer be recognized as a running line."""
+    lines = [z("RA Dr. Michael Hein, M.A., LL.M. - 05/2026", 651, 948, 832),
+             z("**1**", 445, 949, 454)]
+    assert attach_footnote_numbers(lines) == lines
 
 
 def test_cache_keeps_columns_and_rejects_a_mismatch(tmp_path):

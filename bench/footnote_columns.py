@@ -61,7 +61,7 @@ def build(page, context):
     raw = L.assign_boxes(C.textlayer_lines(page), boxes)
     if hasattr(L, "split_columns_indexed"):
         lines, columns = L.split_columns_indexed(raw)
-        result = A.assemble_paragraphs(lines, context, columns)
+        result = A.assemble_paragraphs(lines, context, columns=columns)
     else:                                   # a checkout before issue #14
         lines, columns = L.split_columns(raw), None
         result = A.assemble_paragraphs(lines, context)
@@ -111,7 +111,7 @@ def open_document(name):
     for page in doc:
         if page.rotation:
             page.remove_rotation()
-    return doc, A.AssemblyContext(frozenset(C.running_lines(doc)))
+    return doc, C.assembly_context(doc)
 
 
 def score():

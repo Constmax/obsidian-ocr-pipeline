@@ -8,7 +8,7 @@ import {
 	type SearchableCopyRequest,
 } from "../src/conversion-controller.ts";
 import type { SearchableCopyResult } from "../src/conversion.ts";
-import { DESKTOP_ONLY_MESSAGE, type OcrSettings } from "../src/ocr-settings.ts";
+import { DESKTOP_ONLY_MESSAGE, type OcrEngine, type OcrSettings } from "../src/ocr-settings.ts";
 import {
 	mergePageLists,
 	normalizePageList,
@@ -43,6 +43,9 @@ class FakeHost implements SearchableCopyHost {
 	openAttempts: string[] = [];
 	waits: number[] = [];
 	offers: ExemptionOffer[] = [];
+	/** Answer of the engine check: null = usable, otherwise the reason. */
+	engineProblem: string | null = null;
+	engineChecks: string[] = [];
 
 	notify(message: string): void {
 		this.notices.push(message);
@@ -63,6 +66,10 @@ class FakeHost implements SearchableCopyHost {
 	}
 	offerExemptions(offer: ExemptionOffer): void {
 		this.offers.push(offer);
+	}
+	async checkEngine(engine: OcrEngine): Promise<string | null> {
+		this.engineChecks.push(engine);
+		return this.engineProblem;
 	}
 }
 
@@ -118,6 +125,68 @@ test("settings are read when the action starts", async () => {
 			["apple", true],
 		],
 	);
+});
+
+test("PaddleOCR runs when the engine check finds it usable (issue #73)", async () => {
+	const host = new FakeHost();
+	host.ocr = { ocrEngine: "paddle", splitColumns: false };
+	const controller = new FakeController();
+	await runSearchableCopy(SOURCE, controller, host);
+
+	assert.deepEqual(host.engineChecks, ["paddle"]);
+	assert.deepEqual(
+		controller.requests.map((r) => r.engine),
+		["paddle"],
+	);
+	assert.deepEqual(host.notices, ["OCR Preview: Searchable copy created — raw/a/case-01-ocr.pdf."]);
+});
+
+test("PaddleOCR never splits columns, whatever the toggle says (issue #153)", async () => {
+	const host = new FakeHost();
+	host.ocr = { ocrEngine: "paddle", splitColumns: true };
+	const controller = new FakeController();
+	await runSearchableCopy(SOURCE, controller, host);
+
+	assert.deepEqual(
+		controller.requests.map((r) => [r.engine, r.splitColumns]),
+		[["paddle", false]],
+	);
+});
+
+test("a stored PaddleOCR that is not usable falls back to Automatic, visibly", async () => {
+	const host = new FakeHost();
+	host.ocr = { ocrEngine: "paddle", splitColumns: true };
+	host.engineProblem = "PaddleOCR engine is not ready: model file missing: /m/x.onnx";
+	const controller = new FakeController();
+	await runSearchableCopy(SOURCE, controller, host);
+
+	assert.deepEqual(
+		controller.requests.map((r) => [r.engine, r.splitColumns]),
+		[["auto", true]],
+	);
+	assert.deepEqual(host.notices, [
+		"OCR Preview: This copy uses Automatic, because PaddleOCR cannot run here — " +
+			"PaddleOCR engine is not ready: model file missing: /m/x.onnx. Choose another engine in the settings.",
+		"OCR Preview: Searchable copy created — raw/a/case-01-ocr.pdf.",
+	]);
+});
+
+test("other engines are not checked before a run", async () => {
+	const host = new FakeHost();
+	const controller = new FakeController();
+	for (const ocrEngine of ["auto", "apple", "tesseract"] as const) {
+		host.ocr = { ocrEngine, splitColumns: false };
+		await runSearchableCopy(SOURCE, controller, host);
+	}
+	assert.deepEqual(host.engineChecks, []);
+});
+
+test("no engine check when the destination already exists", async () => {
+	const host = new FakeHost();
+	host.ocr = { ocrEngine: "paddle", splitColumns: false };
+	host.existing.add("raw/a/case-01-ocr.pdf");
+	await runSearchableCopy(SOURCE, new FakeController(), host);
+	assert.deepEqual(host.engineChecks, []);
 });
 
 test("existing destination stops before spawning", async () => {

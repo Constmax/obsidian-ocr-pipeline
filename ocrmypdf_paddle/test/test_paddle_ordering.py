@@ -209,6 +209,98 @@ def test_indented_first_column_row_is_not_a_header():
     assert texts(ordered) == names("L", 10) + names("R", 10)
 
 
+def words(prefix, span, top, count, parts=6):
+    """A column recognized in words, each line cut into `parts` boxes 2 px apart in height."""
+    size = (span[1] - span[0]) / parts
+    return [
+        box(f"{prefix}{i}_{k}", span[0] + k * size, top + i * STEP + 2 * k,
+            span[0] + (k + 1) * size - 20)
+        for i in range(count)
+        for k in range(parts)
+    ]
+
+
+def test_tilted_two_part_running_header_is_read_before_the_columns():
+    # The rubric row's right part sits half a line lower than its left part
+    # (q07): from the lower part the row stands less than half again the
+    # line pitch above the columns, from the upper part more.
+    header = [box("Rubrik", 270, 278, 720, height=64),
+              box("Fall 2, Seite 3", 1800, 308, 2280, height=64)]
+    lines = column("L", LEFT, 390, 25) + column("R", RIGHT, 390, 25)
+    ordered = texts(order_lines(as_recognized(header + lines), W, H))
+    assert ordered == ["Rubrik", "Fall 2, Seite 3"] + names("L", 25) + names("R", 25)
+
+
+def test_right_column_in_single_words_keeps_its_edge():
+    # The right column is recognized in thirds of a line (q06), so no box is
+    # a full line and the median start lies inside the column. Its edge
+    # stays where its lines start, and the right-aligned header part is no
+    # column line pairing with the label.
+    header = [box("Rubrik", 200, 245, 600, height=90),
+              box("Titel, Seite 7", 1700, 245, 2280, height=90)]
+    lines = column("L", LEFT, 370, 25) + words("R", RIGHT, 370, 25, parts=3)
+    ordered = texts(order_lines(as_recognized(header + lines), W, H))
+    right = [f"R{i}_{k}" for i in range(25) for k in range(3)]
+    assert ordered == ["Rubrik", "Titel, Seite 7"] + names("L", 25) + right
+
+
+def test_indented_first_column_row_beside_a_column_in_words_is_not_a_header():
+    # As test_indented_first_column_row_is_not_a_header, with the left column
+    # recognized in parts of a line a few pixels apart in height. The line
+    # pitch is measured between rows, not between those parts.
+    lines = words("L", LEFT, 400, 10, parts=3) + column("R", RIGHT, 400, 10)
+    lines[30] = box("R0", RIGHT[0] + 3 * LINE, 400, RIGHT[1])
+    ordered = texts(order_lines(as_recognized(lines), W, H))
+    left = [f"L{i}_{k}" for i in range(10) for k in range(3)]
+    assert ordered == left + names("R", 10)
+
+
+def test_footnotes_of_the_left_column_without_a_footer_stay_in_their_column():
+    # The page is cut off below the left column's footnotes (q03): the lowest
+    # page-wide gap lies above them, so they form the footer band on their own.
+    left = column("L", LEFT, 1400, 30)
+    notes = [box("7", 150, 3250, 180, height=30), box("FL0", 200, 3250, 900, height=30),
+             box("FL1", 200, 3295, 1100, height=30)]
+    right = column("R", RIGHT, 1400, 30)
+    ordered = order_lines(as_recognized(left + notes + right), W, H)
+    assert texts(ordered) == names("L", 30) + ["7", "FL0", "FL1"] + names("R", 30)
+
+
+def test_tall_first_heading_beside_an_indented_right_line_is_not_a_header():
+    # The first column row pairs a tall heading with an indented right line
+    # of normal size. Only parts of the same size count as one tilted row,
+    # so the row is measured from the heading's centre and stays in the body.
+    left = [box("L0", 200, 400, 700, height=80)] + [
+        box(f"L{i}", 200, 500 + (i - 1) * STEP, 1180) for i in range(1, 20)]
+    right = [box("R0", 1500, 410, 2280)] + [
+        box(f"R{i}", 1300, 500 + (i - 1) * STEP, 2280) for i in range(1, 20)]
+    ordered = texts(order_lines(as_recognized(left + right), W, H))
+    assert ordered == names("L", 20) + names("R", 20)
+
+
+def test_left_aligned_running_footer_is_read_last():
+    # A running footer at the left column's text edge, as wide as a third of
+    # the column, has no hanging footnote numeral: it stays in the footer.
+    lines = column("L", LEFT, 1400, 30) + column("R", RIGHT, 1400, 30)
+    for footer in ([box("Kurs Strafrecht AT", 200, 3350, 800)],
+                   [box("Copyright Verlag", 200, 3300, 700), box("Kurs 2026", 200, 3350, 500)]):
+        ordered = order_lines(as_recognized(lines + footer), W, H)
+        assert texts(ordered) == names("L", 30) + names("R", 30) + texts(footer)
+
+
+def test_one_sided_footer_lines_away_from_the_column_edge_are_read_last():
+    # A right-aligned footer part and a mark in the right margin do not
+    # start at their column's text edge; a page number at the edge is no
+    # line of text.
+    lines = column("L", LEFT, 1400, 30) + column("R", RIGHT, 1400, 30)
+    for footer in ([box("Titel, Seite 7", 1800, 3300, 2280)],
+                   [box("I", 2390, 3400, 2440, height=70)],
+                   [box("12", 200, 3300, 260)],
+                   [box("12", 1300, 3300, 1360)]):
+        ordered = order_lines(as_recognized(lines + footer), W, H)
+        assert texts(ordered) == names("L", 30) + names("R", 30) + texts(footer)
+
+
 def test_running_footer_with_a_right_aligned_part_is_read_last():
     lines = column("L", LEFT, 1400, 30) + column("R", RIGHT, 1400, 30)
     footer = [box("Kurs", 200, 3300, 600), box("Titel, Seite 7", 1800, 3300, 2280)]

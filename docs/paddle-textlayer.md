@@ -1,6 +1,14 @@
 # PaddleOCR as a third Stage-1 engine
 
-**Status:** Plan; implementation starts only after the runtime spike passes.
+**Status:** Steps 0–5 are done (hOCR order #61, runtime spike #62 with a go,
+adapter #68, reading order #69 with follow-ups #87, #94, #114, #124, #125, fast
+mode 3a #118, resolved engine value #70, plugin option #73). Step 5 (#71,
+`bench/ERGEBNIS.md`, Nachtrag 26) **retains** PaddleOCR in fast mode, with one
+documented exception, and **removes split mode for PaddleOCR** (#153). Step
+6 is done (#72): `setup.sh` installs the plugin into the Stage-1 venv through
+`install-paddle.sh` and prefetches the models. Open: the 90° rotation gap the
+benchmark found for every engine (#152). Issue #133 proposes removing
+OCRmyPDF from Stage 1, which would rework steps 4 and 6.
 
 ## Goal
 
@@ -451,9 +459,35 @@ supported command. Numbers, pinned versions and commands are in
   interleaved (#125). A full-width heading between column regions was not
   found in the corpus (#120).
 
+**Follow-up** in #124 and #125 (`bench/ERGEBNIS.md`, Nachtrag 25):
+
+- **Causes:** a tilted rubric row whose right part sits half a line lower
+  was measured from that lower part and stayed in the columns (q07); a
+  right column recognized as single words moved `_right_edge()` into the
+  column, so the rubric's right part paired with its label as the first
+  column row (q06, real run); footnotes of one column in the footer band
+  never pair across the gutter and were read after both columns (q03).
+- **Fix:** the lowest grown header row is measured at its upper part, like
+  the first column pair, counting only parts of a similar height; column
+  edges (`_edge()`) and the line pitch are measured on visual rows; leading
+  footer rows go back to their column when they stand on one side of the
+  gutter, open with a footnote numeral hanging left of that column's text
+  edge with its text beside it, and every row starts at that edge.
+- **Known limit:** footnotes whose numeral is merged into the text box, or
+  that have no numeral, still stay in the footer band.
+- **Validation set:** `bench/reading_order_holdout4.json`, 13 two-column
+  pages from documents outside the earlier sets, chosen after the fix was
+  committed. Two of them (r02, r06) had a rubric line in the right column
+  before the fix and are read correctly.
+- **Result on the new pages:** **keep split mode.** The median is 100.0 %
+  against 95.2 % for the best split baseline and no full-width line is
+  misplaced, but three location-list lines are not recognized in the real
+  run and one skewed page is interleaved: hanging footnote numerals of the
+  right column narrow the gutter below half a line height (#127).
+
 ### 3a. Fast mode: Apple Vision lines, citations re-read
 
-*Implemented outside the #74 queue* in `ocrmypdf_paddle/apple.py`. The plugin
+*Implemented outside the #74 queue* in `ocrmypdf_paddle/src/ocrmypdf_paddle/apple.py`. The plugin
 takes `--paddle-mode accurate|fast` (default `accurate`, also as the API
 argument `paddle_mode`):
 
@@ -482,11 +516,33 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
 - **Word boxes:** Vision's word boxes reach into half the space on either
   side. Rendered unchanged, `pdftotext` glues the words of a line together
   (0.3–2 % of the words survived on four truth pages). Accurate mode's text
-  layer glues RapidOCR's words the same way. `render_page()` therefore trims
-  every recognizer word box at both ends by a quarter of the line height, at
-  most 30 % of its width, in both modes. A re-read line keeps Vision's word
-  boxes when it has the same number of words, otherwise the words are spread
-  across the line box.
+  layer glues RapidOCR's words the same way. A re-read line keeps Vision's
+  word boxes when it has the same number of words, otherwise the words are
+  spread across the line box.
+- **Selection in viewers** (both modes): trimming every word box by a
+  quarter of the line height separated the words for `pdftotext`, but in
+  Obsidian (pdf.js) a selection fell apart into one block per word, sat half
+  a line too low, and was too tall. `render_page()` now
+  - puts the baseline at 75 % of the line height instead of on the box
+    bottom (both recognizers' boxes reach below the descenders; measured
+    0.68–0.81 for Vision, 0.75 for RapidOCR);
+  - places each word's right edge so that 0.25 font sizes remain after the
+    space the renderer appends at the word's stretch: `pdftotext -raw` needs
+    about 0.12, pdf.js 4.10 keeps a line in one text item up to 0.6. The
+    line's first and last word also start and end 0.25 (at most 30 % of the
+    word's width) inside their boxes, because recognizers split a printed
+    line into touching lines; and
+  - writes every line flat. OCRmyPDF renders a line with a slope of 0.005 or
+    more rotated, and pdf.js undoes that rotation with a scale that includes
+    each word's stretch, so the words of such a line land on different
+    heights. Long one-column lines keep that much skew after deskewing, which
+    is why two-column pages looked fine. A sloped line becomes flat pieces
+    over which the baseline drifts at most 0.2 font sizes.
+
+  On five vault pages (one- and two-column, both modes) pdf.js text items
+  dropped from 3,250 to 1,198, and `pdftotext -raw` text is unchanged apart
+  from whitespace. 2 of 4,100 words newly glue to a neighbour, where two
+  recognized lines overlap; one pair glued on `main` is now separate.
 - **Dependencies:** macOS 13 or later with `pyobjc-framework-Vision` (extra
   `[fast]`) plus everything accurate mode needs, because the models re-read
   lines. `check_options` refuses fast mode before the first page when Vision
@@ -495,8 +551,14 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
   only when a page needs it.
 - **Benchmark:** `reading_order.py run` starts `unsplit-paddle-fast` only
   when it is named, so the default run works without Apple Vision.
-- **Not wired yet:** `bin/` and the Obsidian setting do not offer PaddleOCR
-  at all until #70–#73; both modes arrive there together.
+- **Wiring:** `bin/` offers `--engine paddle --paddle-mode accurate|fast`
+  since #70 (explicit only; see step 4). Since #73 the Obsidian engine setting
+  offers PaddleOCR in fast mode where `reprocess-raw --check-engine` passes.
+- **Readiness:** `ocrmypdf --plugin ocrmypdf_paddle --paddle-check MODE`
+  runs the same checks as `check_options` without an input file and exits
+  like `--version`: 0 ready, 1 not ready (reason on stderr). `bin/` runs it
+  before choosing the engine, so a missing model or package stops the run
+  before OCR instead of falling back to Apple Vision.
 
 ### 4. Replace binary engine flags with one resolved state
 
@@ -527,8 +589,9 @@ Make the retry matrix explicit and testable:
   applicable;
 - Tesseract failure → split Tesseract, then Apple where available;
 - Paddle failure → Apple when available, otherwise Tesseract;
-- Paddle does not add an implicit split retry; explicit user-requested split
-  mode remains in force.
+- Paddle does not add an implicit split retry. Since #153 it also ignores an
+  explicit split request (with a warning), because step 5 found split mode
+  worse on every cohort.
 
 Every fallback must be visible in stderr and the final summary, including the
 requested engine, the actual engine, and the reason for the transition.
@@ -602,6 +665,23 @@ to `setup.sh` or the public engine list.
 **Complete when:** `bench/ERGEBNIS.md` contains a binary retain/discard decision
 and a separate keep/remove-split decision.
 
+**Result (2026-09-30, `bench/ERGEBNIS.md`, Nachtrag 26):** retain fast mode;
+remove split mode for PaddleOCR. `bench/stage1_bench.py` sends rendered vector
+pages through `reprocess-raw --output` and scores `pdftotext -raw` against
+their own text layer (cohorts `words`, `short`, `skew` in
+`bench/stage1_cohorts.json`); reading order ran on all five hand-checked sets.
+The thresholds are 1.96 standard errors of the best existing engine's page
+scores per cohort (words 1.3, citations 12.6 points on the 40-page set).
+`paddle-fast` against Apple: citations +18.3 points on short pages (above the
+threshold), +9.5 on the 40 pages (significant, below it), words +0.6; 4
+instead of 30 interleaved pages on 68 two-column scans; 3.2 s/page, 585 MB.
+One criterion is missed formally: on one page turned by 90° no engine rotates
+the page upright, Apple writes unreadable text that passes B5 and PaddleOCR
+writes almost none, which B5 catches (#152). Split mode loses 9 points of word
+accuracy on two-column pages, fails the quality gate on slides and breaks
+pages turned by 180°. Hard scans were not scored: there is no checked
+transcription.
+
 ### 6. Make installation reproducible only after retention
 
 After the benchmark retains PaddleOCR:
@@ -617,6 +697,21 @@ After the benchmark retains PaddleOCR:
 **Complete when:** a clean setup can run a warm Paddle smoke test without
 network access, and an intentionally failed Paddle installation does not break
 Apple or Tesseract processing.
+
+**Result (2026-09-30, #72):** `install-paddle.sh`, called by `setup.sh` ③.
+The engine goes into the Stage-1 venv after all, but pip gets every installed
+package as a constraint, so it can only add packages. In a clean venv
+(`ocrmypdf==17.8.0` and `ocrmypdf-appleocr==0.3.4` only):
+
+- The install found a real pin conflict. `ocrmypdf-appleocr` now brings
+  `pyobjc-framework-Vision` 12.2.2, and the `[fast]` extra pinned 12.2.1. The
+  extra now accepts 12.x.
+- The install then left every existing package unchanged, fetched the three
+  models (SHA-256 checked), passed `--paddle-check` in both modes, and read
+  its generated page offline, with every proxy on a closed port.
+- A second run was a no-op.
+- An install forced to fail (pip without network) changed nothing, and Apple
+  and Tesseract read the same page afterwards.
 
 ## Verification matrix
 

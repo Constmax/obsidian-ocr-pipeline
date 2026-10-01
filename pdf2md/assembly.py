@@ -15,12 +15,26 @@ import json
 import re
 import statistics
 from dataclasses import dataclass
+from functools import cached_property
 
 LOC = re.compile(r"<\|LOC_(\d+)\|>")
 # --- Post-processing -------------------------------------------------------
 
 # Words that must NOT be joined after a line-end hyphen.
 NO_JOIN = re.compile(r"^(und|oder|bzw|sowie|als|wie|bis|von|zu|im|in)\b", re.I)
+
+# Words a phrase cannot end on: text ending in one runs on into the next
+# line, whatever the line looks like (Issue #163).
+OPEN_END = re.compile(
+    r"(?<![\w.])(?:der|die|das|des|dem|den|ein|eine|einer|eines|einem|einen"
+    r"|aus|bei|mit|von|vom|zu|zur|zum|für|über|unter|in|im|nach|wegen|gegen"
+    r"|durch|ohne|und|oder|bzw\.|sowie|dass|gem\.|vgl\.|i\.\s?V\.\s?m\.)\**$")
+
+# Text that stops mid-sentence: on a lowercase letter (the end of any word,
+# capitalised or not), a comma, a semicolon or a hyphen or dash -- not on a
+# period, a colon, a digit or a capitalised abbreviation such as "BGB"
+# (Issue #163).
+MID_SENTENCE = re.compile(r"[a-zäöüß,;\-–]\**$")
 
 # --- Hemmer Boilerplate ----------------------------------------------------
 
@@ -37,6 +51,7 @@ CITY_FRAGMENT = re.compile(
 
 BOILERPLATE = [
     re.compile(r"^Juristisches\s+Repetitorium"),
+    re.compile(r"^Klausurenkurs\s*/"),                 # course label header
     re.compile(r"^hemmer\s*$", re.I),
     re.compile(r"^Hauptkurs\s*/"),
     re.compile(r"^h\s*/\s*w\s*/\s*t\b"),                  # Footer
@@ -51,15 +66,57 @@ ZONE_SIGNALS = [
     re.compile(r"^\W*(Juristisches\s*)?Repetitorium\W*$", re.I),
     re.compile(r"^(BGB|StGB|StR|ZR|OeR|ÖR)[\s-]*(AT|BT)?\s*$"),
     re.compile(r"(Lösung|Sachverhalte?|Übersicht)\s*[-–]\s*Seite", re.I),
+    re.compile(r"^(Lösung|Sachverhalte?|Übersicht)\s*,\s*Seite\s+\d+\s*$", re.I),
+    re.compile(r"^Lösung\s*[-–].*Seite\s+\d+\s*$"),          # running head
+    re.compile(r"^Klausur\s*Nr\.?\s*\d+\s*[-–]\s*Lösung,\s*Seite\s+\d+\s*$"),
     re.compile(r"^Fall\s*\d*\s*[-–]?\s*L[äöa]?"),      # "Fall 3 - Lä" (truncated)
     re.compile(r"^\s*Seite\s*\d+\s*$", re.I),
 ]
 
+# --- Page zones ------------------------------------------------------------
+# In thousandths of the page height from the top. A recognized line's y is
+# its top on this scale. A weaker boilerplate signal needs a zone nearer the
+# page edge.
+HEADER_ZONE = 70            # zone signals and city lines
+FOOTER_ZONE = 950
+PAGE_NUMBER_HEADER = 80     # a bare page number
+PAGE_NUMBER_FOOTER = 905
+# Where assembly_context() looks for running lines in the text layer, by a
+# line's centre: the header zone, the zone under the header rule where course
+# labels sit (Issue #161), and the footer zone.
+RUNNING_HEADER_ZONE = 90
+RUNNING_LABEL_ZONE = 120
+RUNNING_FOOTER_ZONE = 930
+# The bottom of an OCR page where a running footer may come back misread or
+# cut at the gutter (Issue #161): the running footer zone, by a line's top.
+FOOTER_BAND = RUNNING_FOOTER_ZONE
+
+
+def running_text(text):
+    """A line as running lines hold it: no bold markers, single spaces."""
+    return re.sub(r"\s+", " ", text.replace("*", "")).strip()
+
+
 @dataclass(frozen=True)
 class AssemblyContext:
-    """Document-scoped state used while assembling pages."""
+    """What assembling every page of one document shares: its running lines."""
 
     running_lines: frozenset[str] = frozenset()
+    # The running lines found in the footer zone. Only a footer reaches the
+    # footer band, where an OCR page may return it cut at the gutter.
+    footer_lines: frozenset[str] = frozenset()
+
+    @cached_property
+    def footer_keys(self) -> tuple[str, ...]:
+        return tuple(_running_key(line) for line in self.footer_lines)
+
+    def is_running(self, text, y=None, ocr_page=False):
+        """Is text a running line? On an OCR page, a line in the footer band
+        also counts when it is a misread running footer."""
+        if running_text(text) in self.running_lines:
+            return True
+        return (ocr_page and y is not None and y >= FOOTER_BAND
+                and is_misread_footer(text, self.footer_keys))
 
 
 @dataclass(frozen=True)
@@ -70,14 +127,55 @@ class AssemblyResult:
     discarded: list[str]
 
 
-def is_boilerplate(text, y=None, header_zone=70, footer_zone=950,
-                   context=None):
+# Characters OCR confuses in running lines: "26-II", "26-Il", "26-11", "26-|1".
+_CONFUSABLE = str.maketrans("il|", "111")
+# A gutter piece holds at least this many letters and digits, and this share
+# of its footer's, in at least two words.
+PIECE_MIN_LENGTH = 5
+PIECE_MIN_SHARE = 0.4
+
+
+def _running_key(text):
+    """Letters and digits of text, casefolded, confusable characters as 1."""
+    return re.sub(r"[\W_]+", "", text.casefold().translate(_CONFUSABLE))
+
+
+def is_misread_footer(text, footer_keys):
+    """Is text a running footer read with OCR confusions, or a gutter piece:
+    one end of it cut off at the column gutter?
+
+    A scan is read column by column, so a footer spanning both columns comes
+    back as two pieces, and the right piece may start with half a glyph (a
+    cut through "t" reads "l"). A piece must hold `PIECE_MIN_SHARE` of the
+    footer and two words: a city or a subject word alone ("Bremen", "Hessen",
+    "Grundfragen") ends a footnote line as well.
+    """
+    key = _running_key(text)
+    if len(key) < PIECE_MIN_LENGTH:
+        return False
+    if key in footer_keys:
+        return True
+    if len(re.findall(r"[^\W_]+", text)) < 2:
+        return False
+    after_half_glyph = key[1:]
+    for footer in footer_keys:
+        if len(key) > len(footer):
+            continue
+        min_piece = max(PIECE_MIN_LENGTH, PIECE_MIN_SHARE * len(footer))
+        if len(key) >= min_piece and footer.startswith(key):
+            return True
+        if any(len(end) >= min_piece and footer.endswith(end)
+               for end in (key, after_half_glyph)):
+            return True
+    return False
+
+
+def is_boilerplate(text, y=None, context=None, ocr_page=False):
     """Detect Hemmer boilerplate."""
     t = text.strip().strip("*").strip()
     if not t:
         return False
-    running = context.running_lines if context else frozenset()
-    if running and re.sub(r"\s+", " ", re.sub(r"\*", "", t)).strip() in running:
+    if context and context.is_running(t, y, ocr_page):
         return True
     if any(p.search(t) for p in BOILERPLATE):
         return True
@@ -89,11 +187,12 @@ def is_boilerplate(text, y=None, header_zone=70, footer_zone=950,
     if len(t) <= 45 and any(p.search(t) for p in ZONE_SIGNALS):
         return True
 
-    if (y is not None and (y <= 80 or y >= 905)
+    if (y is not None
+            and (y <= PAGE_NUMBER_HEADER or y >= PAGE_NUMBER_FOOTER)
             and re.fullmatch(r"\d{1,4}", t)):
         return True
 
-    in_zone = y is not None and (y <= header_zone or y >= footer_zone)
+    in_zone = y is not None and (y <= HEADER_ZONE or y >= FOOTER_ZONE)
     if in_zone:
         if any(p.search(t) for p in ZONE_SIGNALS):
             return True
@@ -120,11 +219,29 @@ LATEX = [
 
 FN_START = r"[A-ZÄÖÜ„»§(]"
 FN_DEF = re.compile(r"^(\d{1,2})\s+(?=" + FN_START + r")(.+)$")
+# A definition starts a new sentence: the number follows sentence-ending
+# punctuation or a closing bracket/quote. A bare space is not enough —
+# citations like "BayVBl. 2016, 77 (78)" would split mid-citation.
+FN_DEF_SPLIT = re.compile(r"(?<=[.!?:)\]»\"“”]\s)(?=\d{1,2}\s+" + FN_START + ")")
 
-
+# A number after a citation word continues the citation ("§ 35 VwVfG",
+# "Art. 3 III 1 GG") — it starts no footnote definition and is no footnote
+# mark. No roman-numeral alternative: FN_DEF_SPLIT never splits after a bare
+# letter, and in the body it would swallow marks glued to "AEUV", "BImSchV".
 CITATION_BEFORE = re.compile(
     r"(§+|Art\.|Abs\.|S\.|Satz|Alt\.|Nr\.|Rn\.|Rz\.|Hs\.|Halbs\.|Var\.|"
     r"lit\.|Buchst\.|Seite|Fall|Teil|Rspr\.|Anm\.)\s*$")
+
+
+def split_footnote_defs(text):
+    """Split a footnote block at definition starts, never inside citations."""
+    bounds = [0]
+    for m in FN_DEF_SPLIT.finditer(text):
+        if CITATION_BEFORE.search(text[:m.start()]):
+            continue
+        bounds.append(m.start())
+    bounds.append(len(text))
+    return [text[a:b] for a, b in zip(bounds, bounds[1:])]
 
 
 def _reference(s, n):
@@ -157,7 +274,7 @@ def footnotes_obsidian(paragraphs, columns=None):
         p = re.sub(r"\*\*(.+?)\*\*", r"\1", p) if FN_DEF.match(p.strip("* ")) else p
         m = FN_DEF.match(p.strip())
         if m and int(m.group(1)) <= 99:
-            parts = re.split(r"(?<=[.\s])(?=\d{1,2}\s+" + FN_START + ")", p.strip())
+            parts = split_footnote_defs(p.strip())
             detected = False
             for part in parts:
                 mm = FN_DEF.match(part.strip())
@@ -254,10 +371,16 @@ def parse_lines(text):
     return lines
 
 
+# Letter labels are one letter or one letter repeated ("a)", "bb)", "aaa)"),
+# or a lowercase roman numeral ("iv."). Any other short lowercase word with
+# a period is an abbreviation or the end of a sentence ("gem.", "vgl.",
+# "hat.", "ff."), and a single letter followed by one is an abbreviation too
+# ("i. V.m.", "z. B.", "o. ä.") (Issue #163).
 ENUMERATION = re.compile(
     r"^\s*([-•·▪○●⇒⇨→➢✔]"
     r"|\(?\d{1,2}[.)]"
-    r"|[a-z]{1,3}[.)]"
+    r"|(?!ff\.)([a-z])\2{0,2}(?:\)|\.(?!\s*[A-Za-zÄÖÜäöü]{1,2}\.))"
+    r"|(?:iv|vi{1,3}|ix)[.)]"
     r"|[IVXL]{1,5}\.)(?=\s|$)"
 )
 KEYWORD_WORDS = (r"Anmerkung|Hinweis|Merksatz|Merke|Ergebnis|Beachte|"
@@ -274,7 +397,7 @@ LEVELS = (
     (re.compile(r"^[IVX]{1,5}\.(?=\s)"), 3),
     (re.compile(r"^[A-H][.)](?=\s)"), 2),
 )
-ABBREVIATION = re.compile(r"^[A-Za-zÄÖÜ]{1,2}\.")
+ABBREVIATION = re.compile(r"^[A-Za-zÄÖÜäöü]{1,2}\.")
 
 
 def level(text):
@@ -319,7 +442,9 @@ def attach_footnote_numbers(lines, footer=900, proximity=40):
 
     Number and text must share a column: the next line in reading order can
     open the neighbouring column's block (Issue #14). A number set a little
-    lower than its text sorts after it; on one row it still belongs to it.
+    lower than its text sorts after it; on one row it still belongs to it
+    when it stands right before it: a page number further left on the
+    running footer's row stays apart.
     """
     def joined(number, z):
         box = (min(number[1][0], z[1][0]), min(number[1][1], z[1][1]),
@@ -344,7 +469,8 @@ def attach_footnote_numbers(lines, footer=900, proximity=40):
             i += 2
             continue
         p = out[-1] if out else None
-        if (number and text_of(z, p) and z[1][2] <= p[1][0]
+        if (number and text_of(z, p)
+                and 0 <= p[1][0] - z[1][2] <= proximity
                 and min(z[1][3], p[1][3]) - max(z[1][1], p[1][1])
                 > 0.5 * min(z[1][3] - z[1][1], p[1][3] - p[1][1])):
             out[-1] = joined(z, p)
@@ -352,6 +478,32 @@ def attach_footnote_numbers(lines, footer=900, proximity=40):
             continue
         out.append(z)
         i += 1
+    return out
+
+
+def box_inside(inner, outer, slack=2):
+    """Does box inner lie inside box outer, give or take slack units?"""
+    return (outer[0] - slack <= inner[0] and inner[2] <= outer[2] + slack
+            and outer[1] - slack <= inner[1] and inner[3] <= outer[3] + slack)
+
+
+def drop_repeated_labels(lines):
+    """Drop an outline label the model read twice.
+
+    The model sometimes returns a line's leading label ("1.") a second time
+    as a line of its own, its box inside the box of the line it belongs to
+    (Issue #163).
+    """
+    out = []
+    for z in lines:
+        prev = out[-1] if out else None
+        if (prev is not None and z[1] and prev[1]
+                and STANDALONE_MARKER.match(z[0].strip())
+                and box_inside(z[1], prev[1])):
+            label = without_bold(z[0])
+            if without_bold(prev[0]).startswith(label + " "):
+                continue
+        out.append(z)
     return out
 
 
@@ -423,8 +575,12 @@ def short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
     return short, block
 
 
-def assemble_paragraphs(lines, context=None, columns=None):
+def assemble_paragraphs(lines, context=None, ocr_page=False, columns=None):
     """Resolve hyphens and merge lines into paragraphs.
+
+    `ocr_page`: the model read the page, so a running footer may come back
+    misread or cut at the gutter, bold comes per recognized line and boxes
+    come from ruled lines of the image.
 
     `columns` holds each line's column from split_columns_indexed(). With
     it, a column's footnote block is set aside when the next column begins,
@@ -436,7 +592,7 @@ def assemble_paragraphs(lines, context=None, columns=None):
     if columns is not None and len(columns) == len(lines):
         lines = [[z[0], z[1], z[2] if len(z) > 2 else None, column]
                  for z, column in zip(lines, columns)]
-    lines = attach_footnote_numbers(lines)
+    lines = drop_repeated_labels(attach_footnote_numbers(lines))
     ys = [z[1][1] for z in lines if z[1]]
     distances = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 200]
     normal = statistics.median(distances) if distances else None
@@ -464,7 +620,7 @@ def assemble_paragraphs(lines, context=None, columns=None):
         y = box[1] if box else None
         if not text:
             continue
-        if is_boilerplate(text, y, context=context):
+        if is_boilerplate(text, y, context=context, ocr_page=ocr_page):
             discarded.append(text)
             continue
 
@@ -492,20 +648,39 @@ def assemble_paragraphs(lines, context=None, columns=None):
                      or box and buffer_x0 is not None
                      and box[0] > buffer_x0 + 8
                      or bool(re.search(r"[,;\-–]\**$", buffer)))
+        gap_known = bool(normal and y is not None and last_y is not None)
+        wide_gap = gap_known and y - last_y > normal * 1.6
+        # On a page the model read, bold comes per recognized line and the
+        # boxes from ruled lines of the image, so an all-bold line or a box
+        # edge can fall inside a sentence (Issue #163). There a line that
+        # carries on the buffer's sentence -- it starts lowercase, or the
+        # buffer ends on a word no phrase ends on -- is not cut off by a bold
+        # line or by the line before it looking like a heading. After a bold
+        # heading only the second counts: body text may start with "h.M.".
+        # At normal spacing such a line also crosses a box edge, and so does
+        # any line after a buffer that stops mid-sentence.
+        runs_on = joins_box = False
+        if ocr_page:
+            runs_on = (bool(OPEN_END.search(buffer))
+                       or cont[:1].islower() and not only_bold(buffer))
+            joins_box = (gap_known and not wide_gap
+                         and (runs_on or bool(MID_SENTENCE.search(buffer))))
 
         if not buffer or hyphen:
             new_p = False
-        elif marker != last_marker:
+        elif marker != last_marker and not joins_box:
             new_p = True
         elif (ENUMERATION.match(bare) or KEYWORD.match(bare)
-              or (heading and not continues) or was_heading):
+              or (heading and not continues and not runs_on)
+              or (was_heading and not runs_on)):
             new_p = True
         elif y is not None and last_y is not None and y < last_y - 50:
             new_p = not text[:1].islower()
-        elif normal and y is not None and last_y is not None:
-            new_p = (y - last_y) > normal * 1.6
+        elif gap_known:
+            new_p = wide_gap
         else:
-            new_p = bool(re.search(r'[.!?:]["“»)]?\s*$', buffer))
+            new_p = (bool(re.search(r'[.!?:]["“»)]?\s*$', buffer))
+                     and not OPEN_END.search(buffer))
 
         if buffer and not new_p:
             if hyphen:
@@ -519,7 +694,11 @@ def assemble_paragraphs(lines, context=None, columns=None):
             buffer, buffer_x0 = text, (box[0] if box else None)
             buffer_column = column
 
-        was_heading = ((heading and buffer == text
+        # On a model page a bold line can join a bold buffer (a heading
+        # wrapped over two lines); the heading still ends there.
+        was_heading = ((heading and (buffer == text
+                                     or ocr_page and only_bold(buffer)
+                                     and len(without_bold(buffer)) <= 90)
                         and not (block[i] and not short[i]))
                        or (short[i] and level(buffer) is not None
                            and (len(without_bold(buffer)) <= 90

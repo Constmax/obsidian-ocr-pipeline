@@ -33,14 +33,47 @@ def _stub(path, body):
     path.chmod(0o755)
 
 
-# ocrmypdf <args...> <in> <out>: the Apple Vision probe fails, so the engine
-# is Tesseract. FAKE_OCR_FAIL makes every OCR call fail.
+# ocrmypdf <args...> <in> <out>. The engine follows --plugin: Apple Vision
+# and PaddleOCR are "installed" only with FAKE_APPLE / FAKE_PADDLE, otherwise
+# their probe fails and Tesseract is left. An installed PaddleOCR answers
+# `--paddle-check MODE` with "not ready" and FAKE_PADDLE_UNREADY as reason
+# when that is set, or like a plugin from before that option (argparse
+# usage error) with FAKE_PADDLE_OLD. Output: `ocr(...)` for Tesseract, `apple(...)`,
+# `paddle(...)`. FAKE_OCR_FAIL lists engines whose OCR call fails; `1` fails
+# every engine.
 OCRMYPDF = '''
-[ "$1" = "--plugin" ] && exit 1
+engine=tesseract
+case " $* " in
+    *" ocrmypdf_appleocr "*) engine=apple ;;
+    *" ocrmypdf_paddle "*) engine=paddle ;;
+esac
+if [ "${@: -1}" = "--help" ]; then
+    case "$engine" in
+        apple) [ -n "${FAKE_APPLE:-}" ] ;;
+        paddle) [ -n "${FAKE_PADDLE:-}" ] ;;
+    esac
+    exit
+fi
+if [ "${@: -2:1}" = "--paddle-check" ]; then
+    echo "ocrmypdf $*" >> "$FAKE_LOG"
+    if [ -n "${FAKE_PADDLE_OLD:-}" ]; then
+        echo "OCRmyPDF: error: the following arguments are required: output_pdf" >&2
+        exit 2
+    fi
+    if [ -n "${FAKE_PADDLE_UNREADY:-}" ]; then
+        printf 'PaddleOCR engine is not ready:\n  %s\n' "$FAKE_PADDLE_UNREADY" >&2
+        exit 1
+    fi
+    echo "PaddleOCR engine is ready (${@: -1} mode)." >&2
+    exit
+fi
 echo "ocrmypdf $*" >> "$FAKE_LOG"
-[ -n "${FAKE_OCR_FAIL:-}" ] && exit 1
+for failing in ${FAKE_OCR_FAIL:-}; do
+    [ "$failing" = 1 ] || [ "$failing" = "$engine" ] && exit 1
+done
 in="${@: -2:1}"; out="${@: -1}"
-printf 'ocr(%s)' "$(cat "$in")" > "$out"
+[ "$engine" = tesseract ] && engine=ocr
+printf '%s(%s)' "$engine" "$(cat "$in")" > "$out"
 '''
 
 # qpdf --empty --pages a b -- out, or qpdf --show-npages f

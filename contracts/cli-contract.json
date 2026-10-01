@@ -29,6 +29,22 @@
   },
   "inputSuffixes": [".bmp", ".jpeg", ".jpg", ".pdf", ".png", ".tif", ".tiff"],
   "previewFormat": 1,
+  "pageCases": {
+    "comment": "Issue #140: the review view spawns `pdf2md <args>` from the vault root, with the preview's vault-relative path. It relies on the exit code (success; anything else is a failure whose reason is the last stderr line) and reads the case lines from stdout: `add` prints the line of the case it wrote, `list` one line per case of the preview. Every other stdout line is human text.",
+    "stash": {"args": ["case", "stash", "_ocr-preview/skript.md", "--page", "1"]},
+    "add": {"args": ["case", "add", "_ocr-preview/skript.md", "--page", "1", "--note=one paragraph too few"], "note": "one paragraph too few"},
+    "addWithoutNote": {"args": ["case", "add", "_ocr-preview/skript.md", "--page", "1"]},
+    "list": {"args": ["case", "list", "_ocr-preview/skript.md"]},
+    "caseLines": [
+      {"stdout": "case skript/p001: open, fault stage assembly", "page": 1, "status": "open", "faultStage": "assembly"},
+      {"stdout": "case skript/p012: fixed, fault stage upstream", "page": 12, "status": "fixed", "faultStage": "upstream"}
+    ],
+    "failure": {
+      "args": ["case", "stash", "_ocr-preview/skript.md", "--page", "9"],
+      "exitCode": "error",
+      "stderr": ["pdf2md case: skript.md has no page 9"]
+    }
+  },
   "stage1": {
     "shortPages": {
       "command": "column_tools.py verify-pages",
@@ -44,6 +60,18 @@
       "command": "reprocess-raw.sh missing.pdf",
       "stdout": ["❌ File not found: missing.pdf"],
       "reason": "File not found: missing.pdf"
+    },
+    "checkEngine": {
+      "comment": "Issue #73: the plugin offers PaddleOCR only when this check exits 0 (success); check-failed carries the reason on stderr.",
+      "args": ["--check-engine", "--engine", "paddle", "--paddle-mode", "fast"],
+      "notUsable": {
+        "exitCode": "check-failed",
+        "stderr": [
+          "❌ PaddleOCR engine plugin not installed (ocrmypdf_paddle).",
+          "   Put its venv first on PATH, or PYTHONPATH=<repo>/ocrmypdf_paddle/src: docs/installation.md"
+        ],
+        "reason": "PaddleOCR engine plugin not installed (ocrmypdf_paddle). Put its venv first on PATH, or PYTHONPATH=<repo>/ocrmypdf_paddle/src: docs/installation.md"
+      }
     }
   }
 }
