@@ -2,7 +2,8 @@
 # CI (.github/workflows/ci.yml) calls these same targets, so `make check`
 # runs locally what a pull request runs.
 #
-#   make check      everything CI runs: plugin, shellcheck, Python, OCRmyPDF
+#   make check      everything CI runs: plugin, shellcheck, Python, OCRmyPDF;
+#                   one run per machine at a time (CHECK_LOCK)
 #   make test-fast  unit tests only (pytest -m "not slow" + plugin tests), a few seconds
 #   make check-cases [ISSUE=n] [PROMOTE=1]
 #                   replay the page cases of the vault (VAULT_ROOT); not part of check or CI
@@ -16,6 +17,12 @@ OCRMYPDF_PYTHON ?= $(firstword $(shell "$(OCRMYPDF_VENV_PYTHON)" -c 'import pyte
 # Page cases are replayed with Stage 2's own venv (pymupdf; no model is loaded).
 CASES_PYTHON ?= $(VENV_ROOT)/mlxocr/bin/python
 NPM ?= npm
+# Several sessions share this machine: concurrent `make check` runs queue on a
+# machine-wide lock instead of overloading it (and tripping test timeouts).
+CHECK_LOCK ?= /tmp/obsidian-ocr-pipeline-check.lock
+LOCK_CMD := $(if $(shell command -v lockf),lockf -k $(CHECK_LOCK),$(if $(shell command -v flock),flock $(CHECK_LOCK)))
+# pytest-xdist spreads the Python tests over all cores; without it they run serially.
+XDIST = $(if $(shell $(PYTHON) -c 'import xdist' 2>/dev/null && echo y),-n auto)
 
 # Tracked scripts only: an untracked Finder copy ("pdf-lib 2.sh") is not ours to lint.
 SHELL_SCRIPTS := setup.sh install.sh install-paddle.sh .claude/hooks/session-start.sh $(shell git ls-files 'bin/*.sh') bin/pdf2md plugin/install-plugin.sh
@@ -23,9 +30,13 @@ PY_TESTS := pdf2md/test bin/test
 BENCH_TESTS := bench/test_entrypoints.py bench/test_reading_order.py bench/test_structure.py
 NODE_MODULES := plugin/node_modules/.package-lock.json
 
-.PHONY: check check-cases test-fast plugin lint-plugin test-plugin build-plugin shellcheck test-py test-ocrmypdf
+.PHONY: check check-unlocked check-cases test-fast plugin lint-plugin test-plugin build-plugin shellcheck test-py test-ocrmypdf
 
-check: plugin shellcheck test-py test-ocrmypdf
+check:
+	@echo "make check: waiting for $(CHECK_LOCK) if another run holds it"
+	$(LOCK_CMD) $(MAKE) --no-print-directory check-unlocked
+
+check-unlocked: plugin shellcheck test-py test-ocrmypdf
 
 test-fast: test-plugin
 	$(PYTHON) -m pytest $(PY_TESTS) -q -m "not slow"
@@ -63,7 +74,7 @@ shellcheck:
 	shellcheck -x -P bin $(SHELL_SCRIPTS)
 
 test-py:
-	$(PYTHON) -m pytest $(PY_TESTS) -q
+	$(PYTHON) -m pytest $(PY_TESTS) -q $(XDIST)
 	$(PYTHON) -m pytest $(BENCH_TESTS) -q
 
 # Without OCRMYPDF_PYTHON pointing at an ocrmypdf install these tests skip;

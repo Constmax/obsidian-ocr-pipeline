@@ -72,6 +72,11 @@ The plugin is where the user meets this code. Domain terms: `CONTEXT.md`.
 - `make test-fast`: unit tests, a few seconds. `make check`: everything CI
   runs, one target per CI job. Mark a test `@pytest.mark.slow` when it runs a
   CLI or pipeline end to end.
+- While iterating, run `make test-fast` and the tests your change touches;
+  run `make check` once before the PR. It takes a machine-wide lock, so a
+  second run waits for the first instead of overloading the machine. With
+  `pytest-xdist` installed for `PYTHON` (`python3 -m pip install
+  pytest-xdist`) the Python tests run on all cores.
 - `make check-cases [ISSUE=n]`: replays the page cases of the vault
   (`VAULT_ROOT`). Cases hold page text, so it is never part of `make check`
   or CI; see `pdf2md/AGENTS.md`.
