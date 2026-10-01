@@ -91,10 +91,13 @@ def recognized_lines(page: dict) -> list[RecognizedLine]:
         return [RecognizedLine(line["text"], box(line.get("box")),
                                line.get("column"), line.get("container"))
                 for line in page["lines"]]
-    columns = page.get("columns") or [None] * len(page["lines"])
-    return [RecognizedLine(text, box(value), column, *container)
-            for (text, value, *container), column
-            in zip(page["lines"], columns)]
+    lines = page["lines"]
+    columns = page.get("columns")
+    if not columns or len(columns) != len(lines):
+        # As assembly read them: a columns array that does not fit is unknown.
+        columns = [None] * len(lines)
+    return [RecognizedLine(text, box(value), column, *rest[:1])
+            for (text, value, *rest), column in zip(lines, columns)]
 
 
 def file_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:

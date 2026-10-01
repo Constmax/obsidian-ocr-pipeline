@@ -210,9 +210,16 @@ def _frozen_context(record: dict) -> AssemblyContext:
 
 
 def _same_page(record: dict | None, captured: dict) -> bool:
-    """Whether a stash or case was made from the lines the page has now."""
-    return record is not None and all(
-        record[key] == captured[key] for key in ("page", "pdf_sha256"))
+    """Whether a stash or case was made from the lines the page has now,
+    whichever line format each entry holds them in."""
+    def lines_and_rest(page):
+        return (page_cache.recognized_lines(page),
+                {key: value for key, value in page.items()
+                 if key not in ("lines", "columns", "line_format")})
+
+    return (record is not None
+            and record["pdf_sha256"] == captured["pdf_sha256"]
+            and lines_and_rest(record["page"]) == lines_and_rest(captured["page"]))
 
 
 def _load_or_none(path: Path, keys) -> dict | None:

@@ -375,3 +375,10 @@ def test_a_line_format_it_cannot_read_is_a_miss(tmp_path, change):
     page = {"number": 1, "source": "ocr", "characters": 0, "layout": "x",
             "mode": "ganz", "trace": [], "lines": [["Text", None]]}
     assert _old_entry(tmp_path / "cache", context, {**page, **change}) is None
+
+
+def test_a_columns_array_that_does_not_fit_leaves_every_line_unknown():
+    """A page case is not validated like a cache entry; no line is lost."""
+    page = {"lines": [["a", None], ["b", None, "kasten0"]], "columns": [0]}
+    assert page_cache.recognized_lines(page) == [
+        RecognizedLine("a"), RecognizedLine("b", container="kasten0")]
