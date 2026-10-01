@@ -196,11 +196,11 @@ export class SettingsTab extends PluginSettingTab {
 			.addText((t) => this.widthField(t, 1))
 			.addText((t) => this.widthField(t, 2));
 
-		this.searchableCopySettings();
+		this.textLayerSettings();
 	}
 
 	/** Engine and column split for "Add OCR text layer"; desktop only. */
-	private searchableCopySettings(): void {
+	private textLayerSettings(): void {
 		const { containerEl } = this;
 		new Setting(containerEl).setName("OCR text layer").setHeading();
 

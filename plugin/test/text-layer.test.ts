@@ -1,21 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { type PdfSource, type SearchableCopyRequest } from "../src/conversion-controller.ts";
-import type { SearchableCopyResult } from "../src/conversion.ts";
+import { type PdfSource, type TextLayerRequest } from "../src/conversion-controller.ts";
+import type { TextLayerResult } from "../src/conversion.ts";
 import { DESKTOP_ONLY_MESSAGE, type OcrEngine, type OcrSettings } from "../src/ocr-settings.ts";
 import {
 	mergePageLists,
 	normalizePageList,
-	runSearchableCopy,
+	runAddTextLayer,
 	type ExemptionOffer,
-	type SearchableCopyHost,
-} from "../src/searchable-copy.ts";
+	type TextLayerHost,
+} from "../src/text-layer.ts";
 
 const SOURCE: PdfSource = { path: "raw/a/case-01.pdf", basename: "case-01" };
 const DONE = "OCR Preview: Text layer added — raw/a/case-01.pdf.";
 
-function result(overrides: Partial<SearchableCopyResult> = {}): SearchableCopyResult {
+function result(overrides: Partial<TextLayerResult> = {}): TextLayerResult {
 	return {
 		code: 0,
 		signal: null,
@@ -27,7 +27,7 @@ function result(overrides: Partial<SearchableCopyResult> = {}): SearchableCopyRe
 	};
 }
 
-class FakeHost implements SearchableCopyHost {
+class FakeHost implements TextLayerHost {
 	isDesktop = true;
 	notices: string[] = [];
 	ocr: OcrSettings = { ocrEngine: "tesseract", splitColumns: true };
@@ -53,15 +53,15 @@ class FakeHost implements SearchableCopyHost {
 
 class FakeController {
 	idle = true;
-	requests: SearchableCopyRequest[] = [];
+	requests: TextLayerRequest[] = [];
 	/** Answers in order; afterwards `answer` repeats. */
-	queue: Array<SearchableCopyResult | null> = [];
-	answer: SearchableCopyResult | null = result();
+	queue: Array<TextLayerResult | null> = [];
+	answer: TextLayerResult | null = result();
 
 	ensureIdle(): boolean {
 		return this.idle;
 	}
-	async runOcr(request: SearchableCopyRequest): Promise<SearchableCopyResult | null> {
+	async runOcr(request: TextLayerRequest): Promise<TextLayerResult | null> {
 		this.requests.push(request);
 		return this.queue.length > 0 ? (this.queue.shift() ?? null) : this.answer;
 	}
@@ -70,7 +70,7 @@ class FakeController {
 test("normal run: saved settings, no page exemptions, the PDF itself gets the layer", async () => {
 	const host = new FakeHost();
 	const controller = new FakeController();
-	await runSearchableCopy(SOURCE, controller, host);
+	await runAddTextLayer(SOURCE, controller, host);
 
 	// No destination, no force-OCR field: the source keeps its path and its existing text.
 	assert.deepEqual(controller.requests, [{ source: SOURCE, engine: "tesseract", splitColumns: true }]);
@@ -81,9 +81,9 @@ test("settings are read when the action starts", async () => {
 	const host = new FakeHost();
 	const controller = new FakeController();
 	host.ocr = { ocrEngine: "auto", splitColumns: false };
-	await runSearchableCopy(SOURCE, controller, host);
+	await runAddTextLayer(SOURCE, controller, host);
 	host.ocr = { ocrEngine: "apple", splitColumns: true };
-	await runSearchableCopy({ path: "raw/other.pdf", basename: "other" }, controller, host);
+	await runAddTextLayer({ path: "raw/other.pdf", basename: "other" }, controller, host);
 
 	assert.deepEqual(
 		controller.requests.map((r) => [r.engine, r.splitColumns]),
@@ -98,7 +98,7 @@ test("PaddleOCR runs when the engine check finds it usable (issue #73)", async (
 	const host = new FakeHost();
 	host.ocr = { ocrEngine: "paddle", splitColumns: false };
 	const controller = new FakeController();
-	await runSearchableCopy(SOURCE, controller, host);
+	await runAddTextLayer(SOURCE, controller, host);
 
 	assert.deepEqual(host.engineChecks, ["paddle"]);
 	assert.deepEqual(
@@ -112,7 +112,7 @@ test("PaddleOCR never splits columns, whatever the toggle says (issue #153)", as
 	const host = new FakeHost();
 	host.ocr = { ocrEngine: "paddle", splitColumns: true };
 	const controller = new FakeController();
-	await runSearchableCopy(SOURCE, controller, host);
+	await runAddTextLayer(SOURCE, controller, host);
 
 	assert.deepEqual(
 		controller.requests.map((r) => [r.engine, r.splitColumns]),
@@ -125,7 +125,7 @@ test("a stored PaddleOCR that is not usable falls back to Automatic, visibly", a
 	host.ocr = { ocrEngine: "paddle", splitColumns: true };
 	host.engineProblem = "PaddleOCR engine is not ready: model file missing: /m/x.onnx";
 	const controller = new FakeController();
-	await runSearchableCopy(SOURCE, controller, host);
+	await runAddTextLayer(SOURCE, controller, host);
 
 	assert.deepEqual(
 		controller.requests.map((r) => [r.engine, r.splitColumns]),
@@ -143,7 +143,7 @@ test("other engines are not checked before a run", async () => {
 	const controller = new FakeController();
 	for (const ocrEngine of ["auto", "apple", "tesseract"] as const) {
 		host.ocr = { ocrEngine, splitColumns: false };
-		await runSearchableCopy(SOURCE, controller, host);
+		await runAddTextLayer(SOURCE, controller, host);
 	}
 	assert.deepEqual(host.engineChecks, []);
 });
@@ -153,7 +153,7 @@ test("failure without short pages, cancellation, or a refused run offers and rep
 		const host = new FakeHost();
 		const controller = new FakeController();
 		controller.answer = answer;
-		await runSearchableCopy(SOURCE, controller, host);
+		await runAddTextLayer(SOURCE, controller, host);
 
 		assert.equal(controller.requests.length, 1);
 		assert.deepEqual(host.offers, [], JSON.stringify(answer));
@@ -166,7 +166,7 @@ test("a running conversion refuses before any engine check", async () => {
 	host.ocr = { ocrEngine: "paddle", splitColumns: false };
 	const controller = new FakeController();
 	controller.idle = false;
-	await runSearchableCopy(SOURCE, controller, host);
+	await runAddTextLayer(SOURCE, controller, host);
 
 	assert.deepEqual(host.engineChecks, []);
 	assert.deepEqual(controller.requests, []);
@@ -176,7 +176,7 @@ test("mobile shows the desktop-only message and starts nothing", async () => {
 	const host = new FakeHost();
 	host.isDesktop = false;
 	const controller = new FakeController();
-	await runSearchableCopy(SOURCE, controller, host);
+	await runAddTextLayer(SOURCE, controller, host);
 
 	assert.deepEqual(host.notices, [DESKTOP_ONLY_MESSAGE]);
 	assert.deepEqual(controller.requests, []);
@@ -188,7 +188,7 @@ test("B5 failure offers the short pages and reruns only after confirmation", asy
 	const host = new FakeHost();
 	const controller = new FakeController();
 	controller.queue = [result({ code: 1, shortPages: [1, 5] }), result()];
-	await runSearchableCopy(SOURCE, controller, host);
+	await runAddTextLayer(SOURCE, controller, host);
 
 	assert.equal(controller.requests.length, 1);
 	assert.deepEqual(host.notices, []);
@@ -218,7 +218,7 @@ test("exemptions do not hide failures on other pages", async () => {
 		result({ code: 1, shortPages: [3] }),
 		result(),
 	];
-	await runSearchableCopy(SOURCE, controller, host);
+	await runAddTextLayer(SOURCE, controller, host);
 	await host.offers[0]!.confirm("1");
 
 	assert.equal(host.offers.length, 2);
@@ -243,7 +243,7 @@ test("a malformed confirmation reruns nothing", async () => {
 	const host = new FakeHost();
 	const controller = new FakeController();
 	controller.queue = [result({ code: 1, shortPages: [2] })];
-	await runSearchableCopy(SOURCE, controller, host);
+	await runAddTextLayer(SOURCE, controller, host);
 
 	for (const input of ["", "abc", "0", "3-1"]) await host.offers[0]!.confirm(input);
 	assert.equal(controller.requests.length, 1);

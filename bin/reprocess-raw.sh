@@ -243,6 +243,9 @@ replace_source() {
     cp -p "$target" "$TMP_DEST"
     cat "$OUT" > "$TMP_DEST"
     # ponytail: a change between cmp and mv is still lost; that window is milliseconds.
+    # From here on the run finishes: a SIGTERM after the rename would report a
+    # cancelled run whose result is already in place.
+    trap '' TERM INT
     mv -f "$TMP_DEST" "$target"
     TMP_DEST=""
 }

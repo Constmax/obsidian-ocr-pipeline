@@ -12,13 +12,13 @@ import type { ChildProcess } from "child_process";
 import {
 	abortChild,
 	convertPdf,
-	createSearchableCopy,
+	addTextLayer,
 	terminateProcessGroup,
 	type ConversionOptions,
 	type ConversionResult,
 	type OcrEngine,
-	type SearchableCopyOptions,
-	type SearchableCopyResult,
+	type TextLayerOptions,
+	type TextLayerResult,
 	type SpawnFunction,
 } from "./conversion.ts";
 
@@ -82,13 +82,13 @@ export type ConvertFunction = (
 	options?: ConversionOptions,
 ) => Promise<ConversionResult>;
 
-export type SearchableCopyFunction = (
+export type TextLayerFunction = (
 	source: string,
 	cli: string,
 	cwd: string,
 	spawnFn?: SpawnFunction,
-	options?: SearchableCopyOptions,
-) => Promise<SearchableCopyResult>;
+	options?: TextLayerOptions,
+) => Promise<TextLayerResult>;
 
 export interface ControllerDependencies {
 	convert?: ConvertFunction;
@@ -96,14 +96,14 @@ export interface ControllerDependencies {
 	abort?: (child: ChildProcess) => void;
 	resolveExecutable?: () => string;
 	idleTimeoutMs?: number;
-	searchableCopy?: SearchableCopyFunction;
+	addTextLayer?: TextLayerFunction;
 	/** Stops a Stage-1 child together with its process group. */
 	abortGroup?: (child: ChildProcess) => void;
 	resolveReprocessRaw?: () => string;
 }
 
 /** A Stage-1 run; paths are vault-relative. */
-export interface SearchableCopyRequest {
+export interface TextLayerRequest {
 	source: PdfSource;
 	engine: OcrEngine;
 	splitColumns: boolean;
@@ -239,7 +239,7 @@ export class ConversionController {
 	private readonly abort: (child: ChildProcess) => void;
 	private readonly resolveExecutable: () => string;
 	private readonly idleTimeoutMs: number;
-	private readonly searchableCopy: SearchableCopyFunction;
+	private readonly addTextLayer: TextLayerFunction;
 	private readonly abortGroup: (child: ChildProcess) => void;
 	private readonly resolveReprocessRaw: () => string;
 
@@ -257,7 +257,7 @@ export class ConversionController {
 		this.abort = dependencies.abort ?? ((child) => abortChild(child));
 		this.resolveExecutable = dependencies.resolveExecutable ?? (() => resolvePdf2md());
 		this.idleTimeoutMs = dependencies.idleTimeoutMs ?? CONVERSION_IDLE_TIMEOUT_MS;
-		this.searchableCopy = dependencies.searchableCopy ?? createSearchableCopy;
+		this.addTextLayer = dependencies.addTextLayer ?? addTextLayer;
 		this.abortGroup =
 			dependencies.abortGroup ?? ((child) => void terminateProcessGroup(child));
 		this.resolveReprocessRaw =
@@ -354,7 +354,7 @@ export class ConversionController {
 	 * and success are left to the caller, which offers page exemptions or
 	 * reports success. Resolves with the CLI result, or null if nothing ran.
 	 */
-	async runOcr(request: SearchableCopyRequest): Promise<SearchableCopyResult | null> {
+	async runOcr(request: TextLayerRequest): Promise<TextLayerResult | null> {
 		if (!this.ensureIdle()) return null;
 		const name = request.source.basename;
 		this.begin(name, this.abortGroup);
@@ -369,7 +369,7 @@ export class ConversionController {
 				() => this.cancel(),
 			);
 			this.progress = progress;
-			const result = await this.searchableCopy(
+			const result = await this.addTextLayer(
 				request.source.path,
 				this.resolveReprocessRaw(),
 				base,
