@@ -9,7 +9,8 @@ import pytest
 
 import dictionary
 import page_cache
-from assembly import AssemblyContext, build_document, split_preview
+from assembly import (AssemblyContext, RecognizedLine, build_document,
+                      split_preview)
 from conversion import (BlockContext, ConversionRequest, PageMeta,
                         assembly_context, convert_document, page_block)
 
@@ -19,12 +20,13 @@ rechtsfolge schaden schadensersatz statt übereignung verkäufer
 """.split()
 
 OCR_LINES = [
-    ["Der Anspruch des Käufers auf Ubereignung ist entstanden.",
-     [100, 100, 800, 130]],
-    ["Der Verkaufer haftet nach § 280 Abs. 1 BGB für den Schaden.",
-     [100, 140, 800, 170]],
-    ["1. Rechtsfolge ist der Schadensersatz statt der Leistung Xqzwmpfk.",
-     [100, 400, 800, 430]],
+    RecognizedLine("Der Anspruch des Käufers auf Ubereignung ist entstanden.",
+                   (100, 100, 800, 130)),
+    RecognizedLine("Der Verkaufer haftet nach § 280 Abs. 1 BGB für den Schaden.",
+                   (100, 140, 800, 170)),
+    RecognizedLine(
+        "1. Rechtsfolge ist der Schadensersatz statt der Leistung Xqzwmpfk.",
+        (100, 400, 800, 430)),
 ]
 
 
@@ -37,7 +39,8 @@ def _cached_lines(tmp_path, source, lines):
         "number": 3, "source": source, "characters": 0,
         "layout": "einspaltig", "mode": "ganz", "lines": lines, "trace": [],
     })
-    return page_cache.read_latest_page(directory, 3)["lines"]
+    return page_cache.recognized_lines(
+        page_cache.read_latest_page(directory, 3))
 
 
 def _context(**kwargs):
@@ -46,7 +49,7 @@ def _context(**kwargs):
 
 def test_a_textlayer_page_gets_its_marker_and_no_dictionary_pass(tmp_path):
     lines = _cached_lines(tmp_path, "textlayer", [
-        ["Skript Schuldrecht AT", [100, 20, 500, 40]],
+        RecognizedLine("Skript Schuldrecht AT", (100, 20, 500, 40)),
         *OCR_LINES,
     ])
     context = BlockContext(
@@ -62,7 +65,8 @@ def test_a_textlayer_page_gets_its_marker_and_no_dictionary_pass(tmp_path):
         "1. Rechtsfolge ist der Schadensersatz statt der Leistung Xqzwmpfk.")
     assert block.markdown == "%% S. 3 | textlayer %%\n\n" + "\n\n".join(
         block.paragraphs)
-    assert block.discarded == ["Skript Schuldrecht AT"]
+    assert [(line.text, reason) for line, reason in block.discarded] == [
+        ("Skript Schuldrecht AT", "running_line")]
     assert block.findings == []
 
 
@@ -116,7 +120,7 @@ def test_an_empty_page_is_its_marker_as_the_preview_reads_it_back():
     context = BlockContext(
         assembly=AssemblyContext(frozenset({"Skript Schuldrecht AT"})))
 
-    empty = page_block([["Skript Schuldrecht AT", [100, 20, 500, 40]]],
+    empty = page_block([RecognizedLine("Skript Schuldrecht AT", (100, 20, 500, 40))],
                        context, PageMeta(number=1, source="textlayer"))
     text = page_block(OCR_LINES, context, PageMeta(number=2, source="textlayer"))
 
@@ -165,7 +169,7 @@ def test_replaying_cached_lines_reproduces_the_preview_block(
     make_vector_pdf(pdf, pages=2)
 
     def fake_ocr(image, max_tokens=None):
-        return "\n".join(_loc(*box) + text for text, box in OCR_LINES)
+        return "\n".join(_loc(*line.box) + line.text for line in OCR_LINES)
 
     request = ConversionRequest(
         pdf=pdf, output_dir=output, ocr_only=True, model_name="fake",
@@ -184,6 +188,6 @@ def test_replaying_cached_lines_reproduces_the_preview_block(
     cache_dir = page_cache.cache_directory(output, pdf)
     for number, image in ((1, None), (2, "skript-s002.png")):
         entry = page_cache.read_latest_page(cache_dir, number)
-        block = page_block(entry["lines"], context,
+        block = page_block(page_cache.recognized_lines(entry), context,
                            PageMeta.from_cache_entry(entry, image))
         assert block.markdown == written[number]

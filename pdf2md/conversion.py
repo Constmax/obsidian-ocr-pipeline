@@ -19,11 +19,12 @@ import dictionary
 import page_cache
 from assembly import (RUNNING_FOOTER_ZONE, RUNNING_HEADER_ZONE,
                       RUNNING_LABEL_ZONE, AssemblyContext, PreviewFormatError,
-                      as_callout, assemble_paragraphs, build_document,
-                      build_frontmatter, clean_text, merge_fragments,
-                      page_marker, running_text, split_preview)
+                      RecognizedLine, as_callout, assemble_paragraphs,
+                      build_document, build_frontmatter, clean_text,
+                      merge_fragments, page_marker, running_text,
+                      split_preview)
 from layout import (assign_boxes, detect_boxes, detect_layout, image_ratio,
-                    split_columns_indexed, tables_markdown)
+                    split_columns, tables_markdown)
 from ocr import (CHARACTERS_PER_INK, OVERLAP, TOKEN_MAX, _ink_amount,
                  tile_horizontally, tile_lines, tile_vertically, trim_overlap)
 
@@ -234,7 +235,7 @@ class AnalyzedPage:
     text_characters: int
     layout_type: str
     gutter: float | None
-    textlayer_lines: list[list[Any]] | None
+    textlayer_lines: list[RecognizedLine] | None
     boxes: list[Any]
     is_diagram: bool
     # Resolution of `image_path`. None means unknown, and every heuristic that
@@ -251,7 +252,8 @@ class PageResult:
     number: int
     source: str
     paragraphs: list[str]
-    discarded: list[str]
+    # Each discarded line with its reason (`AssemblyResult`).
+    discarded: list[tuple[RecognizedLine, str]]
     trace: list[str]
     is_diagram: bool
     seconds: float
@@ -277,34 +279,30 @@ class PageMeta:
     source_detail: str = ""
     # File name of the page image; set for a diagram page only.
     diagram_image: str | None = None
-    # Each line's column, None where unknown (Issue #14).
-    columns: list[int | None] | None = None
 
     @classmethod
     def from_cache_entry(cls, entry, diagram_image: str | None = None) -> PageMeta:
         """The meta of a page as its page-cache entry describes it."""
         return cls(number=entry["number"], source=entry["source"],
                    source_detail=f"{entry['layout']}, {entry['mode']}",
-                   diagram_image=diagram_image,
-                   columns=entry.get("columns"))
+                   diagram_image=diagram_image)
 
 
 @dataclass(frozen=True)
 class PageBlock:
     markdown: str
     paragraphs: list[str]
-    discarded: list[str]
+    discarded: list[tuple[RecognizedLine, str]]
     findings: list[dictionary.Finding]
 
 
-def _page_content(lines, context: BlockContext, source: str, columns=None):
+def _page_content(lines, context: BlockContext, source: str):
     """Assemble a page's lines and run the dictionary pass of an OCR page.
 
     Returns `(paragraphs, discarded, findings)`.
     """
     ocr_page = source == "ocr"
-    assembled = assemble_paragraphs(
-        lines, context.assembly, ocr_page, columns)
+    assembled = assemble_paragraphs(lines, context.assembly, ocr_page)
     paragraphs, findings = assembled.paragraphs, []
     if ocr_page and lines:
         paragraphs, findings = dictionary.check(
@@ -312,7 +310,8 @@ def _page_content(lines, context: BlockContext, source: str, columns=None):
     return paragraphs, assembled.discarded, findings
 
 
-def page_block(lines, context: BlockContext, meta: PageMeta) -> PageBlock:
+def page_block(lines: list[RecognizedLine], context: BlockContext,
+               meta: PageMeta) -> PageBlock:
     """Turn one page's recognized lines into its page block.
 
     The one path from lines to the preview: assembly, the dictionary pass of
@@ -322,7 +321,7 @@ def page_block(lines, context: BlockContext, meta: PageMeta) -> PageBlock:
     no PDF and no file access.
     """
     paragraphs, discarded, findings = _page_content(
-        lines, context, meta.source, meta.columns)
+        lines, context, meta.source)
 
     diagram = meta.diagram_image is not None
     markdown = page_marker(meta.number, "diagramm" if diagram else (
@@ -461,14 +460,14 @@ def textlayer_lines(page):
         return any(x0 <= middle_x <= x1 and y0 <= middle_y <= y1
                    for x0, y0, x1, y1 in frames)
 
+    def thousandths(box):
+        return (int(box[0] / width * 1000), int(box[1] / height * 1000),
+                int(box[2] / width * 1000), int(box[3] / height * 1000))
+
     lines, prose, rotated = [], [], []
     for _, markdown, bbox in tables:
-        lines.append([
-            markdown,
-            (int(bbox[0] / width * 1000), int(bbox[1] / height * 1000),
-             int(bbox[2] / width * 1000), int(bbox[3] / height * 1000)),
-            "tabelle",
-        ])
+        lines.append(RecognizedLine(markdown, thousandths(bbox),
+                                    container="tabelle"))
     for block in page.get_text("dict")["blocks"]:
         if block.get("type") != 0:
             continue
@@ -498,13 +497,9 @@ def textlayer_lines(page):
             if not text:
                 continue
             target = prose if tuple(line.get("dir", (1, 0))) == (1, 0) else rotated
-            target.append([text, tuple(line["bbox"])])
-    for text, box in merge_fragments(prose, width) + rotated:
-        lines.append([
-            text,
-            (int(box[0] / width * 1000), int(box[1] / height * 1000),
-             int(box[2] / width * 1000), int(box[3] / height * 1000)),
-        ])
+            target.append(RecognizedLine(text, tuple(line["bbox"])))
+    for line in merge_fragments(prose, width) + rotated:
+        lines.append(RecognizedLine(line.text, thousandths(line.box)))
     return lines
 
 
@@ -554,6 +549,21 @@ def analyze_pages(request: ConversionRequest, temporary_dir: Path):
                 is_diagram=diagram, image_dpi=image_dpi,
             ))
     return pages, context
+
+
+def tile_local_axis(mode: str) -> str | None:
+    """Which axis of a page's line boxes is still measured in its tile.
+
+    A text-layer page and a page read whole are in page coordinates. A
+    vertical tile (`senkrecht @…`) is a column, its x runs across the tile;
+    a horizontal tile (`waagerecht`) is a band, its y runs down the tile. The
+    lines do not say which tile they came from (#146 converts at the tile).
+    """
+    if mode.startswith("senkrecht"):
+        return "x"
+    if mode == "waagerecht":
+        return "y"
+    return None
 
 
 def diagram_image_name(pdf: Path, number: int) -> str:
@@ -706,7 +716,7 @@ def _merged_document(request, existing, finished, cache_dir, block_context,
                     block_context,
                     wordbook=dictionary.load(list(request.dictionaries)))
             _, _, findings = _page_content(
-                entry["lines"], block_context, source, entry.get("columns"))
+                page_cache.recognized_lines(entry), block_context, source)
             corrected += sum(item.count for item in findings if item.corrected)
             suspect += sum(item.count for item in findings if not item.corrected)
     for page in fresh.values():
@@ -882,10 +892,8 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 entry = cache_hit(page)
                 reused = entry is not None
 
-                columns = None
                 if reused:
-                    lines = entry["lines"]
-                    columns = entry.get("columns")
+                    lines = page_cache.recognized_lines(entry)
                     trace = list(entry.get("trace", []))
                     source = entry["source"]
                     layout_type = entry["layout"]
@@ -895,7 +903,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                                      "Textlayer, without model" if source == "textlayer"
                                      else f"{layout_type}, {mode}")
                 elif page.textlayer_lines is not None:
-                    lines, columns = split_columns_indexed(
+                    lines = split_columns(
                         assign_boxes(page.textlayer_lines, page.boxes))
                     source = "textlayer"
                     layout_type, mode = page.layout_type, "textlayer"
@@ -938,9 +946,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         factor = (page.text_characters / ink
                                   if calibrated else CHARACTERS_PER_INK)
                     lines = []
-                    # A vertical tile is a column; horizontal bands are not.
-                    columns = [] if mode != "waagerecht" else None
-                    for column, (part, window) in enumerate(tiles):
+                    for index, (part, window) in enumerate(tiles):
                         parsed, tile_trace = tile_lines(
                             part, ocr_adapter, factor,
                             dpi or request.dpi, calibrated,
@@ -950,16 +956,16 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         if window:
                             parsed = assign_boxes(parsed, page.boxes, window)
                         if len(tiles) == 1:
-                            ordered, tile_columns = split_columns_indexed(parsed)
+                            ordered = split_columns(parsed)
                         else:
-                            ordered = sorted(parsed, key=lambda line: line[1][1]
-                                             if line[1] else 0)
-                            tile_columns = [column] * len(ordered)
-                        kept = trim_overlap(lines, ordered)
-                        lines += kept
-                        if columns is not None:
-                            # trim_overlap drops lines from the front only.
-                            columns += tile_columns[len(ordered) - len(kept):]
+                            ordered = sorted(parsed, key=lambda line: line.box[1]
+                                             if line.box else 0)
+                            # A vertical tile is a column; horizontal bands
+                            # are not.
+                            if mode != "waagerecht":
+                                ordered = [replace(line, column=index)
+                                           for line in ordered]
+                        lines += trim_overlap(lines, ordered)
                     source = "ocr"
                     layout_type = page.layout_type
                     source_detail = f"{page.layout_type}, {mode}"
@@ -971,7 +977,6 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         "number": page.number, "source": source,
                         "characters": page.text_characters, "layout": layout_type,
                         "mode": mode, "lines": lines, "trace": trace,
-                        "columns": columns,
                     }
                     page_cache.write_page(cache_dir, write_context, cached_page)
                     entry = cached_page
@@ -979,7 +984,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 dump = None if image_only else {
                     "seite": page.number,
                     "quelle": source if source == "textlayer" else source_detail,
-                    "zeilen": lines,
+                    "zeilen": [page_cache.line_json(line) for line in lines],
                 }
                 block = page_block(
                     lines, block_context, PageMeta.from_cache_entry(

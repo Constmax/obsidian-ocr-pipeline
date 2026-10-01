@@ -3,11 +3,11 @@
 
   python3 -m pytest pdf2md/test/test_randmarke.py
 """
-from assembly import promote_margin_labels, assemble_paragraphs
+from assembly import RecognizedLine, assemble_paragraphs, _promote_margin_labels
 
 
 def z(text, x0, y0, x1):
-    return [text, (x0, y0, x1, y0 + 14), False]
+    return RecognizedLine(text, (x0, y0, x1, y0 + 14))
 
 
 def test_label_flows_into_sentence():
@@ -40,11 +40,11 @@ def test_outdented_label_promoted():
              z("Daran schliesst sich die Frage der Garantenstellung an.",
                200, 136, 900),
              z("Sie ist der Kern jeder Unterlassungspruefung.", 200, 154, 900)]
-    out = promote_margin_labels(lines, 18)
-    assert out[0][0] == "**Merke:**"
+    out = _promote_margin_labels(lines, 18)
+    assert out[0].text == "**Merke:**"
     assert len(out) == len(lines)
-    assert [x[0] for x in out[1:]] \
-        == [x[0] for x in lines if x[0] != "**Merke:**"]
+    assert [x.text for x in out[1:]] \
+        == [x.text for x in lines if x.text != "**Merke:**"]
 
 
 def test_label_on_body_indent_not_moved():
@@ -54,5 +54,5 @@ def test_label_on_body_indent_not_moved():
              z("Die Garantenstellung ist der Kern der Pruefung.",
                200, 136, 900),
              z("Sie folgt aus Gesetz, Vertrag oder Ingerenz.", 200, 154, 900)]
-    assert [x[0] for x in promote_margin_labels(lines, 18)] \
-        == [x[0] for x in lines]
+    assert [x.text for x in _promote_margin_labels(lines, 18)] \
+        == [x.text for x in lines]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression der Randmarken-Ausnahme in `is_heading`.
+"""Regression der Randmarken-Ausnahme in `_is_heading`.
 
   source ~/.venvs/mlxocr/bin/activate && python bench/regress_randmarke.py
 
@@ -36,7 +36,7 @@ def main():
     for s in seiten:
         nach_datei.setdefault(s["file"], []).append(s["page"])
 
-    echt = A.is_heading
+    echt = A._is_heading
     n, gleich, geaendert, verlust = 0, 0, [], []
     for datei in sorted(nach_datei):
         pfad = VAULT / datei
@@ -57,12 +57,12 @@ def main():
                 gleich += 1
                 continue
             try:
-                A.is_heading = alt_ueberschrift
+                A._is_heading = alt_ueberschrift
                 a = seite_bauen(page, context)
-                A.is_heading = echt
+                A._is_heading = echt
                 b = seite_bauen(page, context)
             except Exception as e:
-                A.is_heading = echt
+                A._is_heading = echt
                 print(f"  FEHLER {datei} S.{nr}: {e}")
                 continue
             if a == b:

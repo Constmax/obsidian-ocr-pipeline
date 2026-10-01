@@ -1,21 +1,21 @@
 """Footnote blocks of two columns side by side (Issue #14).
 
 Hemmer solutions set each column's footnotes under that column. The column
-assignment of split_columns_indexed() reaches the footnote handling, so the
-blocks stay apart and a number never takes text from the other column.
+split_columns() gives each recognized line reaches the footnote handling, so
+the blocks stay apart and a number never takes text from the other column.
 
   python3 -m pytest pdf2md/test/test_footnote_columns.py
 """
-import json
+from dataclasses import replace
 
 import page_cache
-from assembly import (assemble_paragraphs, attach_footnote_numbers,
-                      footnotes_obsidian)
-from layout import split_columns, split_columns_indexed
+from assembly import (RecognizedLine, assemble_paragraphs,
+                      _attach_footnote_numbers, _footnotes_obsidian)
+from layout import split_columns
 
 
-def z(text, x0, y0, x1, height=9):
-    return [text, (x0, y0, x1, y0 + height)]
+def z(text, x0, y0, x1, height=9, column=None):
+    return RecognizedLine(text, (x0, y0, x1, y0 + height), column)
 
 
 def two_column_page():
@@ -46,30 +46,26 @@ def two_column_page():
               z("Zeitschrift 2017, 30 (31).", 557, 906, 850)]
     footer = [z("Kursanbieter - 01/2026", 373, 965, 665)]
     # Text-layer order: row by row across both columns.
-    return sorted(left + right + footer, key=lambda line: (line[1][1], line[1][0]))
+    return sorted(left + right + footer, key=lambda line: (line.box[1], line.box[0]))
 
 
 def assemble(lines):
-    ordered, columns = split_columns_indexed(lines)
-    return assemble_paragraphs(ordered, columns=columns).paragraphs
+    return assemble_paragraphs(split_columns(lines)).paragraphs
 
 
 def test_gutter_found_despite_word_spans_and_centred_footer():
-    ordered, columns = split_columns_indexed(two_column_page())
-    by_text = {line[0]: column for line, column in zip(ordered, columns)}
+    by_text = {line.text: line.column for line in split_columns(two_column_page())}
     assert by_text["Wörter"] == by_text["Blocksatzzeile"] == 0
     assert by_text["2"] == by_text["1"] == 0
     assert by_text["3"] == by_text["Zeitschrift 2017, 30 (31)."] == 1
-    # split_columns() keeps its plain list and the same order.
-    assert split_columns(two_column_page()) == ordered
 
 
 def test_word_span_after_a_wide_space_keeps_its_column():
     """A justified line's last word set far from the rest: the span test
     misses it, but it ends before the gutter, so it stays left."""
     page = two_column_page() + [z("Wort", 470, 664, 480)]
-    ordered, columns = split_columns_indexed(page)
-    assert dict(zip((line[0] for line in ordered), columns))["Wort"] == 0
+    assert {line.text: line.column
+            for line in split_columns(page)}["Wort"] == 0
 
 
 def test_each_definition_keeps_its_own_column():
@@ -107,11 +103,11 @@ def test_same_number_in_both_columns_the_citing_column_decides():
                   "5 Vgl. Muster, Lehrbuch, Rn. 5.",
                   "Der Bescheid ist rechtswidrig.6",
                   "6 Beispiel, Zeitschrift 2016, 7. 5 Vgl. auch Probe 2015."]
-    out = footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}])
+    out = _footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}])
     assert "[^5]: Vgl. Muster, Lehrbuch, Rn. 5." in out
     assert "[^6]: Beispiel, Zeitschrift 2016, 7. 5 Vgl. auch Probe 2015." in out
     # Unknown columns fall back to reading order, but lose no digit.
-    merged = footnotes_obsidian(paragraphs)
+    merged = _footnotes_obsidian(paragraphs)
     assert ("[^5]: Vgl. Muster, Lehrbuch, Rn. 5. 5 Vgl. auch Probe 2015."
             in merged)
 
@@ -122,7 +118,7 @@ def test_same_number_in_both_columns_right_column_owns_it():
                   "6 Beispiel, Zeitschrift 2012, 7 (9).",
                   "Die Behörde hat ihr Ermessen nicht ausgeübt.7",
                   "7 Muster, Lehrbuch, Rn. 12."]
-    out = footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}])
+    out = _footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}])
     assert out[-2:] == ["[^6]: Beispiel, Zeitschrift 2012, 7 (9).",
                         "[^7]: Muster, Lehrbuch, Rn. 12."]
 
@@ -136,7 +132,7 @@ def test_stray_opening_its_column_goes_under_no_other_number():
                   "Sie ist auch begründet.6",
                   "5 Vgl. auch Probe 2015.",
                   "6 Beispiel, Zeitschrift 2016, 7."]
-    out = footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}, {1}])
+    out = _footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}, {1}])
     assert "[^5]: Muster, Lehrbuch, Rn. 5." in out
     assert "5 Vgl. auch Probe 2015." in out
     assert "[^6]: Beispiel, Zeitschrift 2016, 7." in out
@@ -150,7 +146,7 @@ def test_no_citing_column_the_neighbour_number_decides():
                   "2 Vgl. Probe 2015.",
                   "1 Muster, Lehrbuch, Rn. 1.",
                   "2 Beispiel, Zeitschrift 2016, 7."]
-    out = footnotes_obsidian(paragraphs, [set(), {1}, {0}, {0}])
+    out = _footnotes_obsidian(paragraphs, [set(), {1}, {0}, {0}])
     assert "[^2]: Beispiel, Zeitschrift 2016, 7." in out
     assert "2 Vgl. Probe 2015." in out
 
@@ -163,17 +159,17 @@ def test_paragraph_across_the_gutter_cites_for_both_columns():
                   "2 Muster, Lehrbuch, Rn. 2. 4 Vgl. Probe 2015.",
                   "4 Beispiel, Zeitschrift 2016, 7.",
                   "5 Autor, Kommentar, Rn. 5."]
-    out = footnotes_obsidian(paragraphs, [{0, 1}, {0}, {1}, {1}])
+    out = _footnotes_obsidian(paragraphs, [{0, 1}, {0}, {1}, {1}])
     assert "[^4]: Beispiel, Zeitschrift 2016, 7." in out
     assert "[^2]: Muster, Lehrbuch, Rn. 2. 4 Vgl. Probe 2015." in out
 
 
 def test_number_is_not_attached_to_text_of_the_other_column():
-    number = z("4", 95, 930, 109) + [None, 0]
-    other = z("Muster, Lehrbuch, Rn. 12.", 557, 930, 900) + [None, 1]
-    assert attach_footnote_numbers([number, other]) == [number, other]
-    same = z("Muster, Lehrbuch, Rn. 12.", 128, 930, 480) + [None, 0]
-    assert attach_footnote_numbers([number, same])[0][0] \
+    number = z("4", 95, 930, 109, column=0)
+    other = z("Muster, Lehrbuch, Rn. 12.", 557, 930, 900, column=1)
+    assert _attach_footnote_numbers([number, other]) == [number, other]
+    same = replace(other, box=(128, 930, 480, 939), column=0)
+    assert _attach_footnote_numbers([number, same])[0].text \
         == "4 Muster, Lehrbuch, Rn. 12."
 
 
@@ -182,8 +178,8 @@ def test_number_sorted_after_its_text_on_the_same_row():
     lines = [z("Muster, Lehrbuch, Rn. 82.", 557, 917, 758),
              z("Muster, Lehrbuch, Rn. 84f.", 557, 927, 908),
              z("12", 523, 929, 545)]
-    out = attach_footnote_numbers(lines)
-    assert [line[0] for line in out] == ["Muster, Lehrbuch, Rn. 82.",
+    out = _attach_footnote_numbers(lines)
+    assert [line.text for line in out] == ["Muster, Lehrbuch, Rn. 82.",
                                          "12 Muster, Lehrbuch, Rn. 84f."]
 
 
@@ -192,24 +188,17 @@ def test_page_number_beside_the_running_footer_stays_apart():
     footer would no longer be recognized as a running line."""
     lines = [z("Autorin A, Kursanbieter - 01/2026", 651, 948, 832),
              z("**1**", 445, 949, 454)]
-    assert attach_footnote_numbers(lines) == lines
+    assert _attach_footnote_numbers(lines) == lines
 
 
-def test_cache_keeps_columns_and_rejects_a_mismatch(tmp_path):
+def test_cache_keeps_columns(tmp_path):
     pdf = tmp_path / "source.pdf"
     pdf.write_bytes(b"pdf contents")
     context = page_cache.build_context(pdf, {"dpi": 150})
     directory = page_cache.cache_directory(tmp_path / "out", pdf)
-    page = {"number": 1, "source": "ocr", "characters": 0, "layout": "zweispaltig",
-            "mode": "senkrecht @50%", "lines": [["a", [0, 0, 400, 10]],
-                                                ["b", [520, 0, 900, 10]]],
-            "trace": [], "columns": [0, 1]}
-    page_cache.write_page(directory, context, page)
-    key = page_cache.page_key(context, 1)
-    assert page_cache.read_page(directory, 1, key)["columns"] == [0, 1]
-
-    path = page_cache.page_path(directory, 1)
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["page"]["columns"] = [0]
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    assert page_cache.read_page(directory, 1, key) is None
+    lines = [z("a", 0, 0, 400, column=0), z("b", 520, 0, 900, column=1)]
+    page_cache.write_page(directory, context, {
+        "number": 1, "source": "ocr", "characters": 0, "layout": "zweispaltig",
+        "mode": "senkrecht @50%", "lines": lines, "trace": []})
+    entry = page_cache.read_page(directory, 1, page_cache.page_key(context, 1))
+    assert page_cache.recognized_lines(entry) == lines

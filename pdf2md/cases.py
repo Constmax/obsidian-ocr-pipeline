@@ -40,8 +40,9 @@ from typing import Callable
 import page_cache
 from assembly import (PREVIEW_MARKER, AssemblyContext, PreviewFormatError,
                       split_preview)
-from conversion import (BlockContext, PageMeta, diagram_image_name,
-                        page_block, source_assembly_context)
+from conversion import (BlockContext, PageBlock, PageMeta,
+                        diagram_image_name, page_block,
+                        source_assembly_context)
 
 SCHEMA = 2
 CASES_DIR = ".cases"
@@ -209,9 +210,16 @@ def _frozen_context(record: dict) -> AssemblyContext:
 
 
 def _same_page(record: dict | None, captured: dict) -> bool:
-    """Whether a stash or case was made from the lines the page has now."""
-    return record is not None and all(
-        record[key] == captured[key] for key in ("page", "pdf_sha256"))
+    """Whether a stash or case was made from the lines the page has now,
+    whichever line format each entry holds them in."""
+    def lines_and_rest(page):
+        return (page_cache.recognized_lines(page),
+                {key: value for key, value in page.items()
+                 if key not in ("lines", "columns", "line_format")})
+
+    return (record is not None
+            and record["pdf_sha256"] == captured["pdf_sha256"]
+            and lines_and_rest(record["page"]) == lines_and_rest(captured["page"]))
 
 
 def _load_or_none(path: Path, keys) -> dict | None:
@@ -223,14 +231,17 @@ def _load_or_none(path: Path, keys) -> dict | None:
 
 
 def _with_produced(captured: dict) -> dict:
-    """A capture with its produced block: the replay of its lines.
+    """A capture with its produced block: the replay of its lines, and the
+    lines that replay discarded, each with its reason.
 
     Not the block the preview holds. That one may be edited already — an
     edit outside the review view, a stash that failed earlier — and nothing
     in the file tells. The replay is what Stage 2 makes of these lines.
     """
-    return {**captured,
-            "produced": replay(captured, _frozen_context(captured))}
+    block = _replay_block(captured, _frozen_context(captured))
+    return {**captured, "produced": block.markdown,
+            "discarded": [{**page_cache.line_json(line), "reason": reason}
+                          for line, reason in block.discarded]}
 
 
 def stash(preview: Path, number: int) -> str:
@@ -339,11 +350,15 @@ def list_cases(preview: Path) -> tuple[list[tuple[Path, dict]], list[str]]:
 
 def replay(case: dict, assembly: AssemblyContext) -> str:
     """The page block the current code makes of the case's lines."""
+    return _replay_block(case, assembly).markdown
+
+
+def _replay_block(case: dict, assembly: AssemblyContext) -> PageBlock:
     context = BlockContext(
         assembly=assembly,
         diagram_image_only=case["diagram_image_only"])
     meta = PageMeta.from_cache_entry(case["page"], case["diagram_image"])
-    return page_block(case["page"]["lines"], context, meta).markdown
+    return page_block(page_cache.recognized_lines(case["page"]), context, meta)
 
 
 def _paragraphs(block: str) -> list[str]:
@@ -425,7 +440,8 @@ def uncovered_words(case: dict, replayed: str) -> list[str]:
         return words(_FOOTNOTE_MARK.sub(" ", "\n\n".join(_paragraphs(block))))
 
     run_together = "".join(words(
-        " ".join(line[0] for line in case["page"]["lines"])))
+        " ".join(line.text
+                 for line in page_cache.recognized_lines(case["page"]))))
     held = set(block_words(replayed))
     missing = []
     for word in block_words(case["expected"]):
