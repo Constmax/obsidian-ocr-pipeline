@@ -104,3 +104,5 @@ gate exists).
   `ready-for-human`, `wontfix`; see `docs/agents/triage-labels.md`.
 - **Domain docs:** single context, root `CONTEXT.md` + `docs/adr/` (created
   lazily); see `docs/agents/domain.md`.
+- **Code review:** when the user asks for a code review, always use the
+  `mattpocock-skills:code-review` skill, not the built-in `/code-review`.
