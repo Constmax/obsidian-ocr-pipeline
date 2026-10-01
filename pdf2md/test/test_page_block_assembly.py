@@ -150,6 +150,12 @@ def test_running_line_is_discarded_with_its_reason():
         ("Skript **Schuldrecht** AT", "running_line")]
 
 
+def test_running_line_counts_with_other_spacing_anywhere_on_the_page():
+    assert discarded([z("Skript   Schuldrecht  AT", y0=300)],
+                     running={"Skript Schuldrecht AT"}) == [
+        ("Skript   Schuldrecht  AT", "running_line")]
+
+
 def test_misread_running_footer_is_discarded_on_an_ocr_page_only():
     misread = "Kursanbieter Skript Schuldrecht - 0l/2026"
     lines = [*stack("Der Anspruch ist entstanden.", "Mehr."),
@@ -212,6 +218,11 @@ def test_a_bold_labelled_sentence_is_still_a_heading():
     ]) == ["#### 1. Anspruch aus § 985 BGB auf Rückgabe des Geldes."]
 
 
+def test_a_bold_label_counts_for_the_level():
+    assert paragraphs([z("**b)** Gemäß der herrschenden Meinung")]) == [
+        "##### b) Gemäß der herrschenden Meinung"]
+
+
 def test_an_abbreviation_is_no_outline_label():
     assert paragraphs([z("h. L. und Rechtsprechung stimmen überein.")]) == [
         "h. L. und Rechtsprechung stimmen überein."]
@@ -222,12 +233,11 @@ def test_an_abbreviation_is_no_outline_label():
 def test_margin_label_on_the_body_indent_flows_into_its_sentence():
     assert paragraphs([
         z("**Beispiel:**", 166, 98, 237),
-        z("Die Mutter putzt die Fenster ihrer Terrasse und stößt dabei "
-          "versehentlich einen", 166, 97, 899),
-        z("Blumentopf herunter, der den Dieb trifft.", 166, 116, 899),
-    ]) == ["**Beispiel:** Die Mutter putzt die Fenster ihrer Terrasse und "
-           "stößt dabei versehentlich einen Blumentopf herunter, der den "
-           "Dieb trifft."]
+        z("Die Käuferin holt das Rad beim Händler ab und bezahlt dabei "
+          "mit einem", 166, 97, 899),
+        z("Scheck, der später nicht gedeckt ist.", 166, 116, 899),
+    ]) == ["**Beispiel:** Die Käuferin holt das Rad beim Händler ab und "
+           "bezahlt dabei mit einem Scheck, der später nicht gedeckt ist."]
 
 
 def test_outdented_margin_label_moves_to_the_start_of_its_block():
