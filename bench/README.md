@@ -50,7 +50,7 @@ the smoke check cheap.
 ## Other scripts
 
 Scripts of finished experiments were removed; git history keeps them
-(last present before this change, under `bench/archive/`).
+(under `bench/archive/` until PR #174).
 
 `layoutmodell_test.py` (the optional layout-model evaluation, see
 [LAYOUTMODELL.md](LAYOUTMODELL.md)) stays in `bench/`:

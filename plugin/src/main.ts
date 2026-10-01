@@ -137,41 +137,41 @@ export default class OcrPreviewPlugin extends Plugin {
 	async loadSettings(): Promise<void> {
 		const saved = (await this.loadData()) as Record<string, unknown> | null;
 		if (saved) {
-			const migrated: Partial<Settings> = {};
+			const loaded: Partial<Settings> = {};
 			const str = (k: string): string | undefined => {
 				const val = saved[k];
 				return typeof val === "string" ? val : undefined;
 			};
 			const previewFolder = str("previewFolder");
-			if (previewFolder) migrated.previewFolder = previewFolder;
+			if (previewFolder) loaded.previewFolder = previewFolder;
 
 			const acceptedFolder = str("acceptedFolder");
-			if (acceptedFolder) migrated.acceptedFolder = acceptedFolder;
+			if (acceptedFolder) loaded.acceptedFolder = acceptedFolder;
 
 			const rejectedFolder = str("rejectedFolder");
-			if (rejectedFolder) migrated.rejectedFolder = rejectedFolder;
+			if (rejectedFolder) loaded.rejectedFolder = rejectedFolder;
 
 			const statusFile = str("statusFile");
-			if (statusFile) migrated.statusFile = statusFile;
+			if (statusFile) loaded.statusFile = statusFile;
 
-			if (saved["markdownView"]) migrated.markdownView = saved["markdownView"] as "rendered" | "source";
+			if (saved["markdownView"]) loaded.markdownView = saved["markdownView"] as "rendered" | "source";
 
 			const operationMode = str("operationMode");
-			if (operationMode) migrated.operationMode = operationMode === "workbench" ? "workbench" : "review-flow";
+			if (operationMode) loaded.operationMode = operationMode === "workbench" ? "workbench" : "review-flow";
 
-			if (saved["columnWidths"]) migrated.columnWidths = saved["columnWidths"] as [number, number, number];
+			if (saved["columnWidths"]) loaded.columnWidths = saved["columnWidths"] as [number, number, number];
 
-			if (typeof saved["pdfZoomMax"] === "number") migrated.pdfZoomMax = saved["pdfZoomMax"];
-			if (typeof saved["syncActive"] === "boolean") migrated.syncActive = saved["syncActive"];
+			if (typeof saved["pdfZoomMax"] === "number") loaded.pdfZoomMax = saved["pdfZoomMax"];
+			if (typeof saved["syncActive"] === "boolean") loaded.syncActive = saved["syncActive"];
 
-			if (typeof saved["mdEagerLimit"] === "number") migrated.mdEagerLimit = saved["mdEagerLimit"];
+			if (typeof saved["mdEagerLimit"] === "number") loaded.mdEagerLimit = saved["mdEagerLimit"];
 
 			// OCR engine and column split: data from before these settings and
 			// invalid values (e.g. an engine this version does not offer) fall
 			// back to the defaults field by field.
-			Object.assign(migrated, parseOcrSettings(saved));
+			Object.assign(loaded, parseOcrSettings(saved));
 
-			this.settings = { ...DEFAULT_SETTINGS, ...migrated };
+			this.settings = { ...DEFAULT_SETTINGS, ...loaded };
 		} else {
 			this.settings = { ...DEFAULT_SETTINGS };
 		}
