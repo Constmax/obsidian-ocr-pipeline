@@ -820,3 +820,41 @@
 .ocr-seiten-eingabe {
 	width: 200px;
 }
+
+/* Settings tab: tabs after Claudian's settings; groups are Obsidian's SettingGroup. */
+.ocr-settings-tabs {
+	display: flex;
+	gap: 2px;
+	margin-bottom: var(--size-4-4);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.ocr-settings-tabs > button.ocr-settings-tab {
+	height: auto;
+	margin-bottom: -1px;
+	padding: var(--size-4-2) var(--size-4-4);
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	font-weight: var(--font-medium);
+	cursor: pointer;
+}
+
+.ocr-settings-tabs > button.ocr-settings-tab:hover {
+	background: transparent;
+	color: var(--text-normal);
+}
+
+.ocr-settings-tabs > button.ocr-settings-tab.is-active {
+	box-shadow: inset 0 -2px var(--interactive-accent);
+	color: var(--text-normal);
+}
+
+.ocr-settings-note {
+	margin: var(--size-4-2) 0 var(--size-4-4);
+	padding: 0 var(--size-4-3);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}

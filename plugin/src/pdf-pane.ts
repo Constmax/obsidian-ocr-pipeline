@@ -25,6 +25,9 @@ const MAX_CANVAS = 12;
 const RESIZE_DEBOUNCE_MS = 150;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2;
+/** Upper limit for the pixel scale. Memory limiter, not quality setting:
+ *  an A4 canvas at factor 2 is already ~4.5 MB RGBA. */
+const RENDER_SCALE_MAX = 2;
 
 interface PageState {
 	nr: number;
@@ -69,7 +72,6 @@ export class PdfColumn {
 	constructor(
 		private app: App,
 		root: HTMLElement,
-		private zoomMax: () => number,
 	) {
 		this.scrollEl = root.createDiv({ cls: "ocr-pdf-scroll" });
 		this.container = this.scrollEl.createDiv({ cls: "ocr-pdf-inhalt" });
@@ -345,7 +347,7 @@ export class PdfColumn {
 		const width = Math.max(z.el.clientWidth, 1);
 		return Math.min(
 			(width / viewport.width) * window.devicePixelRatio,
-			this.zoomMax(),
+			RENDER_SCALE_MAX,
 		);
 	}
 

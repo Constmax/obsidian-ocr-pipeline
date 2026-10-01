@@ -767,7 +767,27 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
     return AssemblyResult(paragraphs=paragraphs, discarded=discarded)
 
 
-SENTENCE_END = re.compile(r"[.!?][\"“»)\]]?$")
+CLOSER = r"[\"“»)\]]?$"
+SENTENCE_END = re.compile(r"[.!?]" + CLOSER)
+FINAL_QUESTION = re.compile(r"\?" + CLOSER)
+FINAL_LEGAL_FORM = re.compile(r"\be\.\s?V\.$")
+NUMBERED_LABEL = re.compile(r"\(?\d")
+
+
+def _ends_like_body(text):
+    """Does a labelled paragraph end like body text? (#164)
+
+    A heading may name a party by its legal form ("gegen den e.V."); any
+    other final abbreviation ("nach h.M.", "z. B.") still ends a sentence.
+    Under a letter or roman label a heading may be a question ("III.
+    Anspruch?"); a numbered question ("1.", "(2)") stays body text: those
+    are question lists.
+    """
+    if FINAL_LEGAL_FORM.search(text):
+        return False
+    if FINAL_QUESTION.search(text):
+        return bool(NUMBERED_LABEL.match(text))
+    return bool(SENTENCE_END.search(text))
 
 
 def _format_headings(paragraphs, max_heading=90):
@@ -781,7 +801,7 @@ def _format_headings(paragraphs, max_heading=90):
             continue
         blank = _without_bold(raw)
         if ((len(blank) <= max_heading or _only_bold(raw))
-                and (not SENTENCE_END.search(blank) or "**" in raw)):
+                and (not _ends_like_body(blank) or "**" in raw)):
             out.append("#" * lvl + " " + blank)
         elif not raw.startswith("**"):
             marker, rest = raw.split(None, 1) if " " in raw else (raw, "")
