@@ -61,7 +61,7 @@ const ENGINE_LABELS: Record<OcrEngine, string> = {
 	auto: "Automatic",
 	apple: "Apple Vision",
 	tesseract: "Tesseract",
-	paddle: "PaddleOCR (fast)",
+	paddle: "Apple Vision + RapidOCR (Paddle fast)",
 };
 
 export class SettingsTab extends PluginSettingTab {
@@ -213,8 +213,10 @@ export class SettingsTab extends PluginSettingTab {
 			.setName("OCR engine")
 			.setDesc(
 				"Used for new searchable copies. Automatic uses Apple Vision when its " +
-					"OCRmyPDF plugin is installed and Tesseract otherwise. PaddleOCR (fast) " +
-					"keeps two-column pages in reading order without a column split; it is " +
+					"OCRmyPDF plugin is installed and Tesseract otherwise. Apple Vision + " +
+					"RapidOCR (Paddle fast) reads with Apple Vision, re-reads citations with " +
+					"RapidOCR, and keeps two-column pages in reading order without a column " +
+					"split; it is " +
 					"offered once the installation check passes.",
 			)
 			.addDropdown((d) => {
