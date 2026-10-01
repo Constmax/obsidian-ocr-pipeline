@@ -1339,7 +1339,7 @@
    "source": "raw/Klausuren/OeR/2131_Lösung_OeffentlichesRecht_Hessen.pdf",
    "page": 7,
    "layout": "two columns, recovered footnotes 30-32",
-   "note": "Body tail merged into footnote 33 (adjacent lines, no gap signal).",
+   "note": "Body tail continues after the left footnote block (fixed in #14; before: merged into footnote 33).",
    "blocks": [
     {
      "hash": "932adaf19f74",
@@ -1364,7 +1364,7 @@
      "refs": []
     },
     {
-     "hash": "ea81cc3a4668",
+     "hash": "0d2edb6602d2",
      "refs": [
       32,
       33
@@ -1408,7 +1408,7 @@
     },
     {
      "footnote": 33,
-     "hash": "4be07ab9f682"
+     "hash": "8e538888f380"
     }
    ]
   },
