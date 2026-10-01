@@ -750,6 +750,8 @@ def assemble_paragraphs(lines, context=None, ocr_page=False, columns=None):
 
 SENTENCE_END = re.compile(r"[.!?][\"“»)\]]?$")
 FINAL_ABBREVIATION = re.compile(r"(?:^|[\s(])(?:[^\W\d_]{1,3}\.){2,}$")
+FINAL_QUESTION = re.compile(r"\?[\"“»)\]]?$")
+NUMBERED_LABEL = re.compile(r"\(?\d")
 
 
 def ends_sentence(text):
@@ -761,7 +763,7 @@ def ends_sentence(text):
     """
     if FINAL_ABBREVIATION.search(text):
         return False
-    if text.endswith("?") and not re.match(r"\(?\d", text):
+    if FINAL_QUESTION.search(text) and not NUMBERED_LABEL.match(text):
         return False
     return bool(SENTENCE_END.search(text))
 

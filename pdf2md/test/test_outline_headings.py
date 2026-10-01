@@ -18,9 +18,16 @@ def test_heading_phrased_as_a_question():
             "##### e) Mitverschulden des A, § 254 BGB?"]
 
 
+def test_question_closed_by_a_quote():
+    assert format_headings(["III. Anspruch aus „§ 831 BGB?“"]) \
+        == ["### III. Anspruch aus „§ 831 BGB?“"]
+
+
 def test_numbered_question_stays_body_text():
-    question = "1. Warum entfällt für das Verschulden des Betreuers § 31 BGB?"
-    assert format_headings([question]) == [question]
+    assert format_headings(["1. Warum entfällt für den Betreuer § 31 BGB?",
+                            "(1) Warum entfällt § 31 BGB?"]) \
+        == ["1. Warum entfällt für den Betreuer § 31 BGB?",
+            "**(1)** Warum entfällt § 31 BGB?"]
 
 
 def test_sentence_still_stays_body_text():
