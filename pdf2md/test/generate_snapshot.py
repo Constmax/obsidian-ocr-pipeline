@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Golden snapshot of pure assembly functions.
 
+Line fixtures are kept as the lists a page-cache entry held before Issue
+#144 and reach the functions through `page_cache.recognized_lines()`;
+recognized lines in the output are written back as `[text, box,
+container?]`, so the recording stays comparable.
+
   python3 pdf2md/test/generate_snapshot.py            # rewrite snapshot.json
   python3 pdf2md/test/generate_snapshot.py --check    # check against snapshot.json
 """
@@ -235,11 +240,27 @@ SEAM_DUPLICATE = [
 ]
 
 
+def records(lines):
+    """Fixture lines as recognized lines, through the cache's upgrade."""
+    import page_cache
+    return page_cache.recognized_lines({"lines": lines})
+
+
+def on_lines(func, *positions):
+    """func with the line-list arguments at `positions` as records."""
+    def call(*args):
+        return func(*(records(a) if i in positions else a
+                      for i, a in enumerate(args)))
+    return call
+
+
 def cases(module_map):
     assembly, layout, ocr = module_map
 
     def read_discarded(_):
-        return get_func("assemble_paragraphs", module_map)(ASSEMBLE_FOOTNOTE).discarded
+        result = get_func("assemble_paragraphs", module_map)(
+            records(ASSEMBLE_FOOTNOTE))
+        return [line.text for line, _ in result.discarded]
 
     def running_boilerplate(text, y):
         context_type = getattr(assembly, "AssemblyContext")
@@ -264,25 +285,27 @@ def cases(module_map):
          None, [[t, y] for t, y in RUNNING_TEXTS], running_boilerplate),
         ("fett_ausgleichen", None, [[t] for t in BOLD_TEXTS],
          M("balance_bold")),
-        ("kurze_zeilen", None, one([SHORT_LINES]), M("short_lines")),
+        ("kurze_zeilen", None, one([SHORT_LINES]),
+         on_lines(M("short_lines"), 0)),
         ("randlabel_vorziehen", None, one([MARGIN_LABEL_LINES, 18]),
-         M("promote_margin_labels")),
+         on_lines(M("promote_margin_labels"), 0)),
         ("fussnotennummern_anbinden", None, one([ATTACH_FN_LINES]),
-         M("attach_footnote_numbers")),
+         on_lines(M("attach_footnote_numbers"), 0)),
         ("fussnoten_obsidian", None, one([FN_OBSIDIAN_PARAGRAPHS]),
          M("footnotes_obsidian")),
         ("gliederung_auszeichnen", None, one([FORMAT_HEADINGS_PARAGRAPHS]),
          M("format_headings")),
         ("fragmente_verschmelzen", None, one([FRAGMENT_LINES, 595]),
-         M("merge_fragments")),
+         on_lines(M("merge_fragments"), 0)),
         ("zusammenfuegen_randmarke", None, one([ASSEMBLE_MARGIN_LABEL]),
-         M("assemble_paragraphs")),
+         on_lines(M("assemble_paragraphs"), 0)),
         ("zusammenfuegen_fussnote", None, one([ASSEMBLE_FOOTNOTE]),
-         M("assemble_paragraphs")),
+         on_lines(M("assemble_paragraphs"), 0)),
         ("als_callout", None, one([CALLOUT_PARAGRAPHS, "Test-Titel"]),
          M("as_callout")),
         ("frage_antwort_raster", None,
-         one([GRID_LEFT, GRID_RIGHT]), M("question_answer_grid")),
+         one([GRID_LEFT, GRID_RIGHT]),
+         on_lines(M("question_answer_grid"), 0, 1)),
         ("schleifenlaenge", None, [[t] for t in LOOP_TEXTS],
          M("loop_length")),
         ("entgleist", None, [list(f) for f in DERAILED_CASES],
@@ -291,15 +314,15 @@ def cases(module_map):
          one([TRIM_LOOP_LINES
                + [z("Dieselbe Fussnote steht hier.")] * 100
                + [z(" ".join(["V."] * 40))]]),
-         M("trim_loop")),
+         on_lines(M("trim_loop"), 0)),
         ("ueberlappung_kuerzen_fortsetzung", None,
-         one([SEAM_TOP, SEAM_BOTTOM]), M("trim_overlap")),
+         one([SEAM_TOP, SEAM_BOTTOM]), on_lines(M("trim_overlap"), 0, 1)),
         ("ueberlappung_kuerzen_duplette", None,
          one([SEAM_DUPLICATE[:1], SEAM_DUPLICATE[1:]]),
-         M("trim_overlap")),
+         on_lines(M("trim_overlap"), 0, 1)),
         ("ueberlappung_kuerzen_lesefehler", None,
          one([SEAM_SHIFTED[:1], SEAM_SHIFTED[1:]]),
-         M("trim_overlap")),
+         on_lines(M("trim_overlap"), 0, 1)),
         ("zusammenfuegen_verworfen", None, one([None]),
          read_discarded),
     ]
@@ -308,6 +331,8 @@ def cases(module_map):
 def to_jsonable(x):
     if hasattr(x, "paragraphs") and hasattr(x, "discarded"):
         return to_jsonable(x.paragraphs)
+    if hasattr(x, "container"):  # a recognized line, as the recording holds it
+        return to_jsonable([x.text, x.box] + ([x.container] if x.container else []))
     if isinstance(x, tuple):
         return [to_jsonable(e) for e in x]
     if isinstance(x, list):

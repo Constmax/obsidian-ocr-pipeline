@@ -27,20 +27,20 @@ def alt_steg(mit_box, second_look=False):
     if len(mit_box) < 8:
         return None
     satz = [z for z in mit_box
-            if not A.is_boilerplate(z[0], z[1][1])] or mit_box
-    starts = sorted(z[1][0] for z in satz)
+            if not A.is_boilerplate(z.text, z.box[1])] or mit_box
+    starts = sorted(z.box[0] for z in satz)
     luecke, pos = 0, None
     for a, b in zip(starts, starts[1:]):
         if b - a > luecke:
             luecke, pos = b - a, (a + b) / 2
     if pos is None:
         return None
-    breite = max(z[1][2] for z in satz) - min(z[1][0] for z in satz)
-    voll = [z for z in mit_box if z[1][2] - z[1][0] > breite * 0.6]
-    n_links = sum(1 for z in mit_box if z[1][0] < pos)
+    breite = max(z.box[2] for z in satz) - min(z.box[0] for z in satz)
+    voll = [z for z in mit_box if z.box[2] - z.box[0] > breite * 0.6]
+    n_links = sum(1 for z in mit_box if z.box[0] < pos)
     anteil = min(n_links, len(mit_box) - n_links) / len(mit_box)
     kreuzer = sum(1 for z in mit_box
-                  if z not in voll and z[1][0] < pos < z[1][2])
+                  if z not in voll and z.box[0] < pos < z.box[2])
     sauber = luecke >= breite * 0.08 and kreuzer <= 0.02 * len(mit_box)
     if anteil < 0.25 or not (luecke >= breite * 0.25 or sauber):
         return None
@@ -70,11 +70,12 @@ def buchstaben(absaetze):
 
 
 def seite_bauen(page, context):
+    """Paragraphs of a text-layer page, built the way pdf2md builds them."""
     boxes, _ = L.detect_boxes(page, False,
                               [t[2] for t in L.tables_markdown(page)])
-    lines = C.textlayer_lines(page)
-    return A.assemble_paragraphs(
-        L.split_columns(L.assign_boxes(lines, boxes)), context).paragraphs
+    lines = L.split_columns(L.assign_boxes(C.textlayer_lines(page), boxes))
+    return C.page_block(lines, C.BlockContext(assembly=context),
+                        C.PageMeta(page.number + 1, "textlayer")).paragraphs
 
 
 def main():

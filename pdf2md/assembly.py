@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import re
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 
 LOC = re.compile(r"<\|LOC_(\d+)\|>")
@@ -92,6 +92,24 @@ RUNNING_FOOTER_ZONE = 930
 FOOTER_BAND = RUNNING_FOOTER_ZONE
 
 
+@dataclass(frozen=True)
+class RecognizedLine:
+    """One line Stage 2 read from a source page (CONTEXT.md).
+
+    `box` is `(x0, y0, x1, y1)` in thousandths, None when the model gave
+    none; `conversion.tile_local_axis()` says which axis is still measured
+    in the line's tile. `column` counts 0, 1, … in reading order where the
+    tile or `split_columns()` knows it, None where not; it is never guessed.
+    `container` is `"tabelle"` for a table or `"kasten{i}"` for the box the
+    line lies in. Bold stays as `**` in the text.
+    """
+
+    text: str
+    box: tuple[int, int, int, int] | None = None
+    column: int | None = None
+    container: str | None = None
+
+
 def running_text(text):
     """A line as running lines hold it: no bold markers, single spaces."""
     return re.sub(r"\s+", " ", text.replace("*", "")).strip()
@@ -121,10 +139,11 @@ class AssemblyContext:
 
 @dataclass(frozen=True)
 class AssemblyResult:
-    """Paragraphs assembled from a page and lines discarded as boilerplate."""
+    """Paragraphs assembled from a page, and the lines it discarded with
+    their reason: `running_line`, `page_number` or `boilerplate`."""
 
     paragraphs: list[str]
-    discarded: list[str]
+    discarded: list[tuple[RecognizedLine, str]]
 
 
 # Characters OCR confuses in running lines: "26-II", "26-Il", "26-11", "26-|1".
@@ -172,33 +191,39 @@ def is_misread_footer(text, footer_keys):
 
 def is_boilerplate(text, y=None, context=None, ocr_page=False):
     """Detect Hemmer boilerplate."""
+    return boilerplate_reason(text, y, context, ocr_page) is not None
+
+
+def boilerplate_reason(text, y=None, context=None, ocr_page=False):
+    """Why a line is boilerplate: `running_line`, `page_number` or
+    `boilerplate`; None when it is not."""
     t = text.strip().strip("*").strip()
     if not t:
-        return False
+        return None
     if context and context.is_running(t, y, ocr_page):
-        return True
+        return "running_line"
     if any(p.search(t) for p in BOILERPLATE):
-        return True
+        return "boilerplate"
     if t.count(" - ") >= 2 and sum(1 for s in CITIES if s in t) >= 2:
-        return True
+        return "boilerplate"
     if CITY_FRAGMENT.match(t):
-        return True
+        return "boilerplate"
 
     if len(t) <= 45 and any(p.search(t) for p in ZONE_SIGNALS):
-        return True
+        return "boilerplate"
 
     if (y is not None
             and (y <= PAGE_NUMBER_HEADER or y >= PAGE_NUMBER_FOOTER)
             and re.fullmatch(r"\d{1,4}", t)):
-        return True
+        return "page_number"
 
     in_zone = y is not None and (y <= HEADER_ZONE or y >= FOOTER_ZONE)
     if in_zone:
         if any(p.search(t) for p in ZONE_SIGNALS):
-            return True
+            return "boilerplate"
         if len(t) <= 40 and sum(1 for s in CITIES if s in t) >= 1 and "-" in t:
-            return True
-    return False
+            return "boilerplate"
+    return None
 
 
 ARROWS = {"rightarrow": "→", "Rightarrow": "⇒", "leftarrow": "←",
@@ -384,7 +409,7 @@ def clean_text(s):
 
 
 def parse_lines(text):
-    """['text', (x_min, y_min, x_max, y_max)] per output line."""
+    """One RecognizedLine per output line of the model, box in its tile."""
     lines = []
     for raw in text.splitlines():
         coords = [int(m) for m in LOC.findall(raw)]
@@ -396,7 +421,7 @@ def parse_lines(text):
             box = (min(xs), min(ys), max(xs), max(ys))
         else:
             box = None
-        lines.append([plain, box])
+        lines.append(RecognizedLine(plain, box))
     return lines
 
 
@@ -461,11 +486,6 @@ FN_NUMBER = re.compile(r"^\**\s*(\d{1,2})\s*\**$")
 FN_TEXT = re.compile(r"^[A-ZÄÖÜ„»§]")
 
 
-def column_of(line):
-    """Column that split_columns() gave the line inside assemble_paragraphs."""
-    return line[3] if len(line) > 3 else None
-
-
 def vertical_overlap(a, b):
     """How far two boxes (x0, y0, x1, y1) overlap in height; < 0: apart."""
     return min(a[3], b[3]) - max(a[1], b[1])
@@ -481,32 +501,32 @@ def attach_footnote_numbers(lines, footer=900, proximity=40):
     running footer's row stays apart.
     """
     def joined(number, z):
-        box = (min(number[1][0], z[1][0]), min(number[1][1], z[1][1]),
-               max(number[1][2], z[1][2]), max(number[1][3], z[1][3]))
-        return [f"{FN_NUMBER.match(number[0].strip()).group(1)} {z[0].lstrip()}",
-                box] + list(z[2:])
+        a, b = number.box, z.box
+        box = (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+        text = f"{FN_NUMBER.match(number.text.strip()).group(1)} {z.text.lstrip()}"
+        return replace(z, text=text, box=box)
 
     def text_of(number, z):
-        return (z and z[1] and column_of(number) == column_of(z)
-                and number[1][0] <= z[1][0]
-                and FN_TEXT.match(z[0].lstrip("*").lstrip()))
+        return (z and z.box and number.column == z.column
+                and number.box[0] <= z.box[0]
+                and FN_TEXT.match(z.text.lstrip("*").lstrip()))
 
     out, i = [], 0
     while i < len(lines):
         z = lines[i]
         n = lines[i + 1] if i + 1 < len(lines) else None
-        footnote_number = bool(FN_NUMBER.match(z[0].strip()) and z[1]
-                               and z[1][1] >= footer)
+        footnote_number = bool(FN_NUMBER.match(z.text.strip()) and z.box
+                               and z.box[1] >= footer)
         if (footnote_number and text_of(z, n)
-                and abs(n[1][1] - z[1][1]) <= proximity):
+                and abs(n.box[1] - z.box[1]) <= proximity):
             out.append(joined(z, n))
             i += 2
             continue
         p = out[-1] if out else None
         if (footnote_number and text_of(z, p)
-                and 0 <= p[1][0] - z[1][2] <= proximity
-                and vertical_overlap(z[1], p[1])
-                > 0.5 * min(z[1][3] - z[1][1], p[1][3] - p[1][1])):
+                and 0 <= p.box[0] - z.box[2] <= proximity
+                and vertical_overlap(z.box, p.box)
+                > 0.5 * min(z.box[3] - z.box[1], p.box[3] - p.box[1])):
             out[-1] = joined(z, p)
             i += 1
             continue
@@ -531,11 +551,11 @@ def drop_repeated_labels(lines):
     out = []
     for z in lines:
         prev = out[-1] if out else None
-        if (prev is not None and z[1] and prev[1]
-                and STANDALONE_MARKER.match(z[0].strip())
-                and box_inside(z[1], prev[1])):
-            label = without_bold(z[0])
-            if without_bold(prev[0]).startswith(label + " "):
+        if (prev is not None and z.box and prev.box
+                and STANDALONE_MARKER.match(z.text.strip())
+                and box_inside(z.box, prev.box)):
+            label = without_bold(z.text)
+            if without_bold(prev.text).startswith(label + " "):
                 continue
         out.append(z)
     return out
@@ -555,25 +575,25 @@ def promote_margin_labels(lines, normal, outdent=25, window=8):
     out = list(lines)
     for i in range(1, len(out)):
         z = out[i]
-        if not z[1] or not MARGIN_LABEL.match(z[0].strip()):
+        if not z.box or not MARGIN_LABEL.match(z.text.strip()):
             continue
         near = [x for x in out[max(0, i - window):i + window + 1]
-                if x[1] and x is not z]
+                if x.box and x is not z]
         if len(near) < 4:
             continue
-        body = statistics.median([x[1][0] for x in near])
-        if z[1][0] > body - outdent:
+        body = statistics.median([x.box[0] for x in near])
+        if z.box[0] > body - outdent:
             continue
         j, last_y = i, None
         while j > 0:
             prev = out[j - 1]
-            if not prev[1] or prev[1][0] < body - outdent:
+            if not prev.box or prev.box[0] < body - outdent:
                 break
-            if last_y is not None and prev[1][3] < last_y - 1.6 * normal:
+            if last_y is not None and prev.box[3] < last_y - 1.6 * normal:
                 break
-            if ENUMERATION.match(re.sub(r"\*+", "", prev[0]).lstrip()):
+            if ENUMERATION.match(re.sub(r"\*+", "", prev.text).lstrip()):
                 break
-            last_y = prev[1][1]
+            last_y = prev.box[1]
             j -= 1
         if j < i:
             out.insert(j, out.pop(i))
@@ -584,50 +604,46 @@ def short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
     """Per line: does it end visibly before right margin in justified text?"""
     n = len(lines)
     short, block = [False] * n, [False] * n
-    idx = [i for i, z in enumerate(lines) if z[1]]
+    idx = [i for i, z in enumerate(lines) if z.box]
     for rank, i in enumerate(idx):
         near = [lines[j] for k, j in enumerate(idx) if abs(k - rank) <= window]
-        xs = sorted(z[1][2] for z in near)
+        xs = sorted(z.box[2] for z in near)
         margin = statistics.median(xs[-max(3, len(near) // 5):])
-        width = margin - min(z[1][0] for z in near)
+        width = margin - min(z.box[0] for z in near)
         if width <= 0:
             continue
-        full = sum(1 for z in near if z[1][2] >= margin - 0.02 * width)
+        full = sum(1 for z in near if z.box[2] >= margin - 0.02 * width)
         if full < block_ratio * len(near):
             continue
         block[i] = True
-        short[i] = lines[i][1][2] < margin - margin_slack * width
+        short[i] = lines[i].box[2] < margin - margin_slack * width
 
-    without_coords = [i for i, z in enumerate(lines) if not z[1]]
+    without_coords = [i for i, z in enumerate(lines) if not z.box]
     if len(without_coords) >= 6:
-        med = statistics.median([len(lines[i][0].strip()) for i in without_coords]) or 1
+        med = statistics.median([len(lines[i].text.strip()) for i in without_coords]) or 1
         for i in without_coords:
-            short[i] = len(lines[i][0].strip()) < 0.95 * med
+            short[i] = len(lines[i].text.strip()) < 0.95 * med
     for i in range(n - 1):
-        if short[i] and lines[i + 1][0].lstrip("*").lstrip()[:1].islower():
+        if short[i] and lines[i + 1].text.lstrip("*").lstrip()[:1].islower():
             short[i] = False
     return short, block
 
 
-def assemble_paragraphs(lines, context=None, ocr_page=False, columns=None):
-    """Resolve hyphens and merge lines into paragraphs.
+def assemble_paragraphs(lines, context=None, ocr_page=False):
+    """Resolve hyphens and merge recognized lines into paragraphs.
 
     `ocr_page`: the model read the page, so a running footer may come back
     misread or cut at the gutter, bold comes per recognized line and boxes
     come from ruled lines of the image.
 
-    `columns` holds each line's column from split_columns_indexed(). With
-    it, a column's footnote block is set aside when the next column begins,
-    so the running text goes on where it stopped instead of inside the last
-    footnote (Issue #14).
+    Where the lines know their column, a column's footnote block is set
+    aside when the next column begins, so the running text goes on where it
+    stopped instead of inside the last footnote (Issue #14).
 
     Returns an AssemblyResult — read .paragraphs, not the record itself.
     """
-    if columns is not None and len(columns) == len(lines):
-        lines = [[z[0], z[1], z[2] if len(z) > 2 else None, column]
-                 for z, column in zip(lines, columns)]
     lines = drop_repeated_labels(attach_footnote_numbers(lines))
-    ys = [z[1][1] for z in lines if z[1]]
+    ys = [z.box[1] for z in lines if z.box]
     distances = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 200]
     normal = statistics.median(distances) if distances else None
     lines = promote_margin_labels(lines, normal)
@@ -638,9 +654,7 @@ def assemble_paragraphs(lines, context=None, ocr_page=False, columns=None):
     was_heading, last_marker, prev_idx, buffer_x0 = False, None, None, None
     buffer_columns, last_column, notes = set(), None, []
     for i, z in enumerate(lines):
-        text, box = z[0], z[1]
-        marker = z[2] if len(z) > 2 else None
-        column = column_of(z)
+        text, box, marker, column = z.text, z.box, z.container, z.column
         line_columns = set() if column is None else {column}
         if marker == "tabelle":
             if buffer:
@@ -654,8 +668,9 @@ def assemble_paragraphs(lines, context=None, ocr_page=False, columns=None):
         y = box[1] if box else None
         if not text:
             continue
-        if is_boilerplate(text, y, context=context, ocr_page=ocr_page):
-            discarded.append(text)
+        reason = boilerplate_reason(text, y, context, ocr_page)
+        if reason is not None:
+            discarded.append((replace(z, text=text), reason))
             continue
 
         if (buffer and column is not None and last_column is not None
@@ -784,12 +799,12 @@ STANDALONE_MARKER = re.compile(
 def merge_fragments(lines, W, gap=0.15, max_pt=60):
     """Merge marker fragment and follow-up text on same baseline."""
     rows = []
-    for z in sorted(lines, key=lambda z: z[1][1]):
-        y0, y1 = z[1][1], z[1][3]
+    for z in sorted(lines, key=lambda z: z.box[1]):
+        y0, y1 = z.box[1], z.box[3]
         if rows:
             r = rows[-1]
-            ry0 = min(a[1][1] for a in r)
-            ry1 = max(a[1][3] for a in r)
+            ry0 = min(a.box[1] for a in r)
+            ry1 = max(a.box[3] for a in r)
             height = min(y1 - y0, ry1 - ry0) or 1
             if (min(y1, ry1) - max(y0, ry0)) > 0.5 * height:
                 r.append(z)
@@ -798,19 +813,19 @@ def merge_fragments(lines, W, gap=0.15, max_pt=60):
 
     out = []
     for r in rows:
-        r.sort(key=lambda z: z[1][0])
+        r.sort(key=lambda z: z.box[0])
         i = 0
         while i < len(r):
-            text, box = r[i][0], r[i][1]
+            text, box = r[i].text, r[i].box
             while (i + 1 < len(r) and STANDALONE_MARKER.match(text.strip())
-                   and r[i + 1][1][0] >= box[2]
-                   and r[i + 1][1][0] - box[2] < min(gap * W, max_pt)):
-                t2, b2 = r[i + 1][0], r[i + 1][1]
+                   and r[i + 1].box[0] >= box[2]
+                   and r[i + 1].box[0] - box[2] < min(gap * W, max_pt)):
+                t2, b2 = r[i + 1].text, r[i + 1].box
                 text = re.sub(r"\*\*(\s*)\*\*", r"\1",
                               text.rstrip() + " " + t2.lstrip())
                 box = (box[0], min(box[1], b2[1]), b2[2], max(box[3], b2[3]))
                 i += 1
-            out.append([text, box])
+            out.append(RecognizedLine(text, box))
             i += 1
     return out
 

@@ -3,11 +3,12 @@
 
   python3 -m pytest pdf2md/test/test_naht.py
 """
+from assembly import RecognizedLine
 from ocr import trim_overlap
 
 
 def z(text, y=0):
-    return [text, (0, y, 1000, y + 10), False]
+    return RecognizedLine(text, (0, y, 1000, y + 10))
 
 
 def test_continuation_preserved():
@@ -18,7 +19,7 @@ def test_continuation_preserved():
                 "Paragraf 935 BGB."),
               z("Fussnote 13: BGH NJW 2014, 1524.")]
     out = trim_overlap(top, bottom)
-    assert out[0][0] == "dem M abhanden gekommen ist, richtet sich nach " \
+    assert out[0].text == "dem M abhanden gekommen ist, richtet sich nach " \
                         "Paragraf 935 BGB."
 
 
@@ -37,14 +38,14 @@ def test_full_duplicate_removed():
     top = [z("Die Voraussetzungen des Paragraf 823 Absatz 1 BGB liegen vor.")]
     bottom = [z("Die Voraussetzungen des Paragraf 823 Absatz 1 BGB liegen vor."),
               z("Ein Schaden ist entstanden.")]
-    assert [x[0] for x in trim_overlap(top, bottom)] \
+    assert [x.text for x in trim_overlap(top, bottom)] \
         == ["Ein Schaden ist entstanden."]
 
 
 def test_without_seam_unchanged():
     top = [z("Der Anspruch ist nach Paragraf 985 BGB begruendet und faellig.")]
     bottom = [z("Ein ganz anderer Gedanke beginnt hier ohne jede Wiederholung.")]
-    assert [x[0] for x in trim_overlap(top, bottom)] \
+    assert [x.text for x in trim_overlap(top, bottom)] \
         == ["Ein ganz anderer Gedanke beginnt hier ohne jede Wiederholung."]
 
 
@@ -62,7 +63,7 @@ def test_rest_preserved_despite_reading_error():
                 "Besitzverschaffung folgenden Anscheins nicht nachgeforscht "
                 "hat. Fuer eine Nachforschungsobliegenheit spricht wenig.")]
     out = trim_overlap(top, bottom)
-    assert "Nachforschungsobliegenheit" in out[0][0]
+    assert "Nachforschungsobliegenheit" in out[0].text
 
 
 def test_empty_left():

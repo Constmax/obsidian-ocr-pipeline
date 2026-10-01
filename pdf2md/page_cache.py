@@ -11,11 +11,19 @@ import hashlib
 import json
 import os
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, TypedDict
 
+from assembly import RecognizedLine
+
 
 CACHE_SCHEMA = 1
+# How an entry holds its recognized lines. Format 2: one object per line
+# (Issue #144). Entries without `line_format` hold `[text, box, container?]`
+# lists and, from Issue #14 on, a parallel `columns` array; they stay valid
+# and are read through `recognized_lines()`.
+LINE_FORMAT = 2
 
 
 class CacheParameters(TypedDict, total=False):
@@ -49,18 +57,44 @@ class _CachedPageRequired(TypedDict):
     characters: int
     layout: str
     mode: str
-    lines: list[list[Any]]
+    lines: list[Any]
     trace: list[str]
 
 
 class CachedPage(_CachedPageRequired, total=False):
-    """One parsed page: lines with boxes plus page metadata.
+    """One parsed page: its recognized lines plus page metadata.
 
-    `columns` holds each line's column, None where unknown (Issue #14).
-    Entries written before it existed lack the key and assemble as before.
+    `write_page()` takes the lines as RecognizedLine records and stores them
+    in `LINE_FORMAT`; read them back with `recognized_lines()`.
     """
 
-    columns: list[int | None] | None
+    line_format: int
+
+
+def line_json(line: RecognizedLine) -> dict:
+    """One recognized line as format 2 stores it; None fields are left out."""
+    return {key: value for key, value in asdict(line).items()
+            if value is not None}
+
+
+def recognized_lines(page: dict) -> list[RecognizedLine]:
+    """The recognized lines of a page-cache entry or a page case's page.
+
+    The one upgrade path for older entries: a line list `[text, box,
+    container?]` takes its column from the entry's `columns` (Issue #14)
+    where present, else None. Page cases call it too.
+    """
+    def box(value):
+        return None if value is None else tuple(value)
+
+    if page.get("line_format") == LINE_FORMAT:
+        return [RecognizedLine(line["text"], box(line.get("box")),
+                               line.get("column"), line.get("container"))
+                for line in page["lines"]]
+    columns = page.get("columns") or [None] * len(page["lines"])
+    return [RecognizedLine(text, box(value), column, *container)
+            for (text, value, *container), column
+            in zip(page["lines"], columns)]
 
 
 def file_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -156,17 +190,23 @@ def _valid_box(box: Any) -> bool:
     return all(isinstance(value, (int, float)) for value in box)
 
 
-def _valid_line(line: Any) -> bool:
-    """Check one cached line: text, box, and optional marker."""
-    if not isinstance(line, (list, tuple)) or len(line) < 2:
+def _valid_column(column: Any) -> bool:
+    return column is None or (isinstance(column, int)
+                               and not isinstance(column, bool))
+
+
+def _valid_line(line: Any, line_format: int | None) -> bool:
+    """Check one cached line: text, box, container and, in format 2, column."""
+    if line_format == LINE_FORMAT:
+        return (isinstance(line, dict) and isinstance(line.get("text"), str)
+                and _valid_box(line.get("box"))
+                and _valid_column(line.get("column"))
+                and isinstance(line.get("container"), (str, type(None))))
+    if not isinstance(line, (list, tuple)) or not 2 <= len(line) <= 3:
         return False
-    if not isinstance(line[0], str):
-        return False
-    if not _valid_box(line[1]):
-        return False
-    if len(line) > 2 and not isinstance(line[2], str):
-        return False
-    return True
+    text, box, *container = line
+    return (isinstance(text, str) and _valid_box(box)
+            and all(isinstance(value, str) for value in container))
 
 
 def read_page(directory: Path, page_number: int, expected_key: str):
@@ -226,14 +266,16 @@ def _read_entry(directory: Path, page_number: int, expected_key: str | None):
             return None
         if not isinstance(page.get("mode"), str):
             return None
-        if any(not _valid_line(line) for line in lines):
+        line_format = page.get("line_format")
+        if line_format not in (None, LINE_FORMAT):
+            return None
+        if any(not _valid_line(line, line_format) for line in lines):
             return None
         columns = page.get("columns")
         if columns is not None and (
-                not isinstance(columns, list) or len(columns) != len(lines)
-                or any(c is not None and (not isinstance(c, int)
-                                          or isinstance(c, bool))
-                       for c in columns)):
+                line_format is not None
+                or not isinstance(columns, list) or len(columns) != len(lines)
+                or not all(_valid_column(c) for c in columns)):
             return None
         if not isinstance(trace, list) or any(not isinstance(item, str)
                                               for item in trace):
@@ -244,7 +286,13 @@ def _read_entry(directory: Path, page_number: int, expected_key: str | None):
 
 
 def write_page(directory: Path, context: dict, page: dict) -> Path:
-    """Atomically publish a page entry after it has finished processing."""
+    """Atomically publish a page entry after it has finished processing.
+
+    `page["lines"]` holds RecognizedLine records; they are stored in
+    `LINE_FORMAT`.
+    """
+    page = {**page, "line_format": LINE_FORMAT,
+            "lines": [line_json(line) for line in page["lines"]]}
     page_number = page["number"]
     directory.mkdir(parents=True, exist_ok=True)
     target = page_path(directory, page_number)

@@ -2,7 +2,8 @@
 
 import fitz
 
-from assembly import AssemblyContext, assemble_paragraphs, is_boilerplate
+from assembly import (AssemblyContext, RecognizedLine, assemble_paragraphs,
+                      is_boilerplate)
 from conversion import assembly_context
 
 AUTHOR = "RA Dr. Erika Muster, M.A., LL.M. - 03/2026"
@@ -78,22 +79,23 @@ def test_a_text_layer_running_line_matches_without_its_asterisk():
     """Running lines and recognized lines are normalised alike."""
     with _pdf(2, lambda _n: [("Skript Teil 1*", 0.05)]) as doc:
         context = assembly_context(doc)
-    result = assemble_paragraphs([["Skript Teil 1*", (40, 40, 300, 50)],
-                                  [BODY, (40, 300, 500, 312)]], context)
+    result = assemble_paragraphs(
+        [RecognizedLine("Skript Teil 1*", (40, 40, 300, 50)),
+         RecognizedLine(BODY, (40, 300, 500, 312))], context)
     assert result.paragraphs == [BODY]
 
 
 def test_both_ends_of_a_footer_cut_at_the_gutter_are_dropped():
     lines = [
-        [BODY, (100, 500, 480, 512)],
-        ["RA Dr. Erika Muster, M", (690, 955, 998, 966)],
+        RecognizedLine(BODY, (100, 500, 480, 512)),
+        RecognizedLine("RA Dr. Erika Muster, M", (690, 955, 998, 966)),
         # The cut runs through "Muster"'s "t"; its right half reads as "l".
-        ["ler, M.A., LL.M. - 03/2026", (0, 953, 330, 966)],
-        ["/s - 41-11", (0, 948, 106, 957)],
+        RecognizedLine("ler, M.A., LL.M. - 03/2026", (0, 953, 330, 966)),
+        RecognizedLine("/s - 41-11", (0, 948, 106, 957)),
     ]
     result = assemble_paragraphs(lines, CONTEXT, ocr_page=True)
     assert result.paragraphs == [BODY]
-    assert len(result.discarded) == 3
+    assert [reason for _, reason in result.discarded] == ["running_line"] * 3
 
 
 def test_a_whole_footer_read_with_ocr_confusions_is_dropped():

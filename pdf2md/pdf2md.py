@@ -216,7 +216,8 @@ def _event_sink(progress):
                   f"{len(page.paragraphs):3d} paragraphs | {source}{extra}")
             if page.discarded:
                 print(f"     discarded ({len(page.discarded)}): "
-                      + " ¦ ".join(text[:34] for text in page.discarded[:6])
+                      + " ¦ ".join(line.text[:34]
+                                   for line, _ in page.discarded[:6])
                       + (" …" if len(page.discarded) > 6 else ""))
             findings = event["findings"]
             if findings:

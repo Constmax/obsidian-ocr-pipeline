@@ -3,11 +3,12 @@
 
   python3 -m pytest pdf2md/test/test_schleife.py
 """
+from assembly import RecognizedLine
 from ocr import LOOP_THRESHOLD, loop_length, trim_loop
 
 
 def z(text):
-    return [text, (0, 0, 1000, 10), False]
+    return RecognizedLine(text, (0, 0, 1000, 10))
 
 
 def test_healthy_sentence():
@@ -35,24 +36,24 @@ def test_footnote_block_does_not_trigger():
 def test_counter_trimmed_to_two_occurrences():
     counter = " ".join(f"({j})" for j in range(1982, 2260))
     out = trim_loop([z(counter)])
-    words = out[0][0].split()
+    words = out[0].text.split()
     assert len(words) == 2
 
 
 def test_counter_retains_real_values():
     counter = " ".join(f"({j})" for j in range(1982, 2260))
     out = trim_loop([z(counter)])
-    assert out[0][0].split() == ["(1982)", "(1983)"]
+    assert out[0].text.split() == ["(1982)", "(1983)"]
 
 
 def test_literal_repetition_trimmed():
-    assert trim_loop([z(" ".join(["V."] * 40))])[0][0] == "V. V."
+    assert trim_loop([z(" ".join(["V."] * 40))])[0].text == "V. V."
 
 
 def test_norm_chain_remains_untouched():
     chain = "Ansprueche aus Paragraf 823, Paragraf 826, Paragraf 831, " \
             "Paragraf 840."
-    assert trim_loop([z(chain)])[0][0] == chain
+    assert trim_loop([z(chain)])[0].text == chain
 
 
 def test_prose_remains_untouched():
@@ -61,7 +62,7 @@ def test_prose_remains_untouched():
              "tatbestandsmaessigen Erfolg verwirklicht. Das ist hier der Fall, "
              "weil A den B mit dem Messer verletzte und die Wunde unmittelbar "
              "zum Tod fuehrte.")
-    assert trim_loop([z(prose)])[0][0] == prose
+    assert trim_loop([z(prose)])[0].text == prose
 
 
 def test_same_line_hundredfold():

@@ -7,9 +7,10 @@ Imports only from assembly (one direction, no cycle).
 """
 import re
 import statistics
+from dataclasses import replace
 
-from assembly import (ENUMERATION, NO_JOIN, clean_text, is_boilerplate,
-                      vertical_overlap)
+from assembly import (ENUMERATION, NO_JOIN, RecognizedLine, clean_text,
+                      is_boilerplate, vertical_overlap)
 
 
 def _column_gap(with_box, second_look=False):
@@ -21,8 +22,8 @@ def _column_gap(with_box, second_look=False):
     """
     if len(with_box) < 8:
         return None
-    type_set = [z for z in with_box if not is_boilerplate(z[0], z[1][1])] or with_box
-    height = statistics.median(z[1][3] - z[1][1] for z in type_set) or 10
+    type_set = [z for z in with_box if not is_boilerplate(z.text, z.box[1])] or with_box
+    height = statistics.median(z.box[3] - z.box[1] for z in type_set) or 10
 
     def continues_row(z):
         """A word span that goes on with a line on its own row.
@@ -30,23 +31,23 @@ def _column_gap(with_box, second_look=False):
         Text layers split justified lines into spans; their starts sit
         inside the left column and chop the gutter into small gaps.
         """
-        return any(w is not z and w[1][2] <= z[1][0] < w[1][2] + 1.5 * height
-                   and vertical_overlap(w[1], z[1]) > 0.5 * height
+        return any(w is not z and w.box[2] <= z.box[0] < w.box[2] + 1.5 * height
+                   and vertical_overlap(w.box, z.box) > 0.5 * height
                    for w in type_set)
 
-    starts = sorted(z[1][0] for z in type_set)
-    width = max(z[1][2] for z in type_set) - min(z[1][0] for z in type_set)
+    starts = sorted(z.box[0] for z in type_set)
+    width = max(z.box[2] for z in type_set) - min(z.box[0] for z in type_set)
     if width <= 0:
         return None
-    full = [z for z in with_box if z[1][2] - z[1][0] > width * 0.6]
+    full = [z for z in with_box if z.box[2] - z.box[0] > width * 0.6]
 
     def crossing(pos):
         return sum(1 for z in with_box
-                   if z not in full and z[1][0] < pos < z[1][2])
+                   if z not in full and z.box[0] < pos < z.box[2])
 
     def emptiest(lo, hi):
         """Middle of the longest strip in [lo, hi) the fewest lines cover."""
-        spans = [(z[1][0], z[1][2]) for z in type_set if z not in full]
+        spans = [(z.box[0], z.box[2]) for z in type_set if z not in full]
         cover = [sum(1 for x0, x1 in spans if x0 <= x < x1)
                  for x in range(int(lo), int(hi))]
         least, run, best = min(cover, default=0), 0, (0, (lo + hi) / 2)
@@ -56,7 +57,7 @@ def _column_gap(with_box, second_look=False):
         return best[1]
 
     def balanced(pos):
-        n_left = sum(1 for z in with_box if z[1][0] < pos)
+        n_left = sum(1 for z in with_box if z.box[0] < pos)
         return min(n_left, len(with_box) - n_left) / len(with_box) >= 0.25
 
     best = None
@@ -85,11 +86,11 @@ def _column_gap(with_box, second_look=False):
     # span test missed still ends before it, an out-dented number of the
     # right column starts after it.
     if best is None and second_look:
-        shared = lambda x: sum(1 for w in type_set if abs(w[1][0] - x) <= 2) >= 2
-        xs = sorted(z[1][0] for z in type_set
-                    if shared(z[1][0]) or continues_row(z))
-        edges = sorted(z[1][0] for z in type_set
-                       if not continues_row(z) and shared(z[1][0]))
+        shared = lambda x: sum(1 for w in type_set if abs(w.box[0] - x) <= 2) >= 2
+        xs = sorted(z.box[0] for z in type_set
+                    if shared(z.box[0]) or continues_row(z))
+        edges = sorted(z.box[0] for z in type_set
+                       if not continues_row(z) and shared(z.box[0]))
         for a, b in zip(edges, edges[1:]):
             if b - a < width * 0.08:
                 continue
@@ -107,41 +108,36 @@ def _column_gap(with_box, second_look=False):
     return best[1], full
 
 
-def split_columns(lines, depth=0):
-    """Single column → sorted by y. Two column → left column, then right column."""
-    return [z for z, _ in _split_tagged(lines, depth, ())]
+def split_columns(lines):
+    """Lines in reading order, each with its column.
 
-
-def split_columns_indexed(lines):
-    """split_columns() plus the column of every line it returns.
-
-    Columns count 0, 1, … in reading order; a full-width line (header,
-    grid row, a line across the gutter) belongs to none and gets None.
-    The assembly needs this to keep each column's footnote block apart
-    (Issue #14) instead of guessing the gutter a second time.
+    Single column → sorted by y. Two column → left column, then right
+    column. Columns count 0, 1, … in reading order; a full-width line
+    (header, grid row, a line across the gutter) belongs to none and gets
+    None. The assembly needs the column to keep each column's footnote
+    block apart (Issue #14) instead of guessing the gutter a second time.
     """
-    tagged = _split_tagged(lines, 0, ())
     ids = {}
-    columns = [None if path is None else ids.setdefault(path, len(ids))
-               for _, path in tagged]
-    return [z for z, _ in tagged], columns
+    return [replace(z, column=None if path is None
+                    else ids.setdefault(path, len(ids)))
+            for z, path in _split_tagged(lines, 0, ())]
 
 
 def _split_tagged(lines, depth, path):
     """split_columns() as (line, column path) pairs; None for full width."""
-    with_box = [z for z in lines if z[1]]
-    y = lambda z: z[1][1]
+    with_box = [z for z in lines if z.box]
+    y = lambda z: z.box[1]
     if depth >= 2:
         return [(z, path) for z in
-                sorted(lines, key=lambda z: z[1][1] if z[1] else 0)]
+                sorted(lines, key=lambda z: z.box[1] if z.box else 0)]
     hit = _column_gap(with_box, second_look=depth == 0)
     if hit is None:
-        ordered = (sorted(lines, key=lambda z: z[1][1] if z[1] else 0)
+        ordered = (sorted(lines, key=lambda z: z.box[1] if z.box else 0)
                    if depth or with_box else lines)
         return [(z, path) for z in ordered]
     pos, full = hit
-    left = [z for z in with_box if z not in full and z[1][0] < pos]
-    right = [z for z in with_box if z not in full and z[1][0] >= pos]
+    left = [z for z in with_box if z not in full and z.box[0] < pos]
+    right = [z for z in with_box if z not in full and z.box[0] >= pos]
     header = [z for z in full if y(z) < min([y(z) for z in left + right], default=0)]
     rest_full = [z for z in full if z not in header]
     spanning = lambda part: [(z, None) for z in part]
@@ -167,36 +163,36 @@ def _is_line_start(text):
 
 def _blocks(column, factor=0.8):
     """Cut column lines into blocks by whitespace."""
-    column = sorted(column, key=lambda z: z[1][1])
+    column = sorted(column, key=lambda z: z.box[1])
     if not column:
         return []
-    med = statistics.median([z[1][3] - z[1][1] for z in column]) or 10
+    med = statistics.median([z.box[3] - z.box[1] for z in column]) or 10
     out = [[column[0]]]
     for a, b in zip(column, column[1:]):
-        (out.append([b]) if b[1][1] - a[1][3] > factor * med
+        (out.append([b]) if b.box[1] - a.box[3] > factor * med
          else out[-1].append(b))
     return out
 
 
 def question_answer_grid(left, right, tol=3):
     """Two columns as Markdown table if right depends on left."""
-    left = [z for z in left if not is_boilerplate(clean_text(z[0]), z[1][1])]
-    right = [z for z in right if not is_boilerplate(clean_text(z[0]), z[1][1])]
+    left = [z for z in left if not is_boilerplate(clean_text(z.text), z.box[1])]
+    right = [z for z in right if not is_boilerplate(clean_text(z.text), z.box[1])]
     if len(left) < 6 or len(right) < 6:
         return None
-    starts = sorted(z[1][1] for z in left if _is_line_start(z[0]))
+    starts = sorted(z.box[1] for z in left if _is_line_start(z.text))
     if len(starts) < 4:
         return None
     right_blocks = _blocks(right)
     matching = sum(1 for b in right_blocks
-                   if any(abs(b[0][1][1] - a) <= tol for a in starts))
+                   if any(abs(b[0].box[1] - a) <= tol for a in starts))
     if matching < 3 or matching < 0.75 * len(right_blocks):
         return None
 
-    sorted_left = sorted(left, key=lambda z: z[1][1])
+    sorted_left = sorted(left, key=lambda z: z.box[1])
     rows, preamble = [], []
     for z in sorted_left:
-        if _is_line_start(z[0]):
+        if _is_line_start(z.text):
             rows.append([z])
         elif rows:
             rows[-1].append(z)
@@ -206,7 +202,7 @@ def question_answer_grid(left, right, tol=3):
     def text(group):
         s = ""
         for z in group:
-            t = clean_text(z[0])
+            t = clean_text(z.text)
             if s.endswith("-") and not NO_JOIN.match(t) and t[:1].islower():
                 s = s[:-1] + t
             else:
@@ -214,13 +210,13 @@ def question_answer_grid(left, right, tol=3):
         s = re.sub(r"\*\*(\s*)\*\*", r"\1", s).strip()
         return re.sub(r"\s{2,}", " ", s).replace("|", r"\|")
 
-    bounds = [r[0][1][1] for r in rows] + [10 ** 6]
-    out = [[clean_text(z[0]), z[1]] for z in preamble]
-    for z in sorted(right, key=lambda q: q[1][1]):
-        if z[1][1] < bounds[0] - tol:
-            out.append([clean_text(z[0]), z[1]])
+    bounds = [r[0].box[1] for r in rows] + [10 ** 6]
+    out = [RecognizedLine(clean_text(z.text), z.box) for z in preamble]
+    for z in sorted(right, key=lambda q: q.box[1]):
+        if z.box[1] < bounds[0] - tol:
+            out.append(RecognizedLine(clean_text(z.text), z.box))
 
-    questions = sum(1 for r in rows if r[-1][0].rstrip().endswith("?"))
+    questions = sum(1 for r in rows if r[-1].text.rstrip().endswith("?"))
     title = ("| Frage | Antwort |" if rows and questions >= 0.5 * len(rows)
              else "|  |  |")
     buffer = []
@@ -228,22 +224,22 @@ def question_answer_grid(left, right, tol=3):
     def close_table(box):
         if not buffer:
             return
-        out.append(["\n".join([title, "| --- | --- |"] + buffer),
-                    box, "tabelle"])
+        out.append(RecognizedLine("\n".join([title, "| --- | --- |"] + buffer),
+                                  box, container="tabelle"))
         buffer.clear()
 
     for i, row in enumerate(rows):
         top, bottom = bounds[i] - tol, bounds[i + 1] - tol
-        answer = [z for z in sorted(right, key=lambda q: q[1][1])
-                  if top <= z[1][1] < bottom]
-        box = (min(z[1][0] for z in row), row[0][1][1],
-               max(z[1][2] for z in row + answer),
-               max(z[1][3] for z in row + answer))
+        answer = [z for z in sorted(right, key=lambda q: q.box[1])
+                  if top <= z.box[1] < bottom]
+        box = (min(z.box[0] for z in row), row[0].box[1],
+               max(z.box[2] for z in row + answer),
+               max(z.box[3] for z in row + answer))
         question = text(row)
-        if not answer and _is_line_start(row[0][0]) and len(row) == 1 \
-                and row[0][0].startswith("**"):
+        if not answer and _is_line_start(row[0].text) and len(row) == 1 \
+                and row[0].text.startswith("**"):
             close_table(box)
-            out.append([question, box])
+            out.append(RecognizedLine(question, box))
             continue
         buffer.append(f"| {question} | {text(answer)} |")
     close_table((0, bounds[-2] if len(bounds) > 1 else 0, 1000, 1000))
@@ -464,9 +460,9 @@ def detect_boxes(page, scan, table_frames=()):
         mx, my = (k[0] + k[2]) / 2, (k[1] + k[3]) / 2
         if any(x0 <= mx <= x1 and y0 <= my <= y1 for x0, y0, x1, y1 in table_frames):
             continue
-        n = sum(1 for z in lines
-                if k[0] <= (z[0] + z[2]) / 2 <= k[2]
-                and k[1] <= (z[1] + z[3]) / 2 <= k[3])
+        n = sum(1 for x0, y0, x1, y1 in lines
+                if k[0] <= (x0 + x1) / 2 <= k[2]
+                and k[1] <= (y0 + y1) / 2 <= k[3])
         if n:
             with_text.append((k, n))
     norm = lambda k: (int(k[0] / W * 1000), int(k[1] / H * 1000),
@@ -480,26 +476,25 @@ def detect_boxes(page, scan, table_frames=()):
 
 
 def assign_boxes(lines, boxes, x_range=None):
-    """Attach to each line the box in which it lies."""
+    """Put each line into the box in which it lies (its container)."""
     if not boxes:
         return lines
+    out = []
     for z in lines:
-        if not z[1] or (len(z) > 2 and z[2] == "tabelle"):
-            continue
-        mx, my = (z[1][0] + z[1][2]) / 2, (z[1][1] + z[1][3]) / 2
-        for i, k in enumerate(boxes):
-            if x_range is not None:
-                if not (k[0] < x_range[1] and k[2] > x_range[0]):
-                    continue
-                hit = k[1] <= my <= k[3]
-            else:
-                hit = k[0] <= mx <= k[2] and k[1] <= my <= k[3]
-            if hit:
-                while len(z) < 3:
-                    z.append(None)
-                z[2] = f"kasten{i}"
-                break
-    return lines
+        if z.box and z.container != "tabelle":
+            mx, my = (z.box[0] + z.box[2]) / 2, (z.box[1] + z.box[3]) / 2
+            for i, k in enumerate(boxes):
+                if x_range is not None:
+                    if not (k[0] < x_range[1] and k[2] > x_range[0]):
+                        continue
+                    hit = k[1] <= my <= k[3]
+                else:
+                    hit = k[0] <= mx <= k[2] and k[1] <= my <= k[3]
+                if hit:
+                    z = replace(z, container=f"kasten{i}")
+                    break
+        out.append(z)
+    return out
 
 
 def _clean_cell(t):

@@ -9,6 +9,7 @@ import math
 import re
 import statistics
 from collections import Counter
+from dataclasses import replace
 
 from assembly import parse_lines
 
@@ -20,7 +21,7 @@ def detect_bold(lines, image_path, factor=1.45, max_width=0.75):
     """Detect bold text line-by-line via ink density and add `**`."""
     import numpy as np
     from PIL import Image
-    with_box = [z for z in lines if z[1]]
+    with_box = [z for z in lines if z.box]
     if len(with_box) < 5:
         return lines
     g = np.asarray(Image.open(image_path).convert("L"))
@@ -28,7 +29,7 @@ def detect_bold(lines, image_path, factor=1.45, max_width=0.75):
 
     values = []
     for z in with_box:
-        x0, y0, x1, y1 = z[1]
+        x0, y0, x1, y1 = z.box
         px0, py0 = int(x0 / 1000 * W), int(y0 / 1000 * H)
         px1, py1 = int(x1 / 1000 * W), int(y1 / 1000 * H)
         if px1 - px0 < 5 or py1 - py0 < 3:
@@ -47,20 +48,22 @@ def detect_bold(lines, image_path, factor=1.45, max_width=0.75):
         classes[height // 5].append(density)
     global_med = statistics.median(d for d, _ in valid)
 
-    column_width = max((z[1][2] - z[1][0]) for z in with_box) or 1
+    column_width = max((z.box[2] - z.box[0]) for z in with_box) or 1
 
+    bold = {}
     for z, w in zip(with_box, values):
         if not w:
             continue
         density, height = w
         group = classes.get(height // 5, [])
         med = statistics.median(group) if len(group) >= 3 else global_med
-        wide = (z[1][2] - z[1][0]) / column_width
+        wide = (z.box[2] - z.box[0]) / column_width
         if med > 0 and density > med * factor and wide <= max_width:
-            t = z[0].strip()
+            t = z.text.strip()
             if t and not t.startswith("**"):
-                z[0] = f"**{t}**"
-    return lines
+                bold[id(z)] = f"**{t}**"
+    return [replace(z, text=bold[id(z)]) if id(z) in bold else z
+            for z in lines]
 
 
 def tile_vertically(png, gutter):
@@ -176,7 +179,7 @@ def trim_loop(lines, minimum=3):
     """Trim remaining repetitions."""
     trimmed = []
     for z in lines:
-        w = z[0].split(" ")
+        w = z.text.split(" ")
         if len(w) >= 3 * minimum:
             new_w = _trim_run(w, minimum)
             if len(new_w) >= 3 * COUNTER_THRESHOLD:
@@ -184,10 +187,10 @@ def trim_loop(lines, minimum=3):
                     new_w, COUNTER_THRESHOLD,
                     key=[re.sub(r"\d+", "#", x) for x in new_w])
             new_w = " ".join(new_w)
-            if new_w != z[0]:
-                z = [new_w] + list(z[1:])
+            if new_w != z.text:
+                z = replace(z, text=new_w)
         trimmed.append(z)
-    key_list = [re.sub(r"[^0-9a-zäöüß]+", "", z[0].lower()) for z in trimmed]
+    key_list = [re.sub(r"[^0-9a-zäöüß]+", "", z.text.lower()) for z in trimmed]
     kept, i = [], 0
     while i < len(trimmed):
         n = 1
@@ -202,7 +205,7 @@ def trim_loop(lines, minimum=3):
 def _seam_words(lines):
     out = []
     for i, z in enumerate(lines):
-        for j, w in enumerate(z[0].split()):
+        for j, w in enumerate(z.text.split()):
             k = re.sub(r"[^0-9a-zäöüß]+", "", w.lower())
             if k:
                 out.append((k, i, j))
@@ -227,10 +230,10 @@ def trim_overlap(existing, new_lines, window=150, minimum=6):
             if i < line_idx:
                 continue
             if i == line_idx:
-                rest = " ".join(z[0].split()[word_idx + 1:])
+                rest = " ".join(z.text.split()[word_idx + 1:])
                 if not rest:
                     continue
-                z = [rest] + list(z[1:])
+                z = replace(z, text=rest)
             out.append(z)
         return out
     return new_lines
@@ -242,7 +245,7 @@ def tile_lines(png, ocr, factor, dpi, calibrated=False,
     expected = _ink_amount(png, dpi) * factor if factor else None
     lines = parse_lines(ocr(png, _token_budget(expected)))
     lines = detect_bold(lines, png)
-    text = "\n".join(z[0] for z in lines)
+    text = "\n".join(z.text for z in lines)
     reason, metric = is_derailed(text, expected, calibrated)
     if reason is None:
         return lines, []
@@ -262,19 +265,18 @@ def tile_lines(png, ocr, factor, dpi, calibrated=False,
                           depth + 1, max_depth)
         trace += s
         height = bottom - top
-        for e in z:
-            if e[1]:
-                e[1] = (e[1][0], int((top + e[1][1] / 1000 * height) * 1000),
-                        e[1][2], int((top + e[1][3] / 1000 * height) * 1000))
+        z = [replace(e, box=(e.box[0], int((top + e.box[1] / 1000 * height) * 1000),
+                             e.box[2], int((top + e.box[3] / 1000 * height) * 1000)))
+             if e.box else e for e in z]
         new_lines += trim_overlap(new_lines, z)
-    new_text = "\n".join(e[0] for e in new_lines)
+    new_text = "\n".join(e.text for e in new_lines)
     if _quality(new_text, expected) < _quality(text, expected):
         chosen, note = new_lines, (f"{mark} → retiled, "
                                    f"{len(text)} → {len(new_text)} chars")
     else:
         chosen, note = lines, (f"{mark} → retry discarded "
                                f"({len(new_text)} chars were not better)")
-    if loop_length("\n".join(e[0] for e in chosen)) >= LOOP_THRESHOLD:
+    if loop_length("\n".join(e.text for e in chosen)) >= LOOP_THRESHOLD:
         before = len(chosen)
         chosen = trim_loop(chosen)
         note += f"; repetition trimmed ({before} → {len(chosen)} lines)"
