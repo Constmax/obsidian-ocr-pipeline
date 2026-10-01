@@ -161,10 +161,7 @@ export default class OcrPreviewPlugin extends Plugin {
 
 			if (saved["columnWidths"]) loaded.columnWidths = saved["columnWidths"] as [number, number, number];
 
-			if (typeof saved["pdfZoomMax"] === "number") loaded.pdfZoomMax = saved["pdfZoomMax"];
 			if (typeof saved["syncActive"] === "boolean") loaded.syncActive = saved["syncActive"];
-
-			if (typeof saved["mdEagerLimit"] === "number") loaded.mdEagerLimit = saved["mdEagerLimit"];
 
 			// OCR engine and column split: data from before these settings and
 			// invalid values (e.g. an engine this version does not offer) fall

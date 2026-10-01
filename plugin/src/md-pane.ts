@@ -2,6 +2,10 @@ import { App, Component, MarkdownRenderer, TFile, setIcon } from "obsidian";
 
 import type { PageBlock, Preview } from "./types.ts";
 
+/** Above this many pages, the column no longer renders every page in advance.
+ *  Safety valve for outliers, rarely reached in normal usage. */
+const EAGER_LIMIT = 200;
+
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif", "svg"]);
 
 export type Representation = "rendered" | "source";
@@ -42,7 +46,6 @@ export class MarkdownColumn {
 		private app: App,
 		root: HTMLElement,
 		private parent: Component,
-		private readonly eagerLimit: () => number,
 	) {
 		this.scrollEl = root.createDiv({ cls: "ocr-md-scroll" });
 		this.container = this.scrollEl.createDiv({
@@ -164,12 +167,12 @@ export class MarkdownColumn {
 			return;
 		}
 
-		const eager = preview.blocks.length <= this.eagerLimit();
+		const eager = preview.blocks.length <= EAGER_LIMIT;
 		if (!eager && this.representation === "rendered") {
 			this.container.createDiv({
 				cls: "ocr-leer ocr-md-hinweis",
 				text:
-					`${preview.blocks.length} pages — exceeding the limit of ${this.eagerLimit()}. ` +
+					`${preview.blocks.length} pages — exceeding the limit of ${EAGER_LIMIT}. ` +
 					"Pages remain unrendered; 'Source' displays full text.",
 			});
 		}
