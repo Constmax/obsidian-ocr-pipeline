@@ -17,7 +17,6 @@ SUPPORTED_ENTRYPOINTS = (
     "regress_randlabel.py",
     "regress_randmarke.py",
     "footnote_columns.py",
-    "regress_footnote.py",
     "randlabel_debug.py",
     "reading_order.py",
     "structure_bench.py",

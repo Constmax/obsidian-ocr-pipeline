@@ -18,11 +18,10 @@ bench/out-*/
 bench/pages.json
 *.log
 
-# Arbeitsverzeichnisse der Mess- und Diagnoseskripte. Enthalten Seitenbilder
-# und Modellausgaben aus demselben geschützten Kursmaterial; erzeugt von
-# bench_ocr.py, reading_order.py, randlabel_debug.py und den Archiv-Skripten
-# unter bench/archive/ (bench_defekt, nachspiel, kachel_debug, speed/tune_test),
-# die weiter nach bench/ schreiben.
+# Working directories of the measurement and diagnosis scripts. They hold page
+# images and model output from the same protected course material; written by
+# bench_ocr.py, reading_order.py, randlabel_debug.py and the other measurement
+# scripts under bench/.
 bench/bench-lauf/
 bench/reading-order-lauf/
 bench/structure-lauf/

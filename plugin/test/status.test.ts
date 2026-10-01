@@ -164,19 +164,6 @@ test("Rule 6: two versions at the same time -> re-created, old decision retained
 	assert.deepEqual(res.reCreated, ["Case 8.md"]);
 });
 
-test("legacy handbearbeitet is migrated to manually-edited", () => {
-	const parsed = readManifest(
-		JSON.stringify({
-			version: 1,
-			eintraege: {
-				"Case 8.md": { status: "offen", handbearbeitet: true },
-			},
-		}),
-		NOW,
-	);
-	assert.equal(parsed.entries["Case 8.md"]?.["manually-edited"], true);
-});
-
 test("Rule 6: only one version, but different ocr-date -> also re-created", () => {
 	const prev = withEntry("Case 8.md", {
 		status: "rejected",

@@ -32,11 +32,11 @@ _ocr-preview/_rejected/    rejected (nothing is ever deleted)
 ```
 
 These are the plugin's default folder names; all three are settings. A vault
-set up before the rename keeps its `_ocr-vorschau/` folders
-([installation.md](installation.md)).
+set up before the rename keeps its `_ocr-vorschau/` folders by pointing these
+settings at them.
 
 `review-status.json` in the same folder is merely an **annotation cache**
-(`notiz`, `geprüft-bis`, manual PDF mapping) and can be safely deleted at any time. Details on reconciliation rules: [review-view.md](review-view.md).
+(`note`, `checked-until`, manual PDF mapping) and can be safely deleted at any time. Details on reconciliation rules: [review-view.md](review-view.md).
 
 `_ocr-preview/.cache/` is likewise generated state, not review content: it is
 safe to delete, is ignored by Git, and has no bearing on the three-folder model

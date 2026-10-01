@@ -2,8 +2,7 @@
 
 Benchmark harness for both stages, and the measurement side of Stage-1
 reading order. Supported entry points, what each needs and where it writes:
-`bench/README.md`. Scripts in `bench/archive/` are records of finished
-experiments, not tools.
+`bench/README.md`. Scripts of finished experiments live in git history.
 
 ## Source pages
 

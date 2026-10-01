@@ -201,7 +201,6 @@ class ConversionRequest:
     output_dir: Path
     dpi: int = 150
     tile_from: int = 3000
-    no_bold: bool = False
     ocr_only: bool = False
     retries: int = 1
     lines_dump: Path | None = None
@@ -210,7 +209,6 @@ class ConversionRequest:
     dictionary_correct: bool = False
     dictionary_report: Path | None = None
     image_dir: Path | None = None
-    image_max_edge: int = 1800
     forced_diagram_pages: frozenset[int] = frozenset()
     selected_pages: frozenset[int] | None = None
     diagram_image_only: bool = False
@@ -562,7 +560,10 @@ def diagram_image_name(pdf: Path, number: int) -> str:
     return f"{pdf.stem}-s{number:03d}.png".replace(" ", "-")
 
 
-def diagram_image(pdf: Path, number: int, image_dir: Path, max_edge=1800):
+DIAGRAM_IMAGE_MAX_EDGE = 1800
+
+
+def diagram_image(pdf: Path, number: int, image_dir: Path):
     """Save a page image and return its filename and path."""
     import fitz
 
@@ -571,7 +572,7 @@ def diagram_image(pdf: Path, number: int, image_dir: Path, max_edge=1800):
     with open_document(pdf) as doc:
         page = doc[number - 1]
         long_side = max(page.rect.width, page.rect.height) or 1
-        zoom = min(max_edge / long_side, 4.0)
+        zoom = min(DIAGRAM_IMAGE_MAX_EDGE / long_side, 4.0)
         page.get_pixmap(matrix=fitz.Matrix(zoom, zoom)).save(image_dir / name)
     return name, image_dir / name
 
@@ -591,7 +592,8 @@ def _cache_contexts(request: ConversionRequest) -> tuple[dict, dict]:
     parameters = {
         "dpi": request.dpi,
         "tile_from": request.tile_from,
-        "bold": not request.no_bold,
+        # Bold detection is always on; the key stays so cached pages remain valid.
+        "bold": True,
         "ocr_only": request.ocr_only,
         "retries": request.retries,
         "model": request.model_name,
@@ -940,7 +942,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                     columns = [] if mode != "waagerecht" else None
                     for column, (part, window) in enumerate(tiles):
                         parsed, tile_trace = tile_lines(
-                            part, ocr_adapter, not request.no_bold, factor,
+                            part, ocr_adapter, factor,
                             dpi or request.dpi, calibrated,
                             max_depth=request.retries,
                         )
@@ -987,7 +989,7 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 image_path = None
                 if diagram:
                     _, image_path = diagram_image(
-                        request.pdf, page.number, image_dir, request.image_max_edge)
+                        request.pdf, page.number, image_dir)
                 seconds = 0.0 if reused else time.perf_counter() - page_started
                 result = PageResult(
                     number=page.number, source=source,

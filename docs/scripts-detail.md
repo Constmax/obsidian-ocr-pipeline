@@ -294,10 +294,10 @@ With automated MediaBox Fix, large scans remain RAM-safe:
 `pdf2md` options have English names (`--pages`, `--refresh-cache`,
 `--progress`, `--dictionary`, `--dictionary-correct`, `--dictionary-report`,
 `--no-dictionary`, `--lines-dump`, `--diagram-pages`, `--diagram-image-only`,
-`--retries`, `--tile-from`, `--image-dir`, `--image-max-edge`, `--no-bold`,
+`--retries`, `--tile-from`, `--image-dir`,
 `--ocr-only`). The German names they replaced (`--seiten`, `--neu`,
 `--fortschritt`, `--woerterbuch*`, `--zeilen-dump`, `--diagramm-*`,
-`--neuversuche`, `--kachel-ab`, `--bild-*`, `--kein-fett`, `--nur-ocr`) stay
+`--neuversuche`, `--kachel-ab`, `--bild-dir`, `--nur-ocr`) stay
 accepted as aliases; the Obsidian plugin still spawns `--seiten` and
 `--fortschritt`. This document uses the English names.
 

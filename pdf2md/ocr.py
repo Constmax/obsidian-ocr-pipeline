@@ -236,13 +236,12 @@ def trim_overlap(existing, new_lines, window=150, minimum=6):
     return new_lines
 
 
-def tile_lines(png, ocr, with_bold, factor, dpi, calibrated=False,
+def tile_lines(png, ocr, factor, dpi, calibrated=False,
                depth=0, max_depth=1):
     """Process a tile — and recalculate on derailed generation."""
     expected = _ink_amount(png, dpi) * factor if factor else None
     lines = parse_lines(ocr(png, _token_budget(expected)))
-    if with_bold:
-        lines = detect_bold(lines, png)
+    lines = detect_bold(lines, png)
     text = "\n".join(z[0] for z in lines)
     reason, metric = is_derailed(text, expected, calibrated)
     if reason is None:
@@ -259,7 +258,7 @@ def tile_lines(png, ocr, with_bold, factor, dpi, calibrated=False,
         return lines, [f"{png.stem}: {mark}, not resolved"]
     new_lines, trace = [], []
     for part, top, bottom in tile_horizontally(png, 2):
-        z, s = tile_lines(part, ocr, with_bold, factor, dpi, calibrated,
+        z, s = tile_lines(part, ocr, factor, dpi, calibrated,
                           depth + 1, max_depth)
         trace += s
         height = bottom - top
