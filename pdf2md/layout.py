@@ -8,11 +8,17 @@ Imports only from assembly (one direction, no cycle).
 import re
 import statistics
 
-from assembly import ENUMERATION, NO_JOIN, is_boilerplate, clean_text
+from assembly import (ENUMERATION, NO_JOIN, clean_text, is_boilerplate,
+                      vertical_overlap)
 
 
-def _column_gap(with_box):
-    """(Position of column gap, full-width lines) or None."""
+def _column_gap(with_box, second_look=False):
+    """(Position of column gap, full-width lines) or None.
+
+    `second_look`: on the whole page, look again for a clean gutter where
+    the first pass found none (Issue #14); inside a column it would split
+    an indented outline.
+    """
     if len(with_box) < 8:
         return None
     type_set = [z for z in with_box if not is_boilerplate(z[0], z[1][1])] or with_box
@@ -25,8 +31,8 @@ def _column_gap(with_box):
         inside the left column and chop the gutter into small gaps.
         """
         return any(w is not z and w[1][2] <= z[1][0] < w[1][2] + 1.5 * height
-                   and min(w[1][3], z[1][3]) - max(w[1][1], z[1][1])
-                   > 0.5 * height for w in type_set)
+                   and vertical_overlap(w[1], z[1]) > 0.5 * height
+                   for w in type_set)
 
     starts = sorted(z[1][0] for z in type_set)
     width = max(z[1][2] for z in type_set) - min(z[1][0] for z in type_set)
@@ -37,6 +43,17 @@ def _column_gap(with_box):
     def crossing(pos):
         return sum(1 for z in with_box
                    if z not in full and z[1][0] < pos < z[1][2])
+
+    def emptiest(lo, hi):
+        """Middle of the longest strip in [lo, hi) the fewest lines cover."""
+        spans = [(z[1][0], z[1][2]) for z in type_set if z not in full]
+        cover = [sum(1 for x0, x1 in spans if x0 <= x < x1)
+                 for x in range(int(lo), int(hi))]
+        least, run, best = min(cover, default=0), 0, (0, (lo + hi) / 2)
+        for k, c in enumerate(cover):
+            run = run + 1 if c == least else 0
+            best = max(best, (run, int(lo) + k + 1 - run / 2))
+        return best[1]
 
     def balanced(pos):
         n_left = sum(1 for z in with_box if z[1][0] < pos)
@@ -57,29 +74,32 @@ def _column_gap(with_box):
         if best is None or rank > best[0]:
             best = (rank, pos)
 
-    # A second look for a clean gutter (Issue #14). Above, crossings are
-    # counted at the midpoint between two starts, inside the left column's
-    # text, so every left line crosses; and word spans of justified lines or
-    # a centred footer chop the gutter into small gaps. Here only column
-    # edges count as starts (no word span, at least two lines), and
-    # crossings are counted just left of the right edge, where the fewest
-    # lines run through. The split lies halfway between the right edge and
-    # the last span starting before it, so word spans keep their column.
-    shared = lambda x: sum(1 for w in type_set if abs(w[1][0] - x) <= 2) >= 2
-    xs = sorted(z[1][0] for z in type_set
-                if shared(z[1][0]) or continues_row(z))
-    edges = sorted(z[1][0] for z in type_set
-                   if not continues_row(z) and shared(z[1][0]))
-    for a, b in zip(edges, edges[1:]):
-        if b - a < width * 0.08:
-            continue
-        pos = (max(x for x in xs if x < b) + b) / 2
-        crossings = crossing(b - 0.5)
-        if not balanced(pos) or crossings > 0.02 * len(with_box):
-            continue
-        rank = (-crossings, b - a)
-        if best is None or rank > best[0]:
-            best = (rank, pos)
+    # A second look for a clean gutter (Issue #14), on the whole page and
+    # only where the first found none. Above, crossings are counted at the midpoint between two
+    # starts, inside the left column's text, so every left line crosses; and
+    # word spans of justified lines or a centred footer chop the gutter into
+    # small gaps. Here only column edges count as starts (no word span, at
+    # least two lines), and crossings are counted just left of the right
+    # edge, where the fewest lines run through. The split goes into the
+    # strip before that edge that the fewest lines cover: a word span the
+    # span test missed still ends before it, an out-dented number of the
+    # right column starts after it.
+    if best is None and second_look:
+        shared = lambda x: sum(1 for w in type_set if abs(w[1][0] - x) <= 2) >= 2
+        xs = sorted(z[1][0] for z in type_set
+                    if shared(z[1][0]) or continues_row(z))
+        edges = sorted(z[1][0] for z in type_set
+                       if not continues_row(z) and shared(z[1][0]))
+        for a, b in zip(edges, edges[1:]):
+            if b - a < width * 0.08:
+                continue
+            pos = emptiest(max(x for x in xs if x < b), b)
+            crossings = crossing(b - 0.5)
+            if not balanced(pos) or crossings > 0.02 * len(with_box):
+                continue
+            rank = (-crossings, b - a)
+            if best is None or rank > best[0]:
+                best = (rank, pos)
     if best is None:
         return None
     return best[1], full
@@ -112,7 +132,7 @@ def _split_tagged(lines, depth, path):
     if depth >= 2:
         return [(z, path) for z in
                 sorted(lines, key=lambda z: z[1][1] if z[1] else 0)]
-    hit = _column_gap(with_box)
+    hit = _column_gap(with_box, second_look=depth == 0)
     if hit is None:
         ordered = (sorted(lines, key=lambda z: z[1][1] if z[1] else 0)
                    if depth or with_box else lines)
