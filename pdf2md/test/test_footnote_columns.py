@@ -64,6 +64,14 @@ def test_gutter_found_despite_word_spans_and_centred_footer():
     assert split_columns(two_column_page()) == ordered
 
 
+def test_word_span_after_a_wide_space_keeps_its_column():
+    """A justified line's last word set far from the rest: the span test
+    misses it, but it ends before the gutter, so it stays left."""
+    page = two_column_page() + [z("Wort", 470, 664, 480)]
+    ordered, columns = split_columns_indexed(page)
+    assert dict(zip((line[0] for line in ordered), columns))["Wort"] == 0
+
+
 def test_each_definition_keeps_its_own_column():
     paragraphs = assemble(two_column_page())
     defs = [p for p in paragraphs if p.startswith("[^")]
