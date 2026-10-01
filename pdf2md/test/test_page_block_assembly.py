@@ -335,6 +335,16 @@ def test_latex_and_private_use_glyphs_become_plain_characters():
     ]) == ["→ der Pfeil und Text ⇒ → ⇨ • ▪ unterstrichen"]
 
 
+def test_latex_footnote_mark_becomes_an_obsidian_mark():
+    assert paragraphs([z(r"Der Besitzer haftet.^{12}")]) \
+        == ["Der Besitzer haftet.[^12]"]
+
+
+def test_inline_math_delimiters_are_dropped():
+    assert paragraphs([z(r"Die Variable \(x\) bleibt.")]) \
+        == ["Die Variable x bleibt."]
+
+
 def test_misread_section_signs_and_roman_numerals_are_repaired():
     assert paragraphs([
         z("Nach $ 5 BGB und § § 929, § 854 | BGB sowie | BGB gilt das."),

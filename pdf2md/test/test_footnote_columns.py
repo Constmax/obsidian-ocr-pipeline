@@ -141,7 +141,9 @@ def test_same_number_in_both_columns_right_column_owns_it():
         ["6 Beispiel, Zeitschrift 2012, S. 3. 7 Vgl. Probe 2015."],
         [*BODY, "Die Behörde hat ihr Ermessen nicht ausgeübt.7"],
         ["7 Muster, Lehrbuch, Rn. 12."]))
-    assert "[^7]: Muster, Lehrbuch, Rn. 12." in out
+    assert out[-2:] == [
+        "[^6]: Beispiel, Zeitschrift 2012, S. 3. 7 Vgl. Probe 2015.",
+        "[^7]: Muster, Lehrbuch, Rn. 12."]
 
 
 def test_stray_opening_its_column_goes_under_no_other_number():
