@@ -749,6 +749,21 @@ def assemble_paragraphs(lines, context=None, ocr_page=False, columns=None):
 
 
 SENTENCE_END = re.compile(r"[.!?][\"“»)\]]?$")
+FINAL_ABBREVIATION = re.compile(r"(?:^|[\s(])(?:[^\W\d_]{1,3}\.){2,}$")
+
+
+def ends_sentence(text):
+    """Does a labelled paragraph end like a sentence? (#164)
+
+    A heading may end in an abbreviation ("gegen den e.V.") and, under a
+    letter or roman label, in a question ("III. Anspruch aus § 831 BGB?").
+    A numbered question stays a sentence: those are question lists.
+    """
+    if FINAL_ABBREVIATION.search(text):
+        return False
+    if text.endswith("?") and not re.match(r"\(?\d", text):
+        return False
+    return bool(SENTENCE_END.search(text))
 
 
 def format_headings(paragraphs, max_heading=90):
@@ -762,7 +777,7 @@ def format_headings(paragraphs, max_heading=90):
             continue
         blank = without_bold(raw)
         if ((len(blank) <= max_heading or only_bold(raw))
-                and (not SENTENCE_END.search(blank) or "**" in raw)):
+                and (not ends_sentence(blank) or "**" in raw)):
             out.append("#" * lvl + " " + blank)
         elif not raw.startswith("**"):
             marker, rest = raw.split(None, 1) if " " in raw else (raw, "")
