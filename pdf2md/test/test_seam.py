@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Seam deduplication tests.
 
-  python3 -m pytest pdf2md/test/test_naht.py
+  python3 -m pytest pdf2md/test/test_seam.py
 """
 from assembly import RecognizedLine
 from ocr import trim_overlap
