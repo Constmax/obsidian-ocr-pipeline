@@ -148,6 +148,11 @@ def test_a_diagram_page_embeds_its_image_above_the_text_callout(tmp_path):
     assert image_only.markdown == (
         "%% S. 3 | diagramm %%\n\n![[skript-s003.png]]")
     assert no_text.markdown == image_only.markdown
+    two = page_block(OCR_LINES, _context(), meta)
+    assert two.markdown.endswith(
+        " Der Verkaufer haftet nach § 280 Abs. 1 BGB für den Schaden.\n"
+        ">\n"
+        "> 1. Rechtsfolge ist der Schadensersatz statt der Leistung Xqzwmpfk.")
 
 
 def _loc(x0, y0, x1, y1):

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Loop detection and trimming, literal and digit-blind.
 
-  python3 -m pytest pdf2md/test/test_schleife.py
+  python3 -m pytest pdf2md/test/test_loop.py
 """
 from assembly import RecognizedLine
-from ocr import LOOP_THRESHOLD, loop_length, trim_loop
+from ocr import LOOP_THRESHOLD, is_derailed, loop_length, trim_loop
 
 
 def z(text):
@@ -67,3 +67,25 @@ def test_prose_remains_untouched():
 
 def test_same_line_hundredfold():
     assert len(trim_loop([z("Dieselbe Fussnote steht hier.")] * 100)) == 2
+
+
+def test_a_loop_derails_the_output():
+    assert is_derailed(" ".join(["a b c d e"] * 30)) == ("Schleife", 30.0)
+
+
+def test_text_far_shorter_than_the_ink_promises_is_cut_off():
+    assert is_derailed("Kurz abgebrochen.", 500) == ("Abbruch", 17 / 500)
+
+
+def test_text_far_longer_than_the_ink_promises_is_too_long():
+    assert is_derailed("x" * 2000, 500) == ("zu lang", 4.0)
+
+
+def test_the_calibrated_corridor_is_narrower():
+    text = "x" * 300
+    assert is_derailed(text, 500) == (None, 0.0)
+    assert is_derailed(text, 500, calibrated=True) == ("Abbruch", 0.6)
+
+
+def test_a_small_expectation_is_not_checked():
+    assert is_derailed("Kurz.", 200) == (None, 0.0)
