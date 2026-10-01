@@ -234,8 +234,7 @@ def test_sigint_halfway_through_run():
         def read_stderr():
             for line in proc.stderr:
                 stderr_lines.append(line)
-                event = json.loads(line) if line.startswith("{") else {}
-                if event.get("typ") == "seite":
+                if '"typ": "seite"' in line:
                     first_page.set()
 
         thread = threading.Thread(target=read_stderr, daemon=True)
