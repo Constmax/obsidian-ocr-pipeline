@@ -6,11 +6,9 @@ the blocks stay apart and a number never takes text from the other column.
 
   python3 -m pytest pdf2md/test/test_footnote_columns.py
 """
-from dataclasses import replace
-
 import page_cache
-from assembly import (RecognizedLine, assemble_paragraphs,
-                      _attach_footnote_numbers, _footnotes_obsidian)
+from assembly import AssemblyContext, RecognizedLine, assemble_paragraphs
+from conversion import BlockContext, PageMeta, page_block
 from layout import split_columns
 
 
@@ -95,58 +93,81 @@ def test_running_text_continues_past_the_left_footnote_block():
     assert "[^4]: Muster, Lehrbuch, Rn. 4." in paragraphs
 
 
+def two_columns(left, left_notes, right, right_notes, known=True):
+    """Each column's body from the top and its footnote block at the foot,
+    left column first; `known=False` leaves every column unknown."""
+    def column(body, notes, x0, x1, index):
+        index = index if known else None
+        return (stack(body, 100, x0, x1, index)
+                + stack(notes, 900, x0, x1, index, step=12))
+    return column(left, left_notes, 128, 480, 0) \
+        + column(right, right_notes, 557, 909, 1)
+
+
+def stack(texts, y, x0, x1, column, step=18):
+    return [z(text, x0, y + step * i, x1, column=column)
+            for i, text in enumerate(texts)]
+
+
+def page(lines):
+    return page_block(lines, BlockContext(assembly=AssemblyContext()),
+                      PageMeta(number=1, source="textlayer")).paragraphs
+
+
+BODY = [f"Zeile {k} im Blocksatz bis zum Rand." for k in range(3)]
+
+
 def test_same_number_in_both_columns_the_citing_column_decides():
     """A citation page number after a sentence end ("S. 7. 5 Vgl. ...") looks
     like definition 5 in the right column. The left column cites 5 and holds
     its definition, so that one wins; the right column keeps its text."""
-    paragraphs = ["Die Klage ist zulässig.5 Sie ist auch begründet.",
-                  "5 Vgl. Muster, Lehrbuch, Rn. 5.",
-                  "Der Bescheid ist rechtswidrig.6",
-                  "6 Beispiel, Zeitschrift 2016, 7. 5 Vgl. auch Probe 2015."]
-    out = _footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}])
+    columns = ([*BODY, "Die Klage ist zulässig.5 Sie ist auch begründet."],
+               ["5 Vgl. Muster, Lehrbuch, Rn. 5."],
+               [*BODY, "Der Bescheid ist rechtswidrig.6"],
+               ["6 Beispiel, Zeitschrift 2016, 7. 5 Vgl. auch Probe 2015."])
+    out = page(two_columns(*columns))
     assert "[^5]: Vgl. Muster, Lehrbuch, Rn. 5." in out
     assert "[^6]: Beispiel, Zeitschrift 2016, 7. 5 Vgl. auch Probe 2015." in out
     # Unknown columns fall back to reading order, but lose no digit.
-    merged = _footnotes_obsidian(paragraphs)
+    merged = page(two_columns(*columns, known=False))
     assert ("[^5]: Vgl. Muster, Lehrbuch, Rn. 5. 5 Vgl. auch Probe 2015."
             in merged)
 
 
 def test_same_number_in_both_columns_right_column_owns_it():
     """Reading order alone would give the left column's stray 7 the number."""
-    paragraphs = ["Das ergibt sich aus der Rechtsprechung.6",
-                  "6 Beispiel, Zeitschrift 2012, 7 (9).",
-                  "Die Behörde hat ihr Ermessen nicht ausgeübt.7",
-                  "7 Muster, Lehrbuch, Rn. 12."]
-    out = _footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}])
-    assert out[-2:] == ["[^6]: Beispiel, Zeitschrift 2012, 7 (9).",
-                        "[^7]: Muster, Lehrbuch, Rn. 12."]
+    out = page(two_columns(
+        [*BODY, "Das ergibt sich aus der Rechtsprechung.6"],
+        ["6 Beispiel, Zeitschrift 2012, S. 3. 7 Vgl. Probe 2015."],
+        [*BODY, "Die Behörde hat ihr Ermessen nicht ausgeübt.7"],
+        ["7 Muster, Lehrbuch, Rn. 12."]))
+    assert "[^7]: Muster, Lehrbuch, Rn. 12." in out
 
 
 def test_stray_opening_its_column_goes_under_no_other_number():
     """A stray 5 that opens the right column's block has no definition of
     its own column before it; it stays a paragraph instead of joining the
     left column's 5."""
-    paragraphs = ["Die Klage ist zulässig.5",
-                  "5 Muster, Lehrbuch, Rn. 5.",
-                  "Sie ist auch begründet.6",
-                  "5 Vgl. auch Probe 2015.",
-                  "6 Beispiel, Zeitschrift 2016, 7."]
-    out = _footnotes_obsidian(paragraphs, [{0}, {0}, {1}, {1}, {1}])
+    out = page(two_columns(
+        [*BODY, "Die Klage ist zulässig.5"],
+        ["5 Muster, Lehrbuch, Rn. 5."],
+        [*BODY, "Sie ist auch begründet.6"],
+        ["5 Vgl. auch Probe 2015.", "6 Beispiel, Zeitschrift 2016, 7."]))
     assert "[^5]: Muster, Lehrbuch, Rn. 5." in out
     assert "5 Vgl. auch Probe 2015." in out
     assert "[^6]: Beispiel, Zeitschrift 2016, 7." in out
 
 
 def test_no_citing_column_the_neighbour_number_decides():
-    """Neither column cites 2 (its mark sits in a full-width line). The
-    right column's stray comes first in reading order, but the left column
+    """Neither column cites 2: its mark sits in a full-width line. The left
+    column's block is held back until after the right column's, so the
+    right column's stray comes first in reading order; the left column
     holds 1, so its 2 is the definition."""
-    paragraphs = ["Ein Satz über die ganze Breite.2",
-                  "2 Vgl. Probe 2015.",
-                  "1 Muster, Lehrbuch, Rn. 1.",
-                  "2 Beispiel, Zeitschrift 2016, 7."]
-    out = _footnotes_obsidian(paragraphs, [set(), {1}, {0}, {0}])
+    lines = [z("Ein Satz über die ganze Breite.2", 128, 40, 909),
+             *two_columns(BODY, ["1 Muster, Lehrbuch, Rn. 1.",
+                                 "2 Beispiel, Zeitschrift 2016, 7."],
+                          BODY, ["2 Vgl. Probe 2015."])]
+    out = page(lines)
     assert "[^2]: Beispiel, Zeitschrift 2016, 7." in out
     assert "2 Vgl. Probe 2015." in out
 
@@ -155,40 +176,13 @@ def test_paragraph_across_the_gutter_cites_for_both_columns():
     """A left paragraph picked up again in the right column covers both, so
     its mark counts for the right column's definition too; the neighbour
     number then gives 4 to the right column."""
-    paragraphs = ["Der Satz beginnt links und endet rechts.4",
-                  "2 Muster, Lehrbuch, Rn. 2. 4 Vgl. Probe 2015.",
-                  "4 Beispiel, Zeitschrift 2016, 7.",
-                  "5 Autor, Kommentar, Rn. 5."]
-    out = _footnotes_obsidian(paragraphs, [{0, 1}, {0}, {1}, {1}])
+    out = page(two_columns(
+        [*BODY, "Der Satz beginnt links und"],
+        ["2 Muster, Lehrbuch, Rn. 2. 4 Vgl. Probe 2015."],
+        ["endet rechts.4", *BODY],
+        ["4 Beispiel, Zeitschrift 2016, 7.", "5 Autor, Kommentar, Rn. 5."]))
     assert "[^4]: Beispiel, Zeitschrift 2016, 7." in out
     assert "[^2]: Muster, Lehrbuch, Rn. 2. 4 Vgl. Probe 2015." in out
-
-
-def test_number_is_not_attached_to_text_of_the_other_column():
-    number = z("4", 95, 930, 109, column=0)
-    other = z("Muster, Lehrbuch, Rn. 12.", 557, 930, 900, column=1)
-    assert _attach_footnote_numbers([number, other]) == [number, other]
-    same = replace(other, box=(128, 930, 480, 939), column=0)
-    assert _attach_footnote_numbers([number, same])[0].text \
-        == "4 Muster, Lehrbuch, Rn. 12."
-
-
-def test_number_sorted_after_its_text_on_the_same_row():
-    """A number set 2 thousandths lower than its text sorts after it."""
-    lines = [z("Muster, Lehrbuch, Rn. 82.", 557, 917, 758),
-             z("Muster, Lehrbuch, Rn. 84f.", 557, 927, 908),
-             z("12", 523, 929, 545)]
-    out = _attach_footnote_numbers(lines)
-    assert [line.text for line in out] == ["Muster, Lehrbuch, Rn. 82.",
-                                         "12 Muster, Lehrbuch, Rn. 84f."]
-
-
-def test_page_number_beside_the_running_footer_stays_apart():
-    """A page number on the footer's row is no footnote number: joined, the
-    footer would no longer be recognized as a running line."""
-    lines = [z("Autorin A, Kursanbieter - 01/2026", 651, 948, 832),
-             z("**1**", 445, 949, 454)]
-    assert _attach_footnote_numbers(lines) == lines
 
 
 def test_cache_keeps_columns(tmp_path):

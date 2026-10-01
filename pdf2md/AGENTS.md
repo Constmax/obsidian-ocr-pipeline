@@ -25,10 +25,12 @@ contract: change the producer and the plugin in one PR.
 
 - `pdf2md/test` runs without MLX and without the vault; model execution is
   replaced through the `OcrAdapter` protocol in `conversion.py`.
-- `test_snapshot.py` compares pure assembly functions with a golden
-  recording (`test/data/snapshot.json`). An intended assembly change
-  regenerates it with `python3 pdf2md/test/generate_snapshot.py`; the PR
-  names each changed entry and why it changed.
+- Assembly is tested at `page_block`, the one public interface of
+  `assembly.py`: recognized lines with invented text in, page block out
+  (`test_page_block_assembly.py`, one test per behavior). Tests call no
+  private assembly helper, so a refactor inside the assembly keeps them; an
+  intended behavior change edits the test of that behavior. Real pages are
+  checked by page cases (below).
 
 ## Page cases
 

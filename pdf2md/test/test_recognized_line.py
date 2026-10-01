@@ -8,7 +8,8 @@ import pytest
 
 import conversion
 import page_cache
-from assembly import AssemblyContext, RecognizedLine, assemble_paragraphs
+from assembly import (AssemblyContext, RecognizedLine, assemble_paragraphs,
+                      parse_lines)
 from conversion import ConversionRequest, convert_document, tile_local_axis
 from layout import assign_boxes
 
@@ -38,6 +39,15 @@ def _cached_lines(tmp_path, make_vector_pdf, monkeypatch, layout, tile_from):
     entry = page_cache.read_latest_page(
         page_cache.cache_directory(output, pdf), 1)
     return entry["mode"], page_cache.recognized_lines(entry)
+
+
+def test_model_output_becomes_lines_with_their_box_in_the_tile():
+    text = (_loc(100, 210, 880, 225) + "Er ist Besitzdiener.\n"
+            "\n" + _loc(120, 290, 140, 305) + "   \n"
+            "Eine Zeile ohne Koordinaten.")
+    assert parse_lines(text) == [
+        RecognizedLine("Er ist Besitzdiener.", (100, 210, 880, 225)),
+        RecognizedLine("Eine Zeile ohne Koordinaten.")]
 
 
 def test_a_vertical_tile_gives_its_lines_its_index_as_column(
