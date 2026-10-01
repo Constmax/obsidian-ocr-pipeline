@@ -8,7 +8,7 @@
 // against contracts/cli-contract.json (Issue #55). WebP and HEIC
 // are missing on purpose: fitz does not open them.
 //
-// Stage 1 (`bin/`, the searchable copy) stays PDF-only — its column split and
+// Stage 1 (`bin/`, the OCR text layer) stays PDF-only — its column split and
 // text-layer checks all assume PDF input.
 //
 // Pure module: no imports from `obsidian` so it stays testable without a

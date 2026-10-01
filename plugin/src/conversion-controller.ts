@@ -12,13 +12,13 @@ import type { ChildProcess } from "child_process";
 import {
 	abortChild,
 	convertPdf,
-	createSearchableCopy,
+	addTextLayer,
 	terminateProcessGroup,
 	type ConversionOptions,
 	type ConversionResult,
 	type OcrEngine,
-	type SearchableCopyOptions,
-	type SearchableCopyResult,
+	type TextLayerOptions,
+	type TextLayerResult,
 	type SpawnFunction,
 } from "./conversion.ts";
 
@@ -82,14 +82,13 @@ export type ConvertFunction = (
 	options?: ConversionOptions,
 ) => Promise<ConversionResult>;
 
-export type SearchableCopyFunction = (
+export type TextLayerFunction = (
 	source: string,
-	destination: string,
 	cli: string,
 	cwd: string,
 	spawnFn?: SpawnFunction,
-	options?: SearchableCopyOptions,
-) => Promise<SearchableCopyResult>;
+	options?: TextLayerOptions,
+) => Promise<TextLayerResult>;
 
 export interface ControllerDependencies {
 	convert?: ConvertFunction;
@@ -97,16 +96,15 @@ export interface ControllerDependencies {
 	abort?: (child: ChildProcess) => void;
 	resolveExecutable?: () => string;
 	idleTimeoutMs?: number;
-	searchableCopy?: SearchableCopyFunction;
+	addTextLayer?: TextLayerFunction;
 	/** Stops a Stage-1 child together with its process group. */
 	abortGroup?: (child: ChildProcess) => void;
 	resolveReprocessRaw?: () => string;
 }
 
 /** A Stage-1 run; paths are vault-relative. */
-export interface SearchableCopyRequest {
+export interface TextLayerRequest {
 	source: PdfSource;
-	destination: string;
 	engine: OcrEngine;
 	splitColumns: boolean;
 	/** Pages exempt from the B5 gate, e.g. "1,5-7". */
@@ -232,7 +230,7 @@ export function classifyOcrFailure(result: ConversionResult): FailureDescription
 	}
 
 	const extra = detail.length > 0 ? ` — ${detail.replace(/\.$/, "")}` : "";
-	return { kind, message: `OCR Preview: Searchable copy failed (${codeText})${extra}.` };
+	return { kind, message: `OCR Preview: OCR text layer failed (${codeText})${extra}.` };
 }
 
 export class ConversionController {
@@ -241,7 +239,7 @@ export class ConversionController {
 	private readonly abort: (child: ChildProcess) => void;
 	private readonly resolveExecutable: () => string;
 	private readonly idleTimeoutMs: number;
-	private readonly searchableCopy: SearchableCopyFunction;
+	private readonly addTextLayer: TextLayerFunction;
 	private readonly abortGroup: (child: ChildProcess) => void;
 	private readonly resolveReprocessRaw: () => string;
 
@@ -259,7 +257,7 @@ export class ConversionController {
 		this.abort = dependencies.abort ?? ((child) => abortChild(child));
 		this.resolveExecutable = dependencies.resolveExecutable ?? (() => resolvePdf2md());
 		this.idleTimeoutMs = dependencies.idleTimeoutMs ?? CONVERSION_IDLE_TIMEOUT_MS;
-		this.searchableCopy = dependencies.searchableCopy ?? createSearchableCopy;
+		this.addTextLayer = dependencies.addTextLayer ?? addTextLayer;
 		this.abortGroup =
 			dependencies.abortGroup ?? ((child) => void terminateProcessGroup(child));
 		this.resolveReprocessRaw =
@@ -350,30 +348,29 @@ export class ConversionController {
 	}
 
 	/**
-	 * Stage 1: writes a searchable copy of the source to `request.destination`
-	 * with `reprocess-raw --output`. Progress is indeterminate. Cancellation and
+	 * Stage 1: adds a text layer to the source PDF itself with
+	 * `reprocess-raw --in-place`. Progress is indeterminate. Cancellation and
 	 * failures are reported here, except a B5 failure with short pages: that one
-	 * and success are left to the caller, which offers page exemptions or opens
-	 * the new PDF. Resolves with the CLI result, or null if nothing ran.
+	 * and success are left to the caller, which offers page exemptions or
+	 * reports success. Resolves with the CLI result, or null if nothing ran.
 	 */
-	async runOcr(request: SearchableCopyRequest): Promise<SearchableCopyResult | null> {
+	async runOcr(request: TextLayerRequest): Promise<TextLayerResult | null> {
 		if (!this.ensureIdle()) return null;
 		const name = request.source.basename;
 		this.begin(name, this.abortGroup);
 		try {
 			const base = this.host.vaultBasePath();
 			if (base === null) {
-				this.host.notify("OCR Preview: A searchable copy requires file system access (Desktop).");
+				this.host.notify("OCR Preview: An OCR text layer requires file system access (Desktop).");
 				return null;
 			}
 			const progress = this.host.showProgress(
-				`OCR Preview: Creating searchable copy of "${name}" …`,
+				`OCR Preview: Adding OCR text layer to "${name}" …`,
 				() => this.cancel(),
 			);
 			this.progress = progress;
-			const result = await this.searchableCopy(
+			const result = await this.addTextLayer(
 				request.source.path,
-				request.destination,
 				this.resolveReprocessRaw(),
 				base,
 				undefined,
@@ -393,7 +390,7 @@ export class ConversionController {
 			this.progress = null;
 			if (result.code !== 0) {
 				if (this.cancelRequested) {
-					this.host.notify(`OCR Preview: Searchable copy of "${name}" cancelled — no file written.`);
+					this.host.notify(`OCR Preview: OCR text layer for "${name}" cancelled — the PDF is unchanged.`);
 					// A cancelled run never leads to page exemptions.
 					return { ...result, shortPages: [] };
 				}
@@ -403,7 +400,7 @@ export class ConversionController {
 			}
 			return result;
 		} catch (err) {
-			this.host.notify(`OCR Preview: Searchable copy failed — ${String(err)}.`);
+			this.host.notify(`OCR Preview: OCR text layer failed — ${String(err)}.`);
 			return null;
 		} finally {
 			this.end();

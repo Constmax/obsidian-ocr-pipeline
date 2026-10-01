@@ -379,3 +379,118 @@ def test_in_place_mode_is_unchanged(sb):
 
     assert accepted.returncode == 0, accepted.output
     assert sb.source.read_text() == sb.result.read_text()
+
+
+# ── --in-place (the plugin's mode, issue #180) ─────────────────────────────
+
+def _assert_only_source(sb):
+    """The vault holds only the source, no hidden copy, no temporary directory."""
+    assert [p.name for p in sb.vault.iterdir()] == ["casebook.pdf"]
+    assert list(sb.tmp.iterdir()) == []
+
+
+def test_in_place_replaces_source_and_keeps_its_mode(sb):
+    sb.source.chmod(0o640)
+
+    result = _run(sb, "--in-place", "--engine", "tesseract")
+
+    assert result.returncode == 0, result.output
+    assert sb.source.read_text() == sb.result.read_text()
+    assert sb.source.stat().st_mode & 0o777 == 0o640
+    _assert_only_source(sb)
+    calls = sb.log.read_text().splitlines()
+    assert len(calls) == 1 and calls[0].endswith(" casebook_reprocessed --engine tesseract")
+    assert "--force-ocr" not in calls[0]
+
+
+@pytest.mark.parametrize("failure", ["combine-fails", "page-count", "short-page"])
+def test_in_place_failure_writes_nothing(sb, failure):
+    env = {}
+    if failure == "combine-fails":
+        env["FAKE_COMBINE_EXIT"] = "1"
+    elif failure == "page-count":
+        sb.result.write_text(_fake_pdf([LONG] * 4))
+    else:
+        sb.result.write_text(_fake_pdf([LONG, "short", LONG]))
+
+    result = _run(sb, "--in-place", **env)
+
+    assert result.returncode != 0
+    assert "remains unchanged" in result.output, result.output
+    # No _FAILED_ artifact, unlike the legacy mode.
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+def test_in_place_refuses_a_source_changed_during_ocr(sb):
+    result = _run(sb, "--in-place", FAKE_CREATE_FILE=str(sb.source))
+
+    assert result.returncode != 0
+    assert "Source changed during processing" in result.output, result.output
+    assert sb.source.read_text() == "intruder\n"
+    _assert_only_source(sb)
+
+
+@pytest.mark.parametrize("phase", ["ocr", "replace"])
+def test_in_place_cancellation_leaves_source(sb, phase):
+    blocked = sb.root / "blocked"
+    env = dict(sb.env)
+    if phase == "ocr":
+        env["FAKE_BLOCK"] = str(blocked)
+    else:
+        # Block before the rename: the hidden copy exists, the source is old.
+        # `cp -p` only runs there; the rename itself ignores SIGTERM.
+        _write_exe(sb.override / "cp", f'[ "$1" = -p ] && {{ touch "{blocked}"; sleep 60; }}\nexec /bin/cp "$@"\n')
+
+    proc = subprocess.Popen(
+        _command(sb, ["--in-place"]), env=env, start_new_session=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while not blocked.exists():
+            assert proc.poll() is None, proc.communicate()[0]
+            assert time.monotonic() < deadline, "script never reached the blocking step"
+            time.sleep(0.05)
+        if phase == "replace":
+            hidden = [p.name for p in sb.vault.iterdir() if p.name.startswith(".")]
+            assert len(hidden) == 1 and hidden[0].startswith(".casebook.pdf.")
+        os.killpg(proc.pid, signal.SIGTERM)
+        output = proc.communicate(timeout=20)[0]
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+
+    assert proc.returncode != 0, output
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+def test_in_place_and_output_exclude_each_other(sb):
+    result = _run(sb, "--in-place", "--output", sb.dest)
+
+    assert result.returncode != 0
+    assert "exclude each other" in result.output, result.output
+    assert not sb.log.exists()
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+def test_in_place_sigterm_during_rename_still_finishes(sb):
+    blocked = sb.root / "blocked"
+    _write_exe(sb.override / "mv", f'touch "{blocked}"\nsleep 1\nexec /bin/mv "$@"\n')
+
+    proc = subprocess.Popen(
+        _command(sb, ["--in-place"]), env=sb.env, start_new_session=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    deadline = time.monotonic() + 20
+    while not blocked.exists():
+        assert proc.poll() is None, proc.communicate()[0]
+        assert time.monotonic() < deadline, "script never reached the rename"
+        time.sleep(0.05)
+    os.killpg(proc.pid, signal.SIGTERM)
+    output = proc.communicate(timeout=20)[0]
+
+    # A run that reached the rename reports what happened: the PDF was replaced.
+    assert proc.returncode == 0, output
+    assert sb.source.read_text() == sb.result.read_text()
+    _assert_only_source(sb)

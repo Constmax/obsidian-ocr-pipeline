@@ -6,8 +6,8 @@ split-merged pages, leptonica rewriting `/tmp` paths on macOS).
 
 ## Plugin path
 
-The plugin's "Create searchable copy (OCR)" runs `reprocess-raw --output`
-(`plugin/src/conversion.ts`, `createSearchableCopy`) with the engine and
+The plugin's "Add OCR text layer" runs `reprocess-raw --in-place`
+(`plugin/src/conversion.ts`, `addTextLayer`) with the engine and
 column-split setting the user chose (`plugin/src/ocr-settings.ts`). With
 `--engine paddle`, `lib_init` ignores the split flags: PaddleOCR reads whole
 pages (#153). A change reaches the user only through the flags and engines

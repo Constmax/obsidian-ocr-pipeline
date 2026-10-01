@@ -148,7 +148,7 @@ Alphanumeric with Natural Sort. Use numerical prefixes for explicit ordering: `0
 ## reprocess-raw
 
 ```bash
-reprocess-raw <raw-pdf-file> [--output FILE] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
+reprocess-raw <raw-pdf-file> [--output FILE | --in-place] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
 reprocess-raw --check-engine [--engine E] [--paddle-mode M]
 ```
 
@@ -157,13 +157,17 @@ Wrapper around `pdf-combine` for the scenario "re-process an existing `raw/` fil
 1. Copies source file to a private temporary directory (`$TMPDIR`, outside the vault) and executes `pdf-combine` with passed options.
 2. **Check 1 — Page Count:** Output page count must match original exactly. Mismatch → original remains unchanged, result saved as `<name>_FAILED_pagecount.pdf` alongside source.
 3. **Check 2 — B5 Gate (`column_tools.py verify-pages`):** Every page must contain ≥ `--min-chars` characters (Default 50, via `pdftotext -raw`). A document-wide character average (as checked by standard quality gate) can mask a single textless page inside an otherwise healthy large document — which corrupted fourteen `raw/` files on 2026-07-06 (see `BUGREPORT-2026-07-06-split-merge.md`). Mismatch → original remains unchanged, result saved as `<name>_FAILED_pages.pdf`, affected pages reported individually.
-4. Only if both checks pass: Original source file is overwritten.
+4. Only if both checks pass: the result replaces the source in one rename. It is copied to a hidden `.<name>.pdf.XXXXXX` file beside the source (a copy of the source first, so mode and attributes carry over) and renamed over it with `mv`, so the source is never a partial file. If the source no longer matches the copy OCR started from (it changed while OCR ran), it is left alone and the result goes to `<name>_FAILED_changed.pdf`. A symlinked source is resolved: the file it points to is replaced.
 
 `--allow-pages "1,5-7"` exempts known cover or diagram pages lacking body text from Check 2. Without `pikepdf` available (Python dependency of `column_tools.py`), the script aborts for safety rather than silently skipping B5 validation.
 
+### Plugin mode: `--in-place`
+
+The interface the Obsidian plugin uses (#180): the default mode without its artifacts. The same checks and the same atomic replacement run, but failed checks, a failing `pdf-combine`, a source changed during OCR, and cancellation (`SIGTERM` to the process group) write nothing: no `_FAILED_` file, no hidden temporary copy, the source byte-identical. Without `pikepdf` the script fails before OCR. `--in-place` and `--output` exclude each other. A change to the source in the milliseconds between the final comparison and the rename is still lost. `SIGKILL` between the hidden copy and the rename can leave a hidden `.<name>.pdf.XXXXXX` file.
+
 ### Source-preserving mode: `--output FILE`
 
-The interface for GUI callers such as the Obsidian plugin. The same checks run, but the source is never written:
+For shell callers who want to keep the original. The same checks run, but the source is never written:
 
 - `FILE` is resolved (symlinked folders included) before any processing. The script refuses a destination that is the source under any spelling, that already exists (file, folder or dangling symlink), or whose folder is missing.
 - Existing text is preserved: `--force-ocr` is only passed if the caller adds it.
@@ -368,8 +372,8 @@ Four consequences worth knowing:
 
 Stage 1 (`bin/`) remains PDF-only: `pdf-auto`, `pdf-combine`, the column split
 and the text-layer checks all assume PDF input. In the plugin this is the
-difference between **OCR → Markdown** (PDF or image) and **Create searchable
-copy (OCR)** (PDF only).
+difference between **OCR → Markdown** (PDF or image) and **Add OCR text
+layer** (PDF only).
 
 ## Stage 2: Module Structure (`pdf2md/`)
 

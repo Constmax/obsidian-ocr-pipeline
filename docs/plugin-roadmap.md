@@ -21,9 +21,9 @@ and commands: [review-view.md](review-view.md).
   `SIGTERM`, then `SIGKILL`) and an inactivity timeout.
 - **Review:** three-column comparison of source and Markdown with
   Accept / Reject, notes, editing and Undo.
-- **Searchable copy:** **Create searchable copy (OCR)** runs
-  `reprocess-raw --output` (Stage 1) and writes `<stem>-ocr.pdf` beside the
-  source; design record in [stage1-ui.md](stage1-ui.md).
+- **OCR text layer:** **Add OCR text layer** runs
+  `reprocess-raw --in-place` (Stage 1) and adds the text layer to the PDF
+  itself (#180); design record in [stage1-ui.md](stage1-ui.md).
 - **Contract:** everything the plugin reads from the CLIs is pinned in
   [cli-contract.md](cli-contract.md) and tested from both sides.
 

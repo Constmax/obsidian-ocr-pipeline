@@ -1,4 +1,4 @@
-// Obsidian side of the ConversionController and the searchable-copy action:
+// Obsidian side of the ConversionController and the "Add OCR text layer" action:
 // Notices, vault paths, the inventory, the comparison view, and opening files.
 
 import { FileSystemAdapter, Notice, Platform, TFile, normalizePath, type App } from "obsidian";
@@ -11,13 +11,13 @@ import { PageCases } from "./page-cases.ts";
 import { isConvertible } from "./input-formats.ts";
 import type { Inventory } from "./file-actions.ts";
 import { ExemptionModal } from "./exemption-modal.ts";
-import type { SearchableCopyHost } from "./searchable-copy.ts";
+import type { TextLayerHost } from "./text-layer.ts";
 import type { OcrEngine } from "./ocr-settings.ts";
 import type { Settings } from "./settings.ts";
 
 /**
  * `reprocess-raw --check-engine` for this machine, run from the vault folder
- * like a searchable copy: null when `engine` is usable, otherwise the reason.
+ * like the OCR text layer: null when `engine` is usable, otherwise the reason.
  */
 export function checkEngineHere(app: App, engine: OcrEngine): Promise<string | null> {
 	const adapter = app.vault.adapter;
@@ -37,22 +37,13 @@ export function createPageCases(app: App): PageCases | null {
 	return new PageCases((args) => runPageCase(args, resolvePdf2md(), cwd));
 }
 
-export function createSearchableCopyHost(app: App, settings: () => Settings): SearchableCopyHost {
+export function createTextLayerHost(app: App, settings: () => Settings): TextLayerHost {
 	return {
 		isDesktop: Platform.isDesktopApp,
 		notify(message) {
 			new Notice(message);
 		},
-		// The adapter checks the disk, so an unindexed or hidden file counts too.
-		exists: (path) => app.vault.adapter.exists(normalizePath(path)),
 		settings: () => settings(),
-		async openPdf(path) {
-			const file = app.vault.getFileByPath(normalizePath(path));
-			if (file === null) return false;
-			await app.workspace.getLeaf("tab").openFile(file);
-			return true;
-		},
-		wait: (ms) => new Promise((done) => window.setTimeout(done, ms)),
 		checkEngine: (engine) => checkEngineHere(app, engine),
 		offerExemptions(offer) {
 			// Stays until the user acts on it or clicks it away.

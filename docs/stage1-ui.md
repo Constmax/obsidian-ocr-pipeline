@@ -1,12 +1,22 @@
 # Safe Stage-1 OCR from the Obsidian review view
 
 **Status:** Implemented (#63 `reprocess-raw --output`, #64 process module, #65
-settings, #66 action and entry points, #67 page exemptions). Kept as the design
+settings, #66 action and entry points, #67 page exemptions); since #180 the
+action writes into the source with `reprocess-raw --in-place`. Kept as the design
 record: the steps below describe the intent, and the *Implemented in* notes
 say where the code landed. Current behavior is documented in
 [`review-view.md`](review-view.md) and [`scripts-detail.md`](scripts-detail.md).
 PaddleOCR in the engine setting (#73): implemented, fast mode only, offered
 where `reprocess-raw --check-engine` passes; #71 decides whether it stays.
+
+**Superseded in part by #180:** the user decided that the action writes the
+text layer into the source PDF instead of a sibling copy. The action is now
+**Add OCR text layer** and runs `reprocess-raw --in-place`, which keeps every
+invariant below except "the source PDF is untouched" and the sibling
+destination: the source is replaced only after all gates pass, in one atomic
+rename, and failure, cancellation or a source changed during OCR leave it
+byte-identical with no artifact. Sections 1 and 3 below describe the original
+copy design.
 
 ## Goal
 

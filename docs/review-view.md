@@ -164,7 +164,7 @@ status file (all cleaned via `normalizePath()`, with a live indicator if a
 folder is missing), Markdown column default, scroll sync, PDF render factor,
 Markdown eager limit, and column widths.
 
-**Searchable copy** (for the Stage-1 action, #66): OCR engine (Automatic,
+**OCR text layer** (for the Stage-1 action, #66): OCR engine (Automatic,
 Apple Vision, Tesseract, Apple Vision + RapidOCR (Paddle fast), which reads with
 Apple Vision and re-reads citation lines with RapidOCR; default Automatic) and
 Split two-column pages (default off). `parseOcrSettings()` in `src/ocr-settings.ts`
@@ -181,11 +181,14 @@ why. The benchmark in #71 retained it (`bench/ERGEBNIS.md`, Nachtrag 26).
 PaddleOCR always reads whole pages: with it, the Split two-column pages toggle
 has no effect (#153).
 
-The action itself is **Create searchable copy (OCR)**: in the PDF file menu
-and as a command that asks for a PDF. The comparison view offers no entry for
-it (#96): pure OCR never opens or requires the view. It writes `<stem>-ocr.pdf` beside the source with
-`reprocess-raw --output`, stops if that file already exists, never touches the
-source, and opens the new PDF.
+The action itself is **Add OCR text layer**: in the PDF file menu and as a
+command that asks for a PDF (command id `create-searchable-copy`, kept so
+hotkeys survive). The comparison view offers no entry for it (#96): pure OCR
+never opens or requires the view. It adds the text layer to the PDF itself
+with `reprocess-raw --in-place` (#180), so the path and every link stay the
+same. The CLI replaces the file only after all checks passed, in one rename;
+failure, cancellation or a PDF changed during the run leave it unchanged and
+write nothing else. Success shows a notice.
 
 ## Testing
 

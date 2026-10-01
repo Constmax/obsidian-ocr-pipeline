@@ -196,13 +196,13 @@ export class SettingsTab extends PluginSettingTab {
 			.addText((t) => this.widthField(t, 1))
 			.addText((t) => this.widthField(t, 2));
 
-		this.searchableCopySettings();
+		this.textLayerSettings();
 	}
 
-	/** Engine and column split for "Create searchable copy"; desktop only. */
-	private searchableCopySettings(): void {
+	/** Engine and column split for "Add OCR text layer"; desktop only. */
+	private textLayerSettings(): void {
 		const { containerEl } = this;
-		new Setting(containerEl).setName("Searchable copy").setHeading();
+		new Setting(containerEl).setName("OCR text layer").setHeading();
 
 		if (!Platform.isDesktopApp) {
 			containerEl.createEl("p", { cls: "ocr-einstellungen-hinweis", text: DESKTOP_ONLY_MESSAGE });
@@ -212,7 +212,7 @@ export class SettingsTab extends PluginSettingTab {
 		const engineSetting = new Setting(containerEl)
 			.setName("OCR engine")
 			.setDesc(
-				"Used for new searchable copies. Automatic uses Apple Vision when its " +
+				"Used for new OCR text layers. Automatic uses Apple Vision when its " +
 					"OCRmyPDF plugin is installed and Tesseract otherwise. Apple Vision + " +
 					"RapidOCR (Paddle fast) reads with Apple Vision, re-reads citations with " +
 					"RapidOCR, and keeps two-column pages in reading order without a column " +
@@ -268,7 +268,7 @@ export class SettingsTab extends PluginSettingTab {
 		const reason = problem.replace(/\.$/, "");
 		const text =
 			this.plugin.settings.ocrEngine === "paddle"
-				? `${ENGINE_LABELS.paddle} is not usable here: ${reason}. Searchable copies use Automatic until it is.`
+				? `${ENGINE_LABELS.paddle} is not usable here: ${reason}. OCR text layers use Automatic until it is.`
 				: `${ENGINE_LABELS.paddle} is not offered: ${reason}.`;
 		setting.descEl.createDiv({ cls: "ocr-einstellungen-hinweis", text });
 	}

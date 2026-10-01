@@ -1,19 +1,15 @@
-// "Create searchable copy (OCR)": the Stage-1 action behind the PDF file menu
-// and the command (never the comparison view). Proposes `<stem>-ocr.pdf` beside the
-// source, refuses an existing destination before anything is spawned, runs
-// `reprocess-raw --output` through the ConversionController with the saved OCR
-// settings, and opens the new PDF. When the B5 gate reports pages with too
-// little text, it offers "Run with page exemptions…" and reruns only with the
-// list the user confirms. The source is never written, and nothing here
-// touches the Stage-2 preview inventory. Free of Obsidian imports so it runs
-// under `node --test`; the plugin supplies a SearchableCopyHost.
+// "Add OCR text layer": the Stage-1 action behind the PDF file menu and the
+// command (never the comparison view). Runs `reprocess-raw --in-place` through
+// the ConversionController with the saved OCR settings, so the PDF keeps its
+// path and every link to it (#180). The CLI replaces the file only after all
+// checks passed, in one rename; on failure or cancellation it stays as it was.
+// When the B5 gate reports pages with too little text, the action offers
+// "Run with page exemptions…" and reruns only with the list the user
+// confirms. Nothing here touches the Stage-2 preview inventory. Free of
+// Obsidian imports so it runs under `node --test`; the plugin supplies a
+// TextLayerHost.
 
-import {
-	INDEX_WAIT_MS,
-	INDEX_WAIT_STEPS,
-	type ConversionController,
-	type PdfSource,
-} from "./conversion-controller.ts";
+import { type ConversionController, type PdfSource } from "./conversion-controller.ts";
 import { DESKTOP_ONLY_MESSAGE, type OcrEngine, type OcrSettings } from "./ocr-settings.ts";
 
 /** A failed B5 gate, offered to the user as "Run with page exemptions…". */
@@ -29,25 +25,15 @@ export interface ExemptionOffer {
 }
 
 /** Everything the action needs from Obsidian. */
-export interface SearchableCopyHost {
+export interface TextLayerHost {
 	/** False on Obsidian mobile, where no CLI can be spawned. */
 	isDesktop: boolean;
 	notify(message: string): void;
-	/** True if a file or folder exists at the vault path, indexed or not. */
-	exists(path: string): Promise<boolean>;
 	settings(): OcrSettings;
-	/** Opens the PDF at the vault path; false while the vault has not indexed it. */
-	openPdf(path: string): Promise<boolean>;
-	wait(ms: number): Promise<void>;
 	/** Shows the short pages with a way to rerun; nothing reruns unless `offer.confirm` is called. */
 	offerExemptions(offer: ExemptionOffer): void;
 	/** `reprocess-raw --check-engine`: null when the engine is usable here, otherwise the reason. */
 	checkEngine(engine: OcrEngine): Promise<string | null>;
-}
-
-/** `raw/case.pdf` → `raw/case-ocr.pdf`, in the source's own folder. */
-export function searchableCopyPath(sourcePath: string): string {
-	return `${sourcePath.replace(/\.pdf$/i, "")}-ocr.pdf`;
 }
 
 const PAGE_LIST = /^\d+(-\d+)?(,\d+(-\d+)?)*$/;
@@ -90,7 +76,7 @@ export function mergePageLists(existing: string | undefined, pages: number[]): s
 function shortPagesMessage(source: PdfSource, pages: number[]): string {
 	const list = pages.join(", ");
 	const subject = pages.length === 1 ? `page ${list} has` : `pages ${list} have`;
-	return `OCR Preview: No searchable copy of "${source.basename}" — ${subject} fewer than 50 characters of text. Nothing was written.`;
+	return `OCR Preview: No text layer added to "${source.basename}" — ${subject} fewer than 50 characters of text. The PDF is unchanged.`;
 }
 
 /**
@@ -99,12 +85,12 @@ function shortPagesMessage(source: PdfSource, pages: number[]): string {
  * is not usable, the run takes Automatic and says so. The other engines are
  * reported by the CLI itself.
  */
-async function usableEngine(engine: OcrEngine, host: SearchableCopyHost): Promise<OcrEngine> {
+async function usableEngine(engine: OcrEngine, host: TextLayerHost): Promise<OcrEngine> {
 	if (engine !== "paddle") return engine;
 	const problem = await host.checkEngine(engine);
 	if (problem === null) return engine;
 	host.notify(
-		`OCR Preview: This copy uses Automatic, because Apple Vision + RapidOCR (Paddle fast) cannot run here — ${problem.replace(/\.$/, "")}. ` +
+		`OCR Preview: This run uses Automatic, because Apple Vision + RapidOCR (Paddle fast) cannot run here — ${problem.replace(/\.$/, "")}. ` +
 			"Choose another engine in the settings.",
 	);
 	return "auto";
@@ -114,10 +100,10 @@ async function usableEngine(engine: OcrEngine, host: SearchableCopyHost): Promis
  * Runs the action for one PDF. `allowPages` is set only by a confirmed
  * exemption rerun; the B5 gate still checks every page not in that list.
  */
-export async function runSearchableCopy(
+export async function runAddTextLayer(
 	source: PdfSource,
 	controller: Pick<ConversionController, "ensureIdle" | "runOcr">,
-	host: SearchableCopyHost,
+	host: TextLayerHost,
 	allowPages?: string,
 ): Promise<void> {
 	if (!host.isDesktop) {
@@ -126,19 +112,10 @@ export async function runSearchableCopy(
 	}
 	if (!controller.ensureIdle()) return;
 
-	const destination = searchableCopyPath(source.path);
-	if (await host.exists(destination)) {
-		host.notify(
-			`OCR Preview: ${destination} already exists — no searchable copy was started. Rename or move it first.`,
-		);
-		return;
-	}
-
 	const { ocrEngine, splitColumns } = host.settings();
 	const engine = await usableEngine(ocrEngine, host);
 	const result = await controller.runOcr({
 		source,
-		destination,
 		engine,
 		// PaddleOCR orders both columns itself; splitting costs words and order (#153).
 		splitColumns: engine === "paddle" ? false : splitColumns,
@@ -155,21 +132,11 @@ export async function runSearchableCopy(
 				prefill: mergePageLists(allowPages, result.shortPages),
 				confirm: async (pages) => {
 					const list = normalizePageList(pages);
-					if (list !== null) await runSearchableCopy(source, controller, host, list);
+					if (list !== null) await runAddTextLayer(source, controller, host, list);
 				},
 			});
 		}
 		return;
 	}
-
-	for (let step = 0; step <= INDEX_WAIT_STEPS; step++) {
-		if (step > 0) await host.wait(INDEX_WAIT_MS);
-		if (await host.openPdf(destination)) {
-			host.notify(`OCR Preview: Searchable copy created — ${destination}.`);
-			return;
-		}
-	}
-	host.notify(
-		`OCR Preview: Searchable copy created at ${destination}, but Obsidian has not listed it yet.`,
-	);
+	host.notify(`OCR Preview: Text layer added — ${source.path}.`);
 }

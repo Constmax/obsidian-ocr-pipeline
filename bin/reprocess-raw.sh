@@ -9,9 +9,10 @@
 #      document-wide character average can hide a single completely
 #      textless page, see BUGREPORT-2026-07-06-split-merge.md)
 #
-# Without --output the accepted result overwrites the source in place. On
-# failure the source remains unchanged; the failed result is saved alongside
-# for inspection (<name>_FAILED_*.pdf).
+# Without --output the accepted result replaces the source in place, in one
+# atomic rename. On failure the source remains unchanged; the failed result is
+# saved alongside for inspection (<name>_FAILED_*.pdf). --in-place does the
+# same but writes nothing on failure or cancellation (the plugin's mode).
 #
 # With --output the source is never written. The result is published under
 # the new name without overwriting anything, and failure or cancellation
@@ -40,7 +41,7 @@ fi
 
 if [ $# -lt 1 ]; then
     cat <<EOF
-Usage: $(basename "$0") <raw-pdf-file> [--output FILE] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
+Usage: $(basename "$0") <raw-pdf-file> [--output FILE | --in-place] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
        $(basename "$0") --check-engine [--engine E] [--paddle-mode M]
 
 Re-processes an existing raw/ PDF file using the current pipeline
@@ -48,12 +49,16 @@ and accepts the result ONLY after passing B5 verification:
    1. Page count preserved exactly
    2. Every page >= --min-chars characters (Default: 50)
 
-Without --output the source file is overwritten.
+Without --output the source file is replaced; a failed result is kept
+beside it as <name>_FAILED_*.pdf.
 
 Options:
    --output FILE        Write the result to FILE instead; the source is never
                         modified. FILE must not exist yet and is never
                         overwritten; on failure nothing is written.
+   --in-place           Replace the source, but on failure write nothing
+                        (no _FAILED_ file). The source stays unchanged if it
+                        was modified while OCR ran.
    --min-chars N        Minimum characters per page (Default: 50)
    --allow-pages LIST   Exempt pages from check 2, e.g. "1,5-7"
                         (known cover/diagram pages without body text)
@@ -80,6 +85,7 @@ SRC_ABS="$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")"
 MIN_CHARS=50
 ALLOW_PAGES=""
 DEST_ARG=""
+IN_PLACE=""
 COMBINE_ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -98,9 +104,15 @@ while [ $# -gt 0 ]; do
                 usage_error "--output needs exactly one file name"
             fi
             DEST_ARG="$2"; shift 2 ;;
+        --in-place)
+            IN_PLACE=1; shift ;;
         *) COMBINE_ARGS+=("$1"); shift ;;
     esac
 done
+
+if [ -n "$IN_PLACE" ] && [ -n "$DEST_ARG" ]; then
+    usage_error "--in-place and --output exclude each other"
+fi
 
 # ── --output: resolve and reject the destination before any processing ──
 # DEST is the physical path (symlinked folders resolved), so a destination
@@ -139,14 +151,15 @@ for candidate in "${VENV_ROOT:-$HOME/.venvs}/ocrmypdf/bin/python3" "python3"; do
         break
     fi
 done
-# --output has no result to keep for manual inspection, so fail before OCR.
-if [ -z "$PYTHON_BIN" ] && [ -n "$DEST" ]; then
+# --output and --in-place keep no result for inspection, so fail before OCR.
+if [ -z "$PYTHON_BIN" ] && [ -n "$DEST$IN_PLACE" ]; then
     echo "⚠️  pikepdf not found — cannot check B5 gate, aborting for safety"
     exit 1
 fi
 
 # WORK_DIR lives in $TMPDIR, outside the vault. TMP_DEST is the hidden
-# same-folder copy that publish_output links to its final name.
+# same-folder copy that publish_output links to its final name, or that
+# replace_source renames over the source.
 WORK_DIR=""
 TMP_DEST=""
 cleanup() {
@@ -167,11 +180,13 @@ OUTNAME="${BASE}_reprocessed"
 OUT="$WORK_DIR/${OUTNAME}.pdf"
 
 # reject_result <failed-suffix>
-# The in-place mode keeps a failed result beside the source for inspection;
-# --output writes nothing. Always exits 1.
+# The legacy in-place mode keeps a failed result beside the source for
+# inspection; --output and --in-place write nothing. Always exits 1.
 reject_result() {
     if [ -n "$DEST" ]; then
         echo "   No file written: $DEST"
+    elif [ -n "$IN_PLACE" ]; then
+        echo "   No file written: $SRC_ABS remains unchanged"
     else
         local failed_out="${SRC_ABS%.pdf}_FAILED_$1.pdf"
         cp "$OUT" "$failed_out"
@@ -209,6 +224,29 @@ publish_output() {
         exit 1
     fi
     rm -f "$TMP_DEST"
+    TMP_DEST=""
+}
+
+# replace_source
+# Swaps $OUT in for the source with one rename, so the source is either the
+# old or the new file, never a partial one. The hidden copy starts as a copy
+# of the source (mode and attributes) and then takes the result's bytes.
+# Refuses if the source no longer matches the copy OCR started from.
+replace_source() {
+    local target
+    target="$(readlink -f "$SRC_ABS")"
+    if ! cmp -s "$target" "$WORK_DIR/$(basename "$SRC_ABS")"; then
+        echo "❌ Source changed during processing, not replacing it: $SRC_ABS"
+        reject_result changed
+    fi
+    TMP_DEST=$(mktemp "$(dirname "$target")/.$(basename "$target").XXXXXX")
+    cp -p "$target" "$TMP_DEST"
+    cat "$OUT" > "$TMP_DEST"
+    # ponytail: a change between cmp and mv is still lost; that window is milliseconds.
+    # From here on the run finishes: a SIGTERM after the rename would report a
+    # cancelled run whose result is already in place.
+    trap '' TERM INT
+    mv -f "$TMP_DEST" "$target"
     TMP_DEST=""
 }
 
@@ -252,6 +290,6 @@ if [ -n "$DEST" ]; then
     publish_output
     echo "✅ Written: $DEST ($NEW_PAGES pages, B5 gate passed; source unchanged)"
 else
-    cp "$OUT" "$SRC_ABS"
+    replace_source
     echo "✅ Overwritten: $SRC_ABS ($NEW_PAGES pages, B5 gate passed)"
 fi
