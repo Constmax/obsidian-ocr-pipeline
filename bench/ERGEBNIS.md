@@ -2706,6 +2706,11 @@ außerhalb der 26 Tuning-Seiten. Drei Fehler des zweiten Stegblicks:
 | `structure_bench.py`, 20 Seiten | 20/20 | 20/20 | 20/20 |
 | `make check-cases`, 12 Scan-Fälle | – | – | identisch mit `main` |
 
+Der eine Buchstabe mehr als beim PR-Stand liegt auf
+`schuldrecht-at-zusatzuebersichten/p008`: dort gleicht die Ausgabe wieder
+`main` (Verlust 1, wie in `main`); der PR-Stand hatte ihn nebenbei behoben,
+weil der zweite Blick auch innerhalb einer Spalte lief.
+
 Der Restverlust von 1–2 Zeichen aus der Roadmap ist der `regress_steg`-Verlust
 auf 2131/2135/2143; er steht jetzt bei 0.
 
