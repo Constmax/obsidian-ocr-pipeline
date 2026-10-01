@@ -403,7 +403,8 @@ whole, and None where neither knows it (horizontal tiles, full-width lines).
 The container is `tabelle` or the `kasten{i}` that `assign_boxes()` puts the
 line in. Boxes pass through as recognition gives them:
 `tile_local_axis(mode)` in `conversion.py` names the axis that is still
-measured in the tile (x of a vertical tile, y of the lower horizontal tile).
+measured in the tile (x of either vertical tile, y of either horizontal
+tile); until #146 the boxes of a tiled page are not in page coordinates.
 
 One page's lines become its page block in one place,
 `page_block(lines, context, meta) -> PageBlock` in `conversion.py`: assembly,

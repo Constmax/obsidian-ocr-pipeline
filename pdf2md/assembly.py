@@ -97,7 +97,8 @@ FOOTER_BAND = RUNNING_FOOTER_ZONE
 
 @dataclass(frozen=True)
 class RecognizedLine:
-    """One line Stage 2 read from a source page (CONTEXT.md).
+    """One line Stage 2 read from a source page (CONTEXT.md; unlike the
+    term, a tiled page's box is in tile coordinates until #146).
 
     `box` is `(x0, y0, x1, y1)` in thousandths, None when the model gave
     none; `conversion.tile_local_axis()` says which axis is still measured
