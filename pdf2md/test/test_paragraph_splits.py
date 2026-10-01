@@ -28,7 +28,7 @@ def test_labels_start_an_enumeration(text):
 @pytest.mark.parametrize("text", [
     "gem. § 823 I BGB", "vgl. BGH NJW 2000, 1", "hat.", "obj. Tb (-)",
     "i. V.m. § 15 BVerfSchG", "z. B. ein Kaufvertrag", "bzw. ein Vertrag",
-    "ff. BGB",
+    "ff. BGB", "o. ä. Gründe", "u. ä. Fälle",
 ])
 def test_abbreviations_start_no_enumeration(text):
     assert not ENUMERATION.match(text)
@@ -53,38 +53,34 @@ def filler(y0):
             z("koennten.", y0 + 36, x1=200)]
 
 
-def test_bold_line_inside_a_sentence_continues_on_a_model_page():
-    lines = filler(40) + [
-        z("Die Eltern duerfen allein handeln, wenn es um eine Angelegenheit",
+def bold_run_in_a_sentence():
+    return filler(40) + [
+        z("Der Mieter darf die Wohnung untervermieten, wenn es um einen",
           100, x1=750),
-        z("**des taeglichen Lebens**", 112, x1=400),
-        z("geht, vgl. § 1687 I S. 2 BGB.", 124, x1=400),
+        z("**kurzen Zeitraum**", 112, x1=400),
+        z("geht, vgl. § 540 I BGB.", 124, x1=400),
     ]
-    out = assemble_paragraphs(lines, OCR).paragraphs
-    assert out[1] == ("Die Eltern duerfen allein handeln, wenn es um eine "
-                      "Angelegenheit **des taeglichen Lebens** geht, "
-                      "vgl. § 1687 I S. 2 BGB.")
+
+
+def test_bold_line_inside_a_sentence_continues_on_a_model_page():
+    out = assemble_paragraphs(bold_run_in_a_sentence(), OCR).paragraphs
+    assert out[1] == ("Der Mieter darf die Wohnung untervermieten, wenn es "
+                      "um einen **kurzen Zeitraum** geht, vgl. § 540 I BGB.")
 
 
 def test_bold_line_after_an_article_continues_on_a_model_page():
     lines = filler(40) + [
-        z("Nach anderer Ansicht soll sich die", 100, x1=600),
-        z("**Pflicht zur Abtretung aus § 242 BGB**", 112, x1=600),
-        z("ergeben.", 124, x1=200),
+        z("Nach einer Ansicht folgt die", 100, x1=600),
+        z("**Pflicht zur Herausgabe aus § 667 BGB**", 112, x1=600),
+        z("unmittelbar.", 124, x1=200),
     ]
     out = assemble_paragraphs(lines, OCR).paragraphs
-    assert out[1] == ("Nach anderer Ansicht soll sich die **Pflicht zur "
-                      "Abtretung aus § 242 BGB** ergeben.")
+    assert out[1] == ("Nach einer Ansicht folgt die **Pflicht zur "
+                      "Herausgabe aus § 667 BGB** unmittelbar.")
 
 
 def test_bold_line_inside_a_sentence_still_splits_a_text_layer_page():
-    lines = filler(40) + [
-        z("Die Eltern duerfen allein handeln, wenn es um eine Angelegenheit",
-          100, x1=750),
-        z("**des taeglichen Lebens**", 112, x1=400),
-        z("geht, vgl. § 1687 I S. 2 BGB.", 124, x1=400),
-    ]
-    assert len(assemble_paragraphs(lines).paragraphs) == 4
+    assert len(assemble_paragraphs(bold_run_in_a_sentence()).paragraphs) == 4
 
 
 def test_body_after_a_bold_heading_may_start_lowercase_on_a_model_page():
@@ -111,26 +107,51 @@ def test_bold_heading_after_a_sentence_still_separates_on_a_model_page():
 
 def test_wrapped_heading_ending_on_preposition_stays_one_on_a_model_page():
     out = assemble_paragraphs(filler(40) + [
-        z("**1. Aufwendungsersatzanspruch aus**", 100, x1=500),
-        z("**GoA gem. §§ 677, 683, 670 BGB**", 112, x1=500),
-        z("Es muesste ein fremdes Geschaeft vorliegen.", 124, x1=600),
+        z("**1. Anspruch auf Kaufpreiszahlung aus**", 100, x1=500),
+        z("**dem Kaufvertrag gem. § 433 II BGB**", 112, x1=500),
+        z("Es muesste ein wirksamer Vertrag vorliegen.", 124, x1=600),
     ], OCR).paragraphs
-    assert out[1:] == ["#### 1. Aufwendungsersatzanspruch aus GoA gem. §§ 677, "
-                       "683, 670 BGB",
-                       "Es muesste ein fremdes Geschaeft vorliegen."]
+    assert out[1:] == ["#### 1. Anspruch auf Kaufpreiszahlung aus dem "
+                       "Kaufvertrag gem. § 433 II BGB",
+                       "Es muesste ein wirksamer Vertrag vorliegen."]
 
 
 def box_crossing():
     return [
-        z("Eine Regelung liegt vor, wenn die Behoerde eine", 100,
+        z("Ein Mangel liegt vor, wenn die gelieferte Ware eine", 100,
           marker="kasten1"),
-        z("verbindliche Rechtsfolge setzt, also Rechte", 112),
-        z("begruendet oder aufhebt.", 124, x1=400, marker="kasten2"),
+        z("andere als die vereinbarte Farbe hat, also etwa", 112),
+        z("blau statt rot ist.", 124, x1=400, marker="kasten2"),
     ]
 
 
 def test_box_edge_inside_a_sentence_does_not_split_a_model_page():
     out = assemble_paragraphs(box_crossing(), OCR).paragraphs
+    assert len(out) == 1
+
+
+@pytest.mark.parametrize("last", [
+    "Nach Ruecktritt kann der Kaeufer gegen den Verkaeufer",
+    "Der Kaeufer kann, wenn die Frist abgelaufen ist,",
+    "Der Kaeufer kann in diesem Fall die Ware zurueckgeben;",
+])
+def test_box_edge_mid_sentence_does_not_split_a_model_page(last):
+    out = assemble_paragraphs([
+        z(last, 100),
+        z("Schadensersatz statt der Leistung verlangen.", 112, x1=600,
+          marker="kasten1"),
+    ], OCR).paragraphs
+    assert len(out) == 1
+
+
+def test_lowercase_line_after_a_period_crosses_a_box_edge_on_a_model_page():
+    out = assemble_paragraphs([
+        z("Der Anspruch ergibt sich aus § 812 I S. 1 Alt. 1 BGB i.V.m.", 100),
+        z("§ 818 II BGB. vgl. dazu die Ausfuehrungen oben.", 112,
+          x1=600),
+        z("insoweit gilt dasselbe wie beim Herausgabeanspruch.", 124,
+          x1=600, marker="kasten1"),
+    ], OCR).paragraphs
     assert len(out) == 1
 
 
@@ -151,24 +172,23 @@ def test_box_edge_after_a_colon_or_a_scheme_line_splits_a_model_page(last):
 
 def test_box_edge_after_a_sentence_splits_a_model_page():
     out = assemble_paragraphs([
-        z("Die Auskunft ist kein Verwaltungsakt.", 100, x1=500),
-        z("Ob ein Schreiben eine Regelung enthaelt, ist", 112,
+        z("Die Ware war bei Uebergabe mangelfrei.", 100, x1=500),
+        z("Ob der Kaeufer den Mangel spaeter verursacht hat, ist", 112,
           marker="kasten1"),
-        z("durch Auslegung zu ermitteln.", 124, x1=400, marker="kasten1"),
+        z("durch Beweisaufnahme zu klaeren.", 124, x1=400, marker="kasten1"),
     ], OCR).paragraphs
     assert len(out) == 2
 
 
 def test_label_read_twice_is_dropped():
     out = assemble_paragraphs([
-        z("I. Prozessuales", 100, x1=400),
-        ["1. Welche Klageart kommt gegen einen belastenden",
-          (79, 133, 787, 150)],
-        ["**1.**", (79, 140, 107, 149)],
-        ["Verwaltungsakt in Betracht?", (139, 149, 488, 160)],
+        z("A. Vorbemerkung", 100, x1=400),
+        ["2. Wann ist ein Vertrag ueber den Kauf einer", (60, 130, 800, 146)],
+        ["**2.**", (62, 133, 90, 145)],
+        ["Sache wirksam geschlossen?", (120, 147, 480, 159)],
     ], OCR).paragraphs
-    assert out[-1] == ("1. Welche Klageart kommt gegen einen belastenden "
-                       "Verwaltungsakt in Betracht?")
+    assert out[-1] == ("2. Wann ist ein Vertrag ueber den Kauf einer "
+                       "Sache wirksam geschlossen?")
 
 
 def test_label_of_its_own_line_is_kept():

@@ -30,6 +30,12 @@ OPEN_END = re.compile(
     r"|aus|bei|mit|von|vom|zu|zur|zum|für|über|unter|in|im|nach|wegen|gegen"
     r"|durch|ohne|und|oder|bzw\.|sowie|dass|gem\.|vgl\.|i\.\s?V\.\s?m\.)\**$")
 
+# Text that stops mid-sentence: on a lowercase letter (the end of any word,
+# capitalised or not), a comma, a semicolon or a hyphen or dash -- not on a
+# period, a colon, a digit or a capitalised abbreviation such as "BGB"
+# (Issue #163).
+MID_SENTENCE = re.compile(r"[a-zäöüß,;\-–]\**$")
+
 # --- Hemmer Boilerplate ----------------------------------------------------
 
 CITIES = ("Augsburg Bayreuth Berlin Potsdam Bielefeld Bochum Bonn Bremen "
@@ -313,11 +319,11 @@ def parse_lines(text):
 # or a lowercase roman numeral ("iv."). Any other short lowercase word with
 # a period is an abbreviation or the end of a sentence ("gem.", "vgl.",
 # "hat.", "ff."), and a single letter followed by one is an abbreviation too
-# ("i. V.m.", "z. B.") (Issue #163).
+# ("i. V.m.", "z. B.", "o. ä.") (Issue #163).
 ENUMERATION = re.compile(
     r"^\s*([-•·▪○●⇒⇨→➢✔]"
     r"|\(?\d{1,2}[.)]"
-    r"|(?!ff\.)([a-z])\2{0,2}(?:\)|\.(?!\s*[A-Za-zÄÖÜ]{1,2}\.))"
+    r"|(?!ff\.)([a-z])\2{0,2}(?:\)|\.(?!\s*[A-Za-zÄÖÜäöü]{1,2}\.))"
     r"|(?:iv|vi{1,3}|ix)[.)]"
     r"|[IVXL]{1,5}\.)(?=\s|$)"
 )
@@ -335,7 +341,7 @@ LEVELS = (
     (re.compile(r"^[IVX]{1,5}\.(?=\s)"), 3),
     (re.compile(r"^[A-H][.)](?=\s)"), 2),
 )
-ABBREVIATION = re.compile(r"^[A-Za-zÄÖÜ]{1,2}\.")
+ABBREVIATION = re.compile(r"^[A-Za-zÄÖÜäöü]{1,2}\.")
 
 
 def level(text):
@@ -391,6 +397,12 @@ def attach_footnote_numbers(lines, footer=900, proximity=40):
     return out
 
 
+def box_inside(inner, outer, slack=2):
+    """Does box inner lie inside box outer, give or take slack units?"""
+    return (outer[0] - slack <= inner[0] and inner[2] <= outer[2] + slack
+            and outer[1] - slack <= inner[1] and inner[3] <= outer[3] + slack)
+
+
 def drop_repeated_labels(lines):
     """Drop an outline label the model read twice.
 
@@ -403,8 +415,7 @@ def drop_repeated_labels(lines):
         prev = out[-1] if out else None
         if (prev is not None and z[1] and prev[1]
                 and STANDALONE_MARKER.match(z[0].strip())
-                and prev[1][0] - 2 <= z[1][0] and z[1][2] <= prev[1][2] + 2
-                and prev[1][1] - 2 <= z[1][1] and z[1][3] <= prev[1][3] + 2):
+                and box_inside(z[1], prev[1])):
             label = without_bold(z[0])
             if without_bold(prev[0]).startswith(label + " "):
                 continue
@@ -524,6 +535,8 @@ def assemble_paragraphs(lines, context=None):
                      or box and buffer_x0 is not None
                      and box[0] > buffer_x0 + 8
                      or bool(re.search(r"[,;\-–]\**$", buffer)))
+        gap_known = bool(normal and y is not None and last_y is not None)
+        wide_gap = gap_known and y - last_y > normal * 1.6
         # On a page the model read, bold comes per recognized line and the
         # boxes from ruled lines of the image, so an all-bold line or a box
         # edge can fall inside a sentence (Issue #163). There a line that
@@ -531,19 +544,18 @@ def assemble_paragraphs(lines, context=None):
         # buffer ends on a word no phrase ends on -- is not cut off by a bold
         # line or by the line before it looking like a heading. After a bold
         # heading only the second counts: body text may start with "h.M.".
-        # A box edge cuts unless the buffer stops mid-sentence (on a
-        # lowercase word, a comma or a hyphen) at normal spacing.
-        runs_on = ocr_page and (bool(OPEN_END.search(buffer))
-                                or cont[:1].islower() and not only_bold(buffer))
-        box_crossed = not (ocr_page and normal and y is not None
-                           and last_y is not None
-                           and y - last_y <= normal * 1.6
-                           and (runs_on or re.search(r"[a-zäöüß,\-–]\**$",
-                                                     buffer)))
+        # At normal spacing such a line also crosses a box edge, and so does
+        # any line after a buffer that stops mid-sentence.
+        runs_on = joins_box = False
+        if ocr_page:
+            runs_on = (bool(OPEN_END.search(buffer))
+                       or cont[:1].islower() and not only_bold(buffer))
+            joins_box = (gap_known and not wide_gap
+                         and (runs_on or bool(MID_SENTENCE.search(buffer))))
 
         if not buffer or hyphen:
             new_p = False
-        elif marker != last_marker and box_crossed:
+        elif marker != last_marker and not joins_box:
             new_p = True
         elif (ENUMERATION.match(bare) or KEYWORD.match(bare)
               or (heading and not continues and not runs_on)
@@ -551,8 +563,8 @@ def assemble_paragraphs(lines, context=None):
             new_p = True
         elif y is not None and last_y is not None and y < last_y - 50:
             new_p = not text[:1].islower()
-        elif normal and y is not None and last_y is not None:
-            new_p = (y - last_y) > normal * 1.6
+        elif gap_known:
+            new_p = wide_gap
         else:
             new_p = (bool(re.search(r'[.!?:]["“»)]?\s*$', buffer))
                      and not OPEN_END.search(buffer))
