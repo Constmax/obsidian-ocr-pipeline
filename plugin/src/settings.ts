@@ -276,6 +276,8 @@ export class SettingsTab extends PluginSettingTab {
 		isFile = false,
 	): void {
 		group.addSetting((setting) => {
+			// After setDesc(): it replaces descEl's content, the hint with it.
+			setting.setName(name).setDesc(description);
 			const hint = setting.descEl.createDiv({ cls: "ocr-pfad-hinweis" });
 			const setHint = (path: string) => {
 				const exists = isFile || this.app.vault.getFolderByPath(path) !== null;
@@ -285,25 +287,22 @@ export class SettingsTab extends PluginSettingTab {
 			// Debounced: `onChange` fires on EVERY keystroke. Without delay,
 			// intermediate typed paths would enter settings and trigger vault runs.
 			let timer: number | null = null;
-			setting
-				.setName(name)
-				.setDesc(description)
-				.addText((t) =>
-					t
-						.setPlaceholder(DEFAULT_SETTINGS[key])
-						.setValue(this.plugin.settings[key])
-						.onChange((val) => {
-							if (timer !== null) window.clearTimeout(timer);
-							timer = window.setTimeout(() => {
-								timer = null;
-								const cleaned = normalizePath(val.trim() || DEFAULT_SETTINGS[key]);
-								this.plugin.settings[key] = cleaned;
-								void this.plugin.saveSettings();
-								setHint(cleaned);
-								this.plugin.triggerReconcile();
-							}, PATH_DEBOUNCE_MS);
-						}),
-				);
+			setting.addText((t) =>
+				t
+					.setPlaceholder(DEFAULT_SETTINGS[key])
+					.setValue(this.plugin.settings[key])
+					.onChange((val) => {
+						if (timer !== null) window.clearTimeout(timer);
+						timer = window.setTimeout(() => {
+							timer = null;
+							const cleaned = normalizePath(val.trim() || DEFAULT_SETTINGS[key]);
+							this.plugin.settings[key] = cleaned;
+							void this.plugin.saveSettings();
+							setHint(cleaned);
+							this.plugin.triggerReconcile();
+						}, PATH_DEBOUNCE_MS);
+					}),
+			);
 			setHint(this.plugin.settings[key]);
 		});
 	}
