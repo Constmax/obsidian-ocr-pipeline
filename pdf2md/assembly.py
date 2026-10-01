@@ -2,9 +2,10 @@
 """Markdown assembly: pure functions on recognized lines (Stage 2, Issue #8).
 
 Separated from pdf2md.py so that the layer changing most frequently can be tested
-without MLX, fitz, and Vault assets (pdf2md/test). Callers outside Stage 2
-reach the assembly through `conversion.page_block()`, which calls
-`assemble_paragraphs()`; the helpers behind it are private (Issue #144).
+without MLX, fitz, and Vault assets (pdf2md/test). A page block is assembled
+by `conversion.page_block()`, which calls `assemble_paragraphs()`; the
+helpers behind that are private (Issue #144). The functions sibling modules
+import (`parse_lines`, `clean_text`, `is_boilerplate`, …) stay public.
 Imports nothing from sibling modules — dependency flows only in this direction:
 
     pdf2md.py (CLI)  →  conversion.py  →  layout.py, ocr.py, assembly.py

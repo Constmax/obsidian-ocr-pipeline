@@ -775,3 +775,18 @@ def test_make_check_cases_replays_the_cases_of_the_vault(corrected):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "1 page case(s): 1 open" in result.stdout
+
+
+def test_a_page_rewritten_in_the_new_line_format_is_the_same_page():
+    """A cache entry from before Issue #144 and its rewrite hold the same
+    lines: a stash made from one still belongs to the other."""
+    old = {"number": 1, "source": "textlayer", "mode": "textlayer",
+           "lines": [["Text", [1, 2, 3, 4]]], "columns": [0]}
+    new = {"number": 1, "source": "textlayer", "mode": "textlayer",
+           "line_format": 2,
+           "lines": [{"text": "Text", "box": [1, 2, 3, 4], "column": 0}]}
+    assert cases._same_page({"page": old, "pdf_sha256": "x"},
+                            {"page": new, "pdf_sha256": "x"})
+    assert not cases._same_page({"page": old, "pdf_sha256": "x"},
+                                {"page": {**new, "number": 2},
+                                 "pdf_sha256": "x"})
