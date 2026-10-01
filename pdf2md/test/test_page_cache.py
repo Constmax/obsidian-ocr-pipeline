@@ -319,6 +319,6 @@ def test_textlayer_entry_without_columns_is_recalculated(tmp_path):
         pdf=pdf, output_dir=tmp_path / "out"))
     before = {**text, "parameters": {
         key: value for key, value in text["parameters"].items()
-        if key != "columns"}}
+        if key != "column_version"}}
     assert page_cache.page_key(text, 1) != page_cache.page_key(before, 1)
-    assert "columns" not in full["parameters"]
+    assert "column_version" not in full["parameters"]

@@ -59,12 +59,8 @@ def build(page, context):
     boxes, _ = L.detect_boxes(page, False,
                               [t[2] for t in L.tables_markdown(page)])
     raw = L.assign_boxes(C.textlayer_lines(page), boxes)
-    if hasattr(L, "split_columns_indexed"):
-        lines, columns = L.split_columns_indexed(raw)
-        result = A.assemble_paragraphs(lines, context, columns=columns)
-    else:                                   # a checkout before issue #14
-        lines, columns = L.split_columns(raw), None
-        result = A.assemble_paragraphs(lines, context)
+    lines, columns = L.split_columns_indexed(raw)
+    result = A.assemble_paragraphs(lines, context, columns=columns)
     return raw, lines, columns, result
 
 
@@ -121,7 +117,7 @@ def score():
         doc, context = open_document(entry["file"])
         raw, lines, columns, result = build(doc[entry["page"] - 1], context)
         found = blocks(raw, entry["columns"])
-        columns_ok = None if columns is None else all(
+        columns_ok = all(
             {col for line, col in zip(lines, columns)
              if line[0].strip() == str(n) and line[1] and line[1][1] >= 800}
             == {c} for n, (c, _) in found.items())
@@ -140,12 +136,11 @@ def score():
                       foreign=foreign, exact=exact, lost=missing,
                       lost_pages=bool(missing))
         print(f"  {Path(entry['file']).name[:40]:40s} S.{entry['page']:3d}  "
-              f"columns {'n/a' if columns_ok is None else 'ok' if columns_ok else 'WRONG'}  "
+              f"columns {'ok' if columns_ok else 'WRONG'}  "
               f"foreign {foreign}  exact {exact}/{len(found)}  lost {missing}")
         doc.close()
     print(f"\n{totals['pages']} pages, {totals['notes']} footnotes")
-    print(f"  columns right          : {totals['columns']}/{totals['pages']}"
-          " (n/a before issue #14: no column assignment)")
+    print(f"  columns right          : {totals['columns']}/{totals['pages']}")
     print(f"  definitions with text of the other column: {totals['foreign']}")
     print(f"  definitions exact      : {totals['exact']}/{totals['notes']}")
     print(f"  letters lost           : {totals['lost']} "

@@ -607,7 +607,7 @@ def _cache_contexts(request: ConversionRequest) -> tuple[dict, dict]:
     textlayer = page_cache.build_context(
         request.pdf,
         {key: value for key, value in parameters.items()
-         if key not in _TEXTLAYER_IGNORED_KEYS} | {"columns": 1},
+         if key not in _TEXTLAYER_IGNORED_KEYS} | {"column_version": 1},
     )
     return full, textlayer
 
