@@ -463,7 +463,7 @@ export const ENGINE_CHECK_TIMEOUT_MS = 60_000;
 
 /**
  * Stage 1: `reprocess-raw --check-engine` for `engine` (issue #73). Resolves
- * to null when a searchable copy would run on that engine here, otherwise to
+ * to null when an OCR text layer would run on that engine here, otherwise to
  * the reason, read from the CLI's stderr. Never throws.
  */
 export async function checkEngine(
@@ -493,20 +493,19 @@ export async function checkEngine(
 }
 
 /**
- * Stage 1: `reprocess-raw <source> --output <destination> [options]` with
+ * Stage 1: `reprocess-raw <source> --in-place [options]` with
  * `cwd` as working directory, in a new process group (`detached: true`) so
  * terminateProcessGroup reaches every descendant. No timeout in the first
  * release: OCR time grows with page count, and the user can cancel.
  */
 export function createSearchableCopy(
 	source: string,
-	destination: string,
 	cli: string,
 	cwd: string,
 	spawnFn: SpawnFunction = spawn,
 	options: SearchableCopyOptions = {},
 ): Promise<SearchableCopyResult> {
-	const args = [source, "--output", destination];
+	const args = [source, "--in-place"];
 	if (options.engine !== undefined) args.push(...engineArgs(options.engine));
 	if (options.splitColumns) args.push("--split-columns");
 	if (options.allowPages && options.allowPages.length > 0) {

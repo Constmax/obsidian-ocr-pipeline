@@ -1,4 +1,4 @@
-// Stage-1 OCR settings for the searchable-copy action: type, defaults,
+// Stage-1 OCR settings for the "Add OCR text layer" action: type, defaults,
 // validation of loaded plugin data, and the engines the settings tab offers.
 // Free of Obsidian imports so it runs under `node --test`.
 
@@ -22,7 +22,7 @@ export const DEFAULT_OCR_SETTINGS: OcrSettings = {
 
 /** Shown instead of the OCR controls where the action cannot run. */
 export const DESKTOP_ONLY_MESSAGE =
-	"Searchable copies are only available in Obsidian for desktop: " +
+	"OCR text layers are only available in Obsidian for desktop: " +
 	"OCR runs the locally installed reprocess-raw command.";
 
 export function isOcrEngine(value: unknown): value is OcrEngine {

@@ -1,5 +1,5 @@
 // "Run with page exemptions…": shows the pages that failed the B5 text check
-// and reruns the searchable copy only with the list the user confirms. There is
+// and reruns the OCR text layer only with the list the user confirms. There is
 // deliberately no way to skip the check for the whole document.
 
 import { App, Modal, Setting } from "obsidian";

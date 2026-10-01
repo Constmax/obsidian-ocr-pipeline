@@ -8,6 +8,15 @@ say where the code landed. Current behavior is documented in
 PaddleOCR in the engine setting (#73): implemented, fast mode only, offered
 where `reprocess-raw --check-engine` passes; #71 decides whether it stays.
 
+**Superseded in part by #180:** the user decided that the action writes the
+text layer into the source PDF instead of a sibling copy. The action is now
+**Add OCR text layer** and runs `reprocess-raw --in-place`, which keeps every
+invariant below except "the source PDF is untouched" and the sibling
+destination: the source is replaced only after all gates pass, in one atomic
+rename, and failure, cancellation or a source changed during OCR leave it
+byte-identical with no artifact. Sections 1 and 3 below describe the original
+copy design.
+
 ## Goal
 
 Let a user create a searchable PDF from Obsidian without risking the source

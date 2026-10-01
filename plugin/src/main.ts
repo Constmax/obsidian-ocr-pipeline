@@ -104,7 +104,7 @@ export default class OcrPreviewPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: "create-searchable-copy",
-			name: "Create searchable copy (OCR)",
+			name: "Add OCR text layer",
 			callback: () => this.selectPdfForSearchableCopy(),
 		});
 
@@ -262,7 +262,7 @@ export default class OcrPreviewPlugin extends Plugin {
 		pageModal.open();
 	}
 
-	/** Stage 1 for exactly this PDF: writes `<stem>-ocr.pdf` beside it. */
+	/** Stage 1 for exactly this PDF: adds the text layer to the PDF itself. */
 	createSearchableCopy(file: TFile): void {
 		void runSearchableCopy(
 			{ path: file.path, basename: file.basename },
@@ -280,7 +280,7 @@ export default class OcrPreviewPlugin extends Plugin {
 			this.app,
 			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
 		);
-		modal.setPlaceholder("Search PDF for a searchable copy…");
+		modal.setPlaceholder("Search PDF for an OCR text layer…");
 		modal.onSelection = (file) => this.createSearchableCopy(file);
 		modal.open();
 	}
@@ -304,7 +304,7 @@ export default class OcrPreviewPlugin extends Plugin {
 			if (file.extension === "pdf") {
 				menu.addItem((i) =>
 					i
-						.setTitle("Create searchable copy (OCR)")
+						.setTitle("Add OCR text layer")
 						.setIcon("scan-text")
 						.onClick(() => this.createSearchableCopy(file)),
 				);

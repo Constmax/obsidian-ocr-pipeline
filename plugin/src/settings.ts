@@ -199,10 +199,10 @@ export class SettingsTab extends PluginSettingTab {
 		this.searchableCopySettings();
 	}
 
-	/** Engine and column split for "Create searchable copy"; desktop only. */
+	/** Engine and column split for "Add OCR text layer"; desktop only. */
 	private searchableCopySettings(): void {
 		const { containerEl } = this;
-		new Setting(containerEl).setName("Searchable copy").setHeading();
+		new Setting(containerEl).setName("OCR text layer").setHeading();
 
 		if (!Platform.isDesktopApp) {
 			containerEl.createEl("p", { cls: "ocr-einstellungen-hinweis", text: DESKTOP_ONLY_MESSAGE });
@@ -212,7 +212,7 @@ export class SettingsTab extends PluginSettingTab {
 		const engineSetting = new Setting(containerEl)
 			.setName("OCR engine")
 			.setDesc(
-				"Used for new searchable copies. Automatic uses Apple Vision when its " +
+				"Used for new OCR text layers. Automatic uses Apple Vision when its " +
 					"OCRmyPDF plugin is installed and Tesseract otherwise. PaddleOCR (fast) " +
 					"keeps two-column pages in reading order without a column split; it is " +
 					"offered once the installation check passes.",
@@ -265,7 +265,7 @@ export class SettingsTab extends PluginSettingTab {
 		const reason = problem.replace(/\.$/, "");
 		const text =
 			this.plugin.settings.ocrEngine === "paddle"
-				? `PaddleOCR is not usable here: ${reason}. Searchable copies use Automatic until it is.`
+				? `PaddleOCR is not usable here: ${reason}. OCR text layers use Automatic until it is.`
 				: `PaddleOCR is not offered: ${reason}.`;
 		setting.descEl.createDiv({ cls: "ocr-einstellungen-hinweis", text });
 	}

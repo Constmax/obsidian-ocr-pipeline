@@ -189,7 +189,7 @@ test("contract: the Stage-1 failure line gives the failure reason", () => {
 	);
 	assert.equal(
 		failure.message,
-		`OCR Preview: Searchable copy failed (Code ${contract.exitCodes["error"]}) — ${contract.stage1.failure.reason}.`,
+		`OCR Preview: OCR text layer failed (Code ${contract.exitCodes["error"]}) — ${contract.stage1.failure.reason}.`,
 	);
 });
 
