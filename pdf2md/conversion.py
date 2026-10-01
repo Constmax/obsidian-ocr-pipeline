@@ -556,7 +556,8 @@ def tile_local_axis(mode: str) -> str | None:
 
     A text-layer page and a page read whole are in page coordinates. A
     vertical tile (`senkrecht @…`) is a column, its x runs across the tile;
-    of horizontal tiles (`waagerecht`) the lower one's y starts at the cut.
+    a horizontal tile (`waagerecht`) is a band, its y runs down the tile. The
+    lines do not say which tile they came from (#146 converts at the tile).
     """
     if mode.startswith("senkrecht"):
         return "x"
