@@ -67,16 +67,19 @@ def detect_bold(lines, image_path, factor=1.45, max_width=0.75):
 
 
 def tile_vertically(png, gutter):
-    """Split two-column page at detected gutter."""
+    """Split two-column page at detected gutter: [(tile, left, right)],
+    the edges as fractions of the page width."""
     from PIL import Image
     im = Image.open(png)
     w, h = im.size
     cut, ov = int(w * gutter), int(w * OVERLAP)
-    a = png.with_name(png.stem + "_L.png")
-    b = png.with_name(png.stem + "_R.png")
-    im.crop((0, 0, min(cut + ov, w), h)).save(a)
-    im.crop((max(cut - ov, 0), 0, w, h)).save(b)
-    return [a, b]
+    out = []
+    for name, x0, x1 in (("L", 0, min(cut + ov, w)),
+                         ("R", max(cut - ov, 0), w)):
+        p = png.with_name(f"{png.stem}_{name}.png")
+        im.crop((x0, 0, x1, h)).save(p)
+        out.append((p, x0 / w, x1 / w))
+    return out
 
 
 def tile_horizontally(png, parts=2):
@@ -92,6 +95,22 @@ def tile_horizontally(png, parts=2):
         p = png.with_name(f"{png.stem}_T{i+1}.png")
         im.crop((0, y0, w, y1)).save(p)
         out.append((p, y0 / h, y1 / h))
+    return out
+
+
+def to_page(lines, axis, start, end):
+    """Map line boxes from a tile to the page it was cut from: along `axis`
+    (0 = x, 1 = y) the tile spans `start` … `end`, fractions of the page."""
+    def scale(value):
+        return int((start + value / 1000 * (end - start)) * 1000)
+
+    out = []
+    for z in lines:
+        if z.box:
+            box = list(z.box)
+            box[axis], box[axis + 2] = scale(box[axis]), scale(box[axis + 2])
+            z = replace(z, box=tuple(box))
+        out.append(z)
     return out
 
 
@@ -264,11 +283,7 @@ def tile_lines(png, ocr, factor, dpi, calibrated=False,
         z, s = tile_lines(part, ocr, factor, dpi, calibrated,
                           depth + 1, max_depth)
         trace += s
-        height = bottom - top
-        z = [replace(e, box=(e.box[0], int((top + e.box[1] / 1000 * height) * 1000),
-                             e.box[2], int((top + e.box[3] / 1000 * height) * 1000)))
-             if e.box else e for e in z]
-        new_lines += trim_overlap(new_lines, z)
+        new_lines += trim_overlap(new_lines, to_page(z, 1, top, bottom))
     new_text = "\n".join(e.text for e in new_lines)
     if _quality(new_text, expected) < _quality(text, expected):
         chosen, note = new_lines, (f"{mark} → retiled, "

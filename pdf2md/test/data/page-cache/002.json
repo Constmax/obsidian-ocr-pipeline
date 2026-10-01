@@ -17,11 +17,46 @@
   "layout": "zweispaltig",
   "mode": "senkrecht @50%",
   "lines": [
-   ["a) Eigentum des Anspruchstellers", [76, 104, 463, 124]],
-   ["Der Anspruchsteller müsste Eigentümer der Sache sein.", [76, 142, 463, 162]],
-   ["b) Besitz des Anspruchsgegners", [537, 104, 924, 124]],
-   ["Der Anspruchsgegner müsste Besitzer der Sache sein.", [537, 142, 924, 162]]
+   {
+    "text": "a) Eigentum des Anspruchstellers",
+    "box": [
+     76,
+     104,
+     463,
+     124
+    ]
+   },
+   {
+    "text": "Der Anspruchsteller müsste Eigentümer der Sache sein.",
+    "box": [
+     76,
+     142,
+     463,
+     162
+    ]
+   },
+   {
+    "text": "b) Besitz des Anspruchsgegners",
+    "box": [
+     537,
+     104,
+     924,
+     124
+    ]
+   },
+   {
+    "text": "Der Anspruchsgegner müsste Besitzer der Sache sein.",
+    "box": [
+     537,
+     142,
+     924,
+     162
+    ]
+   }
   ],
-  "trace": ["fixture: repaired tile overlap"]
+  "trace": [
+   "fixture: repaired tile overlap"
+  ],
+  "line_format": 3
  }
 }
