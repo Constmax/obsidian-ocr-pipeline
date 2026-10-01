@@ -37,14 +37,8 @@ function isStatus(val: unknown): val is Status {
 	return typeof val === "string" && (STATUS_VALUES as string[]).includes(val);
 }
 
-function mapLegacyStatus(val: unknown): Status {
-	if (isStatus(val)) return val;
-	if (val === "offen") return "open";
-	if (val === "akzeptiert") return "accepted";
-	if (val === "abgelehnt") return "rejected";
-	if (val === "neu-erzeugt") return "re-created";
-	if (val === "uebernommen") return "adopted";
-	return "open";
+function statusOrOpen(val: unknown): Status {
+	return isStatus(val) ? val : "open";
 }
 
 function textOrNull(val: unknown): string | null {
@@ -62,7 +56,7 @@ export function readManifest(text: string, now: string): StatusManifest {
 	const raw: unknown = JSON.parse(text);
 	if (typeof raw !== "object" || raw === null) return emptyManifest(now);
 	const obj = raw as Record<string, unknown>;
-	const rawEntries = obj["entries"] ?? obj["eintraege"];
+	const rawEntries = obj["entries"];
 	const entries: Record<string, StatusEntry> = {};
 	if (typeof rawEntries === "object" && rawEntries !== null) {
 		for (const [name, rawValue] of Object.entries(
@@ -70,32 +64,31 @@ export function readManifest(text: string, now: string): StatusManifest {
 		)) {
 			if (typeof rawValue !== "object" || rawValue === null) continue;
 			const e = rawValue as Record<string, unknown>;
-			const rawPrev = e["previous"] ?? e["vorher"];
+			const rawPrev = e["previous"];
 			const prevObj =
 				typeof rawPrev === "object" && rawPrev !== null
 					? (rawPrev as Record<string, unknown>)
 					: null;
 			entries[name] = {
-				status: mapLegacyStatus(e["status"]),
-				path: textOrNull(e["path"] ?? e["pfad"]) ?? "",
-				"source-pdf": textOrNull(e["source-pdf"] ?? e["quelle-pdf"]),
-				"manual-source-pdf": textOrNull(e["manual-source-pdf"] ?? e["quelle-pdf-manuell"]),
-				pages: numberOrNull(e["pages"] ?? e["seiten"]),
-				"pages-ocr": numberOrNull(e["pages-ocr"] ?? e["seiten-ocr"]),
-				"pages-diagram": numberOrNull(e["pages-diagram"] ?? e["seiten-diagramm"]),
-				"ocr-date": textOrNull(e["ocr-date"] ?? e["ocr-datum"]),
-				"ocr-timestamp": textOrNull(e["ocr-timestamp"] ?? e["ocr-zeitpunkt"]),
-				decided: textOrNull(e["decided"] ?? e["entschieden"]),
-				"checked-until": numberOrNull(e["checked-until"] ?? e["geprueft-bis"]),
-				note: textOrNull(e["note"] ?? e["notiz"]),
-				"manually-edited":
-					e["manually-edited"] === true || e["handbearbeitet"] === true,
+				status: statusOrOpen(e["status"]),
+				path: textOrNull(e["path"]) ?? "",
+				"source-pdf": textOrNull(e["source-pdf"]),
+				"manual-source-pdf": textOrNull(e["manual-source-pdf"]),
+				pages: numberOrNull(e["pages"]),
+				"pages-ocr": numberOrNull(e["pages-ocr"]),
+				"pages-diagram": numberOrNull(e["pages-diagram"]),
+				"ocr-date": textOrNull(e["ocr-date"]),
+				"ocr-timestamp": textOrNull(e["ocr-timestamp"]),
+				decided: textOrNull(e["decided"]),
+				"checked-until": numberOrNull(e["checked-until"]),
+				note: textOrNull(e["note"]),
+				"manually-edited": e["manually-edited"] === true,
 				previous:
 					prevObj !== null
 						? {
-								status: mapLegacyStatus(prevObj["status"]),
-								decided: textOrNull(prevObj["decided"] ?? prevObj["entschieden"]),
-								"ocr-date": textOrNull(prevObj["ocr-date"] ?? prevObj["ocr-datum"]),
+								status: statusOrOpen(prevObj["status"]),
+								decided: textOrNull(prevObj["decided"]),
+								"ocr-date": textOrNull(prevObj["ocr-date"]),
 							}
 						: null,
 			};
@@ -103,7 +96,7 @@ export function readManifest(text: string, now: string): StatusManifest {
 	}
 	return {
 		version: 1,
-		updated: textOrNull(obj["updated"] ?? obj["aktualisiert"]) ?? now,
+		updated: textOrNull(obj["updated"]) ?? now,
 		entries,
 	};
 }

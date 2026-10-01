@@ -223,7 +223,7 @@ pdf2md/          Stufe 2 — pdf2md.py (CLI) + conversion.py (Runner) + layout.p
                  Testsuite in pdf2md/test/
 plugin/          Stufe 3 — Abgleich-Ansicht (Obsidian-Plugin, TypeScript)
 contracts/       CLI-Vertrag zwischen den Stufen und dem Plugin (docs/cli-contract.md)
-bench/           Benchmark-Harness und Messergebnisse; alte Experimente in bench/archive/
+bench/           Benchmark-Harness und Messergebnisse
 docs/            Installation, Flag-Referenz, CLI-Vertrag, Vorschau-Format, Plugin-Ansicht,
                  Pläne (stage1-ui, paddle-textlayer), Vault-Integration des Skills
 skill/           Claude-Code-Skill (SKILL.md) zum Einbinden in einen Vault
