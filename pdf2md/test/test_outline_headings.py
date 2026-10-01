@@ -1,37 +1,47 @@
 #!/usr/bin/env python3
-"""Plain outline labels become headings unless the line ends a sentence (#164).
+"""Plain outline labels become headings unless the line ends like body text (#164).
 
   python3 -m pytest pdf2md/test/test_outline_headings.py
 """
 from assembly import format_headings
 
 
-def test_heading_ending_in_an_abbreviation():
-    assert format_headings(["B. Anspruch der Eltern gegen den e.V."]) \
-        == ["## B. Anspruch der Eltern gegen den e.V."]
+def test_heading_ending_in_a_legal_form_or_a_note():
+    assert format_headings(["B. Ansprüche gegen den e.V.",
+                            "C. Ansprüche gegen den e. V.",
+                            "1. Voraussetzungen (+), s.o.",
+                            "a) Anspruch möglich, h. M."]) \
+        == ["## B. Ansprüche gegen den e.V.",
+            "## C. Ansprüche gegen den e. V.",
+            "#### 1. Voraussetzungen (+), s.o.",
+            "##### a) Anspruch möglich, h. M."]
+
+
+def test_sentence_ending_in_an_abbreviation_stays_body_text():
+    assert format_headings(["a) Das gilt nach h.M.",
+                            "b) Das gilt z. B.",
+                            "A. Das gilt (s.o.)."]) \
+        == ["**a)** Das gilt nach h.M.",
+            "**b)** Das gilt z. B.",
+            "**A.** Das gilt (s.o.)."]
 
 
 def test_heading_phrased_as_a_question():
-    assert format_headings(["III. Anspruch aus § 831 BGB?",
-                            "e) Mitverschulden des A, § 254 BGB?"]) \
-        == ["### III. Anspruch aus § 831 BGB?",
-            "##### e) Mitverschulden des A, § 254 BGB?"]
-
-
-def test_question_closed_by_a_quote():
-    assert format_headings(["III. Anspruch aus „§ 831 BGB?“"]) \
-        == ["### III. Anspruch aus „§ 831 BGB?“"]
+    assert format_headings(["II. Anspruch aus § 1 XG?",
+                            "d) Einwand nach § 2 XG?",
+                            "III. Anspruch aus „§ 3 XG?“"]) \
+        == ["### II. Anspruch aus § 1 XG?",
+            "##### d) Einwand nach § 2 XG?",
+            "### III. Anspruch aus „§ 3 XG?“"]
 
 
 def test_numbered_question_stays_body_text():
-    assert format_headings(["1. Warum entfällt für den Betreuer § 31 BGB?",
-                            "(1) Warum entfällt § 31 BGB?"]) \
-        == ["1. Warum entfällt für den Betreuer § 31 BGB?",
-            "**(1)** Warum entfällt § 31 BGB?"]
+    assert format_headings(["2. Wer haftet hier wofür?",
+                            "3) Wer haftet hier?"]) \
+        == ["2. Wer haftet hier wofür?",
+            "3) Wer haftet hier?"]
 
 
 def test_sentence_still_stays_body_text():
-    assert format_headings(["a) Eine Körperverletzung liegt vor."]) \
-        == ["**a)** Eine Körperverletzung liegt vor."]
-    assert format_headings(["a) Der Verein haftet (s.o.)."]) \
-        == ["**a)** Der Verein haftet (s.o.)."]
+    assert format_headings(["a) Der Anspruch besteht."]) \
+        == ["**a)** Der Anspruch besteht."]

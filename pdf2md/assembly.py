@@ -748,23 +748,27 @@ def assemble_paragraphs(lines, context=None, ocr_page=False, columns=None):
     return AssemblyResult(paragraphs=paragraphs, discarded=discarded)
 
 
-SENTENCE_END = re.compile(r"[.!?][\"“»)\]]?$")
-FINAL_ABBREVIATION = re.compile(r"(?:^|[\s(])(?:[^\W\d_]{1,3}\.){2,}$")
-FINAL_QUESTION = re.compile(r"\?[\"“»)\]]?$")
-NUMBERED_LABEL = re.compile(r"\(?\d")
+CLOSER = r"[\"“»)\]]?$"
+SENTENCE_END = re.compile(r"[.!?]" + CLOSER)
+FINAL_QUESTION = re.compile(r"\?" + CLOSER)
+FINAL_ABBREVIATION = re.compile(
+    r"(?:\be\.\s?V\.|,\s*(?:[^\W\d_]{1,2}\.\s?){2,})$")
+NUMBERED_LABEL = re.compile(r"\d")
 
 
-def ends_sentence(text):
-    """Does a labelled paragraph end like a sentence? (#164)
+def ends_like_body(text):
+    """Does a labelled paragraph end like body text? (#164)
 
-    A heading may end in an abbreviation ("gegen den e.V.") and, under a
-    letter or roman label, in a question ("III. Anspruch aus § 831 BGB?").
-    A numbered question stays a sentence: those are question lists.
+    A heading may name a party by its legal form ("gegen den e.V.") or end
+    in a note after a comma ("(+), s.o.", ", h.M."); other final
+    abbreviations ("nach h.M.", "(s.o.).") still end a sentence. Under a
+    letter or roman label a heading may be a question ("III. Anspruch?");
+    a numbered question stays body text: those are question lists.
     """
     if FINAL_ABBREVIATION.search(text):
         return False
-    if FINAL_QUESTION.search(text) and not NUMBERED_LABEL.match(text):
-        return False
+    if FINAL_QUESTION.search(text):
+        return bool(NUMBERED_LABEL.match(text))
     return bool(SENTENCE_END.search(text))
 
 
@@ -779,11 +783,12 @@ def format_headings(paragraphs, max_heading=90):
             continue
         blank = without_bold(raw)
         if ((len(blank) <= max_heading or only_bold(raw))
-                and (not ends_sentence(blank) or "**" in raw)):
+                and (not ends_like_body(blank) or "**" in raw)):
             out.append("#" * lvl + " " + blank)
         elif not raw.startswith("**"):
             marker, rest = raw.split(None, 1) if " " in raw else (raw, "")
-            out.append(f"**{marker}** {rest}" if not marker[:1].isdigit()
+            out.append(f"**{marker}** {rest}"
+                       if not NUMBERED_LABEL.match(marker)
                        else p)
         else:
             out.append(p)
