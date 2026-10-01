@@ -139,7 +139,7 @@ File movement runs exclusively via `fileManager.renameFile` (updates links in va
 **`loadPdfJs()` is public, documented Obsidian API** and loads the
 pdf.js library bundled with Obsidian itself — including the pre-wired worker (`GlobalWorkerOptions.workerSrc`). The plugin builds no Blob worker and no main-thread fallback; the bundle stays at ~45 kB instead of ~2.5 MB. Only the long-term stable API surface is used: `getDocument`, `numPages`, `getPage`, `getViewport`, `render`, `destroy` — all isolated in `src/pdf-pane.ts`, rendering in a single function so signature changes remain a single-line fix. Obsidian's *Viewer* is not modified. cMaps are set (`/lib/pdfjs/cmaps/`): PDFs with embedded CID/Type0 fonts — which is standard for this material — would render blank otherwise.
 
-Lazy rendering with pre-measured geometry: After `getDocument`, the column fetches **all** viewports at scale 1 (page dictionary only, no rasterization) and assigns each page its aspect ratio as a CSS custom property. Height and width follow via `aspect-ratio` — scrollbars have correct geometry from frame one, preventing layout shifts during lazy loading rather than compensating for them. Rasterization runs via `IntersectionObserver` (rootMargin 200%), max 2 parallel, with pixel scale `min(width/page · devicePixelRatio, pdfZoomMax)` and LRU eviction at 12 canvases (on eviction `canvas.width = height = 0`, otherwise buffer remains allocated). `doc.destroy()` on file switch and view close; `RenderTask.cancel()` before re-renders. **Error degradation:** Banners in PDF header offer "Open in PDF viewer" and "Assign PDF…" — never a dead pane.
+Lazy rendering with pre-measured geometry: After `getDocument`, the column fetches **all** viewports at scale 1 (page dictionary only, no rasterization) and assigns each page its aspect ratio as a CSS custom property. Height and width follow via `aspect-ratio` — scrollbars have correct geometry from frame one, preventing layout shifts during lazy loading rather than compensating for them. Rasterization runs via `IntersectionObserver` (rootMargin 200%), max 2 parallel, with pixel scale `min(width/page · devicePixelRatio, 2)` (`RENDER_SCALE_MAX` in `src/pdf-pane.ts`, a memory limit, not a setting) and LRU eviction at 12 canvases (on eviction `canvas.width = height = 0`, otherwise buffer remains allocated). `doc.destroy()` on file switch and view close; `RenderTask.cancel()` before re-renders. **Error degradation:** Banners in PDF header offer "Open in PDF viewer" and "Assign PDF…" — never a dead pane.
 
 **What the source column accepts (Issue #101):** PDFs, rendered through pdf.js as above, and PNG, JPG/JPEG and BMP images. An image bypasses pdf.js: it becomes a single `<img>` page whose aspect ratio comes from its natural size after the image loads, so zoom and page/scroll coupling treat it as a one-page document. TIFF converts (Stage 2 accepts it) but Chromium cannot decode it, so a TIFF source shows a banner naming the reason instead. When a PDF and an image share the preview's basename, the PDF wins.
 
@@ -153,16 +153,27 @@ Documented reserve: Bundle `pdfjs-dist` and inline the worker as a Blob URL via 
   images are post-processed after rendering (image embeds via `getFirstLinkpathDest` + `<img>`). Should Obsidian resolve them natively in the future, the post-processing loop is a no-op.
 - **Block-by-block rendering instead of a single block:** Required because `%%…%%` is invisible in preview mode (no DOM node at marker); the page container acts as sync anchor. Positive side-effect: Footnote collisions across page boundaries are eliminated.
 - **12-canvas cap** (~4.5 MB per A4 canvas): Distant pages are re-rasterized when scrolling back.
-- **Zoom scales the page width** (the stack is `zoom` × the column width; not CSS `zoom`, which a `width: 100%` page cancels out). Above 100 % the column scrolls horizontally. Visible pages re-render at the new width, but the pixel scale stays capped at `pdfZoomMax`, so strongly zoomed pages may appear softer. For pixel-exact inspection, use "Open in PDF viewer".
-- **minAppVersion 1.8.7** instead of originally planned 1.5.3: `revealLeaf` and current `Notice` layout require newer versions. The original plan specified 1.5.3, but actual API surface requires more — documented transparently.
+- **Zoom scales the page width** (the stack is `zoom` × the column width; not CSS `zoom`, which a `width: 100%` page cancels out). Above 100 % the column scrolls horizontally. Visible pages re-render at the new width, but the pixel scale stays capped at 2, so strongly zoomed pages may appear softer. For pixel-exact inspection, use "Open in PDF viewer".
+- **minAppVersion 1.11.0**: the settings tab builds its groups with `SettingGroup` (Obsidian 1.11). Earlier steps were 1.5.3 (original plan) and 1.8.7 (`revealLeaf`, current `Notice` layout).
 - Code that is untestable headless (anything touching `window.pdfjsLib`, `MarkdownRenderer`, DOM) is untestable here as well — see smoke test below.
 
 ## Settings
 
-Visible: Operating mode, Preview folder, Accepted folder, Rejected folder,
-status file (all cleaned via `normalizePath()`, with a live indicator if a
-folder is missing), Markdown column default, scroll sync, PDF render factor,
-Markdown eager limit, and column widths.
+The settings tab has four tabs, each built from Obsidian's `SettingGroup`:
+
+- **General:** Operating mode, Markdown column default, scroll sync. Column
+  widths have no field: they are set by dragging the column borders in the view
+  and saved in `columnWidths`.
+- **Folders:** Preview folder, Accepted folder, Rejected folder, status file
+  (all cleaned via `normalizePath()`, with a live indicator if a folder is
+  missing).
+- **PDF → Markdown:** placeholder; pdf2md options join here (#28).
+- **Searchable copy:** see below.
+
+Two former settings are fixed values now: the PDF render scale cap (2,
+`RENDER_SCALE_MAX` in `src/pdf-pane.ts`) and the Markdown eager limit (200
+pages, `EAGER_LIMIT` in `src/md-pane.ts`). Saved values from older versions are
+ignored and drop out on the next save.
 
 **Searchable copy** (for the Stage-1 action, #66): OCR engine (Automatic,
 Apple Vision, Tesseract, PaddleOCR (fast); default Automatic) and Split
