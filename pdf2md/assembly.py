@@ -60,29 +60,50 @@ ZONE_SIGNALS = [
     re.compile(r"^\s*Seite\s*\d+\s*$", re.I),
 ]
 
+# --- Page zones ------------------------------------------------------------
+# In thousandths of the page height from the top. A recognized line's y is
+# its top on this scale. A weaker boilerplate signal needs a zone nearer the
+# page edge.
+HEADER_ZONE = 70            # zone signals and city lines
+FOOTER_ZONE = 950
+PAGE_NUMBER_HEADER = 80     # a bare page number
+PAGE_NUMBER_FOOTER = 905
+# Where assembly_context() looks for running lines in the text layer, by a
+# line's centre: the header zone, the zone under the header rule where course
+# labels sit (Issue #161), and the footer zone.
+RUNNING_HEADER_ZONE = 90
+RUNNING_LABEL_ZONE = 120
+RUNNING_FOOTER_ZONE = 930
+# The bottom of an OCR page where a running footer may come back misread or
+# cut at the gutter (Issue #161): the running footer zone, by a line's top.
+FOOTER_BAND = RUNNING_FOOTER_ZONE
+
+
+def running_text(text):
+    """A line as running lines hold it: no bold markers, single spaces."""
+    return re.sub(r"\s+", " ", text.replace("*", "")).strip()
+
+
 @dataclass(frozen=True)
 class AssemblyContext:
-    """State used while assembling a page: the document's running lines and
-    how the page was read."""
+    """What assembling every page of one document shares: its running lines."""
 
     running_lines: frozenset[str] = frozenset()
-    # The page was read by the model, column by column, so a line spanning
-    # both columns can come back in pieces (Issue #161).
-    ocr_page: bool = False
+    # The running lines found in the footer zone. Only a footer reaches the
+    # footer band, where an OCR page may return it cut at the gutter.
+    footer_lines: frozenset[str] = frozenset()
 
     @cached_property
-    def running_keys(self) -> tuple[str, ...]:
-        return tuple(_running_key(line) for line in self.running_lines)
+    def footer_keys(self) -> tuple[str, ...]:
+        return tuple(_running_key(line) for line in self.footer_lines)
 
-    def is_running(self, text, y=None):
-        """Is text a running line? On a model page, a line in the footer band
-        also counts when it is one read with OCR confusions, or a piece of
-        one cut at the column gutter."""
-        line = re.sub(r"\s+", " ", re.sub(r"\*", "", text)).strip()
-        if line in self.running_lines:
+    def is_running(self, text, y=None, ocr_page=False):
+        """Is text a running line? On an OCR page, a line in the footer band
+        also counts when it is a misread running footer."""
+        if running_text(text) in self.running_lines:
             return True
-        return (self.ocr_page and y is not None and y >= FOOTER_BAND
-                and is_running_piece(text, self.running_keys))
+        return (ocr_page and y is not None and y >= FOOTER_BAND
+                and is_misread_footer(text, self.footer_keys))
 
 
 @dataclass(frozen=True)
@@ -95,11 +116,8 @@ class AssemblyResult:
 
 # Characters OCR confuses in running lines: "26-II", "26-Il", "26-11", "26-|1".
 _CONFUSABLE = str.maketrans("il|", "111")
-# The top of a model-page line from here down lies in the footer band (bottom
-# 7 %), where a footer cut at the gutter is dropped (Issue #161).
-FOOTER_BAND = 930
-# A piece of a running line holds at least this many letters and digits, and
-# this share of the line's, in at least two words.
+# A gutter piece holds at least this many letters and digits, and this share
+# of its footer's, in at least two words.
 PIECE_MIN_LENGTH = 5
 PIECE_MIN_SHARE = 0.4
 
@@ -109,42 +127,42 @@ def _running_key(text):
     return re.sub(r"[\W_]+", "", text.casefold().translate(_CONFUSABLE))
 
 
-def is_running_piece(text, running_keys):
-    """Is text a running line read with OCR confusions, or one end of it cut
-    off at the column gutter?
+def is_misread_footer(text, footer_keys):
+    """Is text a running footer read with OCR confusions, or a gutter piece:
+    one end of it cut off at the column gutter?
 
     A scan is read column by column, so a footer spanning both columns comes
     back as two pieces, and the right piece may start with half a glyph (a
     cut through "t" reads "l"). A piece must hold `PIECE_MIN_SHARE` of the
-    line and two words: a city or a subject word alone ("Bremen", "Hessen",
-    "Grundrechte") ends a footnote line as well.
+    footer and two words: a city or a subject word alone ("Bremen", "Hessen",
+    "Grundfragen") ends a footnote line as well.
     """
     key = _running_key(text)
     if len(key) < PIECE_MIN_LENGTH:
         return False
-    if key in running_keys:
+    if key in footer_keys:
         return True
     if len(re.findall(r"[^\W_]+", text)) < 2:
         return False
-    for whole in running_keys:
-        if len(key) > len(whole):
+    after_half_glyph = key[1:]
+    for footer in footer_keys:
+        if len(key) > len(footer):
             continue
-        least = max(PIECE_MIN_LENGTH, PIECE_MIN_SHARE * len(whole))
-        if len(key) >= least and whole.startswith(key):
+        min_piece = max(PIECE_MIN_LENGTH, PIECE_MIN_SHARE * len(footer))
+        if len(key) >= min_piece and footer.startswith(key):
             return True
-        if any(len(piece) >= least and whole.endswith(piece)
-               for piece in (key, key[1:])):
+        if any(len(end) >= min_piece and footer.endswith(end)
+               for end in (key, after_half_glyph)):
             return True
     return False
 
 
-def is_boilerplate(text, y=None, header_zone=70, footer_zone=950,
-                   context=None):
+def is_boilerplate(text, y=None, context=None, ocr_page=False):
     """Detect Hemmer boilerplate."""
     t = text.strip().strip("*").strip()
     if not t:
         return False
-    if context and context.is_running(t, y):
+    if context and context.is_running(t, y, ocr_page):
         return True
     if any(p.search(t) for p in BOILERPLATE):
         return True
@@ -156,11 +174,12 @@ def is_boilerplate(text, y=None, header_zone=70, footer_zone=950,
     if len(t) <= 45 and any(p.search(t) for p in ZONE_SIGNALS):
         return True
 
-    if (y is not None and (y <= 80 or y >= 905)
+    if (y is not None
+            and (y <= PAGE_NUMBER_HEADER or y >= PAGE_NUMBER_FOOTER)
             and re.fullmatch(r"\d{1,4}", t)):
         return True
 
-    in_zone = y is not None and (y <= header_zone or y >= footer_zone)
+    in_zone = y is not None and (y <= HEADER_ZONE or y >= FOOTER_ZONE)
     if in_zone:
         if any(p.search(t) for p in ZONE_SIGNALS):
             return True
@@ -446,8 +465,11 @@ def short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
     return short, block
 
 
-def assemble_paragraphs(lines, context=None):
+def assemble_paragraphs(lines, context=None, ocr_page=False):
     """Resolve hyphens and merge lines into paragraphs.
+
+    `ocr_page`: the model read the page, so a running footer may come back
+    misread or cut at the gutter.
 
     Returns an AssemblyResult — read .paragraphs, not the record itself.
     """
@@ -475,7 +497,7 @@ def assemble_paragraphs(lines, context=None):
         y = box[1] if box else None
         if not text:
             continue
-        if is_boilerplate(text, y, context=context):
+        if is_boilerplate(text, y, context=context, ocr_page=ocr_page):
             discarded.append(text)
             continue
 

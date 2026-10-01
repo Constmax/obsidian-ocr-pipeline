@@ -74,9 +74,10 @@ def test_page_helper_runs_against_a_real_page(tmp_path):
         document.save(pdf)
 
     with fitz.open(pdf) as document:
-        context = assembly.AssemblyContext(conversion.running_lines(document))
+        context = conversion.assembly_context(document)
         paragraphs = seite_bauen(document[0], context)
 
+    assert isinstance(context, assembly.AssemblyContext)
     assert "Repeated running head" in context.running_lines
     assert isinstance(paragraphs, list)
     assert any("Body text of page 1." in text for text in paragraphs)

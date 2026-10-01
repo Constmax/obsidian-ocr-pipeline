@@ -11,7 +11,7 @@ import dictionary
 import page_cache
 from assembly import AssemblyContext, build_document, split_preview
 from conversion import (BlockContext, ConversionRequest, PageMeta,
-                        convert_document, page_block, running_lines)
+                        assembly_context, convert_document, page_block)
 
 WORDS = """
 anspruch auf den der des entstanden für haftet ist käufers leistung nach
@@ -177,7 +177,7 @@ def test_replaying_cached_lines_reproduces_the_preview_block(
     assert "Übereignung" in written[1]
 
     with fitz.open(pdf) as doc:
-        assembly = AssemblyContext(running_lines(doc))
+        assembly = assembly_context(doc)
     context = BlockContext(
         assembly=assembly, wordbook=dictionary.load([words]),
         dictionary_correct=True)
