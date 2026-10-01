@@ -42,8 +42,8 @@ The plugin is where the user meets this code. Domain terms: `CONTEXT.md`.
 - **Queue.** The work order lives in GitHub issues: a tracking issue lists
   its items as sub-issues, in order. Record findings outside the current
   issue on the tracking issue or as a new issue, and keep them out of the PR.
-- **Diagnose first.** For a bug: reproduce it, find the cause, then fix. The
-  PR states the cause.
+- **Diagnose first.** For a bug: reproduce it, find the cause, then fix,
+  with `mattpocock-skills:diagnosing-bugs`. The PR states the cause.
 - **Language.** Code, comments, commit messages, `docs/` and the AGENTS
   files are English. `README.md` and `bench/ERGEBNIS.md` are German.
   Frontmatter keys and progress-event keys stay German: they are contract
@@ -103,6 +103,13 @@ gate exists).
 - **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`,
   `ready-for-human`, `wontfix`; see `docs/agents/triage-labels.md`.
 - **Domain docs:** single context, root `CONTEXT.md` + `docs/adr/` (created
-  lazily); see `docs/agents/domain.md`.
+  lazily); see `docs/agents/domain.md`. Sharpen a term or record a decision
+  with `mattpocock-skills:domain-modeling`.
 - **Code review:** when the user asks for a code review, always use the
   `mattpocock-skills:code-review` skill, not the built-in `/code-review`.
+- **Heuristic changes:** `mattpocock-skills:tdd` for the synthetic fixture;
+  done is still measured on real pages (see "When work is done").
+- **New queue:** `mattpocock-skills:grilling` with the user on the plan
+  before the sub-issues exist.
+- **Agent docs:** `mattpocock-skills:writing-for-agents` when editing an
+  AGENTS file, `CLAUDE.md` or `skill/SKILL.md`.
