@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Markdown assembly: pure functions operating on line lists (Stage 2, Issue #8).
+"""Markdown assembly: pure functions on recognized lines (Stage 2, Issue #8).
 
 Separated from pdf2md.py so that the layer changing most frequently can be tested
-without MLX, fitz, and Vault assets (pdf2md/test). Imports nothing from sibling
-modules — dependency flows only in this direction:
+without MLX, fitz, and Vault assets (pdf2md/test). Callers outside Stage 2
+reach the assembly through `conversion.page_block()`, which calls
+`assemble_paragraphs()`; the helpers behind it are private (Issue #144).
+Imports nothing from sibling modules — dependency flows only in this direction:
 
     pdf2md.py (CLI)  →  conversion.py  →  layout.py, ocr.py, assembly.py
 
@@ -134,7 +136,7 @@ class AssemblyContext:
         if running_text(text) in self.running_lines:
             return True
         return (ocr_page and y is not None and y >= FOOTER_BAND
-                and is_misread_footer(text, self.footer_keys))
+                and _is_misread_footer(text, self.footer_keys))
 
 
 @dataclass(frozen=True)
@@ -159,7 +161,7 @@ def _running_key(text):
     return re.sub(r"[\W_]+", "", text.casefold().translate(_CONFUSABLE))
 
 
-def is_misread_footer(text, footer_keys):
+def _is_misread_footer(text, footer_keys):
     """Is text a running footer read with OCR confusions, or a gutter piece:
     one end of it cut off at the column gutter?
 
@@ -191,10 +193,10 @@ def is_misread_footer(text, footer_keys):
 
 def is_boilerplate(text, y=None, context=None, ocr_page=False):
     """Detect Hemmer boilerplate."""
-    return boilerplate_reason(text, y, context, ocr_page) is not None
+    return _boilerplate_reason(text, y, context, ocr_page) is not None
 
 
-def boilerplate_reason(text, y=None, context=None, ocr_page=False):
+def _boilerplate_reason(text, y=None, context=None, ocr_page=False):
     """Why a line is boilerplate: `running_line`, `page_number` or
     `boilerplate`; None when it is not."""
     t = text.strip().strip("*").strip()
@@ -258,7 +260,7 @@ CITATION_BEFORE = re.compile(
     r"lit\.|Buchst\.|Seite|Fall|Teil|Rspr\.|Anm\.)\s*$")
 
 
-def split_footnote_defs(text):
+def _split_footnote_defs(text):
     """Split a footnote block at definition starts, never inside citations."""
     bounds = [0]
     for m in FN_DEF_SPLIT.finditer(text):
@@ -329,7 +331,7 @@ def _merge_definitions(definitions, paragraphs, columns):
     return defs, [v for k, v in texts.items() if not isinstance(k, int)]
 
 
-def footnotes_obsidian(paragraphs, columns=None):
+def _footnotes_obsidian(paragraphs, columns=None):
     """Convert footnotes to Obsidian syntax: [^n] in text, [^n]: at block end.
 
     `columns` gives the set of columns each paragraph covers (empty or None:
@@ -348,7 +350,7 @@ def footnotes_obsidian(paragraphs, columns=None):
         p = re.sub(r"\*\*(.+?)\*\*", r"\1", p) if FN_DEF.match(p.strip("* ")) else p
         m = FN_DEF.match(p.strip())
         if m and int(m.group(1)) <= 99:
-            parts = split_footnote_defs(p.strip())
+            parts = _split_footnote_defs(p.strip())
             detected = False
             for part in parts:
                 mm = FN_DEF.match(part.strip())
@@ -388,7 +390,7 @@ PUA = {
 PUA_FROM, PUA_TO = "\ue000", "\uf8ff"
 
 
-def strip_pua(s):
+def _strip_pua(s):
     if not any(PUA_FROM <= c <= PUA_TO for c in s):
         return s
     return "".join(PUA.get(c, "\u25aa") if PUA_FROM <= c <= PUA_TO else c
@@ -396,7 +398,7 @@ def strip_pua(s):
 
 
 def clean_text(s):
-    s = strip_pua(s)
+    s = _strip_pua(s)
     for pat, rep in LATEX:
         s = pat.sub(rep, s)
     s = re.sub(r"\$\s*(?=\d)", "§ ", s)
@@ -464,17 +466,17 @@ def level(text):
     return None
 
 
-def without_bold(text):
+def _without_bold(text):
     return re.sub(r"\*\*", "", text).strip()
 
 
-def only_bold(text):
+def _only_bold(text):
     """Does paragraph consist exclusively of bold spans?"""
     return bool(text.strip()) and not re.sub(r"\*\*.*?\*\*", "", text,
                                              flags=re.S).strip()
 
 
-def balance_bold(text):
+def _balance_bold(text):
     """Fix odd count of `**`."""
     if text.count("**") % 2 == 0:
         return text
@@ -491,7 +493,7 @@ def vertical_overlap(a, b):
     return min(a[3], b[3]) - max(a[1], b[1])
 
 
-def attach_footnote_numbers(lines, footer=900, proximity=40):
+def _attach_footnote_numbers(lines, footer=900, proximity=40):
     """Attach out-dented footnote number at page footer with its text.
 
     Number and text must share a column: the next line in reading order can
@@ -535,13 +537,13 @@ def attach_footnote_numbers(lines, footer=900, proximity=40):
     return out
 
 
-def box_inside(inner, outer, slack=2):
+def _box_inside(inner, outer, slack=2):
     """Does box inner lie inside box outer, give or take slack units?"""
     return (outer[0] - slack <= inner[0] and inner[2] <= outer[2] + slack
             and outer[1] - slack <= inner[1] and inner[3] <= outer[3] + slack)
 
 
-def drop_repeated_labels(lines):
+def _drop_repeated_labels(lines):
     """Drop an outline label the model read twice.
 
     The model sometimes returns a line's leading label ("1.") a second time
@@ -553,22 +555,22 @@ def drop_repeated_labels(lines):
         prev = out[-1] if out else None
         if (prev is not None and z.box and prev.box
                 and STANDALONE_MARKER.match(z.text.strip())
-                and box_inside(z.box, prev.box)):
-            label = without_bold(z.text)
-            if without_bold(prev.text).startswith(label + " "):
+                and _box_inside(z.box, prev.box)):
+            label = _without_bold(z.text)
+            if _without_bold(prev.text).startswith(label + " "):
                 continue
         out.append(z)
     return out
 
 
-def is_heading(text, bare):
+def _is_heading(text, bare):
     """Is this short, entirely bold line a heading?"""
     return (text.startswith("**") and text.endswith("**")
             and text.count("**") == 2 and len(bare) <= 90
             and not MARGIN_LABEL.match(text.strip()))
 
 
-def promote_margin_labels(lines, normal, outdent=25, window=8):
+def _promote_margin_labels(lines, normal, outdent=25, window=8):
     """Pull out-dented margin label to start of its block."""
     if not normal or len(lines) < 4:
         return lines
@@ -600,7 +602,7 @@ def promote_margin_labels(lines, normal, outdent=25, window=8):
     return out
 
 
-def short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
+def _short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
     """Per line: does it end visibly before right margin in justified text?"""
     n = len(lines)
     short, block = [False] * n, [False] * n
@@ -642,12 +644,12 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
 
     Returns an AssemblyResult — read .paragraphs, not the record itself.
     """
-    lines = drop_repeated_labels(attach_footnote_numbers(lines))
+    lines = _drop_repeated_labels(_attach_footnote_numbers(lines))
     ys = [z.box[1] for z in lines if z.box]
     distances = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 200]
     normal = statistics.median(distances) if distances else None
-    lines = promote_margin_labels(lines, normal)
-    short, block = short_lines(lines)
+    lines = _promote_margin_labels(lines, normal)
+    short, block = _short_lines(lines)
 
     # out: (paragraph, set of the columns its lines came from)
     out, buffer, last_y, discarded = [], "", None, []
@@ -668,7 +670,7 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
         y = box[1] if box else None
         if not text:
             continue
-        reason = boilerplate_reason(text, y, context, ocr_page)
+        reason = _boilerplate_reason(text, y, context, ocr_page)
         if reason is not None:
             discarded.append((replace(z, text=text), reason))
             continue
@@ -692,7 +694,7 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
                   and not NO_JOIN.match(cont) and cont[:1].islower())
 
         bare = text.lstrip("*").lstrip()
-        heading = is_heading(text, bare)
+        heading = _is_heading(text, bare)
         continues = (prev_idx is not None and block[prev_idx] and not short[prev_idx]
                      or box and buffer_x0 is not None
                      and box[0] > buffer_x0 + 8
@@ -711,7 +713,7 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
         runs_on = joins_box = False
         if ocr_page:
             runs_on = (bool(OPEN_END.search(buffer))
-                       or cont[:1].islower() and not only_bold(buffer))
+                       or cont[:1].islower() and not _only_bold(buffer))
             joins_box = (gap_known and not wide_gap
                          and (runs_on or bool(MID_SENTENCE.search(buffer))))
 
@@ -747,18 +749,18 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
         # On a model page a bold line can join a bold buffer (a heading
         # wrapped over two lines); the heading still ends there.
         was_heading = ((heading and (buffer == text
-                                     or ocr_page and only_bold(buffer)
-                                     and len(without_bold(buffer)) <= 90)
+                                     or ocr_page and _only_bold(buffer)
+                                     and len(_without_bold(buffer)) <= 90)
                         and not (block[i] and not short[i]))
                        or (short[i] and level(buffer) is not None
-                           and (len(without_bold(buffer)) <= 90
-                                or only_bold(buffer))))
+                           and (len(_without_bold(buffer)) <= 90
+                                or _only_bold(buffer))))
         last_y, last_marker, prev_idx, last_column = y, marker, i, column
     if buffer:
         out.append((buffer, buffer_columns))
     out += notes
-    paragraphs = format_headings(footnotes_obsidian(
-        [balance_bold(re.sub(r"\*\*(\s*)\*\*", r"\1", p)) for p, _ in out],
+    paragraphs = _format_headings(_footnotes_obsidian(
+        [_balance_bold(re.sub(r"\*\*(\s*)\*\*", r"\1", p)) for p, _ in out],
         [covered for _, covered in out]))
     return AssemblyResult(paragraphs=paragraphs, discarded=discarded)
 
@@ -766,7 +768,7 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
 SENTENCE_END = re.compile(r"[.!?][\"“»)\]]?$")
 
 
-def format_headings(paragraphs, max_heading=90):
+def _format_headings(paragraphs, max_heading=90):
     """Make outline levels visible."""
     out = []
     for p in paragraphs:
@@ -775,8 +777,8 @@ def format_headings(paragraphs, max_heading=90):
         if lvl is None or raw[:1] in "|>[":
             out.append(p)
             continue
-        blank = without_bold(raw)
-        if ((len(blank) <= max_heading or only_bold(raw))
+        blank = _without_bold(raw)
+        if ((len(blank) <= max_heading or _only_bold(raw))
                 and (not SENTENCE_END.search(blank) or "**" in raw)):
             out.append("#" * lvl + " " + blank)
         elif not raw.startswith("**"):
