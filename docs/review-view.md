@@ -178,8 +178,10 @@ ignored and drop out on the next save.
 **Searchable copy** (for the Stage-1 action, #66): OCR engine (Automatic,
 Apple Vision, Tesseract, Apple Vision + RapidOCR (Paddle fast), which reads with
 Apple Vision and re-reads citation lines with RapidOCR; default Automatic) and
-Split two-column pages (default off). `parseOcrSettings()` in `src/ocr-settings.ts`
-validates both on load: data from before these settings and invalid values
+Split two-column pages (default off), and Maximum scan resolution (#201, default
+300, 0 = off), passed as `--dpi`: scans above it are downscaled to it before OCR,
+scans at or below it stay unchanged. `parseOcrSettings()` in `src/ocr-settings.ts`
+validates all three on load: data from before these settings and invalid values
 (such as an engine this version does not know) fall back to the defaults field
 by field. Obsidian on mobile shows only a desktop-only notice in this section.
 

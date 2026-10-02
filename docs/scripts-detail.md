@@ -38,6 +38,8 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 - `150`: Absolute minimum — fallback for OOM crashes with `--jobs 1`
 - `0`: Downscaling completely disabled
 
+`--dpi` is an exact upper limit (#201): every image above it is resampled to it, not only those above Ghostscript's default 1.5× threshold (a 400-DPI scan used to pass untouched at `--dpi 300`). Resampled images are re-encoded as JPEG at `JPEG_QFACTOR` (`pdf-lib.sh`, 1.6: on a 400-DPI scan 32 % smaller than Ghostscript's default quality at equal Tesseract confidence); images at or below the limit pass through unchanged. The plugin passes its "Maximum scan resolution" setting as `--dpi`.
+
 Downscaling defaults to **Bicubic** resampling (`/Bicubic`) instead of Ghostscript's default `/Subsample` to preserve text edge sharpness.
 
 ### Jobs Tuning
