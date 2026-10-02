@@ -13,6 +13,7 @@ import {
 	DEFAULT_OCR_SETTINGS,
 	DESKTOP_ONLY_MESSAGE,
 	OCR_ENGINES,
+	isMaxDpi,
 	isOcrEngine,
 	type OcrEngine,
 	type OcrSettings,
@@ -248,6 +249,28 @@ export class SettingsTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 				);
+		});
+
+		group.addSetting((setting) => {
+			setting
+				.setName("Maximum scan resolution")
+				.setDesc(
+					"Dots per inch. Scans above this resolution are downscaled to it before OCR, which makes " +
+						"the copy smaller and OCR faster; scans at or below it stay unchanged. " +
+						"0 turns it off.",
+				)
+				.addText((t) => {
+					t.inputEl.type = "number";
+					t.inputEl.min = "0";
+					t.setPlaceholder(String(DEFAULT_OCR_SETTINGS.maxDpi))
+						.setValue(String(this.plugin.settings.maxDpi))
+						.onChange(async (val) => {
+							const dpi = val.trim() === "" ? DEFAULT_OCR_SETTINGS.maxDpi : Number(val);
+							if (!isMaxDpi(dpi)) return;
+							this.plugin.settings.maxDpi = dpi;
+							await this.plugin.saveSettings();
+						});
+				});
 		});
 	}
 

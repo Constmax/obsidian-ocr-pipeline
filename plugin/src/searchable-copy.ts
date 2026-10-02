@@ -134,7 +134,7 @@ export async function runSearchableCopy(
 		return;
 	}
 
-	const { ocrEngine, splitColumns } = host.settings();
+	const { ocrEngine, splitColumns, maxDpi } = host.settings();
 	const engine = await usableEngine(ocrEngine, host);
 	const result = await controller.runOcr({
 		source,
@@ -142,6 +142,7 @@ export async function runSearchableCopy(
 		engine,
 		// PaddleOCR orders both columns itself; splitting costs words and order (#153).
 		splitColumns: engine === "paddle" ? false : splitColumns,
+		maxDpi,
 		...(allowPages ? { allowPages } : {}),
 	});
 	if (result === null) return;

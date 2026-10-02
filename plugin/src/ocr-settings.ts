@@ -13,11 +13,14 @@ export interface OcrSettings {
 	ocrEngine: OcrEngine;
 	/** Passes `--split-columns`: two-column pages are split before OCR and merged back. */
 	splitColumns: boolean;
+	/** Passed as `--dpi`: scans above it are downscaled before OCR; 0 = off (issue #201). */
+	maxDpi: number;
 }
 
 export const DEFAULT_OCR_SETTINGS: OcrSettings = {
 	ocrEngine: "auto",
 	splitColumns: false,
+	maxDpi: 300,
 };
 
 /** Shown instead of the OCR controls where the action cannot run. */
@@ -27,6 +30,11 @@ export const DESKTOP_ONLY_MESSAGE =
 
 export function isOcrEngine(value: unknown): value is OcrEngine {
 	return typeof value === "string" && (OCR_ENGINES as readonly string[]).includes(value);
+}
+
+/** A whole number ≥ 0, as `reprocess-raw --dpi` accepts it. */
+export function isMaxDpi(value: unknown): value is number {
+	return Number.isInteger(value) && (value as number) >= 0;
 }
 
 /**
@@ -44,5 +52,6 @@ export function parseOcrSettings(saved: unknown): OcrSettings {
 			typeof data.splitColumns === "boolean"
 				? data.splitColumns
 				: DEFAULT_OCR_SETTINGS.splitColumns,
+		maxDpi: isMaxDpi(data.maxDpi) ? data.maxDpi : DEFAULT_OCR_SETTINGS.maxDpi,
 	};
 }

@@ -37,7 +37,7 @@ class FakeHost implements SearchableCopyHost {
 	notices: string[] = [];
 	existing = new Set<string>();
 	checked: string[] = [];
-	ocr: OcrSettings = { ocrEngine: "tesseract", splitColumns: true };
+	ocr: OcrSettings = { ocrEngine: "tesseract", splitColumns: true, maxDpi: 250 };
 	/** openPdf succeeds from this attempt on; 1 means immediately. */
 	indexedAfterAttempts = 1;
 	openAttempts: string[] = [];
@@ -104,7 +104,7 @@ test("normal run: saved settings, no page exemptions, opens the new PDF", async 
 	assert.deepEqual(host.checked, ["raw/a/case-01-ocr.pdf"]);
 	// The request has no force-OCR field: existing text is always preserved.
 	assert.deepEqual(controller.requests, [
-		{ source: SOURCE, destination: "raw/a/case-01-ocr.pdf", engine: "tesseract", splitColumns: true },
+		{ source: SOURCE, destination: "raw/a/case-01-ocr.pdf", engine: "tesseract", splitColumns: true, maxDpi: 250 },
 	]);
 	assert.deepEqual(host.openAttempts, ["raw/a/case-01-ocr.pdf"]);
 	assert.deepEqual(host.notices, ["OCR Preview: Searchable copy created — raw/a/case-01-ocr.pdf."]);
@@ -113,9 +113,9 @@ test("normal run: saved settings, no page exemptions, opens the new PDF", async 
 test("settings are read when the action starts", async () => {
 	const host = new FakeHost();
 	const controller = new FakeController();
-	host.ocr = { ocrEngine: "auto", splitColumns: false };
+	host.ocr = { ocrEngine: "auto", splitColumns: false, maxDpi: 300 };
 	await runSearchableCopy(SOURCE, controller, host);
-	host.ocr = { ocrEngine: "apple", splitColumns: true };
+	host.ocr = { ocrEngine: "apple", splitColumns: true, maxDpi: 300 };
 	await runSearchableCopy({ path: "raw/other.pdf", basename: "other" }, controller, host);
 
 	assert.deepEqual(
@@ -129,7 +129,7 @@ test("settings are read when the action starts", async () => {
 
 test("PaddleOCR runs when the engine check finds it usable (issue #73)", async () => {
 	const host = new FakeHost();
-	host.ocr = { ocrEngine: "paddle", splitColumns: false };
+	host.ocr = { ocrEngine: "paddle", splitColumns: false, maxDpi: 300 };
 	const controller = new FakeController();
 	await runSearchableCopy(SOURCE, controller, host);
 
@@ -143,7 +143,7 @@ test("PaddleOCR runs when the engine check finds it usable (issue #73)", async (
 
 test("PaddleOCR never splits columns, whatever the toggle says (issue #153)", async () => {
 	const host = new FakeHost();
-	host.ocr = { ocrEngine: "paddle", splitColumns: true };
+	host.ocr = { ocrEngine: "paddle", splitColumns: true, maxDpi: 300 };
 	const controller = new FakeController();
 	await runSearchableCopy(SOURCE, controller, host);
 
@@ -155,7 +155,7 @@ test("PaddleOCR never splits columns, whatever the toggle says (issue #153)", as
 
 test("a stored PaddleOCR that is not usable falls back to Automatic, visibly", async () => {
 	const host = new FakeHost();
-	host.ocr = { ocrEngine: "paddle", splitColumns: true };
+	host.ocr = { ocrEngine: "paddle", splitColumns: true, maxDpi: 300 };
 	host.engineProblem = "PaddleOCR engine is not ready: model file missing: /m/x.onnx";
 	const controller = new FakeController();
 	await runSearchableCopy(SOURCE, controller, host);
@@ -175,7 +175,7 @@ test("other engines are not checked before a run", async () => {
 	const host = new FakeHost();
 	const controller = new FakeController();
 	for (const ocrEngine of ["auto", "apple", "tesseract"] as const) {
-		host.ocr = { ocrEngine, splitColumns: false };
+		host.ocr = { ocrEngine, splitColumns: false, maxDpi: 300 };
 		await runSearchableCopy(SOURCE, controller, host);
 	}
 	assert.deepEqual(host.engineChecks, []);
@@ -183,7 +183,7 @@ test("other engines are not checked before a run", async () => {
 
 test("no engine check when the destination already exists", async () => {
 	const host = new FakeHost();
-	host.ocr = { ocrEngine: "paddle", splitColumns: false };
+	host.ocr = { ocrEngine: "paddle", splitColumns: false, maxDpi: 300 };
 	host.existing.add("raw/a/case-01-ocr.pdf");
 	await runSearchableCopy(SOURCE, new FakeController(), host);
 	assert.deepEqual(host.engineChecks, []);
