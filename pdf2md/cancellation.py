@@ -9,8 +9,8 @@ and writes the partial file from the pages before it; finally blocks and
 TemporaryDirectory contexts clean up on the way out. Which exit code that
 ends in (6 with a partial file, 7 without) is decided by the caller.
 """
+import os
 import signal
-import sys
 
 _requested = False
 
@@ -47,7 +47,10 @@ def _handle(signum, frame):
         raise Interrupted()
     _requested = True
     name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
-    sys.stderr.write(
+    # os.write, not sys.stderr: the handler may run while the main thread is
+    # inside a sys.stderr write, and re-entering that buffered writer raises
+    # RuntimeError (Issue #194). The notice is under PIPE_BUF, so it lands whole;
+    # only after a partial write of a full pipe can it tear one progress line.
+    os.write(2, (
         f"{name} received — cancellation requested, current page will finish "
-        "calculation. Repeating signal stops the current page.\n")
-    sys.stderr.flush()
+        "calculation. Repeating signal stops the current page.\n").encode())
