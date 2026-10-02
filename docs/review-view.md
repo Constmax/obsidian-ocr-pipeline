@@ -41,6 +41,11 @@ number of open entries. Two operating modes share the same controls:
 - File menu on any PDF: **"OCR → Markdown"** opens the page-selection dialog
   for that file and starts conversion. While another conversion is running, the
   item remains visible but shows a notice instead of starting another one.
+  A persistent notice with a **Cancel** button follows the run: after each page
+  `page n of m · k derailed · about x min left`. The derailed count appears
+  once a page derailed. The time left is the mean time of the pages so far
+  (pages from the cache, 0 s, do not count) times the pages still to come;
+  it is rough, and too low when model pages follow text-layer pages.
 - Second command: **"Jump to next preview entry"** (customizable shortcut)
 - **"Mark page as wrong"** (command palette, while the view has focus): marks
   the page the view shows, see "Marking a Page as Wrong"

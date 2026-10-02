@@ -17,7 +17,8 @@ and commands: [review-view.md](review-view.md).
 
 - **Convert:** file menu on a PDF or image and the command **Convert PDF and
   open in OCR comparison** spawn `pdf2md`, with optional page selection,
-  page n of m from the `--progress` events, cancellation (process group,
+  a progress notice fed by the `--progress` events (page n of m, derailed
+  pages so far, rough time left), cancellation (process group,
   `SIGTERM`, then `SIGKILL`) and an inactivity timeout.
 - **Review:** three-column comparison of source and Markdown with
   Accept / Reject, notes, editing and Undo.
@@ -72,9 +73,10 @@ primary usage pattern.
   a button that shows the `pdf2md --check` result. Today the CLIs are found on
   `PATH` plus `~/bin` and the Homebrew folders (`resolveCli()`,
   `stage1Path()`).
-- **Progress display** (#26): remaining-time estimate, a running count of
-  derailed pages, and a display that can be dismissed without ending the run.
-  Today a persistent notice shows page n of m with a cancel button.
+- **Progress display** (#26): a display that can be dismissed without ending
+  the run, with the run still visible elsewhere. Today a persistent notice
+  shows page n of m, the derailed pages so far and the time left, with a
+  cancel button.
 - **Batch conversion over the whole holdings** (#21).
 - **PaddleOCR in the engine setting** (#73), after the Stage-1 benchmark
   decision (#71). Issue #133 proposes dropping OCRmyPDF altogether; that would
