@@ -17,14 +17,14 @@ export function formatRemaining(seconds: number): string {
 }
 
 export class RunProgress {
-	private last: PageEvent | null = null;
+	private total = 0;
 	private finished = 0;
 	private derailed = 0;
 	private timedPages = 0;
 	private timedSeconds = 0;
 
 	record(event: PageEvent): void {
-		this.last = event;
+		this.total = event.total;
 		this.finished++;
 		if (event.derailed) this.derailed++;
 		// A page reused from the cache reports 0 s. Counting it would pull the
@@ -38,12 +38,13 @@ export class RunProgress {
 
 	/** "page n of m · k derailed · about x min left"; empty before the first page. */
 	describe(): string {
-		if (this.last === null) return "";
-		const parts = [`page ${this.last.num} of ${this.last.total}`];
-		if (this.derailed > 0) parts.push(`${this.derailed} derailed`);
+		if (this.finished === 0) return "";
 		// `von` counts the pages of this run, `nr` is a page number: with a
-		// page selection only the finished count says how many are left.
-		const left = this.last.total - this.finished;
+		// page selection (`--pages 5-7`) `nr` exceeds `von`, so the position
+		// is the count of finished pages.
+		const parts = [`page ${this.finished} of ${this.total}`];
+		if (this.derailed > 0) parts.push(`${this.derailed} derailed`);
+		const left = this.total - this.finished;
 		if (left > 0 && this.timedPages > 0) {
 			parts.push(formatRemaining((this.timedSeconds / this.timedPages) * left));
 		}

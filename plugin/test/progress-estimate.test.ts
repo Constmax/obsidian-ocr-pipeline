@@ -26,11 +26,13 @@ test("estimate: mean page time times the pages still to come", () => {
 	assert.equal(run.describe(), "page 2 of 10 · about 8 min left");
 });
 
-test("estimate counts finished pages, not page numbers, so a page selection works", () => {
+test("a page selection counts finished pages, not page numbers", () => {
 	const run = new RunProgress();
 	// `--pages 5-7`: `nr` is the page number, `von` the pages of this run.
 	run.record(page(5, 3, 60));
-	assert.match(run.describe(), / · about 2 min left$/);
+	assert.equal(run.describe(), "page 1 of 3 · about 2 min left");
+	run.record(page(6, 3, 60));
+	assert.equal(run.describe(), "page 2 of 3 · about 1 min left");
 });
 
 test("no estimate after the last page", () => {
