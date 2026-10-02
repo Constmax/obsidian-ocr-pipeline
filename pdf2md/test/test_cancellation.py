@@ -4,6 +4,7 @@
 The handler tests run without MLX; the CLI tests replace the model with a
 fake adapter.
 """
+import io
 import json
 import os
 import re
@@ -67,6 +68,39 @@ def test_reset_makes_cancellable_again(handler):
 
     _signal(signal.SIGINT)
     assert cancellation.requested() is True
+
+
+class _SignalMidWrite(io.RawIOBase):
+    """A stderr whose first write is interrupted by SIGTERM, as when the
+    plugin cancels while a progress event is being written (Issue #194)."""
+
+    def __init__(self):
+        self.written = b""
+        self.fired = False
+
+    def writable(self):
+        return True
+
+    def write(self, data):
+        if not self.fired:
+            self.fired = True
+            _signal(signal.SIGTERM)
+        self.written += bytes(data)
+        return len(data)
+
+
+def test_signal_during_a_stderr_write_does_not_reenter_it(handler, monkeypatch, capfd):
+    """Issue #194: the handler wrote to sys.stderr itself; landing inside a
+    progress write that raised RuntimeError ("reentrant call"), exit 1."""
+    raw = _SignalMidWrite()
+    monkeypatch.setattr(sys, "stderr", io.TextIOWrapper(io.BufferedWriter(raw)))
+
+    sys.stderr.write('{"typ": "seite"}\n')
+    sys.stderr.flush()
+
+    assert cancellation.requested() is True
+    assert raw.written == b'{"typ": "seite"}\n'
+    assert "SIGTERM received" in capfd.readouterr().err
 
 
 def _make_vector_pdf(path: Path, pages: int = 50) -> None:
