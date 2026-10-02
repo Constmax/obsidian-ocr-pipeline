@@ -290,6 +290,21 @@ def test_a_tiled_page_from_before_page_coordinates_cannot_be_captured(vault):
         cases.stash(preview, 1)
 
 
+def test_marking_falls_back_to_no_stash_in_tile_coordinates(vault):
+    root, _, preview = vault
+    cases.stash(preview, 1)
+    for path in (root / "_ocr-preview" / ".cache" / "skript" / "001.json",
+                 cases.stash_path(preview, 1)):
+        record = json.loads(path.read_text(encoding="utf-8"))
+        record["page"].update(mode="senkrecht @50%", line_format=2)
+        path.write_text(json.dumps(record), encoding="utf-8")
+    _split_first_sentence(preview)
+
+    with pytest.raises(cases.CaseError, match="tile coordinates"):
+        cases.add(preview, 1)
+    assert not cases.case_path(preview, 1).exists()
+
+
 def test_a_relative_source_is_found_from_the_vault_root(vault, monkeypatch):
     root, pdf, preview = vault
     _edit(preview, json.dumps(str(pdf)), '"raw/skript.pdf"')
