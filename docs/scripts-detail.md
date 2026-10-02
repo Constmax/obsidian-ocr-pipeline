@@ -83,7 +83,7 @@ On failure the gate walks a fixed fallback matrix:
 |---|---|---|
 | Apple Vision | Tesseract | Tesseract with column split |
 | Tesseract | Tesseract with column split | Apple Vision (if installed) |
-| PaddleOCR | Apple Vision, or Tesseract without it | — |
+| PaddleOCR | Apple Vision, or Tesseract without it | Tesseract, after Apple Vision (#198) |
 
 The column-split retry needs `pikepdf`, re-merges to the original format and is skipped when `--split-columns` already splits. PaddleOCR never splits: it orders both columns itself, and `--split-columns`/`--split-columns-all` with `--engine paddle` are ignored with a warning, for the fallback engine too (#153; split mode cost words and order in `bench/ERGEBNIS.md`, Nachtrag 26). An engine switch re-runs OCR with `--force-ocr`. Every switch is printed on stderr with its reason (`🔄 Fallback: PaddleOCR accurate → Apple Vision (quality gate failed)`), and the summary names the engine that produced the file (`pdf-auto`: per file, plus a fallback count). If every attempt fails, no file is written.
 

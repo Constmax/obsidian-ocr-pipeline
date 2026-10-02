@@ -5,8 +5,10 @@ and the retry chain in ocr_with_retry:
 
 - Apple Vision fails   → Tesseract → Tesseract with column split
 - Tesseract fails      → Tesseract with column split → Apple Vision
-- PaddleOCR fails      → Apple Vision, or Tesseract without it; never an
-                         implicit column split
+- PaddleOCR fails      → Apple Vision → Tesseract (Tesseract alone without
+                         Apple Vision); never an implicit column split
+
+`auto` uses PaddleOCR fast when it is ready and no split is requested (#198).
 
 Every fallback is printed on stderr with its reason and named in the
 summary. The toolchain is the stubbed one of test_pipeline.py; the ocrmypdf
@@ -173,11 +175,13 @@ def test_paddle_mode_usage_errors(box, script, positional, options, message):
     ("tesseract", "1", "ocr(a)", ["tesseract", "tesseract+split"], "merged(ocr(split(a)))"),
     ("tesseract", "1", "ocr(a) ocr(split(a))",
      ["tesseract", "tesseract+split", "apple"], "apple(a)"),
-    # PaddleOCR fails → Apple Vision if installed, otherwise Tesseract.
+    # PaddleOCR fails → Apple Vision if installed, then Tesseract (#198).
     ("paddle", "1", "paddle(a)", ["paddle", "apple"], "apple(a)"),
+    ("paddle", "1", "paddle(a) apple(a)", ["paddle", "apple", "tesseract"], "ocr(a)"),
     ("paddle", "", "paddle(a)", ["paddle", "tesseract"], "ocr(a)"),
 ], ids=["apple>tesseract", "apple>tesseract>split", "tesseract>split",
-        "tesseract>split>apple", "paddle>apple", "paddle>tesseract"])
+        "tesseract>split>apple", "paddle>apple", "paddle>apple>tesseract",
+        "paddle>tesseract"])
 def test_fallback_chain(box, engine, apple, bad, sequence, output):
     result = _combine(box, "--engine", engine, apple=apple, paddle="1", bad_text=bad)
 

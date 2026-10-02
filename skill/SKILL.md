@@ -59,7 +59,7 @@ pdf-auto <ordner> [--output-dir <dir>] [--engine auto|apple|tesseract|paddle] \
 - `--split-columns`: Zweispaltige Seiten automatisch erkennen (pro Seite!), vor OCR trennen und danach wieder zum Originalformat zusammenführen — Pflicht für Hemmer/Kaiser-Zweispalter, auch in gemischten Dokumenten
 - `--split-columns-all`: Wie `--split-columns`, aber ohne Erkennung — jede Seite wird getrennt (Fallback, falls die Erkennung danebenliegt)
 - `--keep-split`: Unterdrückt das Re-Merge — Output bleibt in (doppelt so vielen) Halbseiten
-- **Quality-Gate**: Prüft automatisch Zeichen/Seite + Garbage-Score; bei Fehlschlag feste Fallback-Kette: Apple Vision → Tesseract → Tesseract mit Spalten-Split; Tesseract → Spalten-Split → Apple Vision; PaddleOCR → Apple Vision (sonst Tesseract), nie ein impliziter Split. Jeder Wechsel steht mit Grund auf stderr und in der Zusammenfassung. Deaktivierbar via `--no-quality-gate`.
+- **Quality-Gate**: Prüft automatisch Zeichen/Seite + Garbage-Score; bei Fehlschlag feste Fallback-Kette: Apple Vision → Tesseract → Tesseract mit Spalten-Split; Tesseract → Spalten-Split → Apple Vision; PaddleOCR → Apple Vision → Tesseract (ohne Apple Vision gleich Tesseract), nie ein impliziter Split. Jeder Wechsel steht mit Grund auf stderr und in der Zusammenfassung. Deaktivierbar via `--no-quality-gate`.
 
 ### `pdf-workflow` — Bilder+PDFs → 1 PDF
 
