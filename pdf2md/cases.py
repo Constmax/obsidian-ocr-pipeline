@@ -178,6 +178,10 @@ def _capture(preview: Path, fields: dict, page) -> dict:
         raise CaseError(
             f"no page-cache entry for page {page.number} of {preview.name} "
             f"(looked in {directory}) — convert the page again")
+    if page_cache.in_tile_coordinates(entry):
+        raise CaseError(
+            f"page {page.number} of {preview.name} holds tile coordinates "
+            "(tiled before Issue #146) — convert the page again")
     pdf = _source_pdf(preview, fields)
     if page_cache.file_sha256(pdf) != context["pdf_sha256"]:
         raise CaseError(
@@ -281,7 +285,8 @@ def add(preview: Path, number: int, note: str | None = None,
     block). Both count only while they were made from the lines the page
     has now: after a rerun that read other lines, the case is made anew from
     the current page-cache entry. When that entry or the source is gone, the
-    stash or case is all there is and is used as it is.
+    stash or case is all there is and is used as it is, unless it holds a
+    tiled page in tile coordinates.
 
     Returns `(path, case, missing)` — `missing` are the words that decided
     an automatic `upstream`.
@@ -293,9 +298,12 @@ def add(preview: Path, number: int, note: str | None = None,
     try:
         captured = _capture(preview, fields, page)
     except CaseError:
-        if stash_record is None and previous is None:
+        base = next((record for record in (stash_record, previous)
+                     if record is not None
+                     and not page_cache.in_tile_coordinates(record["page"])),
+                    None)
+        if base is None:
             raise
-        base = stash_record or previous
     else:
         base = next((record for record in (stash_record, previous)
                      if _same_page(record, captured)), None)

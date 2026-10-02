@@ -69,7 +69,7 @@ def test_roundtrip_and_mismatched_key_is_a_miss(tmp_path):
 
     assert target.name == "001.json"
     stored = page_cache.read_page(directory, 1, page_cache.page_key(context, 1))
-    assert stored == {**page, "line_format": 2, "lines": [
+    assert stored == {**page, "line_format": 3, "lines": [
         {"text": "Text", "box": [10, 20, 900, 40], "column": 0,
          "container": "kasten1"}]}
     assert page_cache.recognized_lines(stored) == page["lines"]
@@ -363,7 +363,7 @@ def test_an_old_entry_is_read_as_recognized_lines(tmp_path, columns, expected):
 
 
 @pytest.mark.parametrize("change", [
-    {"line_format": 3},
+    {"line_format": 4},
     {"line_format": 2, "columns": [None]},
     {"line_format": 2, "lines": [{"text": "x", "column": True}]},
     {"columns": [0, 1]},
@@ -375,6 +375,32 @@ def test_a_line_format_it_cannot_read_is_a_miss(tmp_path, change):
     page = {"number": 1, "source": "ocr", "characters": 0, "layout": "x",
             "mode": "ganz", "trace": [], "lines": [["Text", None]]}
     assert _old_entry(tmp_path / "cache", context, {**page, **change}) is None
+
+
+@pytest.mark.parametrize("mode, line_format, hit", [
+    ("senkrecht @50%", 2, False),
+    ("waagerecht", None, False),
+    ("senkrecht @50%", 3, True),
+    ("waagerecht", 3, True),
+    ("ganz", 2, True),
+    ("textlayer", None, True),
+])
+def test_a_tiled_page_from_before_page_coordinates_is_read_again(
+        tmp_path, mode, line_format, hit):
+    """Before Issue #146 a tiled page kept its boxes in its tiles."""
+    pdf = tmp_path / "source.pdf"
+    pdf.write_bytes(b"pdf contents")
+    context = page_cache.build_context(pdf, {"dpi": 150})
+    lines = ([{"text": "Text"}] if line_format else [["Text", None]])
+    page = {"number": 1, "source": "ocr", "characters": 0, "layout": "x",
+            "mode": mode, "trace": [], "lines": lines}
+    if line_format:
+        page["line_format"] = line_format
+    directory = tmp_path / "cache"
+
+    assert (_old_entry(directory, context, page) is not None) == hit
+    # Describing the page the preview shows still reads it.
+    assert page_cache.read_latest_page(directory, 1) is not None
 
 
 def test_a_columns_array_that_does_not_fit_leaves_every_line_unknown():
