@@ -49,7 +49,8 @@ def _handle(signum, frame):
     name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
     # os.write, not sys.stderr: the handler may run while the main thread is
     # inside a sys.stderr write, and re-entering that buffered writer raises
-    # RuntimeError (Issue #194). A pipe write this short lands whole, between lines.
+    # RuntimeError (Issue #194). The notice is under PIPE_BUF, so it lands whole;
+    # only after a partial write of a full pipe can it tear one progress line.
     os.write(2, (
         f"{name} received — cancellation requested, current page will finish "
         "calculation. Repeating signal stops the current page.\n").encode())
