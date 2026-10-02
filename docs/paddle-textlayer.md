@@ -6,7 +6,8 @@ mode 3a #118, resolved engine value #70, plugin option #73). Step 5 (#71,
 `bench/ERGEBNIS.md`, Nachtrag 26) **retains** PaddleOCR in fast mode, with one
 documented exception, and **removes split mode for PaddleOCR** (#153). Step
 6 is done (#72): `setup.sh` installs the plugin into the Stage-1 venv through
-`install-paddle.sh` and prefetches the models. Open: the 90° rotation gap the
+`install-paddle.sh` and prefetches the models. Since #198 `auto` prefers
+PaddleOCR fast when it is ready. Open: the 90° rotation gap the
 benchmark found for every engine (#152). Issue #133 proposes removing
 OCRmyPDF from Stage 1, which would rework steps 4 and 6.
 
@@ -597,7 +598,9 @@ Every fallback must be visible in stderr and the final summary, including the
 requested engine, the actual engine, and the reason for the transition.
 
 Keep `auto` on the existing Apple/Tesseract policy. PaddleOCR is explicit until
-the benchmark justifies a policy change.
+the benchmark justifies a policy change. (Done: #71 retained fast mode, and
+since #198 `auto` prefers it when `--paddle-check fast` passes and no split is
+requested.)
 
 Update all user-facing and internal engine lists together:
 
