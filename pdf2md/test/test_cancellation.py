@@ -342,8 +342,8 @@ def _run_cli(monkeypatch, adapter, *argv):
     try:
         pdf2md_cli.main()
         return 0
-    except SystemExit as exit:
-        return exit.code
+    except SystemExit as stop:
+        return stop.code
     finally:
         cancellation.reset()
         signal.signal(signal.SIGINT, signal.default_int_handler)
