@@ -457,9 +457,14 @@ LEVELS = (
 ABBREVIATION = re.compile(r"^[A-Za-zÄÖÜäöü]{1,2}\.")
 
 
+def _unbolded(text):
+    """The line without any bold markers, as a label check reads it."""
+    return re.sub(r"\*+", "", text).lstrip()
+
+
 def level(text):
     """Outline level (2–6) or None."""
-    bare = re.sub(r"\*+", "", text).lstrip()
+    bare = _unbolded(text)
     for pat, lvl in LEVELS:
         m = pat.match(bare)
         if m:
@@ -594,7 +599,7 @@ def _promote_margin_labels(lines, normal, outdent=25, window=8):
                 break
             if last_y is not None and prev.box[3] < last_y - 1.6 * normal:
                 break
-            if ENUMERATION.match(re.sub(r"\*+", "", prev.text).lstrip()):
+            if ENUMERATION.match(_unbolded(prev.text)):
                 break
             last_y = prev.box[1]
             j -= 1
@@ -697,7 +702,7 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
         bare = text.lstrip("*").lstrip()
         # A text-layer line bolds per span, so a bold run can close inside
         # the label: "**b)** Text", "**Hinweis**: Text" (Issue #190).
-        plain = re.sub(r"\*+", "", text).lstrip()
+        unbolded = _unbolded(text)
         heading = _is_heading(text, bare)
         continues = (prev_idx is not None and block[prev_idx] and not short[prev_idx]
                      or box and buffer_x0 is not None
@@ -725,7 +730,7 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
             new_p = False
         elif marker != last_marker and not joins_box:
             new_p = True
-        elif (ENUMERATION.match(plain) or KEYWORD.match(plain)
+        elif (ENUMERATION.match(unbolded) or KEYWORD.match(unbolded)
               or (heading and not continues and not runs_on)
               or (was_heading and not runs_on)):
             new_p = True
