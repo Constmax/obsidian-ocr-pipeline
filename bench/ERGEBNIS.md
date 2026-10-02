@@ -2799,9 +2799,10 @@ wurde ein Paddle-fast-Lauf in seine Teile zerlegt.
 
 **Aufbau.**
 - **Seiten:** 8 Scanseiten, `raw/ZR/Erbrecht/erbrecht-fall-04.pdf` S. 2–5 und
-  `raw/StR/Rep-Faelle/strafrecht-fall-14.pdf` S. 2–5. Die JPEGs wurden mit
+  `raw/StR/Rep-Faelle/strafrecht-fall-14.pdf` S. 2–5. Die Seitenbilder (ein
+  JPEG je Seite, 8,2–11,6 MP, im Mittel 9,6 MP; Handyfoto-Scans) wurden mit
   `pdfimages -j` herausgezogen und mit `img2pdf -s 300dpi` zu einem reinen
-  Bild-PDF zusammengesetzt (etwa 7 MP je Seite, Handyfoto-Scans).
+  Bild-PDF zusammengesetzt. Zum Vergleich: A4 bei 300 dpi hat 8,7 MP.
 - **Engine:** `--engine paddle --paddle-mode fast` aus dem Checkout `906b71b`.
 - **Umgebung:** M1, 8 GB, macOS 26.2; `~/.venvs/ocrmypdf` mit ocrmypdf 17.8.0,
   rapidocr 3.9.2, onnxruntime 1.26.0, pyobjc-framework-Vision 12.2.1,
@@ -2817,6 +2818,19 @@ wurde ein Paddle-fast-Lauf in seine Teile zerlegt.
   - M5: ohne OCRmyPDF; je Seite pypdfium2 bei 300 dpi,
     `tesseract <png> - --psm 0` (OSD), `FastRecognizer().recognize()`,
     `order_lines()` und `render_page()`. M5 schreibt kein PDF.
+- **Zeitmessung:** Wanduhr je Prozess, mit Modellladen. M5 misst ab dem
+  Import, ohne den Start des Interpreters; das begünstigt M5 leicht.
+
+```text
+pdfimages -j -f 2 -l 5 erbrecht-fall-04.pdf a
+pdfimages -j -f 2 -l 5 strafrecht-fall-14.pdf b
+img2pdf -s 300dpi a-*.jpg b-*.jpg -o input.pdf
+BASE="--plugin ocrmypdf_paddle --paddle-mode fast -l deu --skip-text --jobs 1 --max-image-mpixels 400"
+reprocess-raw input.pdf --output m1.pdf --engine paddle --paddle-mode fast       # M1
+ocrmypdf $BASE --rotate-pages --deskew --optimize 3 input.pdf m2.pdf              # M2
+ocrmypdf $BASE --rotate-pages --deskew --optimize 0 --output-type pdf input.pdf m3.pdf   # M3
+ocrmypdf $BASE --optimize 0 --output-type pdf input.pdf m4.pdf                    # M4
+```
 
 | Variante | s/Seite, Runde 1 | Runde 2 |
 |---|---:|---:|
@@ -2833,14 +2847,18 @@ hOCR 0,02 s/Seite.
 - **Pipeline um OCRmyPDF** (Zusammenführen, MediaBox, Herunterrechnen, Quality
   Gate, B5): etwa 0,4 s/Seite (M1 − M2).
 - **PDF/A und `--optimize 3`:** etwa 1,3 s/Seite (M2 − M3).
-- **Drehen und Entzerren:** etwa 5,5 s/Seite (M3 − M4), die Hälfte des Laufs.
-  Beides kommt aus Tesseract (`PaddleOcrEngine.get_orientation` und
-  `get_deskew`) und läuft auf der vollen Auflösung.
-- **Eigene Arbeit von OCRmyPDF** (Rastern, Textlayer, PDF schreiben): etwa
-  null. M4 mit OCRmyPDF, ohne OSD, braucht 5,5 s; M5 ohne OCRmyPDF und ohne
-  OSD (7,2 − 1,9) braucht 5,3 s.
-- **Textlayer:** M1 bis M4 liefern fast dieselbe Wortzahl (4.328–4.369,
-  `pdftotext`). Die Varianten ändern also das Tempo, nicht den Text.
+- **Drehen und Entzerren:** etwa 5,5 s/Seite (M3 − M4), knapp die Hälfte des
+  Laufs (43 %). Darin stecken die Tesseract-Aufrufe
+  (`PaddleOcrEngine.get_orientation` und `get_deskew`, die OSD allein 1,9 s in
+  M5), das zusätzliche Vorschau-Raster für `--rotate-pages` sowie das Drehen
+  und Schreiben des entzerrten Bildes, alles auf voller Auflösung.
+- **Mehraufwand von OCRmyPDF gegenüber einem eigenen Weg:** etwa
+  0,2 s/Seite. M4 (mit OCRmyPDF, ohne Drehen und Entzerren) braucht 5,5 s, M5
+  ohne OSD (7,2 − 1,9) 5,3 s. Auch ein eigener Weg muss rastern
+  (1,2 s in M5).
+- **Textlayer (Ausgaben aus Runde 2):** M1 bis M4 liefern fast dieselbe
+  Wortzahl (4.328–4.369, `pdftotext`). Die Varianten ändern das Tempo, nicht
+  den Text.
 
 **Folgerung.** OCRmyPDF zu entfernen (#133) spart für sich keine Zeit. Die
 großen Posten sind Drehen/Entzerren und PDF/A/Optimierung, und beide lassen
@@ -2848,11 +2866,12 @@ sich innerhalb von OCRmyPDF einstellen. #133 bleibt geparkt. Der Hebel steht
 in #206.
 
 **Grenzen.**
-- **Wenige Seiten:** 8 Seiten einer Scanart (große Handyfotos). Auf den
+- **Wenige Seiten:** 8 Seiten einer Scanart (große Handyfotos, über A4 bei
+  300 dpi). Auf den
   gerenderten Vektorseiten des Stufe-1-Benchmarks dauert Paddle fast
   3,2 s/Seite (Nachtrag 26). Ob der Anteil von Drehen und Entzerren dort
   ebenso hoch ist, ist nicht gemessen.
 - **Runde 2 unter Fremdlast:** Andere Prozesse liefen mit, die Werte liegen
-  15–65 % höher und streuen. Sie bestätigen nur die Größenordnung.
+  8–73 % höher und streuen. Sie bestätigen nur die Größenordnung.
 - **Nicht getrennt:** Drehen und Entzerren sind zusammen gemessen. Das
   Trennen ist der erste Schritt in #206.
