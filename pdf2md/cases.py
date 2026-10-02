@@ -178,6 +178,11 @@ def _capture(preview: Path, fields: dict, page) -> dict:
         raise CaseError(
             f"no page-cache entry for page {page.number} of {preview.name} "
             f"(looked in {directory}) — convert the page again")
+    if page_cache.in_tile_coordinates(entry):
+        raise CaseError(
+            f"page {page.number} of {preview.name} was tiled before boxes "
+            "were in page coordinates (its cache entry holds tile "
+            "coordinates) — convert the page again")
     pdf = _source_pdf(preview, fields)
     if page_cache.file_sha256(pdf) != context["pdf_sha256"]:
         raise CaseError(

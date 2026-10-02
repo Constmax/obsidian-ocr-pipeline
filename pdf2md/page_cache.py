@@ -218,11 +218,17 @@ def _valid_line(line: Any, line_format: int | None) -> bool:
             and all(isinstance(value, str) for value in container))
 
 
+def in_tile_coordinates(page: dict) -> bool:
+    """Whether a tiled page's boxes are still in their tiles (before Issue
+    #146); no entry says where the tiles were, so they cannot be mapped."""
+    return (page["mode"].startswith(_TILED_MODES)
+            and page.get("line_format") != LINE_FORMAT)
+
+
 def read_page(directory: Path, page_number: int, expected_key: str):
     """Read a valid page entry, returning ``None`` on any cache miss."""
     page = _read_entry(directory, page_number, expected_key)
-    if (page is not None and page["mode"].startswith(_TILED_MODES)
-            and page.get("line_format") != LINE_FORMAT):
+    if page is not None and in_tile_coordinates(page):
         return None
     return page
 
