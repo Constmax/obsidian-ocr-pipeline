@@ -277,6 +277,19 @@ def test_a_source_that_changed_since_the_conversion_cannot_be_captured(vault):
         cases.stash(preview, 1)
 
 
+def test_a_tiled_page_from_before_page_coordinates_cannot_be_captured(vault):
+    """Before Issue #146 a tiled page kept its boxes in its tiles; a case
+    would replay them as page coordinates."""
+    root, _, preview = vault
+    entry = root / "_ocr-preview" / ".cache" / "skript" / "001.json"
+    payload = json.loads(entry.read_text(encoding="utf-8"))
+    payload["page"].update(mode="senkrecht @50%", line_format=2)
+    entry.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(cases.CaseError, match="tile coordinates"):
+        cases.stash(preview, 1)
+
+
 def test_a_relative_source_is_found_from_the_vault_root(vault, monkeypatch):
     root, pdf, preview = vault
     _edit(preview, json.dumps(str(pdf)), '"raw/skript.pdf"')

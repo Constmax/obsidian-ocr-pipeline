@@ -544,7 +544,8 @@ before Issue #144 have no `line_format`: their lines are `[text, box,
 container?]` lists, with the columns in a parallel `columns` array (Issue #14)
 or not at all. Those that stay valid are read through
 `page_cache.recognized_lines()`, the one upgrade path, which page cases use
-too; a missing column is None. `--lines-dump`
+too; a missing column is None. A page case is never captured from a tiled
+entry in an older format ("Page cases"). `--lines-dump`
 writes each page's lines in the same object form. Each
 run persists its pages while assembling from memory; a resumed or repeated run
 reads matching pages back from disk instead of recomputing them. Consequently,
@@ -631,7 +632,8 @@ expected block); without either, or when they were made from other lines,
 from the current page-cache entry. Note and issue of an existing case stay
 unless given. A changed expected block sets the case back to `open`.
 
-Capturing a page needs its page-cache entry and the source named in
+Capturing a page needs its page-cache entry, in page coordinates (not a
+tiled entry from before format 3), and the source named in
 `quelle-pdf`, unchanged since the conversion; a relative `quelle-pdf` is
 looked up from the working directory and from every folder above the preview.
 `stash` exits with code 1 and one line on stderr without them. `add` then
