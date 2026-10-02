@@ -695,6 +695,9 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
                   and not NO_JOIN.match(cont) and cont[:1].islower())
 
         bare = text.lstrip("*").lstrip()
+        # A text-layer line bolds per span, so a bold run can close inside
+        # the label: "**b)** Text", "**Hinweis**: Text" (Issue #190).
+        plain = re.sub(r"\*+", "", text).lstrip()
         heading = _is_heading(text, bare)
         continues = (prev_idx is not None and block[prev_idx] and not short[prev_idx]
                      or box and buffer_x0 is not None
@@ -722,7 +725,7 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
             new_p = False
         elif marker != last_marker and not joins_box:
             new_p = True
-        elif (ENUMERATION.match(bare) or KEYWORD.match(bare)
+        elif (ENUMERATION.match(plain) or KEYWORD.match(plain)
               or (heading and not continues and not runs_on)
               or (was_heading and not runs_on)):
             new_p = True

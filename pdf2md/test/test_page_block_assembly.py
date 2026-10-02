@@ -229,6 +229,19 @@ def test_a_bold_label_counts_for_the_level():
         "##### b) Gemäß der herrschenden Meinung"]
 
 
+def test_a_bold_label_starts_a_new_item_at_body_spacing():
+    # Issue #190: the text layer bolds the label span only.
+    assert paragraphs(stack("a) Erster Punkt mit Text.",
+                            "**b)** Zweiter Punkt mit Text.")) == [
+        "**a)** Erster Punkt mit Text.", "##### b) Zweiter Punkt mit Text."]
+
+
+def test_a_bold_keyword_starts_a_new_paragraph_at_body_spacing():
+    assert paragraphs(stack("Erster Satz ohne Ende",
+                            "**Hinweis**: Zweiter Satz.")) == [
+        "Erster Satz ohne Ende", "**Hinweis**: Zweiter Satz."]
+
+
 def test_an_abbreviation_is_no_outline_label():
     assert paragraphs([z("h. L. und Rechtsprechung stimmen überein.")]) == [
         "h. L. und Rechtsprechung stimmen überein."]
