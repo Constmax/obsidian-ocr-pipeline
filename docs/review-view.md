@@ -42,10 +42,13 @@ number of open entries. Two operating modes share the same controls:
   for that file and starts conversion. While another conversion is running, the
   item remains visible but shows a notice instead of starting another one.
   A persistent notice with a **Cancel** button follows the run: after each page
-  `page n of m · k derailed · about x min left`. The derailed count appears
-  once a page derailed. The time left is the mean time of the pages so far
-  (pages from the cache, 0 s, do not count) times the pages still to come;
-  it is rough, and too low when model pages follow text-layer pages.
+  `page n of m · k derailed · about x min left`, where `n` counts the pages
+  this run finished (with a page selection, `m` is the number of selected
+  pages). The derailed count appears once a page derailed. The time left is
+  the mean time of the pages so far (pages from the cache, 0 s, do not count)
+  times the pages still to come. It is rough: too low when model pages follow
+  text-layer pages, and too high after the first model page, whose time
+  includes loading the model.
 - Second command: **"Jump to next preview entry"** (customizable shortcut)
 - **"Mark page as wrong"** (command palette, while the view has focus): marks
   the page the view shows, see "Marking a Page as Wrong"
