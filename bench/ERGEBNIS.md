@@ -2767,8 +2767,8 @@ besser (gegen den Textlayer geprüft):
 - `UNIREP_KK_ZR_LH_23_02_2026` S. 11: Die Seitenzahl hing an der letzten
   Fußnote. Mit dem echten y liegt sie in der Fußzone und fällt weg.
 
-Auf sechs weiteren Seiten liegen Zeilen jetzt in einem anderen Kasten oder in
-keinem; die Vorschau ändert sich dadurch nicht (fünf gekachelte Seiten und
+Auf fünf weiteren Seiten liegen Zeilen jetzt in einem anderen Kasten oder in
+keinem; die Vorschau ändert sich dadurch nicht (vier gekachelte Seiten und
 `UNIREP_KK_ZR_LH_16_01_2026` S. 13, ganz gelesen).
 
 **Seitenfälle.** Elf der zwölf Fälle im Vault sind gekachelt. Ihre Seiten
