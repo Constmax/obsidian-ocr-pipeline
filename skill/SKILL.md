@@ -138,7 +138,7 @@ Lies zuerst `<vault>/CLAUDE.md` — sie definiert Ingest-Workflow, Seitentypen, 
 
 ## OCR-Engine wählen
 
-**Default ist `auto` → Apple Vision falls verfügbar, sonst Tesseract.**
+**Default ist `auto` → PaddleOCR fast, falls installiert und bereit, sonst Apple Vision, sonst Tesseract (#198).** Mit `--split-columns` überspringt `auto` PaddleOCR.
 
 | Situation | Engine | Grund |
 |---|---|---|
@@ -147,7 +147,7 @@ Lies zuerst `<vault>/CLAUDE.md` — sie definiert Ingest-Workflow, Seitentypen, 
 | Fotografierte Buchseiten, schief | `apple` | Deskew gut, Neural Engine |
 | Handschriftliche Notizen | `apple` | Vision kann Handschrift, Tesseract nicht |
 | Tabellen mit Gitternetz | `tesseract` | PSM 1 erkennt Zellstruktur besser |
-| Benchmark / Test der PaddleOCR-Engine | `paddle` (+ `--paddle-mode fast`) | Nur explizit, nie per `auto`, bis #71 entschieden hat; Plugin-venv muss vorn im `PATH` stehen |
+| Zweispalter ohne Split, Normzitate | `auto` bzw. `paddle --paddle-mode fast` | #71 hat den schnellen Modus behalten; `auto` wählt ihn, wenn er bereit ist |
 
 **`--split-columns` ist der Default-Weg für Zweispalter — inklusive gemischter Dokumente.** Es ersetzt die alte Heuristik „Tesseract PSM 1 und hoffen": Vor dem OCR wird jede Seite per Zeilen-Analyse geprüft (Textzeilen, die sauber auf eine Seitenhälfte beschränkt sind, vs. Zeilen, die über die volle Breite laufen). Nur echte Zweispalter-Seiten werden getrennt-OCR-t; einspaltige Seiten (Deckblätter, Schemata, eingestreute Urteile) laufen unverändert durch. Nach dem OCR wird automatisch wieder zum **Originalformat** zusammengeführt (gleiche Seitenzahl, gleiche Seitengröße wie das Quell-PDF) — kein manueller Nacharbeitsschritt nötig.
 
