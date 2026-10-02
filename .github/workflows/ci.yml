@@ -45,7 +45,7 @@ jobs:
         run: make shellcheck
 
   python:
-    name: Python (pytest, Golden-Snapshot)
+    name: Python (pytest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
