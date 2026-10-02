@@ -175,8 +175,8 @@ test("success: passes paths, timeout and pages, reports page progress, opens the
 
 	assert.deepEqual(host.progress, [
 		'OCR Preview: Converting "case-01" …',
-		'OCR Preview: Converting "case-01" — page 1 of 3 …',
-		'OCR Preview: Converting "case-01" — page 2 of 3 (derailed) …',
+		'OCR Preview: Converting "case-01" — page 1 of 3 · under 1 min left …',
+		'OCR Preview: Converting "case-01" — page 2 of 3 · 1 derailed · under 1 min left …',
 	]);
 	assert.equal(host.hidden, 1);
 	assert.equal(host.reconciles, 1);

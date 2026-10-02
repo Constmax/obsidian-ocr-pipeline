@@ -21,6 +21,7 @@ import {
 	type SearchableCopyResult,
 	type SpawnFunction,
 } from "./conversion.ts";
+import { RunProgress } from "./progress-estimate.ts";
 
 /**
  * pdf2md is stopped after this long without any output. A page takes 15–60 s
@@ -313,6 +314,7 @@ export class ConversionController {
 				this.cancel(),
 			);
 			this.progress = progress;
+			const runProgress = new RunProgress();
 			const result = await this.convert(
 				pdf.path,
 				folder.normalized,
@@ -327,10 +329,8 @@ export class ConversionController {
 					},
 					onProgress: (event) => {
 						if (event.type !== "page" || this.cancelRequested) return;
-						const position = event.derailed
-							? `— page ${event.num} of ${event.total} (derailed)`
-							: `— page ${event.num} of ${event.total}`;
-						progress.setMessage(`OCR Preview: Converting "${name}" ${position} …`);
+						runProgress.record(event);
+						progress.setMessage(`OCR Preview: Converting "${name}" — ${runProgress.describe()} …`);
 					},
 				},
 			);
