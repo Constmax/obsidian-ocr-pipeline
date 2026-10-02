@@ -2791,3 +2791,68 @@ ebenso, kein Fall passt neu. Drei Fälle weichen anders ab:
 nächsten Lauf neu gelesen, ganz gelesene Seiten bleiben im Cache. Eine ganz
 gelesene Seite aus dem alten Cache behält die Kästen, die sie damals nach
 der Höhe allein bekam, bis sie neu gelesen wird.
+
+## Nachtrag 2026-10-02 (31): Wohin die Zeit eines Paddle-fast-Laufs geht (#133, #206)
+
+Frage aus #133: Wird die Stufe 1 schneller, wenn OCRmyPDF wegfällt? Dafür
+wurde ein Paddle-fast-Lauf in seine Teile zerlegt.
+
+**Aufbau.**
+- **Seiten:** 8 Scanseiten, `raw/ZR/Erbrecht/erbrecht-fall-04.pdf` S. 2–5 und
+  `raw/StR/Rep-Faelle/strafrecht-fall-14.pdf` S. 2–5. Die JPEGs wurden mit
+  `pdfimages -j` herausgezogen und mit `img2pdf -s 300dpi` zu einem reinen
+  Bild-PDF zusammengesetzt (etwa 7 MP je Seite, Handyfoto-Scans).
+- **Engine:** `--engine paddle --paddle-mode fast` aus dem Checkout `906b71b`.
+- **Umgebung:** M1, 8 GB, macOS 26.2; `~/.venvs/ocrmypdf` mit ocrmypdf 17.8.0,
+  rapidocr 3.9.2, onnxruntime 1.26.0, pyobjc-framework-Vision 12.2.1,
+  pypdfium2 5.11.0; Tesseract 5.5.2.
+- **Ablauf:** Alle Varianten liefen nacheinander, nie zwei zugleich.
+- **Varianten:**
+  - M1: `reprocess-raw <pdf> --output <out> --engine paddle --paddle-mode fast`
+    (der Weg des Plugins)
+  - M2: `ocrmypdf` allein mit den Argumenten aus `build_ocr_args`
+    (`--rotate-pages --deskew --optimize 3`, PDF/A, `--jobs 1`)
+  - M3: wie M2 mit `--optimize 0 --output-type pdf`
+  - M4: wie M3 ohne `--rotate-pages --deskew`
+  - M5: ohne OCRmyPDF; je Seite pypdfium2 bei 300 dpi,
+    `tesseract <png> - --psm 0` (OSD), `FastRecognizer().recognize()`,
+    `order_lines()` und `render_page()`. M5 schreibt kein PDF.
+
+| Variante | s/Seite, Runde 1 | Runde 2 |
+|---|---:|---:|
+| M1 Plugin-Weg | 12,7 | 14,5 |
+| M2 OCRmyPDF allein | 12,3 | 13,3 |
+| M3 ohne PDF/A und Optimierung | 11,0 | 18,1 |
+| M4 zusätzlich ohne Drehen und Entzerren | 5,5 | 9,0 |
+| M5 ohne OCRmyPDF | 7,2 | 12,5 |
+
+M5 je Schritt (Runde 1): Rastern 1,2, OSD 1,9, Erkennung 4,1, Ordnen 0,01,
+hOCR 0,02 s/Seite.
+
+**Befunde (Runde 1):**
+- **Pipeline um OCRmyPDF** (Zusammenführen, MediaBox, Herunterrechnen, Quality
+  Gate, B5): etwa 0,4 s/Seite (M1 − M2).
+- **PDF/A und `--optimize 3`:** etwa 1,3 s/Seite (M2 − M3).
+- **Drehen und Entzerren:** etwa 5,5 s/Seite (M3 − M4), die Hälfte des Laufs.
+  Beides kommt aus Tesseract (`PaddleOcrEngine.get_orientation` und
+  `get_deskew`) und läuft auf der vollen Auflösung.
+- **Eigene Arbeit von OCRmyPDF** (Rastern, Textlayer, PDF schreiben): etwa
+  null. M4 mit OCRmyPDF, ohne OSD, braucht 5,5 s; M5 ohne OCRmyPDF und ohne
+  OSD (7,2 − 1,9) braucht 5,3 s.
+- **Textlayer:** M1 bis M4 liefern fast dieselbe Wortzahl (4.328–4.369,
+  `pdftotext`). Die Varianten ändern also das Tempo, nicht den Text.
+
+**Folgerung.** OCRmyPDF zu entfernen (#133) spart für sich keine Zeit. Die
+großen Posten sind Drehen/Entzerren und PDF/A/Optimierung, und beide lassen
+sich innerhalb von OCRmyPDF einstellen. #133 bleibt geparkt. Der Hebel steht
+in #206.
+
+**Grenzen.**
+- **Wenige Seiten:** 8 Seiten einer Scanart (große Handyfotos). Auf den
+  gerenderten Vektorseiten des Stufe-1-Benchmarks dauert Paddle fast
+  3,2 s/Seite (Nachtrag 26). Ob der Anteil von Drehen und Entzerren dort
+  ebenso hoch ist, ist nicht gemessen.
+- **Runde 2 unter Fremdlast:** Andere Prozesse liefen mit, die Werte liegen
+  15–65 % höher und streuen. Sie bestätigen nur die Größenordnung.
+- **Nicht getrennt:** Drehen und Entzerren sind zusammen gemessen. Das
+  Trennen ist der erste Schritt in #206.
