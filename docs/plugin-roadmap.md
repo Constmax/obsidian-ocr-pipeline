@@ -4,7 +4,7 @@ This document records the architecture decision for the Obsidian plugin
 (`plugin/`), what it does today, and what is still missing. It does **not**
 track bugs or the work order: open work lives in the
 [GitHub issues](https://github.com/Constmax/obsidian-ocr-pipeline/issues) (plugin
-work: #26, #28, #54; Stage 1 engine: #74 and #133; Stage 2 quality: #12–#17).
+work: #28, #54; Stage 1 engine: #74 and #133; Stage 2 quality: #12–#17).
 Earlier versions of this file carried a bug table and an implementation order;
 both went stale within weeks and were removed.
 
@@ -18,7 +18,8 @@ and commands: [review-view.md](review-view.md).
 - **Convert:** file menu on a PDF or image and the command **Convert PDF and
   open in OCR comparison** spawn `pdf2md`, with optional page selection,
   a progress notice fed by the `--progress` events (page n of m, derailed
-  pages so far, rough time left), cancellation (process group,
+  pages so far, rough time left) that can be hidden while the status bar
+  keeps showing the run, cancellation (process group,
   `SIGTERM`, then `SIGKILL`) and an inactivity timeout.
 - **Review:** three-column comparison of source and Markdown with
   Accept / Reject, notes, editing and Undo.
@@ -73,10 +74,6 @@ primary usage pattern.
   a button that shows the `pdf2md --check` result. Today the CLIs are found on
   `PATH` plus `~/bin` and the Homebrew folders (`resolveCli()`,
   `stage1Path()`).
-- **Progress display** (#26): a display that can be dismissed without ending
-  the run, with the run still visible elsewhere. Today a persistent notice
-  shows page n of m, the derailed pages so far and the time left, with a
-  cancel button.
 - **Batch conversion over the whole holdings** (#21).
 - **PaddleOCR in the engine setting** (#73), after the Stage-1 benchmark
   decision (#71). Issue #133 proposes dropping OCRmyPDF altogether; that would
