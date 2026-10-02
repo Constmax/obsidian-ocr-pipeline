@@ -4,12 +4,13 @@
 
 /** Engines the settings can store. PaddleOCR runs in fast mode and is offered
  *  only where `reprocess-raw --check-engine` finds it usable (issue #73); the
- *  benchmark in #71 decides whether it stays (docs/paddle-textlayer.md). */
+ *  benchmark in #71 retained it (docs/paddle-textlayer.md). */
 export const OCR_ENGINES = ["auto", "apple", "tesseract", "paddle"] as const;
 export type OcrEngine = (typeof OCR_ENGINES)[number];
 
 export interface OcrSettings {
-	/** Passed to `reprocess-raw --engine`; `auto` prefers Apple Vision. */
+	/** Passed to `reprocess-raw --engine`; `auto` prefers PaddleOCR fast when it is ready and
+	 *  no split is requested, then Apple Vision, then Tesseract (#198). */
 	ocrEngine: OcrEngine;
 	/** Passes `--split-columns`: two-column pages are split before OCR and merged back. */
 	splitColumns: boolean;

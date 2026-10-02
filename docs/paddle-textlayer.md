@@ -21,7 +21,8 @@ pdf-auto --engine paddle input.pdf
 
 The output remains a searchable PDF produced through OCRmyPDF. The engine must
 not change the default `auto` policy until the benchmark proves that it is a
-better default for a defined document cohort.
+better default for a defined document cohort. (#71 did; since #198 `auto`
+prefers PaddleOCR fast.)
 
 The Obsidian workflow is independently shippable and is specified in
 [`stage1-ui.md`](stage1-ui.md). It must work with the existing Apple and
@@ -40,7 +41,7 @@ This plan does not:
 - assume that recognition polygons solve reading order;
 - bundle PaddleOCR into the Obsidian plugin;
 - make PaddleOCR the automatic engine before the benchmark supports that
-  policy; or
+  policy (it did in #71; `auto` prefers fast mode since #198); or
 - implement a second per-page worker process merely to isolate dependencies.
 
 ## Fixed design facts
