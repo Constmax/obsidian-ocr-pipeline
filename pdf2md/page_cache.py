@@ -204,7 +204,7 @@ def _valid_column(column: Any) -> bool:
 
 
 def _valid_line(line: Any, line_format: int | None) -> bool:
-    """Check one cached line: text, box, container and, in formats 2 and 3,
+    """Check one cached line: text, box, container and, from format 2 on,
     column."""
     if line_format in _OBJECT_FORMATS:
         return (isinstance(line, dict) and isinstance(line.get("text"), str)
