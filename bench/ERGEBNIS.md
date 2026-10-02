@@ -2735,3 +2735,59 @@ Spalte bleibt eigener Absatz; Gleichstand entscheidet die Spalte mit der
 Nachbarnummer; Absatz über den Steg zählt für beide Spalten) ändern auf keiner
 der 1404 Seiten etwas; sie schließen die im Review benannten Fälle synthetisch
 ab.
+
+## Nachtrag 2026-10-02 (30): Seitenkoordinaten für jede Kachel (#146)
+
+Bis #146 blieben die Boxen gekachelter OCR-Seiten in Kachelkoordinaten: bei
+waagerechten Kacheln y, bei senkrechten x. Der Zusammenbau schneidet aber mit
+seitenabsoluten Grenzen (Kopf-, Fuß- und Fußnotenzone, Seitenzahlen). Jetzt
+rechnet die Kachelschleife jede Kachel sofort auf die Seite zurück
+(`ocr.to_page()`); Kästen werden danach für jeden Modus nach x und y
+zugeordnet.
+
+**Aufbau.** `bench/bench_ocr.py --seiten 40` zweimal ohne Cache, PaddleOCR-VL-1.5-4bit,
+150 dpi, M1 8 GB: `main` (`0629ed1`) gegen den Branch. Dieselben 40 Seiten:
+24 ganz gelesen, 8 senkrecht und 8 waagerecht gekachelt. Der Modelltext ist
+in beiden Läufen gleich, es ändern sich nur Boxen und damit der Zusammenbau.
+
+| | `main` | #146 |
+|---|---|---|
+| Wortgenauigkeit gesamt | 98,7 % | 98,7 % |
+| Zitattreue gesamt | 93,8 % | 93,8 % |
+| Reihenfolge (Median) | 98,1 % | 98,1 % |
+
+Die drei Maße zählen Wörter, keine Absatzgrenzen, und bleiben deshalb gleich.
+Geändert haben sich drei Vorschauseiten, alle waagerecht gekachelt und alle
+besser (gegen den Textlayer geprüft):
+
+- `UNIREP_KK_SR_LH_12_12_2025` S. 8 und `Klausur_2134_Zivilrecht` S. 2: Ein
+  Absatz riss an der Kachelnaht mitten im Satz ab. Die untere Kachel begann
+  wieder bei y ≈ 0, deshalb sah der Zusammenbau einen Sprung nach oben. Jetzt
+  ist es ein Absatz, wie im Textlayer.
+- `UNIREP_KK_ZR_LH_23_02_2026` S. 11: Die Seitenzahl hing an der letzten
+  Fußnote. Mit dem echten y liegt sie in der Fußzone und fällt weg.
+
+Auf fünf weiteren Seiten liegen Zeilen jetzt in einem anderen Kasten oder in
+keinem; die Vorschau ändert sich dadurch nicht (vier gekachelte Seiten und
+`UNIREP_KK_ZR_LH_16_01_2026` S. 13, ganz gelesen).
+
+**Seitenfälle.** Elf der zwölf Fälle im Vault sind gekachelt. Ihre Seiten
+wurden mit dem Fix neu gelesen. Der Text ist zeilengleich, die erwarteten
+Blöcke blieben. `make check-cases`: vorher 11 offen, 1 upstream; nachher
+ebenso, kein Fall passt neu. Drei Fälle weichen anders ab:
+
+- `SchuldR BT II Fall 14/p003`: Eine Zeile vom Spaltenende hing an Fußnote 1.
+  Jetzt steht sie in ihrem Absatz. Der erwartete Block trägt noch den alten
+  Fehler, deshalb zählt der Fall mehr Abweichungen.
+- `Verwaltungsrecht AT Fall 2/p002`: Zwei Fußnotenzeilen standen als Fließtext
+  mitten auf der Seite. Jetzt sind es die Fußnoten 1 und 2. Der erwartete
+  Block hat keine Fußnoten.
+- `Verwaltungsrecht AT Fall 2/p003`: Eine entgleiste Wiederholungszeile
+  (upstream) stand als eigener Block da und hängt jetzt am Absatz davor.
+  Falsch ist sie in beiden Fällen.
+
+**Grenzen.** Seitencache-Einträge gekachelter Seiten im alten Format
+(`line_format` < 3) werden nicht wiederverwendet. Die Seite wird beim
+nächsten Lauf neu gelesen, ganz gelesene Seiten bleiben im Cache. Eine ganz
+gelesene Seite aus dem alten Cache behält die Kästen, die sie damals nach
+der Höhe allein bekam, bis sie neu gelesen wird.

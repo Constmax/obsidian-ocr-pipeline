@@ -475,7 +475,7 @@ def detect_boxes(page, scan, table_frames=()):
     return [norm(k) for k, n in with_text if n >= 2], diag
 
 
-def assign_boxes(lines, boxes, x_range=None):
+def assign_boxes(lines, boxes):
     """Put each line into the box in which it lies (its container)."""
     if not boxes:
         return lines
@@ -484,13 +484,7 @@ def assign_boxes(lines, boxes, x_range=None):
         if z.box and z.container != "tabelle":
             mx, my = (z.box[0] + z.box[2]) / 2, (z.box[1] + z.box[3]) / 2
             for i, k in enumerate(boxes):
-                if x_range is not None:
-                    if not (k[0] < x_range[1] and k[2] > x_range[0]):
-                        continue
-                    hit = k[1] <= my <= k[3]
-                else:
-                    hit = k[0] <= mx <= k[2] and k[1] <= my <= k[3]
-                if hit:
+                if k[0] <= mx <= k[2] and k[1] <= my <= k[3]:
                     z = replace(z, container=f"kasten{i}")
                     break
         out.append(z)

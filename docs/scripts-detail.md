@@ -401,10 +401,11 @@ and `container`. The column is the tile index of a vertical tile (left 0,
 right 1) or what `split_columns()` finds on a text-layer page or a page read
 whole, and None where neither knows it (horizontal tiles, full-width lines).
 The container is `tabelle` or the `kasten{i}` that `assign_boxes()` puts the
-line in. Boxes pass through as recognition gives them:
-`tile_local_axis(mode)` in `conversion.py` names the axis that is still
-measured in the tile (x of either vertical tile, y of either horizontal
-tile); until #146 the boxes of a tiled page are not in page coordinates.
+line in. Boxes are in page coordinates: the model reads a tile, and the tile
+loop maps each tile's boxes back to the page (`ocr.to_page()`, Issue #146)
+before it assigns boxes, sorts and trims the seam; a retried tile maps its
+halves back to the tile the same way. A line's container is then decided on
+the page for every mode.
 
 One page's lines become its page block in one place,
 `page_block(lines, context, meta) -> PageBlock` in `conversion.py`: assembly,
@@ -471,9 +472,7 @@ above 70 or below 950, a bare page number above 80 or below 905.
   digits, 40 % of the footer's, and two words; the end piece may start with
   half a glyph. Only footer lines count: the end of a header ("Fall 9" of
   "Muster - Fall 9") in the footer band may be a heading. A text layer is
-  not cut, so text-layer pages keep such lines. On a horizontally tiled
-  page y is tile-relative (#146), so the band also reaches into the upper
-  tile.
+  not cut, so text-layer pages keep such lines.
 - A misread header or footer that is not a running line of the text layer
   (a scan without one, for example) is dropped only by the fixed patterns.
 
@@ -533,12 +532,20 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --pages "1,3-5" --out _ocr-preview
 Every completed page is written atomically below
 `<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains the page's
 recognized lines, source and layout metadata, and derailment/repair traces.
-Lines are stored in `line_format: 2`, one object per line with `text` and,
-where set, `box`, `column` and `container`. Entries written before Issue #144
-have no `line_format`: their lines are `[text, box, container?]` lists, with
-the columns in a parallel `columns` array (Issue #14) or not at all. They stay
-valid and are read through `page_cache.recognized_lines()`, the one upgrade
-path, which page cases use too; a missing column is None. `--lines-dump`
+Lines are stored in `line_format: 3`, one object per line with `text` and,
+where set, `box`, `column` and `container`, every box in page coordinates.
+Before format 3 a tiled page (`senkrecht`, `waagerecht`) kept its boxes in
+its tiles, and the tile of a line is lost after the seam is trimmed, so a
+tiled entry in an older format is not reused: the page is read with the model
+again. Other pages in an older format stay valid; a page read whole keeps the
+containers it got then, when a box was matched by height alone, until it is
+read again. Format 2 (Issue #144) stores lines like format 3. Entries written
+before Issue #144 have no `line_format`: their lines are `[text, box,
+container?]` lists, with the columns in a parallel `columns` array (Issue #14)
+or not at all. Those that stay valid are read through
+`page_cache.recognized_lines()`, the one upgrade path, which page cases use
+too; a missing column is None. A page case is never captured from a tiled
+entry in an older format ("Page cases"). `--lines-dump`
 writes each page's lines in the same object form. Each
 run persists its pages while assembling from memory; a resumed or repeated run
 reads matching pages back from disk instead of recomputing them. Consequently,
@@ -625,12 +632,13 @@ expected block); without either, or when they were made from other lines,
 from the current page-cache entry. Note and issue of an existing case stay
 unless given. A changed expected block sets the case back to `open`.
 
-Capturing a page needs its page-cache entry and the source named in
+Capturing a page needs its page-cache entry, in page coordinates (not a
+tiled entry from before format 3), and the source named in
 `quelle-pdf`, unchanged since the conversion; a relative `quelle-pdf` is
 looked up from the working directory and from every folder above the preview.
 `stash` exits with code 1 and one line on stderr without them. `add` then
 works from the stash or the existing case and fails only when there is
-neither. The page cache stays in the preview folder, so a page is stashed
+neither, or when it holds a tiled page in tile coordinates. The page cache stays in the preview folder, so a page is stashed
 and first marked while its preview is under review, before it is accepted.
 
 On success `add` prints `case <stem>/pNNN: <status>, fault stage <stage>`,

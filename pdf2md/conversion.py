@@ -25,8 +25,9 @@ from assembly import (RUNNING_FOOTER_ZONE, RUNNING_HEADER_ZONE,
                       split_preview)
 from layout import (assign_boxes, detect_boxes, detect_layout, image_ratio,
                     split_columns, tables_markdown)
-from ocr import (CHARACTERS_PER_INK, OVERLAP, TOKEN_MAX, _ink_amount,
-                 tile_horizontally, tile_lines, tile_vertically, trim_overlap)
+from ocr import (CHARACTERS_PER_INK, TOKEN_MAX, _ink_amount,
+                 tile_horizontally, tile_lines, tile_vertically, to_page,
+                 trim_overlap)
 
 
 class OcrAdapter(Protocol):
@@ -551,21 +552,6 @@ def analyze_pages(request: ConversionRequest, temporary_dir: Path):
     return pages, context
 
 
-def tile_local_axis(mode: str) -> str | None:
-    """Which axis of a page's line boxes is still measured in its tile.
-
-    A text-layer page and a page read whole are in page coordinates. A
-    vertical tile (`senkrecht @…`) is a column, its x runs across the tile;
-    a horizontal tile (`waagerecht`) is a band, its y runs down the tile. The
-    lines do not say which tile they came from (#146 converts at the tile).
-    """
-    if mode.startswith("senkrecht"):
-        return "x"
-    if mode == "waagerecht":
-        return "y"
-    return None
-
-
 def diagram_image_name(pdf: Path, number: int) -> str:
     return f"{pdf.stem}-s{number:03d}.png".replace(" ", "-")
 
@@ -917,22 +903,21 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 else:
                     if ocr_adapter is None:
                         raise RuntimeError("OCR pages require an OCR adapter")
+                    # The model gives each tile's boxes in the tile. `axis`
+                    # is the one the tile edges cut; `to_page()` maps the
+                    # boxes back along it before anything else reads them.
                     if page.layout_type == "zweispaltig":
                         mode = f"senkrecht @{page.gutter:.0%}"
-                        overlap = int(OVERLAP * 1000)
-                        gutter = int(page.gutter * 1000)
-                        tiles = list(zip(
-                            tile_vertically(page.image_path, page.gutter),
-                            [(0, min(gutter + overlap, 1000)),
-                             (max(gutter - overlap, 0), 1000)],
-                        ))
+                        axis = 0
+                        tiles = tile_vertically(page.image_path, page.gutter)
                     elif page.text_characters >= request.tile_from:
                         mode = "waagerecht"
-                        tiles = [(path, None)
-                                 for path, _, _ in tile_horizontally(page.image_path)]
+                        axis = 1
+                        tiles = tile_horizontally(page.image_path)
                     else:
                         mode = "ganz"
-                        tiles = [(page.image_path, (0, 1000))]
+                        axis = 0
+                        tiles = [(page.image_path, 0.0, 1.0)]
 
                     # Without a credible resolution the ink count has no scale
                     # (Issue #100), so no length is expected and the derailment
@@ -946,15 +931,15 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                         factor = (page.text_characters / ink
                                   if calibrated else CHARACTERS_PER_INK)
                     lines = []
-                    for index, (part, window) in enumerate(tiles):
+                    for index, (part, start, end) in enumerate(tiles):
                         parsed, tile_trace = tile_lines(
                             part, ocr_adapter, factor,
                             dpi or request.dpi, calibrated,
                             max_depth=request.retries,
                         )
                         trace += tile_trace
-                        if window:
-                            parsed = assign_boxes(parsed, page.boxes, window)
+                        parsed = assign_boxes(
+                            to_page(parsed, axis, start, end), page.boxes)
                         if len(tiles) == 1:
                             ordered = split_columns(parsed)
                         else:

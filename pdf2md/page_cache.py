@@ -20,10 +20,15 @@ from assembly import RecognizedLine
 
 CACHE_SCHEMA = 1
 # How an entry holds its recognized lines. Format 2: one object per line
-# (Issue #144). Entries without `line_format` hold `[text, box, container?]`
-# lists and, from Issue #14 on, a parallel `columns` array; they stay valid
-# and are read through `recognized_lines()`.
-LINE_FORMAT = 2
+# (Issue #144). Format 3 stores them the same way, with every box in page
+# coordinates (Issue #146); before it, a tiled page's boxes stayed in their
+# tiles, so `read_page()` does not reuse such a page. Entries without
+# `line_format` hold `[text, box, container?]` lists and, from Issue #14 on,
+# a parallel `columns` array; they stay valid and are read through
+# `recognized_lines()`.
+LINE_FORMAT = 3
+_OBJECT_FORMATS = (2, LINE_FORMAT)
+_TILED_MODES = ("senkrecht", "waagerecht")
 
 
 class CacheParameters(TypedDict, total=False):
@@ -87,7 +92,7 @@ def recognized_lines(page: dict) -> list[RecognizedLine]:
     def box(value):
         return None if value is None else tuple(value)
 
-    if page.get("line_format") == LINE_FORMAT:
+    if page.get("line_format") in _OBJECT_FORMATS:
         return [RecognizedLine(line["text"], box(line.get("box")),
                                line.get("column"), line.get("container"))
                 for line in page["lines"]]
@@ -199,8 +204,9 @@ def _valid_column(column: Any) -> bool:
 
 
 def _valid_line(line: Any, line_format: int | None) -> bool:
-    """Check one cached line: text, box, container and, in format 2, column."""
-    if line_format == LINE_FORMAT:
+    """Check one cached line: text, box, container and, from format 2 on,
+    column."""
+    if line_format in _OBJECT_FORMATS:
         return (isinstance(line, dict) and isinstance(line.get("text"), str)
                 and _valid_box(line.get("box"))
                 and _valid_column(line.get("column"))
@@ -212,9 +218,19 @@ def _valid_line(line: Any, line_format: int | None) -> bool:
             and all(isinstance(value, str) for value in container))
 
 
+def in_tile_coordinates(page: dict) -> bool:
+    """Whether a tiled page's boxes are still in their tiles (before Issue
+    #146); no entry says where the tiles were, so they cannot be mapped."""
+    return (page.get("mode", "").startswith(_TILED_MODES)
+            and page.get("line_format") != LINE_FORMAT)
+
+
 def read_page(directory: Path, page_number: int, expected_key: str):
     """Read a valid page entry, returning ``None`` on any cache miss."""
-    return _read_entry(directory, page_number, expected_key)
+    page = _read_entry(directory, page_number, expected_key)
+    if page is not None and in_tile_coordinates(page):
+        return None
+    return page
 
 
 def read_latest_page(directory: Path, page_number: int):
@@ -270,7 +286,7 @@ def _read_entry(directory: Path, page_number: int, expected_key: str | None):
         if not isinstance(page.get("mode"), str):
             return None
         line_format = page.get("line_format")
-        if line_format not in (None, LINE_FORMAT):
+        if line_format not in (None, *_OBJECT_FORMATS):
             return None
         if any(not _valid_line(line, line_format) for line in lines):
             return None
