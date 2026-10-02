@@ -240,8 +240,9 @@ LATEX = [
     (re.compile(r"\\underline\{(.*?)\}"), r"\1"),
     (re.compile(r"\\text\{(.*?)\}"), r"\1"),
     (re.compile(r"\\\(|\\\)"), ""),
-    (re.compile(r"\^\{(\d{1,2})\}"), r"[^\1]"),      # Footnote mark → Obsidian
+    # Footnote mark → Obsidian; the $-wrapped form first, or its $ remain
     (re.compile(r"\$\^\{(\d{1,2})\}\$"), r"[^\1]"),
+    (re.compile(r"\^\{(\d{1,2})\}"), r"[^\1]"),
 ]
 
 FN_START = r"[A-ZÄÖÜ„»§(]"
