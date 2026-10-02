@@ -128,6 +128,12 @@ def test_mark_glued_to_an_abbreviation_ending_in_a_roman_letter():
            "[^12]: Vgl. Gericht."]
 
 
+def test_latex_footnote_marks_become_obsidian_marks():
+    assert paragraphs([
+        *stack(r"Erster Satz.\(^{2}\) Zweiter Satz.$^{3}$ Dritter.^{4}"),
+    ], source="ocr") == ["Erster Satz.[^2] Zweiter Satz.[^3] Dritter.[^4]"]
+
+
 def test_a_table_gets_no_footnote_marks():
     assert paragraphs([
         *stack("Er ist ein Besitzdiener.1", "Mehr Text."),
