@@ -534,15 +534,17 @@ Every completed page is written atomically below
 recognized lines, source and layout metadata, and derailment/repair traces.
 Lines are stored in `line_format: 3`, one object per line with `text` and,
 where set, `box`, `column` and `container`, every box in page coordinates.
-Format 2 (Issue #144) stores lines the same way, but a tiled page
-(`senkrecht`, `waagerecht`) kept its boxes in its tiles, and the tile of a
-line is lost after the seam is trimmed. Such an entry is not reused: the page
-is read with the model again; other pages in format 2 stay valid. Entries
-written before Issue #144
-have no `line_format`: their lines are `[text, box, container?]` lists, with
-the columns in a parallel `columns` array (Issue #14) or not at all. They stay
-valid and are read through `page_cache.recognized_lines()`, the one upgrade
-path, which page cases use too; a missing column is None. `--lines-dump`
+Before format 3 a tiled page (`senkrecht`, `waagerecht`) kept its boxes in
+its tiles, and the tile of a line is lost after the seam is trimmed, so a
+tiled entry in an older format is not reused: the page is read with the model
+again. Other pages in an older format stay valid; a page read whole keeps the
+containers it got then, when a box was matched by height alone, until it is
+read again. Format 2 (Issue #144) stores lines like format 3. Entries written
+before Issue #144 have no `line_format`: their lines are `[text, box,
+container?]` lists, with the columns in a parallel `columns` array (Issue #14)
+or not at all. Those that stay valid are read through
+`page_cache.recognized_lines()`, the one upgrade path, which page cases use
+too; a missing column is None. `--lines-dump`
 writes each page's lines in the same object form. Each
 run persists its pages while assembling from memory; a resumed or repeated run
 reads matching pages back from disk instead of recomputing them. Consequently,

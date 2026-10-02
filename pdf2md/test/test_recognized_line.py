@@ -12,7 +12,7 @@ from assembly import (AssemblyContext, RecognizedLine, assemble_paragraphs,
                       parse_lines)
 from conversion import ConversionRequest, convert_document
 from layout import assign_boxes
-from ocr import OVERLAP
+from ocr import OVERLAP, tile_lines
 
 
 def _loc(x0, y0, x1, y1):
@@ -130,13 +130,12 @@ def test_discarded_lines_carry_their_reason():
 
 def test_a_retried_tile_maps_its_halves_back_to_the_tile(tmp_path):
     from PIL import Image
-    from ocr import tile_lines
 
-    image = tmp_path / "kachel.png"
+    image = tmp_path / "tile.png"
     Image.new("RGB", (400, 600), "white").save(image)
 
     def fake_ocr(path, max_tokens=None):
-        if Path(path).stem == "kachel":
+        if Path(path).stem == "tile":
             return "\n".join([_loc(100, 100, 900, 120) + "immer dasselbe"] * 30)
         half = Path(path).stem.rsplit("_", 1)[-1]
         return _loc(100, 0, 900, 1000) + f"Hälfte {half} mit eigenem Text"

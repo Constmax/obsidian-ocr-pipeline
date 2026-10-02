@@ -903,8 +903,9 @@ def convert_document(request: ConversionRequest, ocr_adapter: OcrAdapter | None,
                 else:
                     if ocr_adapter is None:
                         raise RuntimeError("OCR pages require an OCR adapter")
-                    # A tile's boxes come back in the tile; `axis` is the
-                    # one its edges cut, mapped back to the page right away.
+                    # The model gives each tile's boxes in the tile. `axis`
+                    # is the one the tile edges cut; `to_page()` maps the
+                    # boxes back along it before anything else reads them.
                     if page.layout_type == "zweispaltig":
                         mode = f"senkrecht @{page.gutter:.0%}"
                         axis = 0

@@ -19,39 +19,19 @@
   "lines": [
    {
     "text": "a) Eigentum des Anspruchstellers",
-    "box": [
-     76,
-     104,
-     463,
-     124
-    ]
+    "box": [76, 104, 463, 124]
    },
    {
     "text": "Der Anspruchsteller müsste Eigentümer der Sache sein.",
-    "box": [
-     76,
-     142,
-     463,
-     162
-    ]
+    "box": [76, 142, 463, 162]
    },
    {
     "text": "b) Besitz des Anspruchsgegners",
-    "box": [
-     537,
-     104,
-     924,
-     124
-    ]
+    "box": [537, 104, 924, 124]
    },
    {
     "text": "Der Anspruchsgegner müsste Besitzer der Sache sein.",
-    "box": [
-     537,
-     142,
-     924,
-     162
-    ]
+    "box": [537, 142, 924, 162]
    }
   ],
   "trace": [
