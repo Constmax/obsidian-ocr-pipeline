@@ -221,7 +221,7 @@ def _valid_line(line: Any, line_format: int | None) -> bool:
 def in_tile_coordinates(page: dict) -> bool:
     """Whether a tiled page's boxes are still in their tiles (before Issue
     #146); no entry says where the tiles were, so they cannot be mapped."""
-    return (page["mode"].startswith(_TILED_MODES)
+    return (page.get("mode", "").startswith(_TILED_MODES)
             and page.get("line_format") != LINE_FORMAT)
 
 

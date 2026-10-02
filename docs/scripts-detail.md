@@ -638,7 +638,7 @@ tiled entry from before format 3), and the source named in
 looked up from the working directory and from every folder above the preview.
 `stash` exits with code 1 and one line on stderr without them. `add` then
 works from the stash or the existing case and fails only when there is
-neither. The page cache stays in the preview folder, so a page is stashed
+neither, or when it holds a tiled page in tile coordinates. The page cache stays in the preview folder, so a page is stashed
 and first marked while its preview is under review, before it is accepted.
 
 On success `add` prints `case <stem>/pNNN: <status>, fault stage <stage>`,
