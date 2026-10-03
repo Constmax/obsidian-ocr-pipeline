@@ -776,7 +776,7 @@
 
 /* ── Dialoge und Einstellungen ──────────────────────────────────────────── */
 
-.ocr-notice-abbrechen {
+.ocr-notice-button {
 	margin-left: 8px;
 	padding: 2px 10px;
 	font-size: var(--font-ui-smaller);
@@ -787,7 +787,7 @@
 	border: 1px solid var(--background-modifier-border);
 }
 
-.ocr-notice-abbrechen:hover {
+.ocr-notice-button:hover {
 	background: var(--interactive-hover);
 }
 
