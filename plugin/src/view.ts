@@ -135,6 +135,7 @@ export class OcrComparisonView extends ItemView {
 		);
 		this.sidebar.onSelect = (name) => this.safelyOpenPreview(name);
 		this.sidebar.onRefresh = () => void this.reconcile();
+		this.sidebar.onConvert = () => void this.plugin.selectPdfAndConvert();
 		this.sidebar.onSettings = () => openSettings(this.plugin);
 
 		// ── Center: Original PDF ─────────────────────────────────────────────
