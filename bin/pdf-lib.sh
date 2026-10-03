@@ -345,8 +345,9 @@ fix_mediabox() {
 # gs_downscale <input.pdf> <output.pdf> [dpi]
 # Downscales a PDF using Ghostscript with Bicubic resampling. <dpi> is an
 # exact limit: images above it are resampled to it (threshold 1.0, not
-# Ghostscript's 1.5) and re-encoded as JPEG at JPEG_QFACTOR; images at or
-# below it pass through unchanged (#201).
+# Ghostscript's 1.5) and re-encoded as JPEG at JPEG_QFACTOR. JPEG images at
+# or below it pass through unchanged; other images are re-encoded by
+# Ghostscript, at the same QFactor (#201).
 # Returns 0 on success; output path is guaranteed to exist on success.
 gs_downscale() {
     local input="$1" output="$2" dpi="${3:-$TARGET_DPI}"

@@ -259,21 +259,27 @@ export class SettingsTab extends PluginSettingTab {
 				.setName("Maximum scan resolution")
 				.setDesc(
 					"Dots per inch. Scans above this resolution are downscaled to it before OCR, which makes " +
-						"the copy smaller and OCR faster; scans at or below it stay unchanged. " +
+						"the copy smaller and OCR faster; scans at or below it keep their resolution. " +
 						"0 turns it off.",
 				)
 				.addText((t) => {
 					t.inputEl.type = "number";
 					t.inputEl.min = "0";
 					t.inputEl.max = String(MAX_DPI_LIMIT);
-					t.setPlaceholder(String(DEFAULT_OCR_SETTINGS.maxDpi))
-						.setValue(String(this.plugin.settings.maxDpi))
-						.onChange(async (val) => {
-							const dpi = parseMaxDpiInput(val);
-							if (dpi === null) return;
+					t.setPlaceholder(String(DEFAULT_OCR_SETTINGS.maxDpi)).setValue(
+						String(this.plugin.settings.maxDpi),
+					);
+					// "change", not onChange: saves once on blur or Enter, not a
+					// half-typed "30" on the way to "300". Invalid input shows the
+					// saved value again instead of silently diverging from it.
+					t.inputEl.addEventListener("change", () => {
+						const dpi = parseMaxDpiInput(t.getValue());
+						if (dpi !== null && dpi !== this.plugin.settings.maxDpi) {
 							this.plugin.settings.maxDpi = dpi;
-							await this.plugin.saveSettings();
-						});
+							void this.plugin.saveSettings();
+						}
+						t.setValue(String(this.plugin.settings.maxDpi));
+					});
 				});
 		});
 	}

@@ -16,7 +16,10 @@ import pytest
 fitz = pytest.importorskip("fitz")
 Image = pytest.importorskip("PIL.Image")
 
-pytestmark = pytest.mark.skipif(shutil.which("gs") is None, reason="needs Ghostscript")
+pytestmark = [
+    pytest.mark.slow,  # runs the real Ghostscript; `make test-fast` skips it
+    pytest.mark.skipif(shutil.which("gs") is None, reason="needs Ghostscript"),
+]
 
 LIB = Path(__file__).resolve().parent.parent / "pdf-lib.sh"
 A4_IN = (595 / 72, 842 / 72)
