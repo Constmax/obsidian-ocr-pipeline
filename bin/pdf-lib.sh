@@ -508,7 +508,8 @@ build_ocr_args() {
 
     case "$engine" in
         apple)
-            args=(--plugin ocrmypdf_appleocr "${args[@]}") ;;
+            # appleocr_no_boxes.py drops the red line boxes appleocr draws (#209).
+            args=(--plugin ocrmypdf_appleocr --plugin "$SCRIPT_DIR/appleocr_no_boxes.py" "${args[@]}") ;;
         paddle)
             args=(--plugin ocrmypdf_paddle --paddle-mode "${PADDLE_MODE:-accurate}" "${args[@]}") ;;
         tesseract)
@@ -518,8 +519,8 @@ build_ocr_args() {
             fi ;;
     esac
 
-    # Indirect assignment: set the caller's variable
-    printf -v "$outvar" '%s ' "${args[@]}"
+    # Indirect assignment: set the caller's variable (%q keeps paths with spaces whole)
+    printf -v "$outvar" '%q ' "${args[@]}"
     eval "$outvar=(${!outvar})"
 }
 
