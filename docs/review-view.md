@@ -15,7 +15,7 @@ before anything moves into the wiki. The code calls it the comparison view
 
 | Column | Content |
 |---|---|
-| **Previews** | File list with status filter (Open · Accepted · Rejected · All), text filter, refresh, and progress for lists of at least five entries. Mixed-status lists are grouped in the same order used by `j`/`k`. Below each line: `14 p. · 9 OCR · 2 Diagram`, colored side marking by status, yellow dot on OCR pages. Three separate empty states: Folder missing (→ Settings), Folder empty (→ copyable pdf2md command), Filter empty. |
+| **Previews** | File list with status filter (Open · Accepted · Rejected · All), text filter, a Convert PDF button (same as the command *Convert PDF and open in OCR comparison*), refresh, and progress for lists of at least five entries. Mixed-status lists are grouped in the same order used by `j`/`k`. Below each line: `14 p. · 9 OCR · 2 Diagram`, colored side marking by status, yellow dot on OCR pages. Three separate empty states: Folder missing (→ Settings), Folder empty (→ copyable pdf2md command), Filter empty. |
 | **Original PDF** | Pages of the original PDF, lazy-rendered. Header with filename, `p. n / m`, zoom −/+, "Open in PDF viewer". |
 | **Markdown** | The generated `.md`, page by page, with provenance badge (`Text layer` / `OCR` / `Diagram`) and layout info, a **Marked** badge on pages that have a page case, and a flag button that marks the page as wrong. Toggle **Rendered \| Source**. |
 
@@ -56,6 +56,9 @@ number of open entries. Two operating modes share the same controls:
   under 0.05 s (`sekunden` is rounded to 0.1 s). The estimate is rough: too
   low when model pages follow text-layer pages, and too high after the first
   model page, whose time includes loading the model.
+- Command **"Convert PDF and open in OCR comparison"**, or the file-plus button
+  in the Previews header: a search over all PDFs and images in the vault, then
+  the same page selection and run as **"OCR → Markdown"**
 - Second command: **"Jump to next preview entry"** (customizable shortcut)
 - **"Mark page as wrong"** (command palette, while the view has focus): marks
   the page the view shows, see "Marking a Page as Wrong"

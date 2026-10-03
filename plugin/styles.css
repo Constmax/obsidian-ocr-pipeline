@@ -334,6 +334,7 @@
 }
 
 .ocr-liste-titel {
+	flex: 1;
 	font-weight: var(--font-semibold);
 	font-size: var(--font-ui-small);
 }
