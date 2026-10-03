@@ -42,7 +42,8 @@ number of open entries. Two operating modes share the same controls:
   for that file and starts conversion. While another conversion is running, the
   item remains visible but shows a notice instead of starting another one.
   A persistent notice with **Hide** and **Cancel** follows the run, and the
-  status bar (bottom right) shows the same progress until the run ends.
+  status bar (bottom right) shows the same progress, page count first, until
+  the run ends.
   **Hide** (or a click on the notice) only removes the notice; a click on the
   status-bar item brings it back, with **Cancel** unless the run is already
   being cancelled. After each page the notice reads

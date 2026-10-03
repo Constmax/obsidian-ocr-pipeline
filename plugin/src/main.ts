@@ -26,7 +26,7 @@ export default class OcrPreviewPlugin extends Plugin {
 	async onload(): Promise<void> {
 		this.inventory = new Inventory(this.app, () => this.settings);
 		const progressStatus = this.addStatusBarItem();
-		progressStatus.addClass("mod-clickable", "ocr-fortschritt-status");
+		progressStatus.addClass("mod-clickable");
 		progressStatus.setAttribute("aria-label", "Show conversion progress");
 		progressStatus.hide();
 		this.conversion = new ConversionController(
