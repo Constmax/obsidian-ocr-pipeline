@@ -40,7 +40,7 @@ def _stub(path, body):
 # when that is set, or like a plugin from before that option (argparse
 # usage error) with FAKE_PADDLE_OLD. Output: `ocr(...)` for Tesseract, `apple(...)`,
 # `paddle(...)`. FAKE_OCR_FAIL lists engines whose OCR call fails; `1` fails
-# every engine.
+# every engine. A `--plugin` path that is no file fails like ocrmypdf.
 OCRMYPDF = '''
 engine=tesseract
 case " $* " in
@@ -68,6 +68,13 @@ if [ "${@: -2:1}" = "--paddle-check" ]; then
     exit
 fi
 echo "ocrmypdf $*" >> "$FAKE_LOG"
+prev=
+for arg in "$@"; do
+    if [ "$prev" = --plugin ]; then
+        case "$arg" in */*) [ -f "$arg" ] || { echo "no plugin file $arg" >&2; exit 2; } ;; esac
+    fi
+    prev="$arg"
+done
 for failing in ${FAKE_OCR_FAIL:-}; do
     [ "$failing" = 1 ] || [ "$failing" = "$engine" ] && exit 1
 done

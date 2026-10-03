@@ -123,6 +123,21 @@ def test_apple_loads_the_no_boxes_plugin(box):
     assert f"--plugin ocrmypdf_appleocr --plugin {BIN / 'appleocr_no_boxes.py'} " in call, call
 
 
+def test_apple_plugin_path_may_contain_spaces(box, tmp_path, monkeypatch):
+    """iCloud vaults live under "Mobile Documents"; the path stays one argument."""
+    import shutil
+    import test_pipeline
+
+    spaced = tmp_path / "bin with space"
+    shutil.copytree(test_pipeline.BIN, spaced, ignore=shutil.ignore_patterns("test"))
+    monkeypatch.setattr(test_pipeline, "BIN", spaced)
+
+    result = _combine(box, "--engine", "apple", apple="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert box.files()["out.pdf"] == "apple(a)"
+
+
 def test_paddle_arguments(box):
     result = _combine(box, "--engine", "paddle", "--jobs", "4", paddle="1")
 
