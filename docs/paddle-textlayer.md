@@ -6,7 +6,8 @@ mode 3a #118, resolved engine value #70, plugin option #73). Step 5 (#71,
 `bench/ERGEBNIS.md`, Nachtrag 26) **retains** PaddleOCR in fast mode, with one
 documented exception, and **removes split mode for PaddleOCR** (#153). Step
 6 is done (#72): `setup.sh` installs the plugin into the Stage-1 venv through
-`install-paddle.sh` and prefetches the models. Open: the 90° rotation gap the
+`install-paddle.sh` and prefetches the models. Since #198 `auto` prefers
+PaddleOCR fast when it is ready. Open: the 90° rotation gap the
 benchmark found for every engine (#152). Issue #133 proposes removing
 OCRmyPDF from Stage 1, which would rework steps 4 and 6.
 
@@ -20,7 +21,8 @@ pdf-auto --engine paddle input.pdf
 
 The output remains a searchable PDF produced through OCRmyPDF. The engine must
 not change the default `auto` policy until the benchmark proves that it is a
-better default for a defined document cohort.
+better default for a defined document cohort. (#71 did; since #198 `auto`
+prefers PaddleOCR fast.)
 
 The Obsidian workflow is independently shippable and is specified in
 [`stage1-ui.md`](stage1-ui.md). It must work with the existing Apple and
@@ -39,7 +41,7 @@ This plan does not:
 - assume that recognition polygons solve reading order;
 - bundle PaddleOCR into the Obsidian plugin;
 - make PaddleOCR the automatic engine before the benchmark supports that
-  policy; or
+  policy (it did in #71; `auto` prefers fast mode since #198); or
 - implement a second per-page worker process merely to isolate dependencies.
 
 ## Fixed design facts
@@ -597,7 +599,9 @@ Every fallback must be visible in stderr and the final summary, including the
 requested engine, the actual engine, and the reason for the transition.
 
 Keep `auto` on the existing Apple/Tesseract policy. PaddleOCR is explicit until
-the benchmark justifies a policy change.
+the benchmark justifies a policy change. (Done: #71 retained fast mode, and
+since #198 `auto` prefers it when `--paddle-check fast` passes and no split is
+requested.)
 
 Update all user-facing and internal engine lists together:
 
