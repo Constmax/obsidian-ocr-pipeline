@@ -13,8 +13,9 @@ import {
 	DEFAULT_OCR_SETTINGS,
 	DESKTOP_ONLY_MESSAGE,
 	OCR_ENGINES,
-	isMaxDpi,
+	MAX_DPI_LIMIT,
 	isOcrEngine,
+	parseMaxDpiInput,
 	type OcrEngine,
 	type OcrSettings,
 } from "./ocr-settings.ts";
@@ -262,11 +263,12 @@ export class SettingsTab extends PluginSettingTab {
 				.addText((t) => {
 					t.inputEl.type = "number";
 					t.inputEl.min = "0";
+					t.inputEl.max = String(MAX_DPI_LIMIT);
 					t.setPlaceholder(String(DEFAULT_OCR_SETTINGS.maxDpi))
 						.setValue(String(this.plugin.settings.maxDpi))
 						.onChange(async (val) => {
-							const dpi = val.trim() === "" ? DEFAULT_OCR_SETTINGS.maxDpi : Number(val);
-							if (!isMaxDpi(dpi)) return;
+							const dpi = parseMaxDpiInput(val);
+							if (dpi === null) return;
 							this.plugin.settings.maxDpi = dpi;
 							await this.plugin.saveSettings();
 						});
