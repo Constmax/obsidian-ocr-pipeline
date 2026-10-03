@@ -46,30 +46,16 @@ function setup() {
 	return { presenter, notices, status, cancels: () => cancels };
 }
 
-test("statusBarText puts the progress before the name, so clipping keeps it", () => {
-	assert.equal(
-		statusBarText('OCR Preview: Converting "a long scan name" — page 1 of 3 · about 2 min left …'),
-		'OCR: page 1 of 3 · about 2 min left — Converting "a long scan name"',
-	);
-	assert.equal(
-		statusBarText('OCR Preview: Converting "BGB — AT" — page 2 of 9 …'),
-		'OCR: page 2 of 9 — Converting "BGB — AT"',
-	);
-	assert.equal(statusBarText('OCR Preview: Converting "a" …'), 'OCR: Converting "a" …');
+test("statusBarText only drops the notice prefix", () => {
+	assert.equal(statusBarText('OCR Preview: Converting "BGB — AT" …'), 'OCR: Converting "BGB — AT" …');
 	assert.equal(statusBarText('OCR Preview: "a" is being cancelled …'), 'OCR: "a" is being cancelled …');
 	assert.equal(statusBarText("other"), "OCR: other");
-	// A dash in the name alone is not a progress part.
-	assert.equal(statusBarText('OCR Preview: Converting "BGB — AT" …'), 'OCR: Converting "BGB — AT" …');
-	assert.equal(
-		statusBarText('OCR Preview: "BGB — AT" is being cancelled …'),
-		'OCR: "BGB — AT" is being cancelled …',
-	);
 });
 
 test("a run shows a notice and the status bar; progress updates both", () => {
 	const { presenter, notices, status } = setup();
 	assert.equal(notices.length, 1);
-	presenter.setMessage('OCR Preview: Converting "a" — page 1 of 3 …');
+	presenter.setMessage('OCR Preview: Converting "a" — page 1 of 3 …', 'OCR: page 1 of 3 — Converting "a"');
 	assert.deepEqual(notices[0]!.messages, [
 		'OCR Preview: Converting "a" …',
 		'OCR Preview: Converting "a" — page 1 of 3 …',
@@ -80,7 +66,7 @@ test("a run shows a notice and the status bar; progress updates both", () => {
 test("a hidden notice leaves the run and the status bar going", () => {
 	const { presenter, notices, status, cancels } = setup();
 	notices[0]!.hide();
-	presenter.setMessage('OCR Preview: Converting "a" — page 2 of 3 …');
+	presenter.setMessage('OCR Preview: Converting "a" — page 2 of 3 …', 'OCR: page 2 of 3 — Converting "a"');
 	assert.deepEqual(notices[0]!.messages, ['OCR Preview: Converting "a" …']);
 	assert.equal(status.at(-1), 'OCR: page 2 of 3 — Converting "a"');
 	assert.equal(cancels(), 0);
