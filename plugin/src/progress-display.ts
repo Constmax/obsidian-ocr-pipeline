@@ -24,17 +24,9 @@ export interface ProgressSurfaces {
 
 const NOTICE_PREFIX = "OCR Preview: ";
 
-/**
- * The notice message, shortened for the status bar. Progress after " — "
- * moves to the front: the item clips its end, and a long file name must not
- * push the page count out of sight.
- */
+/** The status-bar text for a message that brings none of its own. */
 export function statusBarText(message: string): string {
-	let text = message.startsWith(NOTICE_PREFIX) ? message.slice(NOTICE_PREFIX.length) : message;
-	// Progress follows the quoted name; greedy head, as the name may contain " — ".
-	const progress = /^(.+") — (.+?)(?: …)?$/.exec(text);
-	if (progress !== null) text = `${progress[2]} — ${progress[1]}`;
-	return `OCR: ${text}`;
+	return `OCR: ${message.startsWith(NOTICE_PREFIX) ? message.slice(NOTICE_PREFIX.length) : message}`;
 }
 
 export class ProgressPresenter implements ProgressDisplay {
@@ -53,11 +45,11 @@ export class ProgressPresenter implements ProgressDisplay {
 		surfaces.statusBar.show(statusBarText(message));
 	}
 
-	setMessage(message: string): void {
+	setMessage(message: string, status: string = statusBarText(message)): void {
 		if (this.ended) return;
 		this.message = message;
 		if (this.notice?.isShown()) this.notice.setMessage(message);
-		this.surfaces.statusBar.show(statusBarText(message));
+		this.surfaces.statusBar.show(status);
 	}
 
 	/** End of the run: removes the notice and the status-bar item. */

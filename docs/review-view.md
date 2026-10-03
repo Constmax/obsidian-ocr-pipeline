@@ -46,14 +46,16 @@ number of open entries. Two operating modes share the same controls:
   the run ends.
   **Hide** (or a click on the notice) only removes the notice; a click on the
   status-bar item brings it back, with **Cancel** unless the run is already
-  being cancelled. After each page the notice reads
+  being cancelled. Once the analysis is done the notice names the pages of
+  the run (`m pages`); after each page it reads
   `page n of m · k derailed · about x min left`, where `n` counts the pages
   this run finished (with a page selection, `m` is the number of selected
   pages). The derailed count appears once a page derailed. The time left is
-  the mean time of the pages so far (pages from the cache, 0 s, do not count)
-  times the pages still to come. It is rough: too low when model pages follow
-  text-layer pages, and too high after the first model page, whose time
-  includes loading the model.
+  the mean time of the pages so far times the pages still to come. Pages that
+  report 0 s do not count: pages reused from the cache, and text-layer pages
+  under 0.05 s (`sekunden` is rounded to 0.1 s). The estimate is rough: too
+  low when model pages follow text-layer pages, and too high after the first
+  model page, whose time includes loading the model.
 - Second command: **"Jump to next preview entry"** (customizable shortcut)
 - **"Mark page as wrong"** (command palette, while the view has focus): marks
   the page the view shows, see "Marking a Page as Wrong"

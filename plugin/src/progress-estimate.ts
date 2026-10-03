@@ -23,6 +23,11 @@ export class RunProgress {
 	private timedPages = 0;
 	private timedSeconds = 0;
 
+	/** The `start` event: the pages this run converts. */
+	start(pages: number): void {
+		this.total = pages;
+	}
+
 	record(event: PageEvent): void {
 		this.total = event.total;
 		this.finished++;
@@ -36,9 +41,15 @@ export class RunProgress {
 		}
 	}
 
-	/** "page n of m · k derailed · about x min left"; empty before the first page. */
+	/**
+	 * "page n of m · k derailed · about x min left"; before the first page
+	 * "m pages", empty before the `start` event.
+	 */
 	describe(): string {
-		if (this.finished === 0) return "";
+		if (this.finished === 0) {
+			if (this.total === 0) return "";
+			return this.total === 1 ? "1 page" : `${this.total} pages`;
+		}
 		// `von` counts the pages of this run, `nr` is a page number: with a
 		// page selection (`--pages 5-7`) `nr` exceeds `von`, so the position
 		// is the count of finished pages.

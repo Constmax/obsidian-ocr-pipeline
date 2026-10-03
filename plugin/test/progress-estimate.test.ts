@@ -61,6 +61,17 @@ test("derailed pages are counted and stay visible", () => {
 	assert.equal(run.describe(), "page 3 of 4 · 2 derailed · about 1 min left");
 });
 
+test("before the first page: the page count of the run", () => {
+	const run = new RunProgress();
+	run.start(5);
+	assert.equal(run.describe(), "5 pages");
+	const single = new RunProgress();
+	single.start(1);
+	assert.equal(single.describe(), "1 page");
+	run.record(page(1, 5, 60));
+	assert.equal(run.describe(), "page 1 of 5 · about 4 min left");
+});
+
 test("nothing recorded yet: empty description", () => {
 	assert.equal(new RunProgress().describe(), "");
 });
