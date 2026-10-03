@@ -2,7 +2,7 @@
 
 `gs_downscale` (bin/pdf-lib.sh) runs the real Ghostscript on a synthetic A4
 page holding one JPEG scan. A scan above the limit comes out at the limit, as
-JPEG; a scan at the limit passes through byte for byte (no re-encode).
+JPEG; a scan at the limit passes through without a re-encode.
 
 Run with: python3 -m pytest bin/test -q
 """
@@ -69,4 +69,12 @@ def test_scan_at_limit_passes_through_unchanged(tmp_path):
 
     _downscale(src, out, 300)
 
-    assert _only_image(out)["image"] == jpeg
+    # Pixels, not bytes: Ghostscript 10.02 (CI) appends a second EOI marker
+    # to a passed-through JPEG. A re-encode would change the pixels.
+    image = _only_image(out)
+    assert image["ext"] == "jpeg"
+    assert _pixels(image["image"]) == _pixels(jpeg)
+
+
+def _pixels(jpeg):
+    return Image.open(io.BytesIO(jpeg)).tobytes()
