@@ -182,11 +182,10 @@ test("success: passes paths, timeout and pages, reports page progress, opens the
 		'OCR Preview: Converting "case-01" — page 1 of 3 · under 1 min left …',
 		'OCR Preview: Converting "case-01" — page 2 of 3 · 1 derailed · under 1 min left …',
 	]);
-	// Progress first: the status bar clips the end, not the page count.
 	assert.deepEqual(host.statusTexts, [
-		'OCR: 3 pages — Converting "case-01"',
-		'OCR: page 1 of 3 · under 1 min left — Converting "case-01"',
-		'OCR: page 2 of 3 · 1 derailed · under 1 min left — Converting "case-01"',
+		"OCR 0/3",
+		"OCR 1/3 · <1 min",
+		"OCR 2/3 · <1 min · 1 derailed",
 	]);
 	assert.equal(host.hidden, 1);
 	assert.equal(host.reconciles, 1);
@@ -334,6 +333,7 @@ test("cancel: shows the cancelling state, aborts once, ignores later progress", 
 		'OCR Preview: Converting "case-01" …',
 		'OCR Preview: "case-01" is being cancelled …',
 	]);
+	assert.deepEqual(host.statusTexts, ["OCR cancelling …"]);
 	assert.deepEqual(host.notices, [
 		"OCR Preview: Conversion failed (cancelled — partial file created (incomplete)) — Cancelled after page 1..",
 	]);

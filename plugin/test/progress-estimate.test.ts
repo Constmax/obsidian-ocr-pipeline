@@ -72,6 +72,26 @@ test("before the first page: the page count of the run", () => {
 	assert.equal(run.describe(), "page 1 of 5 · about 4 min left");
 });
 
+test("status: the short status-bar form, page count first", () => {
+	const run = new RunProgress();
+	assert.equal(run.status(), "OCR …");
+	run.start(5);
+	assert.equal(run.status(), "OCR 0/5");
+	run.record(page(1, 5, 60));
+	assert.equal(run.status(), "OCR 1/5 · ~4 min");
+	run.record(page(2, 5, 20, true));
+	// mean 40 s, 3 pages left
+	assert.equal(run.status(), "OCR 2/5 · ~2 min · 1 derailed");
+	run.record(page(3, 5, 1));
+	run.record(page(4, 5, 1));
+	assert.equal(run.status(), "OCR 4/5 · <1 min · 1 derailed");
+	run.record(page(5, 5, 60));
+	assert.equal(run.status(), "OCR 5/5 · 1 derailed");
+	const long = new RunProgress();
+	long.record(page(1, 100, 60));
+	assert.equal(long.status(), "OCR 1/100 · ~1 h 39 min");
+});
+
 test("nothing recorded yet: empty description", () => {
 	assert.equal(new RunProgress().describe(), "");
 });

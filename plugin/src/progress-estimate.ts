@@ -6,14 +6,20 @@ import type { ProgressEvent } from "./conversion.ts";
 
 type PageEvent = Extract<ProgressEvent, { type: "page" }>;
 
-/** Time left as the notice shows it; the order of magnitude is the information. */
-export function formatRemaining(seconds: number): string {
-	if (seconds < 60) return "under 1 min left";
+/** "4 min", "1 h 25 min", minutes rounded up; null under a minute. */
+function roughDuration(seconds: number): string | null {
+	if (seconds < 60) return null;
 	const minutes = Math.ceil(seconds / 60);
-	if (minutes < 60) return `about ${minutes} min left`;
+	if (minutes < 60) return `${minutes} min`;
 	const hours = Math.floor(minutes / 60);
 	const rest = minutes % 60;
-	return rest === 0 ? `about ${hours} h left` : `about ${hours} h ${rest} min left`;
+	return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+}
+
+/** Time left as the notice shows it; the order of magnitude is the information. */
+export function formatRemaining(seconds: number): string {
+	const duration = roughDuration(seconds);
+	return duration === null ? "under 1 min left" : `about ${duration} left`;
 }
 
 export class RunProgress {
@@ -55,10 +61,28 @@ export class RunProgress {
 		// is the count of finished pages.
 		const parts = [`page ${this.finished} of ${this.total}`];
 		if (this.derailed > 0) parts.push(`${this.derailed} derailed`);
-		const left = this.total - this.finished;
-		if (left > 0 && this.timedPages > 0) {
-			parts.push(formatRemaining((this.timedSeconds / this.timedPages) * left));
-		}
+		const left = this.remainingSeconds();
+		if (left !== null) parts.push(formatRemaining(left));
 		return parts.join(" · ");
+	}
+
+	/** The status-bar form: "OCR n/m · ~x min · k derailed". */
+	status(): string {
+		if (this.total === 0) return "OCR …";
+		const parts = [`OCR ${this.finished}/${this.total}`];
+		const left = this.remainingSeconds();
+		if (left !== null) {
+			const duration = roughDuration(left);
+			parts.push(duration === null ? "<1 min" : `~${duration}`);
+		}
+		if (this.derailed > 0) parts.push(`${this.derailed} derailed`);
+		return parts.join(" · ");
+	}
+
+	/** Mean time of the timed pages times the pages still to come. */
+	private remainingSeconds(): number | null {
+		const left = this.total - this.finished;
+		if (left === 0 || this.timedPages === 0) return null;
+		return (this.timedSeconds / this.timedPages) * left;
 	}
 }

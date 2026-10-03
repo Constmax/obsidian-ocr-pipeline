@@ -3,7 +3,6 @@ import { test } from "node:test";
 
 import {
 	ProgressPresenter,
-	statusBarText,
 	type ProgressNotice,
 	type ProgressSurfaces,
 } from "../src/progress-display.ts";
@@ -30,6 +29,7 @@ class FakeNotice implements ProgressNotice {
 function setup() {
 	const notices: FakeNotice[] = [];
 	const status: Array<string | null> = [];
+	const tooltips: string[] = [];
 	let cancels = 0;
 	const surfaces: ProgressSurfaces = {
 		openNotice(message, onCancel) {
@@ -38,37 +38,36 @@ function setup() {
 			return notice;
 		},
 		statusBar: {
-			show: (text) => status.push(text),
+			show: (text, tooltip) => {
+				status.push(text);
+				tooltips.push(tooltip);
+			},
 			hide: () => status.push(null),
 		},
 	};
 	const presenter = new ProgressPresenter(surfaces, 'OCR Preview: Converting "a" …', () => cancels++);
-	return { presenter, notices, status, cancels: () => cancels };
+	return { presenter, notices, status, tooltips, cancels: () => cancels };
 }
 
-test("statusBarText only drops the notice prefix", () => {
-	assert.equal(statusBarText('OCR Preview: Converting "BGB — AT" …'), 'OCR: Converting "BGB — AT" …');
-	assert.equal(statusBarText('OCR Preview: "a" is being cancelled …'), 'OCR: "a" is being cancelled …');
-	assert.equal(statusBarText("other"), "OCR: other");
-});
-
 test("a run shows a notice and the status bar; progress updates both", () => {
-	const { presenter, notices, status } = setup();
+	const { presenter, notices, status, tooltips } = setup();
 	assert.equal(notices.length, 1);
-	presenter.setMessage('OCR Preview: Converting "a" — page 1 of 3 …', 'OCR: page 1 of 3 — Converting "a"');
+	presenter.setMessage('OCR Preview: Converting "a" — page 1 of 3 …', "OCR 1/3");
 	assert.deepEqual(notices[0]!.messages, [
 		'OCR Preview: Converting "a" …',
 		'OCR Preview: Converting "a" — page 1 of 3 …',
 	]);
-	assert.deepEqual(status, ['OCR: Converting "a" …', 'OCR: page 1 of 3 — Converting "a"']);
+	// Short in the bar; the full message is its tooltip.
+	assert.deepEqual(status, ["OCR …", "OCR 1/3"]);
+	assert.deepEqual(tooltips, ['OCR Preview: Converting "a" …', 'OCR Preview: Converting "a" — page 1 of 3 …']);
 });
 
 test("a hidden notice leaves the run and the status bar going", () => {
 	const { presenter, notices, status, cancels } = setup();
 	notices[0]!.hide();
-	presenter.setMessage('OCR Preview: Converting "a" — page 2 of 3 …', 'OCR: page 2 of 3 — Converting "a"');
+	presenter.setMessage('OCR Preview: Converting "a" — page 2 of 3 …', "OCR 2/3");
 	assert.deepEqual(notices[0]!.messages, ['OCR Preview: Converting "a" …']);
-	assert.equal(status.at(-1), 'OCR: page 2 of 3 — Converting "a"');
+	assert.equal(status.at(-1), "OCR 2/3");
 	assert.equal(cancels(), 0);
 });
 
