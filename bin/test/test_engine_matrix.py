@@ -219,10 +219,13 @@ def test_fallback_chain(box, engine, apple, bad, sequence, output):
 @pytest.mark.parametrize("engine,bad,flags,fallbacks", [
     ("apple", "apple(a)", [], 1),
     ("paddle", "paddle(a) apple(a)", [], 2),
+    ("tesseract", "ocr(a) ocr(split(a))", [], 2),
     ("apple", "apple(a)", ["--force-ocr"], 1),
     ("paddle", "paddle(a) apple(a)", ["--force-ocr"], 2),
-], ids=["apple>tesseract", "paddle>apple>tesseract",
-        "apple>tesseract, forced", "paddle>apple>tesseract, forced"])
+    ("tesseract", "ocr(a) ocr(split(a))", ["--force-ocr"], 2),
+], ids=["apple>tesseract", "paddle>apple>tesseract", "tesseract>split>apple",
+        "apple>tesseract, forced", "paddle>apple>tesseract, forced",
+        "tesseract>split>apple, forced"])
 def test_fallback_keeps_the_text_handling_of_the_first_attempt(box, engine, bad, flags, fallbacks):
     """#215: every attempt reads the pre-OCR input, so a fallback has no earlier
     text layer to clear; --force-ocr would rasterize born-digital pages."""

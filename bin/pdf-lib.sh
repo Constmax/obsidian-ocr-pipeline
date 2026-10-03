@@ -738,9 +738,9 @@ _split_retry() {
 # An engine switch rebuilds the args with the first attempt's text handling:
 # every attempt reads <pre_ocr.pdf>, never an earlier result, so there is no
 # earlier text layer to clear, and --force-ocr would rasterize born-digital
-# pages (#215). Every switch is printed on
-# stderr with its reason. Sets OCR_RESULT_DESC and OCR_FALLBACK for the
-# summary. <args_array_name> is passed by name (bash 3.2).
+# pages (#215). Every switch is printed on stderr with its reason. Sets
+# OCR_RESULT_DESC and OCR_FALLBACK for the summary. <args_array_name> is
+# passed by name (bash 3.2).
 # Returns 0 if the final result passes quality, 1 if all attempts fail
 # (<output.pdf> then holds the best effort, if any).
 #
