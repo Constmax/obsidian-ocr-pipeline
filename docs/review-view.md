@@ -32,6 +32,12 @@ number of open entries. Two operating modes share the same controls:
   compact status bar, and exposes editing. Changes are saved automatically;
   the manifest records that the current generated revision was edited and the
   flag resets when a new conversion is detected.
+- **Saving** writes only edits the view holds, and only when the file is as
+  the view last read or wrote it (`src/save-policy.ts`, #213). Opening a
+  preview or switching entries does not rewrite it. When the file changes on
+  disk (a re-conversion, another editor, sync), the view reloads it if it has
+  no edits; if it has, it shows a notice, writes nothing, and the disk version
+  loads the next time the preview opens.
 
 ## Opening
 
