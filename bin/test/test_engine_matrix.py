@@ -112,6 +112,17 @@ def test_auto_paddle_falls_back_to_apple(box):
     assert "🔄 Fallback: PaddleOCR fast → Apple Vision (quality gate failed)" in result.stderr
 
 
+def test_apple_loads_the_no_boxes_plugin(box):
+    """Issue #209: appleocr strokes a red box around every line otherwise."""
+    from test_pipeline import BIN
+
+    result = _combine(box, "--engine", "apple", apple="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    [call] = _ocr_calls(box)
+    assert f"--plugin ocrmypdf_appleocr --plugin {BIN / 'appleocr_no_boxes.py'} " in call, call
+
+
 def test_paddle_arguments(box):
     result = _combine(box, "--engine", "paddle", "--jobs", "4", paddle="1")
 
