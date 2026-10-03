@@ -39,3 +39,5 @@ Upgrade a pin together with the migration it needs:
   (`ocrmypdf_paddle._selected`). Verify that mechanism on the new version.
 - **ocrmypdf-appleocr `0.3.4`**: from 0.4.0 it self-registers via entry
   point, which collides with the `--plugin` check in `install.sh`.
+  `appleocr_no_boxes.py` rebinds its `generate_pdf` to drop the red line
+  boxes (#209); `test_appleocr_no_boxes.py` checks that on the new version.
