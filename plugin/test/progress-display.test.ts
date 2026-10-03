@@ -46,8 +46,17 @@ function setup() {
 	return { presenter, notices, status, cancels: () => cancels };
 }
 
-test("statusBarText drops the notice prefix", () => {
-	assert.equal(statusBarText('OCR Preview: Converting "a" — page 1 of 3 …'), 'OCR: Converting "a" — page 1 of 3 …');
+test("statusBarText puts the progress before the name, so clipping keeps it", () => {
+	assert.equal(
+		statusBarText('OCR Preview: Converting "a long scan name" — page 1 of 3 · about 2 min left …'),
+		'OCR: page 1 of 3 · about 2 min left — Converting "a long scan name"',
+	);
+	assert.equal(
+		statusBarText('OCR Preview: Converting "BGB — AT" — page 2 of 9 …'),
+		'OCR: page 2 of 9 — Converting "BGB — AT"',
+	);
+	assert.equal(statusBarText('OCR Preview: Converting "a" …'), 'OCR: Converting "a" …');
+	assert.equal(statusBarText('OCR Preview: "a" is being cancelled …'), 'OCR: "a" is being cancelled …');
 	assert.equal(statusBarText("other"), "OCR: other");
 });
 
@@ -59,7 +68,7 @@ test("a run shows a notice and the status bar; progress updates both", () => {
 		'OCR Preview: Converting "a" …',
 		'OCR Preview: Converting "a" — page 1 of 3 …',
 	]);
-	assert.deepEqual(status, ['OCR: Converting "a" …', 'OCR: Converting "a" — page 1 of 3 …']);
+	assert.deepEqual(status, ['OCR: Converting "a" …', 'OCR: page 1 of 3 — Converting "a"']);
 });
 
 test("a hidden notice leaves the run and the status bar going", () => {
@@ -67,7 +76,7 @@ test("a hidden notice leaves the run and the status bar going", () => {
 	notices[0]!.hide();
 	presenter.setMessage('OCR Preview: Converting "a" — page 2 of 3 …');
 	assert.deepEqual(notices[0]!.messages, ['OCR Preview: Converting "a" …']);
-	assert.equal(status.at(-1), 'OCR: Converting "a" — page 2 of 3 …');
+	assert.equal(status.at(-1), 'OCR: page 2 of 3 — Converting "a"');
 	assert.equal(cancels(), 0);
 });
 

@@ -24,9 +24,16 @@ export interface ProgressSurfaces {
 
 const NOTICE_PREFIX = "OCR Preview: ";
 
-/** The notice message, shortened for the status bar. */
+/**
+ * The notice message, shortened for the status bar. Progress after " — "
+ * moves to the front: the item clips its end, and a long file name must not
+ * push the page count out of sight.
+ */
 export function statusBarText(message: string): string {
-	const text = message.startsWith(NOTICE_PREFIX) ? message.slice(NOTICE_PREFIX.length) : message;
+	let text = message.startsWith(NOTICE_PREFIX) ? message.slice(NOTICE_PREFIX.length) : message;
+	// Greedy head: a file name may contain " — " itself.
+	const progress = /^(.+) — (.+?)(?: …)?$/.exec(text);
+	if (progress !== null) text = `${progress[2]} — ${progress[1]}`;
 	return `OCR: ${text}`;
 }
 

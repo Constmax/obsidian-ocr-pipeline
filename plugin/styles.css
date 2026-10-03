@@ -791,8 +791,9 @@
 	background: var(--interactive-hover);
 }
 
-.ocr-fortschritt-status {
+.ocr-progress-status-text {
 	max-width: 36em;
+	min-width: 0;
 	overflow: hidden;
 	white-space: nowrap;
 	text-overflow: ellipsis;

@@ -74,21 +74,32 @@ export function createSearchableCopyHost(app: App, settings: () => Settings): Se
 function openProgressNotice(message: string, onCancel: (() => void) | null): ProgressNotice {
 	const notice = new Notice(message, 0);
 	let hidden = false;
+	const hide = () => {
+		hidden = true;
+		notice.hide();
+	};
+	// Obsidian hides a notice the user clicks. Its fade-out keeps it in the
+	// DOM for a moment, so the click itself marks it hidden.
+	notice.containerEl.addEventListener("click", () => {
+		hidden = true;
+	});
 	const hideBtn = notice.containerEl.createEl("button", {
 		text: "Hide",
 		cls: "ocr-notice-abbrechen",
 		attr: { "aria-label": "The run continues; the status bar shows its progress" },
 	});
-	hideBtn.addEventListener("click", () => {
-		hidden = true;
-		notice.hide();
+	hideBtn.addEventListener("click", (event) => {
+		event.stopPropagation();
+		hide();
 	});
 	if (onCancel !== null) {
 		const cancelBtn = notice.containerEl.createEl("button", {
 			text: "Cancel",
 			cls: "ocr-notice-abbrechen",
 		});
-		cancelBtn.addEventListener("click", () => {
+		cancelBtn.addEventListener("click", (event) => {
+			// Keeps the notice open, so it shows the cancelling state.
+			event.stopPropagation();
 			cancelBtn.detach();
 			onCancel();
 		});
@@ -97,11 +108,7 @@ function openProgressNotice(message: string, onCancel: (() => void) | null): Pro
 		setMessage: (text) => {
 			notice.setMessage(text);
 		},
-		hide: () => {
-			hidden = true;
-			notice.hide();
-		},
-		// Obsidian also hides a notice the user clicks; it then leaves the DOM.
+		hide,
 		isShown: () => !hidden && notice.containerEl.isConnected,
 	};
 }
@@ -123,12 +130,16 @@ export function createConversionHost(
 		openNotice: openProgressNotice,
 		statusBar: {
 			show(text) {
-				progressStatus.setText(text);
+				// The inner span clips with an ellipsis; the flex item itself cannot.
+				progressStatus.empty();
+				progressStatus.createSpan({ text, cls: "ocr-progress-status-text" });
 				progressStatus.show();
 			},
 			hide() {
 				progressStatus.empty();
 				progressStatus.hide();
+				// The run is over; a click on the hidden item has nothing to reopen.
+				current = null;
 			},
 		},
 	};
