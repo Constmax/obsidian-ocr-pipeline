@@ -25,7 +25,7 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 ### Engine Selection
 
 - `auto`: Uses PaddleOCR in fast mode when its `--paddle-check fast` passes, otherwise Apple Vision if `ocrmypdf-appleocr` is installed, otherwise Tesseract (#198). An installed but unready PaddleOCR is passed over with its reason on stderr. With `--split-columns` or `--split-columns-all`, `auto` skips PaddleOCR, because PaddleOCR reads whole pages and would ignore the split
-- `apple`: Forces Apple Vision (fails with error if plugin is missing)
+- `apple`: Forces Apple Vision (fails with error if plugin is missing). Every Apple Vision run also loads `bin/appleocr_no_boxes.py`, which keeps the red line boxes `ocrmypdf-appleocr` strokes under the scan out of the text layer (#209)
 - `tesseract`: Forces Tesseract (automatically applies `--tesseract-pagesegmode 1` for column detection and `--clean` when `unpaper` is available)
 - `paddle`: PaddleOCR PP-OCRv5 through the `ocrmypdf_paddle` plugin (fails with an error before any OCR if the plugin does not load or `--paddle-check` finds its runtime, models or, in fast mode, Apple Vision not ready; an `ocrmypdf_paddle` from before that option is reported as too old). The Stage-1 benchmark (#71) retained it in fast mode, which the plugin offers and `auto` prefers. Runs one OCR job whatever `--jobs` says (`--jobs` still applies to a fallback engine). `--paddle-mode fast` lets Apple Vision read the lines and PP-OCRv5 re-read only citation lines (macOS 13+, see [paddle-textlayer.md](paddle-textlayer.md)). `setup.sh` installs the plugin into the Stage-1 venv through `install-paddle.sh` ([installation.md](installation.md#paddleocr-install-paddlesh)).
 

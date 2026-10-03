@@ -28,8 +28,9 @@ that call passes.
 - The B5 gate (per-page character floor, `column_tools.py verify-pages`)
   exists because of `docs/BUGREPORT-2026-07-06-split-merge.md`.
 - `bin/test` holds behavioral tests with stubbed tools on `PATH`; only
-  `test_hocr_text_layer_order.py` runs the pinned ocrmypdf, and
-  `test_downscale.py` the real Ghostscript (slow, skipped without `gs`).
+  `test_hocr_text_layer_order.py` and `test_appleocr_no_boxes.py` (macOS)
+  run the pinned ocrmypdf, and `test_downscale.py` the real Ghostscript
+  (slow, skipped without `gs`).
 
 ## Pinned toolchain
 
@@ -41,3 +42,5 @@ Upgrade a pin together with the migration it needs:
   (`ocrmypdf_paddle._selected`). Verify that mechanism on the new version.
 - **ocrmypdf-appleocr `0.3.4`**: from 0.4.0 it self-registers via entry
   point, which collides with the `--plugin` check in `install.sh`.
+  `appleocr_no_boxes.py` rebinds its `generate_pdf` to drop the red line
+  boxes (#209); `test_appleocr_no_boxes.py` checks that on the new version.
