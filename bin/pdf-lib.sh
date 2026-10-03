@@ -42,7 +42,7 @@ HAS_PNGQUANT=false
 HAS_UNPAPER=false
 OPTIMIZE_LEVEL=1
 ENGINE="auto"             # --engine flag
-PADDLE_MODE=""            # --paddle-mode flag (accurate|fast; only with --engine paddle)
+PADDLE_MODE=""            # --paddle-mode flag (accurate|fast; only with --engine paddle); `auto` sets fast
 TARGET_DPI=$DEFAULT_DPI
 DPI_SET=false             # true once --dpi was given (even with the default value)
 JOBS=$DEFAULT_JOBS
@@ -177,6 +177,20 @@ detect_paddle_ocr() {
     return 0
 }
 
+# probe_auto_paddle
+# Under `auto`, probes PaddleOCR in fast mode, the mode the Stage-1 benchmark
+# retained (#71, #198). A column split request keeps the Apple/Tesseract
+# policy: PaddleOCR reads whole pages and would ignore it (#153).
+probe_auto_paddle() {
+    [ "$SPLIT_COLUMNS" = true ] && return 0
+    PADDLE_MODE=fast
+    detect_paddle_ocr
+    if [ -n "$PADDLE_PROBLEM" ]; then
+        echo "⚠️  PaddleOCR fast is not ready, so auto passes over it: $PADDLE_PROBLEM" >&2
+    fi
+    return 0
+}
+
 # engine_label <apple|tesseract|paddle>
 # Prints the engine's name for messages and summaries.
 engine_label() {
@@ -190,15 +204,18 @@ engine_label() {
 # resolve_engine <auto|apple|tesseract|paddle>
 # The single source of truth for the engine (issue #70): sets
 # RESOLVED_ENGINE (apple|tesseract|paddle) and ENGINE_DESC. `auto` prefers
-# Apple Vision and falls back to Tesseract; PaddleOCR is never chosen by
-# `auto`. Returns 1 if the requested engine is not installed.
+# PaddleOCR fast when probe_auto_paddle found it ready, then Apple Vision,
+# then Tesseract. Returns 1 if the requested engine is not installed.
 # ENGINE_DESC is read by the CLIs — usage is not seen by shellcheck here.
 # shellcheck disable=SC2034
 resolve_engine() {
     local engine="${1:-auto}"
     case "$engine" in
         auto)
-            if [ "$APPLE_AVAILABLE" = true ]; then
+            if [ "$PADDLE_AVAILABLE" = true ]; then
+                RESOLVED_ENGINE=paddle
+                ENGINE_DESC="$(engine_label paddle) (auto)"
+            elif [ "$APPLE_AVAILABLE" = true ]; then
                 RESOLVED_ENGINE=apple
                 ENGINE_DESC="Apple Vision (auto)"
             else
@@ -238,7 +255,8 @@ resolve_engine() {
 # fallback_engine <apple|tesseract|paddle>
 # Prints the engine the quality gate switches to after <engine> failed:
 # Apple Vision → Tesseract, Tesseract → Apple Vision, PaddleOCR → Apple
-# Vision or, without it, Tesseract. Prints nothing if that is not installed.
+# Vision or, without it, Tesseract (ocr_with_retry adds Tesseract after Apple
+# Vision for PaddleOCR). Prints nothing if that is not installed.
 fallback_engine() {
     case "$1" in
         apple) echo tesseract ;;
@@ -724,7 +742,8 @@ _split_retry() {
 # matrix on failure (issue #70):
 #   Apple Vision → Tesseract → Tesseract with column split
 #   Tesseract    → Tesseract with column split → Apple Vision
-#   PaddleOCR    → Apple Vision, or Tesseract without it; no column split
+#   PaddleOCR    → Apple Vision → Tesseract (Tesseract alone without Apple
+#                  Vision); no column split
 # An engine switch rebuilds the args with --force-ocr, since the input may
 # carry a text layer from an earlier attempt. Every switch is printed on
 # stderr with its reason. Sets OCR_RESULT_DESC and OCR_FALLBACK for the
@@ -788,6 +807,16 @@ ocr_with_retry() {
                 && _split_retry "$input" "$ocr_tmp" retry_args "$scratch_dir"; then
                 OCR_RESULT_DESC="$OCR_RESULT_DESC, column split retry"
                 status=0
+            # PaddleOCR fast reads with Apple Vision too, so its chain ends on
+            # Tesseract, whole pages as well (#198).
+            elif [ "$engine" = paddle ] && [ "$fallback" = apple ]; then
+                to=$(engine_label tesseract)
+                echo "   🔄 Fallback: $(engine_label apple) → $to ($OCR_FAIL_REASON)" >&2
+                OCR_RESULT_DESC="$to (fallback from $from: $OCR_FAIL_REASON)"
+                build_ocr_args retry_args --engine tesseract --force-ocr --clean
+                if _ocr_attempt "$input" "$ocr_tmp" retry_args; then
+                    status=0
+                fi
             fi
         fi
     fi
@@ -992,6 +1021,8 @@ check_engine() {
     detect_apple_ocr
     if [ "$engine" = paddle ]; then
         detect_paddle_ocr
+    elif [ "$engine" = auto ]; then
+        probe_auto_paddle
     fi
     resolve_engine "$engine" || exit 4
     echo "✅ Engine usable"
@@ -1026,6 +1057,8 @@ lib_init() {
     detect_apple_ocr
     if [ "$engine" = paddle ]; then
         detect_paddle_ocr
+    elif [ "$engine" = auto ]; then
+        probe_auto_paddle
     fi
     detect_optimizers
 

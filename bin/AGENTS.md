@@ -11,7 +11,8 @@ The plugin's "Create searchable copy (OCR)" runs `reprocess-raw --output`
 column-split and maximum-DPI (`--dpi`) settings the user chose
 (`plugin/src/ocr-settings.ts`). With
 `--engine paddle`, `lib_init` ignores the split flags: PaddleOCR reads whole
-pages (#153). A change reaches the user only through the flags and engines
+pages (#153). `auto` (the plugin default) uses PaddleOCR fast when it is ready,
+except with a split request, which keeps Apple Vision/Tesseract (#198). A change reaches the user only through the flags and engines
 that call passes.
 
 ## Pipeline
