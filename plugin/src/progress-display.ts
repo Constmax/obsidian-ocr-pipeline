@@ -17,22 +17,18 @@ export interface ProgressSurfaces {
 	/** Opens a notice; `onCancel` null means no Cancel control. */
 	openNotice(message: string, onCancel: (() => void) | null): ProgressNotice;
 	statusBar: {
-		show(text: string): void;
+		/** `tooltip` is the full notice message. */
+		show(text: string, tooltip: string): void;
 		hide(): void;
 	};
-}
-
-const NOTICE_PREFIX = "OCR Preview: ";
-
-/** The status-bar text for a message that brings none of its own. */
-export function statusBarText(message: string): string {
-	return `OCR: ${message.startsWith(NOTICE_PREFIX) ? message.slice(NOTICE_PREFIX.length) : message}`;
 }
 
 export class ProgressPresenter implements ProgressDisplay {
 	private readonly surfaces: ProgressSurfaces;
 	private readonly onCancel: () => void;
 	private message: string;
+	/** Short status-bar text; the run's progress, not its name. */
+	private status = "OCR …";
 	private notice: ProgressNotice | null;
 	private cancelled = false;
 	private ended = false;
@@ -42,14 +38,15 @@ export class ProgressPresenter implements ProgressDisplay {
 		this.onCancel = onCancel;
 		this.message = message;
 		this.notice = this.openNotice();
-		surfaces.statusBar.show(statusBarText(message));
+		surfaces.statusBar.show(this.status, message);
 	}
 
-	setMessage(message: string, status: string = statusBarText(message)): void {
+	setMessage(message: string, status: string = this.status): void {
 		if (this.ended) return;
 		this.message = message;
+		this.status = status;
 		if (this.notice?.isShown()) this.notice.setMessage(message);
-		this.surfaces.statusBar.show(status);
+		this.surfaces.statusBar.show(status, message);
 	}
 
 	/** End of the run: removes the notice and the status-bar item. */

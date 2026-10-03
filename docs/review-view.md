@@ -41,9 +41,11 @@ number of open entries. Two operating modes share the same controls:
 - File menu on any PDF: **"OCR → Markdown"** opens the page-selection dialog
   for that file and starts conversion. While another conversion is running, the
   item remains visible but shows a notice instead of starting another one.
-  A persistent notice with **Hide** and **Cancel** follows the run, and the
-  status bar (bottom right) shows the same progress, page count first, until
-  the run ends.
+  A persistent notice with **Hide** and **Cancel** follows the run, and a
+  status-bar item (bottom right) shows the progress in short form until the
+  run ends: `OCR n/m · ~x min · k derailed` (`OCR …` before the page count is
+  known, `OCR cancelling …` while cancelling); its tooltip is the full notice
+  message.
   **Hide** (or a click on the notice) only removes the notice; a click on the
   status-bar item brings it back, with **Cancel** unless the run is already
   being cancelled. Once the analysis is done the notice names the pages of
@@ -245,8 +247,9 @@ Obsidian), `npm run build`.
     `_ocr-preview/.cases/<stem>/pNNN.json` holds `produced` ≠ `expected`.
     Reopen the preview → the badge is still there. ⇒ verifies stash, add, list.
 16. **OCR → Markdown** on a multi-page scan → after the first model page the
-    notice reads `page n of m · about x min left`, and the status bar shows
-    the same. **Hide** → the run continues and the status bar keeps counting;
-    click the status-bar item → the notice is back with **Cancel**. At the end
+    notice reads `page n of m · about x min left`, and the status bar
+    `OCR n/m · ~x min`, with the notice message as its tooltip. **Hide** →
+    the run continues and the status bar keeps counting; click the
+    status-bar item → the notice is back with **Cancel**. At the end
     the status-bar item disappears. With a page selection (e.g. 5–7) the
-    notice counts `page 1 of 3`.
+    notice counts `page 1 of 3` and the status bar `OCR 1/3`.

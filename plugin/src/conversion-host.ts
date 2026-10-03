@@ -129,10 +129,9 @@ export function createConversionHost(
 	const surfaces: ProgressSurfaces = {
 		openNotice: openProgressNotice,
 		statusBar: {
-			show(text) {
-				// The inner span clips with an ellipsis; the flex item itself cannot.
-				progressStatus.empty();
-				progressStatus.createSpan({ text, cls: "ocr-progress-status-text" });
+			show(text, tooltip) {
+				progressStatus.setText(text);
+				progressStatus.setAttribute("aria-label", tooltip);
 				progressStatus.show();
 			},
 			hide() {

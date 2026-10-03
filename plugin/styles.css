@@ -791,14 +791,6 @@
 	background: var(--interactive-hover);
 }
 
-.ocr-progress-status-text {
-	max-width: 36em;
-	min-width: 0;
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-}
-
 .ocr-notiz-feld {
 	width: 100%;
 	min-height: 120px;

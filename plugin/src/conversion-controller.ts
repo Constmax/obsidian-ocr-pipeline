@@ -44,10 +44,7 @@ export interface PdfSource {
 }
 
 export interface ProgressDisplay {
-	/**
-	 * `status` is the shorter status-bar text; without it the display derives
-	 * one from `message`.
-	 */
+	/** `status` is the short status-bar text; without it the last one stays. */
 	setMessage(message: string, status?: string): void;
 	hide(): void;
 }
@@ -336,12 +333,9 @@ export class ConversionController {
 						if (event.type === "start") runProgress.start(event.pages);
 						else if (event.type === "page") runProgress.record(event);
 						else return;
-						const subject = `Converting "${name}"`;
-						const position = runProgress.describe();
-						// The status bar clips its end, so progress goes first there.
 						progress.setMessage(
-							`OCR Preview: ${subject} — ${position} …`,
-							`OCR: ${position} — ${subject}`,
+							`OCR Preview: Converting "${name}" — ${runProgress.describe()} …`,
+							runProgress.status(),
 						);
 					},
 				},
@@ -426,7 +420,10 @@ export class ConversionController {
 	cancel(): void {
 		if (this.progress === null || this.cancelRequested) return;
 		this.cancelRequested = true;
-		this.progress.setMessage(`OCR Preview: "${this.currentName}" is being cancelled …`);
+		this.progress.setMessage(
+			`OCR Preview: "${this.currentName}" is being cancelled …`,
+			"OCR cancelling …",
+		);
 		if (this.child !== null) this.stopChild(this.child);
 	}
 
