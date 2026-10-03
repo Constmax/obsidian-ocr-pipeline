@@ -5,6 +5,7 @@ import {
 	DEFAULT_OCR_SETTINGS,
 	OCR_ENGINES,
 	isOcrEngine,
+	parseMaxDpiInput,
 	parseOcrSettings,
 } from "../src/ocr-settings.ts";
 
@@ -43,7 +44,7 @@ test("invalid values fall back field by field", () => {
 			JSON.stringify(splitColumns),
 		);
 	}
-	for (const maxDpi of [-1, 2.5, "300", null, Number.NaN]) {
+	for (const maxDpi of [-1, 2.5, "300", null, Number.NaN, 2401, 1e21]) {
 		assert.deepEqual(
 			parseOcrSettings({ ocrEngine: "apple", splitColumns: true, maxDpi }),
 			{ ocrEngine: "apple", splitColumns: true, maxDpi: 300 },
@@ -71,4 +72,13 @@ test("PaddleOCR is a valid stored engine (issue #73)", () => {
 		splitColumns: false,
 		maxDpi: 300,
 	});
+});
+
+test("the DPI field: empty is the default, invalid text is rejected (issue #201)", () => {
+	assert.equal(parseMaxDpiInput(""), 300);
+	assert.equal(parseMaxDpiInput(" 250 "), 250);
+	assert.equal(parseMaxDpiInput("0"), 0);
+	for (const text of ["-5", "2.5", "abc", "2401", "1e21"]) {
+		assert.equal(parseMaxDpiInput(text), null, text);
+	}
 });

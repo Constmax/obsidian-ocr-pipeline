@@ -38,7 +38,9 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 - `150`: Absolute minimum — fallback for OOM crashes with `--jobs 1`
 - `0`: Downscaling completely disabled
 
-`--dpi` is an exact upper limit (#201): every image above it is resampled to it, not only those above Ghostscript's default 1.5× threshold (a 400-DPI scan used to pass untouched at `--dpi 300`). Resampled images are re-encoded as JPEG at `JPEG_QFACTOR` (`pdf-lib.sh`, 1.6: on a 400-DPI scan 32 % smaller than Ghostscript's default quality at equal Tesseract confidence); images at or below the limit pass through unchanged. The plugin passes its "Maximum scan resolution" setting as `--dpi`.
+`--dpi` is an exact upper limit (#201): colour and grayscale images above it are resampled to it, not only those above Ghostscript's default 1.5× threshold (a 400-DPI scan used to pass untouched at `--dpi 300`). Resampled images are re-encoded as JPEG at `JPEG_QFACTOR` (`pdf-lib.sh`, 1.6: on a 400-DPI scan 32 % smaller than Ghostscript's default quality at equal Tesseract confidence). JPEG images at or below the limit pass through unchanged; other images at or below it (Flate/PNG scans) are re-encoded by Ghostscript as before, now at the same quality. Bitonal (1-bit) images stay bitonal and are only resampled by whole factors (600 → 300, not 400 → 300). The plugin passes its "Maximum scan resolution" setting as `--dpi`.
+
+`--force-ocr` on a page that already has text undoes the limit: OCRmyPDF rasterizes such pages at 400 DPI. The plugin never passes `--force-ocr`.
 
 Downscaling defaults to **Bicubic** resampling (`/Bicubic`) instead of Ghostscript's default `/Subsample` to preserve text edge sharpness.
 

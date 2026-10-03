@@ -32,9 +32,18 @@ export function isOcrEngine(value: unknown): value is OcrEngine {
 	return typeof value === "string" && (OCR_ENGINES as readonly string[]).includes(value);
 }
 
-/** A whole number ≥ 0, as `reprocess-raw --dpi` accepts it. */
+/** Above any scan resolution worth keeping; also keeps bash arithmetic in range. */
+export const MAX_DPI_LIMIT = 2400;
+
+/** A whole number from 0 (off) to MAX_DPI_LIMIT, as `reprocess-raw --dpi` accepts it. */
 export function isMaxDpi(value: unknown): value is number {
-	return Number.isInteger(value) && (value as number) >= 0;
+	return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= MAX_DPI_LIMIT;
+}
+
+/** The DPI text field: empty means the default; null for anything invalid. */
+export function parseMaxDpiInput(text: string): number | null {
+	const value = text.trim() === "" ? DEFAULT_OCR_SETTINGS.maxDpi : Number(text);
+	return isMaxDpi(value) ? value : null;
 }
 
 /**
