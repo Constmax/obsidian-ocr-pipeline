@@ -126,7 +126,7 @@ def compare_structure(reference_blocks, candidate_paragraphs):
     sequence, so any merge, split, loss, or reorder fails the comparison.
     """
     parsed = parse_paragraphs(candidate_paragraphs)
-    actual = reference_paragraphs(candidate_paragraphs)
+    actual = reference_paragraphs(candidate_paragraphs, anchors=False)
     hashes_match = ([b["hash"] for b in reference_blocks]
                     == [b["hash"] for b in actual])
     ref_levels = [b["heading"] for b in reference_blocks if "heading" in b]
