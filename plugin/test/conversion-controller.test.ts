@@ -30,6 +30,8 @@ const PDF: PdfSource = { path: "raw/case-01.pdf", basename: "case-01" };
 class FakeHost implements ConversionHost {
 	notices: string[] = [];
 	progress: string[] = [];
+	/** Status-bar texts the controller passed with a message. */
+	statusTexts: string[] = [];
 	hidden = 0;
 	cancelControl: (() => void) | null = null;
 	basePath: string | null = "/vault";
@@ -52,8 +54,9 @@ class FakeHost implements ConversionHost {
 		this.progress.push(message);
 		this.cancelControl = onCancel;
 		return {
-			setMessage: (text) => {
+			setMessage: (text, status) => {
 				this.progress.push(text);
+				if (status !== undefined) this.statusTexts.push(status);
 			},
 			hide: () => {
 				this.hidden++;
@@ -176,8 +179,15 @@ test("success: passes paths, timeout and pages, reports page progress, opens the
 
 	assert.deepEqual(host.progress, [
 		'OCR Preview: Converting "case-01" …',
-		'OCR Preview: Converting "case-01" — page 1 of 3 …',
-		'OCR Preview: Converting "case-01" — page 2 of 3 (derailed) …',
+		'OCR Preview: Converting "case-01" — 3 pages …',
+		'OCR Preview: Converting "case-01" — page 1 of 3 · under 1 min left …',
+		'OCR Preview: Converting "case-01" — page 2 of 3 · 1 derailed · under 1 min left …',
+	]);
+	// Progress first: the status bar clips the end, not the page count.
+	assert.deepEqual(host.statusTexts, [
+		'OCR: 3 pages — Converting "case-01"',
+		'OCR: page 1 of 3 · under 1 min left — Converting "case-01"',
+		'OCR: page 2 of 3 · 1 derailed · under 1 min left — Converting "case-01"',
 	]);
 	assert.equal(host.hidden, 1);
 	assert.equal(host.reconciles, 1);
