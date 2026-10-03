@@ -735,8 +735,10 @@ _split_retry() {
 #   Tesseract    → Tesseract with column split → Apple Vision
 #   PaddleOCR    → Apple Vision → Tesseract (Tesseract alone without Apple
 #                  Vision); no column split
-# An engine switch rebuilds the args with --force-ocr, since the input may
-# carry a text layer from an earlier attempt. Every switch is printed on
+# An engine switch rebuilds the args with the first attempt's text handling:
+# every attempt reads <pre_ocr.pdf>, never an earlier result, so there is no
+# earlier text layer to clear, and --force-ocr would rasterize born-digital
+# pages (#215). Every switch is printed on
 # stderr with its reason. Sets OCR_RESULT_DESC and OCR_FALLBACK for the
 # summary. <args_array_name> is passed by name (bash 3.2).
 # Returns 0 if the final result passes quality, 1 if all attempts fail
@@ -760,6 +762,13 @@ ocr_with_retry() {
     fi
     local ocr_tmp="$scratch_dir/ocr_retry_tmp_qc.pdf"
     local engine="$RESOLVED_ENGINE" status=1
+    # An engine switch repeats the caller's text handling (#215).
+    local text_flag="--skip-text" _arg
+    eval "_orig_args=(\"\${${args_name}[@]}\")"
+    # shellcheck disable=SC2154  # assigned via the eval string above
+    for _arg in "${_orig_args[@]}"; do
+        [ "$_arg" = "--force-ocr" ] && text_flag="--force-ocr"
+    done
     OCR_RESULT_DESC="$ENGINE_DESC"
     OCR_FALLBACK=false
     OCR_FAIL_REASON=""
@@ -785,7 +794,7 @@ ocr_with_retry() {
             # (pass-by-name, bash 3.2) — usage is not seen by shellcheck.
             # shellcheck disable=SC2034
             local retry_args=()
-            local retry_flags=(--engine "$fallback" --force-ocr --clean)
+            local retry_flags=(--engine "$fallback" "$text_flag" --clean)
             if [ "$SPLIT_COLUMNS" = true ]; then
                 retry_flags+=(--no-rotate --no-deskew)
             fi
@@ -804,7 +813,7 @@ ocr_with_retry() {
                 to=$(engine_label tesseract)
                 echo "   🔄 Fallback: $(engine_label apple) → $to ($OCR_FAIL_REASON)" >&2
                 OCR_RESULT_DESC="$to (fallback from $from: $OCR_FAIL_REASON)"
-                build_ocr_args retry_args --engine tesseract --force-ocr --clean
+                build_ocr_args retry_args --engine tesseract "$text_flag" --clean
                 if _ocr_attempt "$input" "$ocr_tmp" retry_args; then
                     status=0
                 fi

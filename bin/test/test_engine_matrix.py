@@ -216,6 +216,27 @@ def test_fallback_chain(box, engine, apple, bad, sequence, output):
     assert box.files()["out.pdf"] == output
 
 
+@pytest.mark.parametrize("engine,bad,flags,fallbacks", [
+    ("apple", "apple(a)", [], 1),
+    ("paddle", "paddle(a) apple(a)", [], 2),
+    ("apple", "apple(a)", ["--force-ocr"], 1),
+    ("paddle", "paddle(a) apple(a)", ["--force-ocr"], 2),
+], ids=["apple>tesseract", "paddle>apple>tesseract",
+        "apple>tesseract, forced", "paddle>apple>tesseract, forced"])
+def test_fallback_keeps_the_text_handling_of_the_first_attempt(box, engine, bad, flags, fallbacks):
+    """#215: every attempt reads the pre-OCR input, so a fallback has no earlier
+    text layer to clear; --force-ocr would rasterize born-digital pages."""
+    result = _combine(box, "--engine", engine, *flags, apple="1", paddle="1", bad_text=bad)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = _ocr_calls(box)
+    assert len(calls) == fallbacks + 1
+    for call in calls:
+        words = call.split()
+        assert ("--force-ocr" in words) == bool(flags), call
+        assert ("--skip-text" in words) == (not flags), call
+
+
 def test_paddle_never_adds_a_split_retry(box):
     result = _combine(box, "--engine", "paddle", paddle="1", bad_text="paddle(a) ocr(a)")
 
