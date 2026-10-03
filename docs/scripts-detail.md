@@ -231,7 +231,14 @@ gs -sDEVICE=pdfwrite \
    -dGrayImageDownsampleType=/Bicubic \
    -dDownsampleMonoImages=true  -dMonoImageResolution=300 \
    -dMonoImageDownsampleType=/Bicubic \
-   -sOutputFile=downscaled.pdf input.pdf
+   -dColorImageDownsampleThreshold=1.0 \
+   -dGrayImageDownsampleThreshold=1.0 \
+   -dMonoImageDownsampleThreshold=1.0 \
+   -sOutputFile=downscaled.pdf \
+   -c "<< /ColorACSImageDict << /QFactor 1.6 /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>
+         /GrayACSImageDict  << /QFactor 1.6 /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>
+      >> setdistillerparams" \
+   -f input.pdf
 ```
 
 **Rationale**: Phone scans and online tools produce 400-600 DPI files → 300+ megapixels per page → exceeds PIL allocation limits → OOM crash. 300 DPI represents Tesseract's optimal target resolution; Bicubic resampling preserves font edge sharpness superior to Ghostscript default `/Subsample`.
