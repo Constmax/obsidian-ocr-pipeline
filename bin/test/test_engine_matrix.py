@@ -5,8 +5,10 @@ and the retry chain in ocr_with_retry:
 
 - Apple Vision fails   → Tesseract → Tesseract with column split
 - Tesseract fails      → Tesseract with column split → Apple Vision
-- PaddleOCR fails      → Apple Vision, or Tesseract without it; never an
-                         implicit column split
+- PaddleOCR fails      → Apple Vision → Tesseract (Tesseract alone without
+                         Apple Vision); never an implicit column split
+
+`auto` uses PaddleOCR fast when it is ready and no split is requested (#198).
 
 Every fallback is printed on stderr with its reason and named in the
 summary. The toolchain is the stubbed one of test_pipeline.py; the ocrmypdf
@@ -69,6 +71,45 @@ def test_engine_selection(box, engine, apple, expected, label):
     assert result.returncode == 0, result.stdout + result.stderr
     assert _engines(box) == [expected]
     assert _engine_line(result) == label
+
+
+def test_auto_prefers_a_ready_paddle_in_fast_mode(box):
+    """#198: the benchmark retained PaddleOCR fast (bench Nachtrag 26)."""
+    result = _combine(box, "--engine", "auto", apple="1", paddle="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _engines(box) == ["paddle"]
+    assert "--paddle-mode fast " in _ocr_calls(box)[0]
+    assert _engine_line(result) == "PaddleOCR fast (auto)"
+
+
+def test_auto_passes_over_an_unready_paddle_and_says_why(box):
+    result = _combine(box, "--engine", "auto", apple="1", paddle="1",
+                      paddle_unready="Apple Vision needs macOS 13")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _engines(box) == ["apple"]
+    assert _engine_line(result) == "Apple Vision (auto)"
+    assert "PaddleOCR fast is not ready" in result.stderr
+    assert "Apple Vision needs macOS 13" in result.stderr
+
+
+def test_auto_with_a_split_request_keeps_apple(box):
+    """PaddleOCR would ignore the split (#153), so auto honours the request."""
+    result = _combine(box, "--engine", "auto", "--split-columns", apple="1", paddle="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _engines(box) == ["apple+split"]
+    assert "ignoring" not in result.stderr
+
+
+def test_auto_paddle_falls_back_to_apple(box):
+    result = _combine(box, "--engine", "auto", apple="1", paddle="1", bad_text="paddle(a)")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _engines(box) == ["paddle", "apple"]
+    assert box.files()["out.pdf"] == "apple(a)"
+    assert "🔄 Fallback: PaddleOCR fast → Apple Vision (quality gate failed)" in result.stderr
 
 
 def test_paddle_arguments(box):
@@ -134,11 +175,13 @@ def test_paddle_mode_usage_errors(box, script, positional, options, message):
     ("tesseract", "1", "ocr(a)", ["tesseract", "tesseract+split"], "merged(ocr(split(a)))"),
     ("tesseract", "1", "ocr(a) ocr(split(a))",
      ["tesseract", "tesseract+split", "apple"], "apple(a)"),
-    # PaddleOCR fails → Apple Vision if installed, otherwise Tesseract.
+    # PaddleOCR fails → Apple Vision if installed, then Tesseract (#198).
     ("paddle", "1", "paddle(a)", ["paddle", "apple"], "apple(a)"),
+    ("paddle", "1", "paddle(a) apple(a)", ["paddle", "apple", "tesseract"], "ocr(a)"),
     ("paddle", "", "paddle(a)", ["paddle", "tesseract"], "ocr(a)"),
 ], ids=["apple>tesseract", "apple>tesseract>split", "tesseract>split",
-        "tesseract>split>apple", "paddle>apple", "paddle>tesseract"])
+        "tesseract>split>apple", "paddle>apple", "paddle>apple>tesseract",
+        "paddle>tesseract"])
 def test_fallback_chain(box, engine, apple, bad, sequence, output):
     result = _combine(box, "--engine", engine, apple=apple, paddle="1", bad_text=bad)
 
