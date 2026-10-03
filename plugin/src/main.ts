@@ -76,6 +76,9 @@ export default class OcrPreviewPlugin extends Plugin {
 				if (!(file instanceof TFile)) return;
 				if (file.extension !== "md") return;
 				if (!this.isPreviewFile(file)) return;
+				for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+					if (leaf.view instanceof OcrComparisonView) void leaf.view.onFileModified(file);
+				}
 				trigger();
 			}),
 		);
