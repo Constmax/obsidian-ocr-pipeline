@@ -20,12 +20,6 @@ export class SavePolicy {
 		this.dirty = false;
 	}
 
-	/** No preview is open. */
-	reset(): void {
-		this.known = null;
-		this.dirty = false;
-	}
-
 	/** The user changed the text. */
 	edited(): void {
 		this.dirty = true;

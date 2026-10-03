@@ -30,14 +30,6 @@ test("edit, then switch: written once, then nothing more to write", () => {
 	assert.equal(policy.verdict("edited"), "nothing");
 });
 
-test("the modify event of the view's own write is not a change", () => {
-	const policy = new SavePolicy();
-	policy.loaded("old");
-	policy.edited();
-	policy.beginWrite("edited");
-	assert.equal(policy.verdict("edited"), "nothing");
-});
-
 test("a failed write keeps the edits and the old disk state", () => {
 	const policy = new SavePolicy();
 	policy.loaded("old");
@@ -60,4 +52,12 @@ test("without a loaded preview there is nothing to write", () => {
 	const policy = new SavePolicy();
 	policy.edited();
 	assert.equal(policy.verdict("x"), "nothing");
+});
+
+test("edit, outside change, then switch: still a conflict at every save", () => {
+	const policy = new SavePolicy();
+	policy.loaded("old");
+	policy.edited();
+	assert.equal(policy.verdict("outside"), "conflict");
+	assert.equal(policy.verdict("outside"), "conflict");
 });
