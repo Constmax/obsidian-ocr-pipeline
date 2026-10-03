@@ -25,12 +25,17 @@ export default class OcrPreviewPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		this.inventory = new Inventory(this.app, () => this.settings);
+		const progressStatus = this.addStatusBarItem();
+		progressStatus.addClass("mod-clickable");
+		progressStatus.setAttribute("aria-label", "Show conversion progress");
+		progressStatus.hide();
 		this.conversion = new ConversionController(
 			createConversionHost(
 				this.app,
 				() => this.inventory,
 				() => this.settings,
 				(entryName) => this.revealView(entryName),
+				progressStatus,
 			),
 		);
 		this.searchableCopyHost = createSearchableCopyHost(this.app, () => this.settings);
