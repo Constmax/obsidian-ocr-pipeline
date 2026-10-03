@@ -152,6 +152,7 @@ const OCR_REQUEST: SearchableCopyRequest = {
 	destination: "raw/case-01-ocr.pdf",
 	engine: "apple",
 	splitColumns: true,
+	maxDpi: 300,
 	allowPages: "1",
 };
 
@@ -482,6 +483,7 @@ test("runOcr: passes paths and options, indeterminate progress, leaves success t
 	assert.equal(call.spawnFn, undefined);
 	assert.equal(call.options.engine, "apple");
 	assert.equal(call.options.splitColumns, true);
+	assert.equal(call.options.maxDpi, 300);
 	assert.equal(call.options.allowPages, "1");
 
 	call.options.onChild!(child);
