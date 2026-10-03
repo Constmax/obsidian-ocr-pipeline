@@ -59,6 +59,16 @@ def test_other_engines_are_checked_too(box):
     assert ok.returncode == 0 and "Tesseract (auto-fallback)" in ok.stdout
 
 
+def test_auto_names_a_ready_paddle(box):
+    """#198: the check reports the engine a run would use."""
+    result = _check(box, apple="1", paddle="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "🧠 Engine:    PaddleOCR fast (auto)" in result.stdout
+    [probe] = [c for c in box.calls("ocrmypdf") if "--paddle-check" in c]
+    assert probe.endswith("--paddle-check fast"), probe
+
+
 def test_check_touches_no_file(box):
     _check(box, "--engine", "paddle", paddle="1")
 
