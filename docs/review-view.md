@@ -194,7 +194,9 @@ ignored and drop out on the next save.
 
 **Searchable copy** (for the Stage-1 action, #66): OCR engine (Automatic,
 Apple Vision, Tesseract, Apple Vision + RapidOCR (Paddle fast), which reads with
-Apple Vision and re-reads citation lines with RapidOCR; default Automatic) and
+Apple Vision and re-reads citation lines with RapidOCR; default Automatic,
+which uses Paddle fast when it is ready, then Apple Vision, then Tesseract, and
+skips Paddle while Split two-column pages is on, #198) and
 Split two-column pages (default off). `parseOcrSettings()` in `src/ocr-settings.ts`
 validates both on load: data from before these settings and invalid values
 (such as an engine this version does not know) fall back to the defaults field

@@ -16,7 +16,8 @@ Usage: $(basename "$0") <folder> [options]
 Options:
    --output-dir DIR                Output folder (Default: <input>/_processed)
    --engine auto|apple|tesseract|paddle
-                                   OCR engine (Default: auto; paddle only explicitly)
+                                   OCR engine (Default: auto = Paddle fast if ready,
+                                   else Apple Vision, else Tesseract)
    --paddle-mode accurate|fast     PaddleOCR mode (Default: accurate; fast needs macOS 13+)
    --dpi N                         Downscale target (Default: $DEFAULT_DPI, 0 = off)
    --jobs N                        Parallel OCR workers (Default: by RAM, 1–4)
