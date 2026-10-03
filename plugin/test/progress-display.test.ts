@@ -58,6 +58,12 @@ test("statusBarText puts the progress before the name, so clipping keeps it", ()
 	assert.equal(statusBarText('OCR Preview: Converting "a" …'), 'OCR: Converting "a" …');
 	assert.equal(statusBarText('OCR Preview: "a" is being cancelled …'), 'OCR: "a" is being cancelled …');
 	assert.equal(statusBarText("other"), "OCR: other");
+	// A dash in the name alone is not a progress part.
+	assert.equal(statusBarText('OCR Preview: Converting "BGB — AT" …'), 'OCR: Converting "BGB — AT" …');
+	assert.equal(
+		statusBarText('OCR Preview: "BGB — AT" is being cancelled …'),
+		'OCR: "BGB — AT" is being cancelled …',
+	);
 });
 
 test("a run shows a notice and the status bar; progress updates both", () => {

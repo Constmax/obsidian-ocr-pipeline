@@ -31,8 +31,8 @@ const NOTICE_PREFIX = "OCR Preview: ";
  */
 export function statusBarText(message: string): string {
 	let text = message.startsWith(NOTICE_PREFIX) ? message.slice(NOTICE_PREFIX.length) : message;
-	// Greedy head: a file name may contain " — " itself.
-	const progress = /^(.+) — (.+?)(?: …)?$/.exec(text);
+	// Progress follows the quoted name; greedy head, as the name may contain " — ".
+	const progress = /^(.+") — (.+?)(?: …)?$/.exec(text);
 	if (progress !== null) text = `${progress[2]} — ${progress[1]}`;
 	return `OCR: ${text}`;
 }

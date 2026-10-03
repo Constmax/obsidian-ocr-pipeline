@@ -60,7 +60,7 @@ export function createSearchableCopyHost(app: App, settings: () => Settings): Se
 			const notice = new Notice(offer.message, 0);
 			const button = notice.containerEl.createEl("button", {
 				text: "Run with page exemptions…",
-				cls: "ocr-notice-abbrechen",
+				cls: "ocr-notice-button",
 			});
 			button.addEventListener("click", () => {
 				notice.hide();
@@ -85,7 +85,7 @@ function openProgressNotice(message: string, onCancel: (() => void) | null): Pro
 	});
 	const hideBtn = notice.containerEl.createEl("button", {
 		text: "Hide",
-		cls: "ocr-notice-abbrechen",
+		cls: "ocr-notice-button",
 		attr: { "aria-label": "The run continues; the status bar shows its progress" },
 	});
 	hideBtn.addEventListener("click", (event) => {
@@ -95,7 +95,7 @@ function openProgressNotice(message: string, onCancel: (() => void) | null): Pro
 	if (onCancel !== null) {
 		const cancelBtn = notice.containerEl.createEl("button", {
 			text: "Cancel",
-			cls: "ocr-notice-abbrechen",
+			cls: "ocr-notice-button",
 		});
 		cancelBtn.addEventListener("click", (event) => {
 			// Keeps the notice open, so it shows the cancelling state.
