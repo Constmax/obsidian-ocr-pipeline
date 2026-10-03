@@ -115,14 +115,14 @@ def test_truth_covers_all_layouts():
         assert keyword in layouts, f"no page covers {keyword}"
 
 
-def test_truth_blocks_have_hashes_and_anchors():
+def test_truth_blocks_have_hashes_and_no_page_text():
     truth = load_truth()
     for page in truth["pages"]:
         kinds = set()
         for block in page["blocks"]:
             assert re_match_hash(block["hash"]), f"{page['id']}: bad hash"
-            assert block["anchor"] and len(block["anchor"]) <= 80, \
-                f"{page['id']}: anchor missing or too long"
+            assert "anchor" not in block, \
+                f"{page['id']}: truth blocks hold fingerprints, not text"
             kinds.add(kind_of(block))
         assert "text" in kinds or "heading" in kinds, \
             f"{page['id']}: no body content"
@@ -151,3 +151,10 @@ def test_truth_scores_itself():
                   "| c | d |"]
     reference = S.reference_paragraphs(paragraphs)
     assert S.compare_structure(reference, list(paragraphs))["passed"]
+
+
+def test_reference_paragraphs_anchors_are_local_only():
+    blocks = ["## Heading", "Body text.", "[^1]: Note."]
+    assert all("anchor" in b for b in S.reference_paragraphs(blocks))
+    assert not any("anchor" in b
+                   for b in S.reference_paragraphs(blocks, anchors=False))

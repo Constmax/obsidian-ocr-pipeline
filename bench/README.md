@@ -37,7 +37,7 @@ below `bench/reading-order-lauf/`. `--truth bench/reading_order_holdout.json`
 selects the validation pages of issue #87 (`holdout2`–`holdout4` are the later
 validation sets of #94, #114 and #124/#125); give each its own `--run-dir`. `structure_bench.py` reads its truth from
 `bench/structure_truth.json` (20 pages across all assembly layouts;
-fingerprints plus short anchors, no page text) and writes candidates below
+fingerprints only, no page text) and writes candidates below
 `bench/structure-lauf/`; `bless` refreshes the fingerprints after a
 hand-check and is local-only, never CI. `review_structure.py` prints the
 per-page hand-check view (coverage against the source text layer plus the
