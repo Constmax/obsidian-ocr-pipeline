@@ -41,6 +41,21 @@ number of open entries. Two operating modes share the same controls:
 - File menu on any PDF: **"OCR → Markdown"** opens the page-selection dialog
   for that file and starts conversion. While another conversion is running, the
   item remains visible but shows a notice instead of starting another one.
+  A persistent notice with **Hide** and **Cancel** follows the run, and the
+  status bar (bottom right) shows the same progress, page count first, until
+  the run ends.
+  **Hide** (or a click on the notice) only removes the notice; a click on the
+  status-bar item brings it back, with **Cancel** unless the run is already
+  being cancelled. Once the analysis is done the notice names the pages of
+  the run (`m pages`); after each page it reads
+  `page n of m · k derailed · about x min left`, where `n` counts the pages
+  this run finished (with a page selection, `m` is the number of selected
+  pages). The derailed count appears once a page derailed. The time left is
+  the mean time of the pages so far times the pages still to come. Pages that
+  report 0 s do not count: pages reused from the cache, and text-layer pages
+  under 0.05 s (`sekunden` is rounded to 0.1 s). The estimate is rough: too
+  low when model pages follow text-layer pages, and too high after the first
+  model page, whose time includes loading the model.
 - Second command: **"Jump to next preview entry"** (customizable shortcut)
 - **"Mark page as wrong"** (command palette, while the view has focus): marks
   the page the view shows, see "Marking a Page as Wrong"
@@ -198,7 +213,8 @@ The action itself is **Create searchable copy (OCR)**: in the PDF file menu
 and as a command that asks for a PDF. The comparison view offers no entry for
 it (#96): pure OCR never opens or requires the view. It writes `<stem>-ocr.pdf` beside the source with
 `reprocess-raw --output`, stops if that file already exists, never touches the
-source, and opens the new PDF.
+source, and opens the new PDF. Its progress notice has no page count, but it
+can be hidden and brought back from the status bar like the conversion's.
 
 ## Testing
 
@@ -230,3 +246,9 @@ Obsidian), `npm run build`.
     names status and fault stage, the page shows **Marked**, and
     `_ocr-preview/.cases/<stem>/pNNN.json` holds `produced` ≠ `expected`.
     Reopen the preview → the badge is still there. ⇒ verifies stash, add, list.
+16. **OCR → Markdown** on a multi-page scan → after the first model page the
+    notice reads `page n of m · about x min left`, and the status bar shows
+    the same. **Hide** → the run continues and the status bar keeps counting;
+    click the status-bar item → the notice is back with **Cancel**. At the end
+    the status-bar item disappears. With a page selection (e.g. 5–7) the
+    notice counts `page 1 of 3`.

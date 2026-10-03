@@ -21,6 +21,7 @@ import {
 	type SearchableCopyResult,
 	type SpawnFunction,
 } from "./conversion.ts";
+import { RunProgress } from "./progress-estimate.ts";
 
 /**
  * pdf2md is stopped after this long without any output. A page takes 15–60 s
@@ -43,7 +44,11 @@ export interface PdfSource {
 }
 
 export interface ProgressDisplay {
-	setMessage(message: string): void;
+	/**
+	 * `status` is the shorter status-bar text; without it the display derives
+	 * one from `message`.
+	 */
+	setMessage(message: string, status?: string): void;
 	hide(): void;
 }
 
@@ -313,6 +318,7 @@ export class ConversionController {
 				this.cancel(),
 			);
 			this.progress = progress;
+			const runProgress = new RunProgress();
 			const result = await this.convert(
 				pdf.path,
 				folder.normalized,
@@ -326,11 +332,17 @@ export class ConversionController {
 						this.child = child;
 					},
 					onProgress: (event) => {
-						if (event.type !== "page" || this.cancelRequested) return;
-						const position = event.derailed
-							? `— page ${event.num} of ${event.total} (derailed)`
-							: `— page ${event.num} of ${event.total}`;
-						progress.setMessage(`OCR Preview: Converting "${name}" ${position} …`);
+						if (this.cancelRequested) return;
+						if (event.type === "start") runProgress.start(event.pages);
+						else if (event.type === "page") runProgress.record(event);
+						else return;
+						const subject = `Converting "${name}"`;
+						const position = runProgress.describe();
+						// The status bar clips its end, so progress goes first there.
+						progress.setMessage(
+							`OCR Preview: ${subject} — ${position} …`,
+							`OCR: ${position} — ${subject}`,
+						);
 					},
 				},
 			);

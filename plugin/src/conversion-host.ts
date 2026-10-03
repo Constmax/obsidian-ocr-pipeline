@@ -11,6 +11,7 @@ import { PageCases } from "./page-cases.ts";
 import { isConvertible } from "./input-formats.ts";
 import type { Inventory } from "./file-actions.ts";
 import { ExemptionModal } from "./exemption-modal.ts";
+import { ProgressPresenter, type ProgressNotice, type ProgressSurfaces } from "./progress-display.ts";
 import type { SearchableCopyHost } from "./searchable-copy.ts";
 import type { OcrEngine } from "./ocr-settings.ts";
 import type { Settings } from "./settings.ts";
@@ -59,7 +60,7 @@ export function createSearchableCopyHost(app: App, settings: () => Settings): Se
 			const notice = new Notice(offer.message, 0);
 			const button = notice.containerEl.createEl("button", {
 				text: "Run with page exemptions…",
-				cls: "ocr-notice-abbrechen",
+				cls: "ocr-notice-button",
 			});
 			button.addEventListener("click", () => {
 				notice.hide();
@@ -69,32 +70,86 @@ export function createSearchableCopyHost(app: App, settings: () => Settings): Se
 	};
 }
 
+/** A persistent progress notice with Hide and, unless null, Cancel. */
+function openProgressNotice(message: string, onCancel: (() => void) | null): ProgressNotice {
+	const notice = new Notice(message, 0);
+	let hidden = false;
+	const hide = () => {
+		hidden = true;
+		notice.hide();
+	};
+	// Obsidian hides a notice the user clicks. Its fade-out keeps it in the
+	// DOM for a moment, so the click itself marks it hidden.
+	notice.containerEl.addEventListener("click", () => {
+		hidden = true;
+	});
+	const hideBtn = notice.containerEl.createEl("button", {
+		text: "Hide",
+		cls: "ocr-notice-button",
+		attr: { "aria-label": "The run continues; the status bar shows its progress" },
+	});
+	hideBtn.addEventListener("click", (event) => {
+		event.stopPropagation();
+		hide();
+	});
+	if (onCancel !== null) {
+		const cancelBtn = notice.containerEl.createEl("button", {
+			text: "Cancel",
+			cls: "ocr-notice-button",
+		});
+		cancelBtn.addEventListener("click", (event) => {
+			// Keeps the notice open, so it shows the cancelling state.
+			event.stopPropagation();
+			cancelBtn.detach();
+			onCancel();
+		});
+	}
+	return {
+		setMessage: (text) => {
+			notice.setMessage(text);
+		},
+		hide,
+		isShown: () => !hidden && notice.containerEl.isConnected,
+	};
+}
+
+/**
+ * `progressStatus` is the plugin's status-bar item: it shows the running
+ * conversion and brings its notice back on click.
+ */
 export function createConversionHost(
 	app: App,
 	inventory: () => Inventory,
 	settings: () => Settings,
 	revealEntry: (entryName: string) => Promise<boolean>,
+	progressStatus: HTMLElement,
 ): ConversionHost {
+	let current: ProgressPresenter | null = null;
+	progressStatus.addEventListener("click", () => current?.reopen());
+	const surfaces: ProgressSurfaces = {
+		openNotice: openProgressNotice,
+		statusBar: {
+			show(text) {
+				// The inner span clips with an ellipsis; the flex item itself cannot.
+				progressStatus.empty();
+				progressStatus.createSpan({ text, cls: "ocr-progress-status-text" });
+				progressStatus.show();
+			},
+			hide() {
+				progressStatus.empty();
+				progressStatus.hide();
+				// The run is over; a click on the hidden item has nothing to reopen.
+				current = null;
+			},
+		},
+	};
 	return {
 		notify(message) {
 			new Notice(message);
 		},
 		showProgress(message, onCancel) {
-			const notice = new Notice(message, 0);
-			const cancelBtn = notice.containerEl.createEl("button", {
-				text: "Cancel",
-				cls: "ocr-notice-abbrechen",
-			});
-			cancelBtn.addEventListener("click", () => {
-				cancelBtn.detach();
-				onCancel();
-			});
-			return {
-				setMessage: (text) => {
-					notice.setMessage(text);
-				},
-				hide: () => notice.hide(),
-			};
+			current = new ProgressPresenter(surfaces, message, onCancel);
+			return current;
 		},
 		vaultBasePath() {
 			const adapter = app.vault.adapter;
