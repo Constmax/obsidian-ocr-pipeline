@@ -11,6 +11,9 @@ import inspect
 import ocrmypdf_appleocr
 
 _generate_pdf = ocrmypdf_appleocr.generate_pdf
+# A renamed parameter would make the rebinding below a silent no-op.
+if "boxes" not in inspect.signature(_generate_pdf).parameters:
+    raise ImportError("ocrmypdf_appleocr.generate_pdf has no `boxes` parameter; see issue #209")
 
 
 def _generate_pdf_without_boxes(*args, **kwargs):

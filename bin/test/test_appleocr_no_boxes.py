@@ -19,6 +19,8 @@ from pathlib import Path
 import pytest
 
 SHIM = Path(__file__).resolve().parent.parent / "appleocr_no_boxes.py"
+pytestmark = pytest.mark.slow  # runs the OCRmyPDF CLI; `make test-fast` skips it
+
 WORDS = ["Haftung", "des", "Verkaufers", "nach", "Gefahrubergang"]
 
 
