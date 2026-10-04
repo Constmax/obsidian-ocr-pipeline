@@ -2895,7 +2895,7 @@ Alle anderen 67 Seiten liefern in beiden Zeilenquellen dieselbe Reihenfolge wie 
 
 Echter Lauf (`reprocess-raw.sh --engine paddle --paddle-mode fast`, Dokument mit 6 Seiten): p004 wird links, dann rechts gelesen; die übrigen 5 Seiten liefern denselben Text wie vorher (`pdftotext -raw`).
 
-**Verworfen:** Zeilen in einer Reihe nach ihrer Dicke (Fläche durch Länge) statt der Höhe ihres Rechtecks zu gruppieren. Auf p004 sinken die Rücksprünge in der rechten Spalte damit von 7 auf 1. Auf den fünf Sätzen ändert es aber rund 25 Reihenfolgen mit gemischten Abweichungen unter 0,6 Punkten (schlechter: t11, n10, m03, m05, q06, q10; besser: t02, n06, m09, m10, m11, r06), und ungesehene Belege für den Nutzen fehlen. Folgeissue.
+**Verworfen:** Zeilen in einer Reihe nach ihrer Dicke (Fläche durch Länge) statt der Höhe ihres Rechtecks zu gruppieren. Auf p004 sinken die Rücksprünge in der rechten Spalte damit von 7 auf 1. Auf den fünf Sätzen ändert es aber rund 25 Reihenfolgen mit gemischten Abweichungen unter 0,6 Punkten (schlechter: t11, n10, m03, m05, q06, q10; besser: t02, n06, m09, m10, m11, r06), und ungesehene Belege für den Nutzen fehlen. Folgeissue #246.
 
 **Grenzen:**
 - **p004 ist Entwurfsseite** und zählt nicht als Validierung; die einzige ungesehene Bestätigung ist r07.
