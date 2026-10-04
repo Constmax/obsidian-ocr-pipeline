@@ -353,18 +353,18 @@ the result explicitly says either “keep split mode” or “unsplit is support
   estimates the skew from the median direction of long lines and measures every
   line deskewed. When no gutter shows there, it looks again on the page as
   scanned: a column bowed towards the spine slopes its lines while the column
-  edges stay upright, and the median slope is then no rotation (#240). Header and footer bands end at a horizontal gap of at least
-  one line height and 1.5 times the usual leading, in the top 22 % or bottom
-  12 % of the page. A gutter lies between 30 % and 70 % of the text width,
-  almost no narrow line crosses it, and lines stand side by side on both
-  sides. At most 5 % of all narrow lines may cross it, but crossings are
-  counted only on lines between the top 22 % and the bottom 12 %, so a
-  running header or footer that no gap cuts off does not hide the gutter
-  (#114). A page with fewer than 8 narrow lines there counts crossings on
-  all narrow lines. A line crossing the gutter with no column line beside it separates
-  sections; each section is read left column, then right. Within a column,
-  lines are read in rows, and short lines standing in the margin follow their
-  column. The debug JSON lists the chosen order.
+  edges stay upright, and the median slope is then no rotation (#240). Header
+  and footer bands end at a horizontal gap of at least one line height and 1.5
+  times the usual leading, in the top 22 % or bottom 12 % of the page. A gutter
+  lies between 30 % and 70 % of the text width, almost no narrow line crosses
+  it, and lines stand side by side on both sides. At most 5 % of all narrow
+  lines may cross it, but crossings are counted only on lines between the top
+  22 % and the bottom 12 %, so a running header or footer that no gap cuts off
+  does not hide the gutter (#114). A page with fewer than 8 narrow lines there
+  counts crossings on all narrow lines. A line crossing the gutter with no
+  column line beside it separates sections; each section is read left column,
+  then right. Within a column, lines are read in rows, and short lines standing
+  in the margin follow their column. The debug JSON lists the chosen order.
 - **Truth set:** `bench/reading_order_truth.json`, 16 vault pages (10 two-column,
   6 single-column). Role regions (header, heading, body, footnote, note,
   footer) were drawn on gridded page images before any ordering output for
