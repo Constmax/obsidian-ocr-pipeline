@@ -14,7 +14,7 @@ To change the contract, change the JSON file first, then both sides, in one PR.
 | Event | Required fields | Optional | Meaning |
 |---|---|---|---|
 | `start` | `datei` string, `seiten` integer, `dpi` integer | — | Analysis done; `seiten` = pages this run converts |
-| `seite` | `nr`, `von` integer; `sekunden` number; `herkunft` `textlayer`\|`ocr`\|`diagramm`; `entgleist` boolean | `grund` string | One page finished (and cached) |
+| `seite` | `nr`, `von` integer; `sekunden` number; `herkunft` `textlayer`\|`ocr`\|`diagramm`; `entgleist` boolean | `grund` string | One page finished (and cached); `sekunden` is rounded to 0.1 s and is 0 for a page reused from the cache |
 | `fertig` | `ziel` string, `sekunden` number, `entgleist` integer | — | Preview written, run complete |
 
 **Order:** exactly one `start`, then one `seite` per converted page in page order, then `fertig`. `start` comes after the analysis and before the model load, so a long pause after it is the model loading.

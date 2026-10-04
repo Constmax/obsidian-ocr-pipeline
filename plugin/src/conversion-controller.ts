@@ -21,6 +21,7 @@ import {
 	type TextLayerResult,
 	type SpawnFunction,
 } from "./conversion.ts";
+import { RunProgress } from "./progress-estimate.ts";
 
 /**
  * pdf2md is stopped after this long without any output. A page takes 15–60 s
@@ -43,9 +44,19 @@ export interface PdfSource {
 }
 
 export interface ProgressDisplay {
-	setMessage(message: string): void;
+	/**
+	 * `status` is the shorter status-bar text; without it the display derives
+	 * one from `message`.
+	 */
+	setMessage(message: string, status?: string): void;
 	hide(): void;
 }
+
+/**
+ * What converting again would destroy: manual edits in the preview folder's
+ * file, or a decision on the entry. Null when nothing is at risk.
+ */
+export type PreviewAtRisk = "edited" | "accepted" | "rejected" | null;
 
 /** Everything the controller needs from Obsidian. */
 export interface ConversionHost {
@@ -64,6 +75,12 @@ export interface ConversionHost {
 	 * as foreign rather than as safe to overwrite.
 	 */
 	previewSource(entryName: string, folder: string): string | null;
+	/** What converting `entryName` again would destroy. */
+	previewAtRisk(entryName: string): PreviewAtRisk;
+	/** Asks before a re-conversion; resolves false when the user declines or closes. */
+	confirmReconvert(message: string): Promise<boolean>;
+	/** Copies the edited preview into the rejected folder; false when that failed. */
+	keepEditedCopy(entryName: string): Promise<boolean>;
 	/** Preview folder as configured and normalized for vault lookups. */
 	previewFolder(): { configured: string; normalized: string };
 	reconcile(): Promise<void>;
@@ -107,6 +124,7 @@ export interface TextLayerRequest {
 	source: PdfSource;
 	engine: OcrEngine;
 	splitColumns: boolean;
+	maxDpi: number;
 	/** Pages exempt from the B5 gate, e.g. "1,5-7". */
 	allowPages?: string;
 }
@@ -307,10 +325,15 @@ export class ConversionController {
 				this.host.notify("OCR Preview: Conversion requires file system access (Desktop).");
 				return;
 			}
+			const risk = this.host.previewAtRisk(entryName);
+			if (risk !== null && !(await this.confirmReconvert(entryName, risk))) {
+				return;
+			}
 			const progress = this.host.showProgress(`OCR Preview: Converting "${name}" …`, () =>
 				this.cancel(),
 			);
 			this.progress = progress;
+			const runProgress = new RunProgress();
 			const result = await this.convert(
 				pdf.path,
 				folder.normalized,
@@ -324,11 +347,17 @@ export class ConversionController {
 						this.child = child;
 					},
 					onProgress: (event) => {
-						if (event.type !== "page" || this.cancelRequested) return;
-						const position = event.derailed
-							? `— page ${event.num} of ${event.total} (derailed)`
-							: `— page ${event.num} of ${event.total}`;
-						progress.setMessage(`OCR Preview: Converting "${name}" ${position} …`);
+						if (this.cancelRequested) return;
+						if (event.type === "start") runProgress.start(event.pages);
+						else if (event.type === "page") runProgress.record(event);
+						else return;
+						const subject = `Converting "${name}"`;
+						const position = runProgress.describe();
+						// The status bar clips its end, so progress goes first there.
+						progress.setMessage(
+							`OCR Preview: ${subject} — ${position} …`,
+							`OCR: ${position} — ${subject}`,
+						);
 					},
 				},
 			);
@@ -377,6 +406,7 @@ export class ConversionController {
 				{
 					engine: request.engine,
 					splitColumns: request.splitColumns,
+					maxDpi: request.maxDpi,
 					...(request.allowPages && request.allowPages.length > 0
 						? { allowPages: request.allowPages }
 						: {}),
@@ -405,6 +435,29 @@ export class ConversionController {
 		} finally {
 			this.end();
 		}
+	}
+
+	/**
+	 * Converting again overwrites the preview folder's file and resets the
+	 * entry's review state, so an edited or decided preview asks first. Edits
+	 * are kept as a copy, not moved: a `--pages` run merges into the file.
+	 */
+	private async confirmReconvert(
+		entryName: string,
+		risk: NonNullable<PreviewAtRisk>,
+	): Promise<boolean> {
+		const message =
+			risk === "edited"
+				? `"${entryName}" has manual edits. Converting again overwrites them; a copy of the edited file is kept in the rejected folder.`
+				: `"${entryName}" is already ${risk}. Converting again creates a new version to review.`;
+		if (!(await this.host.confirmReconvert(message))) return false;
+		if (risk === "edited" && !(await this.host.keepEditedCopy(entryName))) {
+			this.host.notify(
+				`OCR Preview: "${entryName}" was not converted — the copy of its edits could not be kept.`,
+			);
+			return false;
+		}
+		return true;
 	}
 
 	/** User cancellation of the running conversion; repeated calls are ignored. */

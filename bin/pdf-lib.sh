@@ -23,6 +23,7 @@ DEFAULT_JOBS=2
 FAST_DPI=200             # --fast floor: never below 200 with tesseract
 FAST_JOBS=1
 DOWNSAMPLE_TYPE="Bicubic"  # was /Subsample — smears text edges
+JPEG_QFACTOR=1.6         # JPEG QFactor of downscaled images: -32 % at equal OCR confidence (#201)
 A4_MAX_W=650             # Max page width in pts before MediaBox fix (A4=595 + 10 %)
 A4_MAX_H=900             # Max page height in pts before MediaBox fix (A4=842 + 7 %)
 MAX_IMAGE_MPIXELS=400    # ocrmypdf --max-image-mpixels safety net (Default 250) for inputs without fix_mediabox
@@ -41,7 +42,7 @@ HAS_PNGQUANT=false
 HAS_UNPAPER=false
 OPTIMIZE_LEVEL=1
 ENGINE="auto"             # --engine flag
-PADDLE_MODE=""            # --paddle-mode flag (accurate|fast; only with --engine paddle)
+PADDLE_MODE=""            # --paddle-mode flag (accurate|fast; only with --engine paddle); `auto` sets fast
 TARGET_DPI=$DEFAULT_DPI
 DPI_SET=false             # true once --dpi was given (even with the default value)
 JOBS=$DEFAULT_JOBS
@@ -176,6 +177,20 @@ detect_paddle_ocr() {
     return 0
 }
 
+# probe_auto_paddle
+# Under `auto`, probes PaddleOCR in fast mode, the mode the Stage-1 benchmark
+# retained (#71, #198). A column split request keeps the Apple/Tesseract
+# policy: PaddleOCR reads whole pages and would ignore it (#153).
+probe_auto_paddle() {
+    [ "$SPLIT_COLUMNS" = true ] && return 0
+    PADDLE_MODE=fast
+    detect_paddle_ocr
+    if [ -n "$PADDLE_PROBLEM" ]; then
+        echo "⚠️  PaddleOCR fast is not ready, so auto passes over it: $PADDLE_PROBLEM" >&2
+    fi
+    return 0
+}
+
 # engine_label <apple|tesseract|paddle>
 # Prints the engine's name for messages and summaries.
 engine_label() {
@@ -189,15 +204,18 @@ engine_label() {
 # resolve_engine <auto|apple|tesseract|paddle>
 # The single source of truth for the engine (issue #70): sets
 # RESOLVED_ENGINE (apple|tesseract|paddle) and ENGINE_DESC. `auto` prefers
-# Apple Vision and falls back to Tesseract; PaddleOCR is never chosen by
-# `auto`. Returns 1 if the requested engine is not installed.
+# PaddleOCR fast when probe_auto_paddle found it ready, then Apple Vision,
+# then Tesseract. Returns 1 if the requested engine is not installed.
 # ENGINE_DESC is read by the CLIs — usage is not seen by shellcheck here.
 # shellcheck disable=SC2034
 resolve_engine() {
     local engine="${1:-auto}"
     case "$engine" in
         auto)
-            if [ "$APPLE_AVAILABLE" = true ]; then
+            if [ "$PADDLE_AVAILABLE" = true ]; then
+                RESOLVED_ENGINE=paddle
+                ENGINE_DESC="$(engine_label paddle) (auto)"
+            elif [ "$APPLE_AVAILABLE" = true ]; then
                 RESOLVED_ENGINE=apple
                 ENGINE_DESC="Apple Vision (auto)"
             else
@@ -237,7 +255,8 @@ resolve_engine() {
 # fallback_engine <apple|tesseract|paddle>
 # Prints the engine the quality gate switches to after <engine> failed:
 # Apple Vision → Tesseract, Tesseract → Apple Vision, PaddleOCR → Apple
-# Vision or, without it, Tesseract. Prints nothing if that is not installed.
+# Vision or, without it, Tesseract (ocr_with_retry adds Tesseract after Apple
+# Vision for PaddleOCR). Prints nothing if that is not installed.
 fallback_engine() {
     case "$1" in
         apple) echo tesseract ;;
@@ -324,7 +343,11 @@ fix_mediabox() {
 }
 
 # gs_downscale <input.pdf> <output.pdf> [dpi]
-# Downscales a PDF using Ghostscript with Bicubic resampling.
+# Downscales a PDF using Ghostscript with Bicubic resampling. <dpi> is an
+# exact limit: images above it are resampled to it (threshold 1.0, not
+# Ghostscript's 1.5) and re-encoded as JPEG at JPEG_QFACTOR. JPEG images at
+# or below it pass through unchanged; other images are re-encoded by
+# Ghostscript, at the same QFactor (#201).
 # Returns 0 on success; output path is guaranteed to exist on success.
 gs_downscale() {
     local input="$1" output="$2" dpi="${3:-$TARGET_DPI}"
@@ -349,8 +372,14 @@ gs_downscale() {
        -dDownsampleMonoImages=true \
        -dMonoImageResolution="$dpi" \
        -dMonoImageDownsampleType=/"$DOWNSAMPLE_TYPE" \
+       -dColorImageDownsampleThreshold=1.0 \
+       -dGrayImageDownsampleThreshold=1.0 \
+       -dMonoImageDownsampleThreshold=1.0 \
        -sOutputFile="$output" \
-       "$input" 2>/dev/null
+       -c "<< /ColorACSImageDict << /QFactor $JPEG_QFACTOR /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>
+             /GrayACSImageDict << /QFactor $JPEG_QFACTOR /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>
+          >> setdistillerparams" \
+       -f "$input" 2>/dev/null
 
     if [ -f "$output" ]; then
         size_after=$(du -h "$output" 2>/dev/null | cut -f1)
@@ -465,9 +494,13 @@ build_ocr_args() {
         esac
     done
 
+    # --output-type pdf: the default PDF/A conversion runs Ghostscript over
+    # the whole file, which drops annotations and splits an existing text
+    # layer into one font per glyph (#210).
     local args=(
         -l deu
         "$skip_text"
+        --output-type pdf
     )
     # --rotate-pages relies on per-page OSD confidence; unreliable on
     # column halves (own orientation detection is unreliable — see
@@ -490,7 +523,8 @@ build_ocr_args() {
 
     case "$engine" in
         apple)
-            args=(--plugin ocrmypdf_appleocr "${args[@]}") ;;
+            # appleocr_no_boxes.py drops the red line boxes appleocr draws (#209).
+            args=(--plugin ocrmypdf_appleocr --plugin "$SCRIPT_DIR/appleocr_no_boxes.py" "${args[@]}") ;;
         paddle)
             args=(--plugin ocrmypdf_paddle --paddle-mode "${PADDLE_MODE:-accurate}" "${args[@]}") ;;
         tesseract)
@@ -500,8 +534,8 @@ build_ocr_args() {
             fi ;;
     esac
 
-    # Indirect assignment: set the caller's variable
-    printf -v "$outvar" '%s ' "${args[@]}"
+    # Indirect assignment: set the caller's variable (%q keeps paths with spaces whole)
+    printf -v "$outvar" '%q ' "${args[@]}"
     eval "$outvar=(${!outvar})"
 }
 
@@ -714,11 +748,14 @@ _split_retry() {
 # matrix on failure (issue #70):
 #   Apple Vision → Tesseract → Tesseract with column split
 #   Tesseract    → Tesseract with column split → Apple Vision
-#   PaddleOCR    → Apple Vision, or Tesseract without it; no column split
-# An engine switch rebuilds the args with --force-ocr, since the input may
-# carry a text layer from an earlier attempt. Every switch is printed on
-# stderr with its reason. Sets OCR_RESULT_DESC and OCR_FALLBACK for the
-# summary. <args_array_name> is passed by name (bash 3.2).
+#   PaddleOCR    → Apple Vision → Tesseract (Tesseract alone without Apple
+#                  Vision); no column split
+# An engine switch rebuilds the args with the first attempt's text handling:
+# every attempt reads <pre_ocr.pdf>, never an earlier result, so there is no
+# earlier text layer to clear, and --force-ocr would rasterize born-digital
+# pages (#215). Every switch is printed on stderr with its reason. Sets
+# OCR_RESULT_DESC and OCR_FALLBACK for the summary. <args_array_name> is
+# passed by name (bash 3.2).
 # Returns 0 if the final result passes quality, 1 if all attempts fail
 # (<output.pdf> then holds the best effort, if any).
 #
@@ -740,6 +777,13 @@ ocr_with_retry() {
     fi
     local ocr_tmp="$scratch_dir/ocr_retry_tmp_qc.pdf"
     local engine="$RESOLVED_ENGINE" status=1
+    # An engine switch repeats the caller's text handling (#215).
+    local text_flag="--skip-text" _arg
+    eval "_orig_args=(\"\${${args_name}[@]}\")"
+    # shellcheck disable=SC2154  # assigned via the eval string above
+    for _arg in "${_orig_args[@]}"; do
+        [ "$_arg" = "--force-ocr" ] && text_flag="--force-ocr"
+    done
     OCR_RESULT_DESC="$ENGINE_DESC"
     OCR_FALLBACK=false
     OCR_FAIL_REASON=""
@@ -765,7 +809,7 @@ ocr_with_retry() {
             # (pass-by-name, bash 3.2) — usage is not seen by shellcheck.
             # shellcheck disable=SC2034
             local retry_args=()
-            local retry_flags=(--engine "$fallback" --force-ocr --clean)
+            local retry_flags=(--engine "$fallback" "$text_flag" --clean)
             if [ "$SPLIT_COLUMNS" = true ]; then
                 retry_flags+=(--no-rotate --no-deskew)
             fi
@@ -778,6 +822,16 @@ ocr_with_retry() {
                 && _split_retry "$input" "$ocr_tmp" retry_args "$scratch_dir"; then
                 OCR_RESULT_DESC="$OCR_RESULT_DESC, column split retry"
                 status=0
+            # PaddleOCR fast reads with Apple Vision too, so its chain ends on
+            # Tesseract, whole pages as well (#198).
+            elif [ "$engine" = paddle ] && [ "$fallback" = apple ]; then
+                to=$(engine_label tesseract)
+                echo "   🔄 Fallback: $(engine_label apple) → $to ($OCR_FAIL_REASON)" >&2
+                OCR_RESULT_DESC="$to (fallback from $from: $OCR_FAIL_REASON)"
+                build_ocr_args retry_args --engine tesseract "$text_flag" --clean
+                if _ocr_attempt "$input" "$ocr_tmp" retry_args; then
+                    status=0
+                fi
             fi
         fi
     fi
@@ -982,6 +1036,8 @@ check_engine() {
     detect_apple_ocr
     if [ "$engine" = paddle ]; then
         detect_paddle_ocr
+    elif [ "$engine" = auto ]; then
+        probe_auto_paddle
     fi
     resolve_engine "$engine" || exit 4
     echo "✅ Engine usable"
@@ -1016,6 +1072,8 @@ lib_init() {
     detect_apple_ocr
     if [ "$engine" = paddle ]; then
         detect_paddle_ocr
+    elif [ "$engine" = auto ]; then
+        probe_auto_paddle
     fi
     detect_optimizers
 

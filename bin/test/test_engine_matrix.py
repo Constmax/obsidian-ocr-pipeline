@@ -5,8 +5,10 @@ and the retry chain in ocr_with_retry:
 
 - Apple Vision fails   → Tesseract → Tesseract with column split
 - Tesseract fails      → Tesseract with column split → Apple Vision
-- PaddleOCR fails      → Apple Vision, or Tesseract without it; never an
-                         implicit column split
+- PaddleOCR fails      → Apple Vision → Tesseract (Tesseract alone without
+                         Apple Vision); never an implicit column split
+
+`auto` uses PaddleOCR fast when it is ready and no split is requested (#198).
 
 Every fallback is printed on stderr with its reason and named in the
 summary. The toolchain is the stubbed one of test_pipeline.py; the ocrmypdf
@@ -69,6 +71,71 @@ def test_engine_selection(box, engine, apple, expected, label):
     assert result.returncode == 0, result.stdout + result.stderr
     assert _engines(box) == [expected]
     assert _engine_line(result) == label
+
+
+def test_auto_prefers_a_ready_paddle_in_fast_mode(box):
+    """#198: the benchmark retained PaddleOCR fast (bench Nachtrag 26)."""
+    result = _combine(box, "--engine", "auto", apple="1", paddle="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _engines(box) == ["paddle"]
+    assert "--paddle-mode fast " in _ocr_calls(box)[0]
+    assert _engine_line(result) == "PaddleOCR fast (auto)"
+
+
+def test_auto_passes_over_an_unready_paddle_and_says_why(box):
+    result = _combine(box, "--engine", "auto", apple="1", paddle="1",
+                      paddle_unready="Apple Vision needs macOS 13")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _engines(box) == ["apple"]
+    assert _engine_line(result) == "Apple Vision (auto)"
+    assert "PaddleOCR fast is not ready" in result.stderr
+    assert "Apple Vision needs macOS 13" in result.stderr
+
+
+def test_auto_with_a_split_request_keeps_apple(box):
+    """PaddleOCR would ignore the split (#153), so auto honours the request."""
+    result = _combine(box, "--engine", "auto", "--split-columns", apple="1", paddle="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _engines(box) == ["apple+split"]
+    assert "ignoring" not in result.stderr
+
+
+def test_auto_paddle_falls_back_to_apple(box):
+    result = _combine(box, "--engine", "auto", apple="1", paddle="1", bad_text="paddle(a)")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _engines(box) == ["paddle", "apple"]
+    assert box.files()["out.pdf"] == "apple(a)"
+    assert "🔄 Fallback: PaddleOCR fast → Apple Vision (quality gate failed)" in result.stderr
+
+
+def test_apple_loads_the_no_boxes_plugin(box):
+    """Issue #209: appleocr strokes a red box around every line otherwise."""
+    from test_pipeline import BIN
+
+    result = _combine(box, "--engine", "apple", apple="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    [call] = _ocr_calls(box)
+    assert f"--plugin ocrmypdf_appleocr --plugin {BIN / 'appleocr_no_boxes.py'} " in call, call
+
+
+def test_apple_plugin_path_may_contain_spaces(box, tmp_path, monkeypatch):
+    """iCloud vaults live under "Mobile Documents"; the path stays one argument."""
+    import shutil
+    import test_pipeline
+
+    spaced = tmp_path / "bin with space"
+    shutil.copytree(test_pipeline.BIN, spaced, ignore=shutil.ignore_patterns("test"))
+    monkeypatch.setattr(test_pipeline, "BIN", spaced)
+
+    result = _combine(box, "--engine", "apple", apple="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert box.files()["out.pdf"] == "apple(a)"
 
 
 def test_paddle_arguments(box):
@@ -134,17 +201,43 @@ def test_paddle_mode_usage_errors(box, script, positional, options, message):
     ("tesseract", "1", "ocr(a)", ["tesseract", "tesseract+split"], "merged(ocr(split(a)))"),
     ("tesseract", "1", "ocr(a) ocr(split(a))",
      ["tesseract", "tesseract+split", "apple"], "apple(a)"),
-    # PaddleOCR fails → Apple Vision if installed, otherwise Tesseract.
+    # PaddleOCR fails → Apple Vision if installed, then Tesseract (#198).
     ("paddle", "1", "paddle(a)", ["paddle", "apple"], "apple(a)"),
+    ("paddle", "1", "paddle(a) apple(a)", ["paddle", "apple", "tesseract"], "ocr(a)"),
     ("paddle", "", "paddle(a)", ["paddle", "tesseract"], "ocr(a)"),
 ], ids=["apple>tesseract", "apple>tesseract>split", "tesseract>split",
-        "tesseract>split>apple", "paddle>apple", "paddle>tesseract"])
+        "tesseract>split>apple", "paddle>apple", "paddle>apple>tesseract",
+        "paddle>tesseract"])
 def test_fallback_chain(box, engine, apple, bad, sequence, output):
     result = _combine(box, "--engine", engine, apple=apple, paddle="1", bad_text=bad)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert _engines(box) == sequence
     assert box.files()["out.pdf"] == output
+
+
+@pytest.mark.parametrize("engine,bad,flags,fallbacks", [
+    ("apple", "apple(a)", [], 1),
+    ("paddle", "paddle(a) apple(a)", [], 2),
+    ("tesseract", "ocr(a) ocr(split(a))", [], 2),
+    ("apple", "apple(a)", ["--force-ocr"], 1),
+    ("paddle", "paddle(a) apple(a)", ["--force-ocr"], 2),
+    ("tesseract", "ocr(a) ocr(split(a))", ["--force-ocr"], 2),
+], ids=["apple>tesseract", "paddle>apple>tesseract", "tesseract>split>apple",
+        "apple>tesseract, forced", "paddle>apple>tesseract, forced",
+        "tesseract>split>apple, forced"])
+def test_fallback_keeps_the_text_handling_of_the_first_attempt(box, engine, bad, flags, fallbacks):
+    """#215: every attempt reads the pre-OCR input, so a fallback has no earlier
+    text layer to clear; --force-ocr would rasterize born-digital pages."""
+    result = _combine(box, "--engine", engine, *flags, apple="1", paddle="1", bad_text=bad)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = _ocr_calls(box)
+    assert len(calls) == fallbacks + 1
+    for call in calls:
+        words = call.split()
+        assert ("--force-ocr" in words) == bool(flags), call
+        assert ("--skip-text" in words) == (not flags), call
 
 
 def test_paddle_never_adds_a_split_retry(box):

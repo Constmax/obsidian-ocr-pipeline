@@ -15,7 +15,7 @@ before anything moves into the wiki. The code calls it the comparison view
 
 | Column | Content |
 |---|---|
-| **Previews** | File list with status filter (Open · Accepted · Rejected · All), text filter, refresh, and progress for lists of at least five entries. Mixed-status lists are grouped in the same order used by `j`/`k`. Below each line: `14 p. · 9 OCR · 2 Diagram`, colored side marking by status, yellow dot on OCR pages. Three separate empty states: Folder missing (→ Settings), Folder empty (→ copyable pdf2md command), Filter empty. |
+| **Previews** | File list with status filter (Open · Accepted · Rejected · All), text filter, a Convert PDF button (same as the command *Convert PDF and open in OCR comparison*), refresh, and progress for lists of at least five entries. Mixed-status lists are grouped in the same order used by `j`/`k`. Below each line: `14 p. · 9 OCR · 2 Diagram`, colored side marking by status, yellow dot on OCR pages. Three separate empty states: Folder missing (→ Settings), Folder empty (→ copyable pdf2md command), Filter empty. |
 | **Original PDF** | Pages of the original PDF, lazy-rendered. Header with filename, `p. n / m`, zoom −/+, "Open in PDF viewer". |
 | **Markdown** | The generated `.md`, page by page, with provenance badge (`Text layer` / `OCR` / `Diagram`) and layout info, a **Marked** badge on pages that have a page case, and a flag button that marks the page as wrong. Toggle **Rendered \| Source**. |
 
@@ -32,6 +32,12 @@ number of open entries. Two operating modes share the same controls:
   compact status bar, and exposes editing. Changes are saved automatically;
   the manifest records that the current generated revision was edited and the
   flag resets when a new conversion is detected.
+- **Saving** writes only edits the view holds, and only when the file is as
+  the view last read or wrote it (`src/save-policy.ts`, #213). Opening a
+  preview or switching entries does not rewrite it. When the file changes on
+  disk (a re-conversion, another editor, sync), the view reloads it if it has
+  no edits; if it has, it shows a notice, writes nothing, and the disk version
+  loads the next time the preview opens.
 
 ## Opening
 
@@ -41,6 +47,24 @@ number of open entries. Two operating modes share the same controls:
 - File menu on any PDF: **"OCR → Markdown"** opens the page-selection dialog
   for that file and starts conversion. While another conversion is running, the
   item remains visible but shows a notice instead of starting another one.
+  A persistent notice with **Hide** and **Cancel** follows the run, and the
+  status bar (bottom right) shows the same progress, page count first, until
+  the run ends.
+  **Hide** (or a click on the notice) only removes the notice; a click on the
+  status-bar item brings it back, with **Cancel** unless the run is already
+  being cancelled. Once the analysis is done the notice names the pages of
+  the run (`m pages`); after each page it reads
+  `page n of m · k derailed · about x min left`, where `n` counts the pages
+  this run finished (with a page selection, `m` is the number of selected
+  pages). The derailed count appears once a page derailed. The time left is
+  the mean time of the pages so far times the pages still to come. Pages that
+  report 0 s do not count: pages reused from the cache, and text-layer pages
+  under 0.05 s (`sekunden` is rounded to 0.1 s). The estimate is rough: too
+  low when model pages follow text-layer pages, and too high after the first
+  model page, whose time includes loading the model.
+- Command **"Convert PDF and open in OCR comparison"**, or the file-plus button
+  in the Previews header: a search over all PDFs and images in the vault, then
+  the same page selection and run as **"OCR → Markdown"**
 - Second command: **"Jump to next preview entry"** (customizable shortcut)
 - **"Mark page as wrong"** (command palette, while the view has focus): marks
   the page the view shows, see "Marking a Page as Wrong"
@@ -70,7 +94,9 @@ Applies only when the view has focus:
   **Open in Obsidian**, with their keyboard shortcuts shown on the buttons.
 - **Accept** / **Reject** move the file, update
   the manifest, show a **6-second Notice with Undo**, and automatically jump
-  to the next matching entry.
+  to the next matching entry. Each notice's Undo reverts its own decision,
+  also after later ones, as long as nothing moved or decided that entry since;
+  otherwise it says so and changes nothing.
 - **⋯**: Note… · Replace old version (only when `re-generated`) · Reset status · Copy path.
 - **Assign PDF…**: Appears in error banner if no original was found;
   opens a suggestion list of all vault PDFs and displayable images. The assignment lands
@@ -115,7 +141,11 @@ The state is defined by the three folders (`_ocr-preview/`, `_accepted/`,
 deleted. The rule is: **the filesystem wins, always.** The plugin never moves
 a file to match JSON — doing so would silently undo a deliberate manual move.
 
-Six reconciliation rules (triggered on open, settings change, and debounced vault events):
+Six reconciliation rules (triggered on open, settings change, and debounced vault events).
+At startup the plugin only reads the manifest; the first reconcile runs in
+`onLayoutReady`, once the vault index is complete, and no reconcile runs
+before it. A view restored with the workspace waits for that first reconcile
+before it opens its entry.
 
 1. **Exact `parent.path` comparison** during listing — no `startsWith`:
    `_accepted` lives *inside* `_ocr-preview`; a prefix test would list accepted files as open.
@@ -132,6 +162,17 @@ Six reconciliation rules (triggered on open, settings change, and debounced vaul
    **"Replace old version"** (⋯ menu) renames the old version to
    `_rejected/<stem>-<old-ocr-date>.md` — nothing is lost; the old version receives its own entry via reconciliation.
 
+**Converting an edited or decided preview again** (any route: file menu,
+command, Convert PDF button) first asks in a modal. pdf2md overwrites the
+preview folder's file, and reconciliation resets `note`, `checked-until` and
+`manually-edited`. When that file is manually edited, confirming first copies
+it to `_rejected/<stem>-edited-<ocr-date>.md` (a copy, not a move: a
+`--pages` run merges into the existing file); a failed copy stops the
+conversion. A decided preview's file stays where it is, so no copy is made.
+Cancel, Esc or closing the modal converts nothing. `manually-edited` is set on
+the first keystroke in the view, even if a conflict later refuses that write:
+a false positive costs one question, a false negative loses edits.
+
 File movement runs exclusively via `fileManager.renameFile` (updates links in vault), never via `vault.rename`. Therefore, diagram images (`![[…png]]`, stored shared in `_ocr-preview/assets/`) continue working after moving. Target folders are checked via `getFolderByPath` beforehand and created if needed. Writes to manifest are debounced (500 ms) and serialized via a Promise chain; unreadable JSON is renamed to `review-status.json.corrupted` and rebuilt from folder structure.
 
 ## How the PDF Pane Works
@@ -139,7 +180,7 @@ File movement runs exclusively via `fileManager.renameFile` (updates links in va
 **`loadPdfJs()` is public, documented Obsidian API** and loads the
 pdf.js library bundled with Obsidian itself — including the pre-wired worker (`GlobalWorkerOptions.workerSrc`). The plugin builds no Blob worker and no main-thread fallback; the bundle stays at ~45 kB instead of ~2.5 MB. Only the long-term stable API surface is used: `getDocument`, `numPages`, `getPage`, `getViewport`, `render`, `destroy` — all isolated in `src/pdf-pane.ts`, rendering in a single function so signature changes remain a single-line fix. Obsidian's *Viewer* is not modified. cMaps are set (`/lib/pdfjs/cmaps/`): PDFs with embedded CID/Type0 fonts — which is standard for this material — would render blank otherwise.
 
-Lazy rendering with pre-measured geometry: After `getDocument`, the column fetches **all** viewports at scale 1 (page dictionary only, no rasterization) and assigns each page its aspect ratio as a CSS custom property. Height and width follow via `aspect-ratio` — scrollbars have correct geometry from frame one, preventing layout shifts during lazy loading rather than compensating for them. Rasterization runs via `IntersectionObserver` (rootMargin 200%), max 2 parallel, with pixel scale `min(width/page · devicePixelRatio, pdfZoomMax)` and LRU eviction at 12 canvases (on eviction `canvas.width = height = 0`, otherwise buffer remains allocated). `doc.destroy()` on file switch and view close; `RenderTask.cancel()` before re-renders. **Error degradation:** Banners in PDF header offer "Open in PDF viewer" and "Assign PDF…" — never a dead pane.
+Lazy rendering with pre-measured geometry: After `getDocument`, the column fetches **all** viewports at scale 1 (page dictionary only, no rasterization) and assigns each page its aspect ratio as a CSS custom property. Height and width follow via `aspect-ratio` — scrollbars have correct geometry from frame one, preventing layout shifts during lazy loading rather than compensating for them. Rasterization runs via `IntersectionObserver` (rootMargin 200%), max 2 parallel, with pixel scale `min(width/page · devicePixelRatio, 2)` (`RENDER_SCALE_MAX` in `src/pdf-pane.ts`, a memory limit, not a setting) and LRU eviction at 12 canvases (on eviction `canvas.width = height = 0`, otherwise buffer remains allocated). `doc.destroy()` on file switch and view close; `RenderTask.cancel()` before re-renders. **Error degradation:** Banners in PDF header offer "Open in PDF viewer" and "Assign PDF…" — never a dead pane.
 
 **What the source column accepts (Issue #101):** PDFs, rendered through pdf.js as above, and PNG, JPG/JPEG and BMP images. An image bypasses pdf.js: it becomes a single `<img>` page whose aspect ratio comes from its natural size after the image loads, so zoom and page/scroll coupling treat it as a one-page document. TIFF converts (Stage 2 accepts it) but Chromium cannot decode it, so a TIFF source shows a banner naming the reason instead. When a PDF and an image share the preview's basename, the PDF wins.
 
@@ -153,22 +194,40 @@ Documented reserve: Bundle `pdfjs-dist` and inline the worker as a Blob URL via 
   images are post-processed after rendering (image embeds via `getFirstLinkpathDest` + `<img>`). Should Obsidian resolve them natively in the future, the post-processing loop is a no-op.
 - **Block-by-block rendering instead of a single block:** Required because `%%…%%` is invisible in preview mode (no DOM node at marker); the page container acts as sync anchor. Positive side-effect: Footnote collisions across page boundaries are eliminated.
 - **12-canvas cap** (~4.5 MB per A4 canvas): Distant pages are re-rasterized when scrolling back.
-- **Zoom scales the page width** (the stack is `zoom` × the column width; not CSS `zoom`, which a `width: 100%` page cancels out). Above 100 % the column scrolls horizontally. Visible pages re-render at the new width, but the pixel scale stays capped at `pdfZoomMax`, so strongly zoomed pages may appear softer. For pixel-exact inspection, use "Open in PDF viewer".
-- **minAppVersion 1.8.7** instead of originally planned 1.5.3: `revealLeaf` and current `Notice` layout require newer versions. The original plan specified 1.5.3, but actual API surface requires more — documented transparently.
+- **Zoom scales the page width** (the stack is `zoom` × the column width; not CSS `zoom`, which a `width: 100%` page cancels out). Above 100 % the column scrolls horizontally. Visible pages re-render at the new width, but the pixel scale stays capped at 2, so strongly zoomed pages may appear softer. For pixel-exact inspection, use "Open in PDF viewer".
+- **minAppVersion 1.11.0**: the settings tab builds its groups with `SettingGroup` (Obsidian 1.11). Earlier steps were 1.5.3 (original plan) and 1.8.7 (`revealLeaf`, current `Notice` layout).
 - Code that is untestable headless (anything touching `window.pdfjsLib`, `MarkdownRenderer`, DOM) is untestable here as well — see smoke test below.
 
 ## Settings
 
-Visible: Operating mode, Preview folder, Accepted folder, Rejected folder,
-status file (all cleaned via `normalizePath()`, with a live indicator if a
-folder is missing), Markdown column default, scroll sync, PDF render factor,
-Markdown eager limit, and column widths.
+The settings tab has four tabs, each built from Obsidian's `SettingGroup`:
+
+- **General:** Operating mode, Markdown column default, scroll sync. Column
+  widths have no field: they are set by dragging the column borders in the view
+  and saved in `columnWidths`.
+- **Folders:** Preview folder, Accepted folder, Rejected folder, status file
+  (all cleaned via `normalizePath()`, with a live indicator if a folder is
+  missing).
+- **PDF → Markdown:** placeholder; pdf2md options join here (#28).
+- **Searchable copy:** see below.
+
+Two former settings are fixed values now: the PDF render scale cap (2,
+`RENDER_SCALE_MAX` in `src/pdf-pane.ts`) and the Markdown eager limit (200
+pages, `EAGER_LIMIT` in `src/md-pane.ts`). Saved values from older versions are
+ignored and drop out on the next save.
 
 **OCR text layer** (for the Stage-1 action, #66): OCR engine (Automatic,
 Apple Vision, Tesseract, Apple Vision + RapidOCR (Paddle fast), which reads with
-Apple Vision and re-reads citation lines with RapidOCR; default Automatic) and
-Split two-column pages (default off). `parseOcrSettings()` in `src/ocr-settings.ts`
-validates both on load: data from before these settings and invalid values
+Apple Vision and re-reads citation lines with RapidOCR; default Automatic,
+which uses Paddle fast when it is ready, then Apple Vision, then Tesseract, and
+skips Paddle while Split two-column pages is on, #198),
+Split two-column pages (default off), and Maximum scan resolution (#201, default
+300, 0 = off), passed as `--dpi`: scans above it are downscaled to it before OCR,
+scans at or below it keep their resolution (JPEG scans pass through unchanged,
+other images are re-encoded, see `docs/scripts-detail.md`). The field saves when
+it loses focus; an invalid value is discarded and the saved one shown again.
+`parseOcrSettings()` in `src/ocr-settings.ts`
+validates all three on load: data from before these settings and invalid values
 (such as an engine this version does not know) fall back to the defaults field
 by field. Obsidian on mobile shows only a desktop-only notice in this section.
 
@@ -189,6 +248,8 @@ with `reprocess-raw --in-place` (#180), so the path and every link stay the
 same. The CLI replaces the file only after all checks passed, in one rename;
 failure, cancellation or a PDF changed during the run leave it unchanged and
 write nothing else. Success shows a notice.
+Its progress notice has no page count, but it can be hidden and brought back
+from the status bar like the conversion's.
 
 ## Testing
 
@@ -220,3 +281,9 @@ Obsidian), `npm run build`.
     names status and fault stage, the page shows **Marked**, and
     `_ocr-preview/.cases/<stem>/pNNN.json` holds `produced` ≠ `expected`.
     Reopen the preview → the badge is still there. ⇒ verifies stash, add, list.
+16. **OCR → Markdown** on a multi-page scan → after the first model page the
+    notice reads `page n of m · about x min left`, and the status bar shows
+    the same. **Hide** → the run continues and the status bar keeps counting;
+    click the status-bar item → the notice is back with **Cancel**. At the end
+    the status-bar item disappears. With a page selection (e.g. 5–7) the
+    notice counts `page 1 of 3`.

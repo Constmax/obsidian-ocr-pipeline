@@ -53,6 +53,8 @@ export interface TextLayerOptions {
 	/** Omitted: the CLI default (`auto`). */
 	engine?: OcrEngine;
 	splitColumns?: boolean;
+	/** `--dpi`; omitted: the CLI default (300). */
+	maxDpi?: number;
 	/** Pages exempt from the B5 gate, e.g. "1,5-7". */
 	allowPages?: string;
 	onChild?: (child: ChildProcess) => void;
@@ -508,6 +510,7 @@ export function addTextLayer(
 	const args = [source, "--in-place"];
 	if (options.engine !== undefined) args.push(...engineArgs(options.engine));
 	if (options.splitColumns) args.push("--split-columns");
+	if (options.maxDpi !== undefined) args.push("--dpi", String(options.maxDpi));
 	if (options.allowPages && options.allowPages.length > 0) {
 		args.push("--allow-pages", options.allowPages);
 	}

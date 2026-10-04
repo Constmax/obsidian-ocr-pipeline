@@ -5,8 +5,8 @@ from pathlib import Path
 import fitz
 import pytest
 
-from assembly import (AssemblyContext, PreviewFormatError, assemble_paragraphs,
-                      split_preview)
+from assembly import (AssemblyContext, PreviewFormatError, RecognizedLine,
+                      assemble_paragraphs, split_preview)
 from conversion import ConversionRequest, convert_document
 
 
@@ -79,13 +79,13 @@ def test_cancelled_conversion_uses_the_normal_result_writer(tmp_path):
 
 
 def test_running_headers_are_scoped_to_the_assembly_request():
-    lines = [["Repeated document heading", (0, 20, 500, 40)]]
+    lines = [RecognizedLine("Repeated document heading", (0, 20, 500, 40))]
     with_header = assemble_paragraphs(
         lines, AssemblyContext(frozenset({"Repeated document heading"})))
     without_header = assemble_paragraphs(lines, AssemblyContext())
 
     assert with_header.paragraphs == []
-    assert with_header.discarded == ["Repeated document heading"]
+    assert with_header.discarded == [(lines[0], "running_line")]
     assert without_header.paragraphs == ["Repeated document heading"]
     assert without_header.discarded == []
 

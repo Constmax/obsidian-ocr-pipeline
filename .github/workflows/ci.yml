@@ -45,7 +45,7 @@ jobs:
         run: make shellcheck
 
   python:
-    name: Python (pytest, Golden-Snapshot)
+    name: Python (pytest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,13 +54,17 @@ jobs:
           python-version: "3.12"
       - name: pytest installieren
         # pyyaml: the CLI-contract test loads the frontmatter as real YAML.
-        run: pip install pytest pyyaml
+        # pytest-xdist: test-py spreads the tests over the runner's cores.
+        run: pip install pytest pytest-xdist pyyaml
       - name: pymupdf installieren
         run: pip install pymupdf
       - name: numpy und pillow installieren
         # Die Scan-Strecke (detect_layout, _ink_amount) braucht beide. Ohne sie
         # decken die Konvertierungstests nur vektorielle Seiten ab.
         run: pip install numpy pillow
+      - name: Ghostscript installieren
+        # test_downscale.py runs the real gs_downscale (#201); without gs it skips.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ghostscript
       - name: pdf2md, Stage 1 and benchmark entry points
         run: make test-py PYTHON=python
 

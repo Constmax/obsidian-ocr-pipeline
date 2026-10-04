@@ -261,8 +261,8 @@ would start every job twice.
   tracked shell scripts (`setup.sh`, `install.sh`, `bin/*.sh`, `bin/pdf2md`,
   `plugin/install-plugin.sh`).
 - **python** (`make test-py`) — `pytest pdf2md/test bin/test`: Stage 2
-  without a model or vault material (seam deduplication, margin marks, loops,
-  dictionary, golden snapshot, CLI contract) and Stage 1 with stubbed tools;
+  without a model or vault material (seam deduplication, loops, page-block
+  assembly, dictionary, CLI contract) and Stage 1 with stubbed tools;
   plus the import smoke test of the benchmark entry points.
 - **ocrmypdf** (`make test-ocrmypdf`) — with the pinned ocrmypdf 17.8.0: the
   hOCR text-layer order and the PaddleOCR engine plugin

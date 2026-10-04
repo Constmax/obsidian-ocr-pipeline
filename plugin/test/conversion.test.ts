@@ -389,6 +389,7 @@ test("text layer: exact arguments, own process group, extended PATH", async () =
 		{
 			engine: "tesseract",
 			splitColumns: true,
+			maxDpi: 250,
 			allowPages: "1,5-7",
 			onChild: (k) => {
 				reported = k;
@@ -414,6 +415,8 @@ test("text layer: exact arguments, own process group, extended PATH", async () =
 		"--engine",
 		"tesseract",
 		"--split-columns",
+		"--dpi",
+		"250",
 		"--allow-pages",
 		"1,5-7",
 	]);
