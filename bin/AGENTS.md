@@ -28,9 +28,9 @@ that call passes.
 - The B5 gate (per-page character floor, `column_tools.py verify-pages`)
   exists because of `docs/BUGREPORT-2026-07-06-split-merge.md`.
 - `bin/test` holds behavioral tests with stubbed tools on `PATH`; only
-  `test_hocr_text_layer_order.py` and `test_appleocr_no_boxes.py` (macOS)
-  run the pinned ocrmypdf, and `test_downscale.py` the real Ghostscript
-  (slow, skipped without `gs`).
+  `test_hocr_text_layer_order.py`, `test_existing_text_layer.py` and
+  `test_appleocr_no_boxes.py` (macOS) run the pinned ocrmypdf, and
+  `test_downscale.py` the real Ghostscript (slow, skipped without `gs`).
 
 ## Pinned toolchain
 
