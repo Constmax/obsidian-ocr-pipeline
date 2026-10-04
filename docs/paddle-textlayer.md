@@ -351,7 +351,9 @@ the result explicitly says either “keep split mode” or “unsplit is support
 
 - **`ordering.order_lines()`:** pure geometry, used by `generate_hocr`. It
   estimates the skew from the median direction of long lines and measures every
-  line deskewed. Header and footer bands end at a horizontal gap of at least
+  line deskewed. When no gutter shows there, it looks again on the page as
+  scanned: a column bowed towards the spine slopes its lines while the column
+  edges stay upright, and the median slope is then no rotation (#240). Header and footer bands end at a horizontal gap of at least
   one line height and 1.5 times the usual leading, in the top 22 % or bottom
   12 % of the page. A gutter lies between 30 % and 70 % of the text width,
   almost no narrow line crosses it, and lines stand side by side on both
