@@ -25,6 +25,7 @@ import { Inventory, type InventoryEntry } from "./file-actions.ts";
 import { isConvertible, isDisplayableSource, isImageSource } from "./input-formats.ts";
 import { MarkdownColumn, type Representation } from "./md-pane.ts";
 import { PdfColumn } from "./pdf-pane.ts";
+import { SavePolicy } from "./save-policy.ts";
 import { Sidebar } from "./sidebar.ts";
 import { Coupling } from "./sync.ts";
 import type { FolderLocation, Preview } from "./types.ts";
@@ -86,6 +87,11 @@ export class OcrComparisonView extends ItemView {
 	private checkedUntilTimer: number | null = null;
 	private mdSaveTimer: number | null = null;
 	private mdWriteChain: Promise<void> = Promise.resolve();
+	private savePolicy = new SavePolicy();
+	/** The disk text a conflict notice was shown for, so periodic saves warn once. */
+	private conflictShownFor: string | null = null;
+	/** A preview file change that arrived while a preview was loading. */
+	private modifiedWhileLoading: TFile | null = null;
 	private editButton!: HTMLButtonElement;
 	private editTracker = new EditStateTracker();
 	private readonly pageCases: PageCases | null;
@@ -288,7 +294,7 @@ export class OcrComparisonView extends ItemView {
 			for (const handler of this.hotkeyHandlers) this.scope.unregister(handler);
 		}
 		this.hotkeyHandlers = [];
-		await this.saveChangeImmediately();
+		await this.saveChangeImmediately(true);
 		this.editTracker.reset();
 		this.coupling?.destroy();
 		this.pdfColumn?.destroy();
@@ -391,7 +397,7 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private async loadPreview(name: string, run: number): Promise<void> {
-		await this.saveChangeImmediately();
+		await this.saveChangeImmediately(true);
 		if (this.closed || run !== this.openRun) return;
 		const item = this.inventory?.entries.find((b) => b.name === name);
 		if (item === undefined) {
@@ -406,9 +412,10 @@ export class OcrComparisonView extends ItemView {
 			if (this.closed || run !== this.openRun) return;
 			const text = await this.app.vault.read(item.file);
 			if (this.closed || run !== this.openRun) return;
-			await this.saveChangeImmediately();
+			await this.saveChangeImmediately(true);
 			if (this.closed || run !== this.openRun) return;
 			const preview = parsePreview(text);
+			this.savePolicy.loaded(text);
 			const formatWarning = previewFormatWarning(preview);
 			if (formatWarning !== null) new Notice(`OCR Preview: "${name}": ${formatWarning}`);
 			await this.mdColumn.open(
@@ -445,6 +452,9 @@ export class OcrComparisonView extends ItemView {
 			this.currentPage = until !== null && until > 1 ? until : 1;
 			if (until !== null && until > 1) this.coupling.goToPage(until);
 			this.updateBars();
+			const late = this.modifiedWhileLoading;
+			this.modifiedWhileLoading = null;
+			if (late !== null) void this.onFileModified(late);
 		} catch (err) {
 			if (this.closed || run !== this.openRun) return;
 			console.error("OCR Preview: Preview failed to open", err);
@@ -507,7 +517,7 @@ export class OcrComparisonView extends ItemView {
 	private async decide(location: FolderLocation): Promise<void> {
 		const name = this.sidebar.selectedName();
 		if (name === null || !this.canDecide(name)) return;
-		await this.saveChangeImmediately();
+		await this.saveChangeImmediately(true);
 		if (!this.canDecide(name)) return;
 		const nextItem = location === "open" ? null : this.sidebar.nextAfter(name);
 		const result = await this.inventory.decide(name, location);
@@ -574,7 +584,7 @@ export class OcrComparisonView extends ItemView {
 
 	private async replaceAndDecide(name: string, location: FolderLocation): Promise<void> {
 		if (!this.canDecide(name)) return;
-		await this.saveChangeImmediately();
+		await this.saveChangeImmediately(true);
 		if (!this.canDecide(name)) return;
 		const nextItem = location === "open" ? null : this.sidebar.nextAfter(name);
 		if (!(await this.inventory.replaceOldVersion(name))) {
@@ -666,6 +676,7 @@ export class OcrComparisonView extends ItemView {
 	}
 
 	private triggerSaveChange(pageNumber: number): void {
+		this.savePolicy.edited();
 		this.stashBeforeSave(pageNumber);
 		this.markManualEdit();
 		if (this.mdSaveTimer !== null) window.clearTimeout(this.mdSaveTimer);
@@ -791,7 +802,8 @@ export class OcrComparisonView extends ItemView {
 		void this.refreshPageCases(true);
 	}
 
-	private async saveChangeImmediately(): Promise<void> {
+	/** `discarding`: the edits in view are about to go, so a conflict is always announced. */
+	private async saveChangeImmediately(discarding = false): Promise<void> {
 		if (this.mdSaveTimer !== null) {
 			window.clearTimeout(this.mdSaveTimer);
 			this.mdSaveTimer = null;
@@ -799,10 +811,20 @@ export class OcrComparisonView extends ItemView {
 		const preview = this.mdColumn?.currentPreview();
 		const file = this.mdColumn?.currentFile();
 		if (preview !== null && preview !== undefined && file !== null && file !== undefined) {
-			const text = buildPreview(preview);
 			this.mdWriteChain = this.mdWriteChain.then(async () => {
 				try {
-					await this.app.vault.modify(file, text);
+					const disk = await this.app.vault.read(file);
+					const verdict = this.savePolicy.verdict(disk);
+					if (verdict === "conflict") this.warnConflict(file, disk, discarding);
+					if (verdict !== "write") return;
+					const text = buildPreview(preview);
+					this.savePolicy.beginWrite(text);
+					try {
+						await this.app.vault.modify(file, text);
+					} catch (err) {
+						this.savePolicy.failedWrite();
+						throw err;
+					}
 				} catch (err) {
 					console.error("OCR Preview: Save converted text failed", err);
 					new Notice("OCR Preview: Changes could not be saved to file.");
@@ -810,6 +832,54 @@ export class OcrComparisonView extends ItemView {
 			});
 		}
 		await this.mdWriteChain;
+	}
+
+	private warnConflict(file: TFile, disk: string, always = false): void {
+		if (!always && this.conflictShownFor === disk) return;
+		this.conflictShownFor = disk;
+		new Notice(
+			`OCR Preview: "${file.basename}" changed on disk while it had unsaved edits. ` +
+				(always
+					? "Your edits were discarded."
+					: "Your edits are not written; switching or closing discards them."),
+			10000,
+		);
+	}
+
+	/**
+	 * The open preview's file was modified. The view's own writes are no change
+	 * (`SavePolicy` knows their text); an outside change reloads the preview
+	 * when the view has no edits, and warns when it has. The check runs in the
+	 * write chain, so it never overlaps one of the view's own writes.
+	 */
+	async onFileModified(file: TFile): Promise<void> {
+		try {
+			if (this.closed || this.mdColumn?.currentFile() !== file) return;
+			if (this.loadingName !== null) {
+				this.modifiedWhileLoading = file;
+				return;
+			}
+			const name = this.activeName;
+			if (name === null) return;
+			const run = this.openRun;
+			let reload = false;
+			this.mdWriteChain = this.mdWriteChain.then(async () => {
+				const disk = await this.app.vault.read(file);
+				const verdict = this.savePolicy.verdict(disk);
+				if (verdict === "conflict") this.warnConflict(file, disk);
+				reload = verdict === "reload";
+			});
+			await this.mdWriteChain;
+			const unchanged =
+				!this.closed &&
+				run === this.openRun &&
+				this.loadingName === null &&
+				this.requestedName === null &&
+				this.activeName === name;
+			if (reload && unchanged) await this.openPreview(name);
+		} catch (err) {
+			console.error("OCR Preview: Checking the open preview for outside changes failed", err);
+		}
 	}
 
 	private setRepresentation(
