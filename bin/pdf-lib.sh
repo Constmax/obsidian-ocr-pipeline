@@ -494,9 +494,13 @@ build_ocr_args() {
         esac
     done
 
+    # --output-type pdf: the default PDF/A conversion runs Ghostscript over
+    # the whole file, which drops annotations and splits an existing text
+    # layer into one font per glyph (#210).
     local args=(
         -l deu
         "$skip_text"
+        --output-type pdf
     )
     # --rotate-pages relies on per-page OSD confidence; unreliable on
     # column halves (own orientation detection is unreliable — see
