@@ -90,8 +90,6 @@ export class OcrComparisonView extends ItemView {
 	private savePolicy = new SavePolicy();
 	/** The disk text a conflict notice was shown for, so periodic saves warn once. */
 	private conflictShownFor: string | null = null;
-	/** A preview file change that arrived while a preview was loading. */
-	private modifiedWhileLoading: TFile | null = null;
 	private editButton!: HTMLButtonElement;
 	private editTracker = new EditStateTracker();
 	private readonly pageCases: PageCases | null;
@@ -413,7 +411,7 @@ export class OcrComparisonView extends ItemView {
 			if (this.closed || run !== this.openRun) return;
 			const text = await this.app.vault.read(item.file);
 			if (this.closed || run !== this.openRun) return;
-			await this.saveChangeImmediately(true);
+			await this.saveChangeImmediately();
 			if (this.closed || run !== this.openRun) return;
 			const preview = parsePreview(text);
 			this.savePolicy.loaded(text);
@@ -453,9 +451,8 @@ export class OcrComparisonView extends ItemView {
 			this.currentPage = until !== null && until > 1 ? until : 1;
 			if (until !== null && until > 1) this.coupling.goToPage(until);
 			this.updateBars();
-			const late = this.modifiedWhileLoading;
-			this.modifiedWhileLoading = null;
-			if (late !== null) void this.onFileModified(late);
+			// A change that arrived while loading was skipped; check the file once.
+			void this.onFileModified(item.file);
 		} catch (err) {
 			if (this.closed || run !== this.openRun) return;
 			console.error("OCR Preview: Preview failed to open", err);
@@ -617,7 +614,7 @@ export class OcrComparisonView extends ItemView {
 		this.openQueue.cancel();
 		this.requestedName = null;
 		this.reloadName = null;
-		void this.saveChangeImmediately().catch((err) => {
+		void this.saveChangeImmediately(true).catch((err) => {
 			console.error("OCR Preview: Failed to save before clearing selection", err);
 		});
 		this.activeName = null;
@@ -861,19 +858,21 @@ export class OcrComparisonView extends ItemView {
 	async onFileModified(file: TFile): Promise<void> {
 		try {
 			if (this.closed || this.mdColumn?.currentFile() !== file) return;
-			if (this.loadingName !== null) {
-				this.modifiedWhileLoading = file;
-				return;
-			}
+			if (this.loadingName !== null) return;
 			const name = this.activeName;
 			if (name === null) return;
 			const run = this.openRun;
 			let reload = false;
+			// A read that fails must not leave the chain rejected: every later save would be skipped.
 			this.mdWriteChain = this.mdWriteChain.then(async () => {
-				const disk = await this.app.vault.read(file);
-				const verdict = this.savePolicy.verdict(disk);
-				if (verdict === "conflict") this.warnConflict(file, disk);
-				reload = verdict === "reload";
+				try {
+					const disk = await this.app.vault.read(file);
+					const verdict = this.savePolicy.verdict(disk);
+					if (verdict === "conflict") this.warnConflict(file, disk);
+					reload = verdict === "reload";
+				} catch (err) {
+					console.error("OCR Preview: Reading the open preview failed", err);
+				}
 			});
 			await this.mdWriteChain;
 			const unchanged =
