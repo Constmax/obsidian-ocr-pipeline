@@ -23,6 +23,7 @@ DEFAULT_JOBS=2
 FAST_DPI=200             # --fast floor: never below 200 with tesseract
 FAST_JOBS=1
 DOWNSAMPLE_TYPE="Bicubic"  # was /Subsample — smears text edges
+JPEG_QFACTOR=1.6         # JPEG QFactor of downscaled images: -32 % at equal OCR confidence (#201)
 A4_MAX_W=650             # Max page width in pts before MediaBox fix (A4=595 + 10 %)
 A4_MAX_H=900             # Max page height in pts before MediaBox fix (A4=842 + 7 %)
 MAX_IMAGE_MPIXELS=400    # ocrmypdf --max-image-mpixels safety net (Default 250) for inputs without fix_mediabox
@@ -342,7 +343,11 @@ fix_mediabox() {
 }
 
 # gs_downscale <input.pdf> <output.pdf> [dpi]
-# Downscales a PDF using Ghostscript with Bicubic resampling.
+# Downscales a PDF using Ghostscript with Bicubic resampling. <dpi> is an
+# exact limit: images above it are resampled to it (threshold 1.0, not
+# Ghostscript's 1.5) and re-encoded as JPEG at JPEG_QFACTOR. JPEG images at
+# or below it pass through unchanged; other images are re-encoded by
+# Ghostscript, at the same QFactor (#201).
 # Returns 0 on success; output path is guaranteed to exist on success.
 gs_downscale() {
     local input="$1" output="$2" dpi="${3:-$TARGET_DPI}"
@@ -367,8 +372,14 @@ gs_downscale() {
        -dDownsampleMonoImages=true \
        -dMonoImageResolution="$dpi" \
        -dMonoImageDownsampleType=/"$DOWNSAMPLE_TYPE" \
+       -dColorImageDownsampleThreshold=1.0 \
+       -dGrayImageDownsampleThreshold=1.0 \
+       -dMonoImageDownsampleThreshold=1.0 \
        -sOutputFile="$output" \
-       "$input" 2>/dev/null
+       -c "<< /ColorACSImageDict << /QFactor $JPEG_QFACTOR /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>
+             /GrayACSImageDict << /QFactor $JPEG_QFACTOR /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>
+          >> setdistillerparams" \
+       -f "$input" 2>/dev/null
 
     if [ -f "$output" ]; then
         size_after=$(du -h "$output" 2>/dev/null | cut -f1)

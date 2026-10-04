@@ -62,6 +62,9 @@ jobs:
         # Die Scan-Strecke (detect_layout, _ink_amount) braucht beide. Ohne sie
         # decken die Konvertierungstests nur vektorielle Seiten ab.
         run: pip install numpy pillow
+      - name: Ghostscript installieren
+        # test_downscale.py runs the real gs_downscale (#201); without gs it skips.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ghostscript
       - name: pdf2md, Stage 1 and benchmark entry points
         run: make test-py PYTHON=python
 
