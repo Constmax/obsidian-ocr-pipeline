@@ -1,4 +1,4 @@
-import { App, Notice, TFile, normalizePath } from "obsidian";
+import type { TFile } from "obsidian";
 
 import type { Settings } from "./settings.ts";
 import {
@@ -23,39 +23,61 @@ export interface InventoryEntry {
 	entry: StatusEntry;
 }
 
-interface LastAction {
+/** A decision `decide` executed; its notice hands it back to `undo`. */
+export interface Decision {
 	name: string;
+	location: FolderLocation;
 	fromPath: string;
 	toPath: string;
+	/** `decided` the manifest recorded, to tell whether the decision is still current. */
+	decided: string | null;
 	previousEntry: StatusEntry;
 }
 
-/** Result of `decide`. `collision` is the only value where caller offers an action. */
-export type DecisionResult =
-	| "ok"
-	| "unchanged"
-	| "unknown"
-	| "collision"
-	| "error";
+/** Failure results of `decide`. `collision` is the only one where the caller offers an action. */
+export type DecisionResult = "unchanged" | "unknown" | "collision" | "error";
 
 /**
- * Holds the manifest, reconciles with the three folders, and executes decisions.
- *
- * File moves use `fileManager.renameFile` exclusively — not `vault.rename`.
- * `renameFile` updates link paths across the vault, preserving diagram embeds.
+ * What `Inventory` needs from the vault. The Obsidian implementation is
+ * `vaultFiles()` (`vault-files.ts`); tests pass an in-memory fake.
  */
+export interface InventoryFiles {
+	normalize(path: string): string;
+	notify(message: string, timeoutMs?: number): void;
+	markdownFiles(): TFile[];
+	frontmatter(file: TFile): Record<string, unknown>;
+	fileAt(path: string): TFile | null;
+	folderExists(path: string): boolean;
+	createFolder(path: string): Promise<void>;
+	/** Moves a file and updates the links to it across the vault. */
+	move(file: TFile, newPath: string): Promise<void>;
+	copy(file: TFile, newPath: string): Promise<void>;
+	/** The status file goes through the adapter: it may sit in a hidden folder. */
+	adapter: {
+		exists(path: string): Promise<boolean>;
+		read(path: string): Promise<string>;
+		write(path: string, text: string): Promise<void>;
+		remove(path: string): Promise<void>;
+		rename(from: string, to: string): Promise<void>;
+		mkdir(path: string): Promise<void>;
+	};
+}
+
+/** Holds the manifest, reconciles with the three folders, and executes decisions. */
 export class Inventory {
 	manifest: StatusManifest = emptyManifest(new Date().toISOString());
 	entries: InventoryEntry[] = [];
 
 	private writeChain: Promise<void> = Promise.resolve();
 	private writeTimer: number | null = null;
-	private lastAction: LastAction | null = null;
 
-	constructor(
-		private app: App,
-		private settings: () => Settings,
-	) {}
+	private readonly files: InventoryFiles;
+	private readonly settings: () => Settings;
+
+	constructor(files: InventoryFiles, settings: () => Settings) {
+		this.files = files;
+		this.settings = settings;
+	}
 
 	private get s(): Settings {
 		return this.settings();
@@ -67,9 +89,9 @@ export class Inventory {
 		const idx = path.lastIndexOf("/");
 		const parent = idx > 0 ? path.slice(0, idx) : "";
 		return (
-			parent === normalizePath(s.previewFolder) ||
-			parent === normalizePath(s.acceptedFolder) ||
-			parent === normalizePath(s.rejectedFolder)
+			parent === this.files.normalize(s.previewFolder) ||
+			parent === this.files.normalize(s.acceptedFolder) ||
+			parent === this.files.normalize(s.rejectedFolder)
 		);
 	}
 
@@ -95,21 +117,20 @@ export class Inventory {
 	private collectFiles(): FoundFile[] {
 		const s = this.s;
 		const locations: Array<[FolderLocation, string]> = [
-			["open", normalizePath(s.previewFolder)],
-			["accepted", normalizePath(s.acceptedFolder)],
-			["rejected", normalizePath(s.rejectedFolder)],
+			["open", this.files.normalize(s.previewFolder)],
+			["accepted", this.files.normalize(s.acceptedFolder)],
+			["rejected", this.files.normalize(s.rejectedFolder)],
 		];
 		const found: FoundFile[] = [];
-		for (const file of this.app.vault.getMarkdownFiles()) {
+		for (const file of this.files.markdownFiles()) {
 			const parent = file.parent?.path ?? "";
 			for (const [loc, folder] of locations) {
 				if (parent !== folder) continue;
-				const cache = this.app.metadataCache.getFileCache(file);
 				found.push({
 					name: file.name,
 					path: file.path,
 					location: loc,
-					frontmatter: cache?.frontmatter ?? {},
+					frontmatter: this.files.frontmatter(file),
 				});
 				break;
 			}
@@ -117,22 +138,27 @@ export class Inventory {
 		return found;
 	}
 
+	/**
+	 * Reads the manifest only. The first reconcile waits for layout-ready:
+	 * before that the vault index is incomplete, and reconcile would drop the
+	 * rows of files it cannot see yet, with their notes and review state.
+	 */
 	async load(): Promise<void> {
 		const now = new Date().toISOString();
-		const path = normalizePath(this.s.statusFile);
+		const path = this.files.normalize(this.s.statusFile);
 		let previous = emptyManifest(now);
-		if (await this.app.vault.adapter.exists(path)) {
+		if (await this.files.adapter.exists(path)) {
 			try {
-				previous = readManifest(await this.app.vault.adapter.read(path), now);
+				previous = readManifest(await this.files.adapter.read(path), now);
 			} catch (err) {
 				console.error("OCR Preview: review-status.json is unreadable", err);
 				const corrupted = `${path}.corrupted`;
 				try {
-					if (await this.app.vault.adapter.exists(corrupted)) {
-						await this.app.vault.adapter.remove(corrupted);
+					if (await this.files.adapter.exists(corrupted)) {
+						await this.files.adapter.remove(corrupted);
 					}
-					await this.app.vault.adapter.rename(path, corrupted);
-					new Notice(
+					await this.files.adapter.rename(path, corrupted);
+					this.files.notify(
 						`OCR Preview: review-status.json was unreadable and saved as ${corrupted}. Status rebuilt from folders.`,
 						8000,
 					);
@@ -141,20 +167,20 @@ export class Inventory {
 				}
 			}
 		}
-		await this.reconcile(previous);
+		this.manifest = previous;
 	}
 
 	async reconcile(previous: StatusManifest = this.manifest): Promise<void> {
 		const now = new Date().toISOString();
 		const files = this.collectFiles();
 		const result = reconcile(files, previous, now, (p) =>
-			this.app.vault.getFileByPath(normalizePath(p)) !== null,
+			this.files.fileAt(this.files.normalize(p)) !== null,
 		);
 		this.manifest = result.manifest;
 
 		const byName = new Map<string, TFile>();
 		for (const found of files) {
-			const file = this.app.vault.getFileByPath(found.path);
+			const file = this.files.fileAt(found.path);
 			if (file === null) continue;
 			if (found.location === "open" || !byName.has(found.name)) {
 				byName.set(found.name, file);
@@ -195,45 +221,45 @@ export class Inventory {
 	}
 
 	private async save(): Promise<void> {
-		const path = normalizePath(this.s.statusFile);
+		const path = this.files.normalize(this.s.statusFile);
 		const idx = path.lastIndexOf("/");
 		const folder = idx > 0 ? path.slice(0, idx) : "";
 		try {
-			if (folder.length > 0 && !(await this.app.vault.adapter.exists(folder))) {
-				await this.app.vault.adapter.mkdir(folder);
+			if (folder.length > 0 && !(await this.files.adapter.exists(folder))) {
+				await this.files.adapter.mkdir(folder);
 			}
-			await this.app.vault.adapter.write(path, writeManifest(this.manifest));
+			await this.files.adapter.write(path, writeManifest(this.manifest));
 		} catch (err) {
 			console.error("OCR Preview: review-status.json not writable", err);
-			new Notice("OCR Preview: Status could not be saved.");
+			this.files.notify("OCR Preview: Status could not be saved.");
 		}
 	}
 
 	private async ensureFolder(path: string): Promise<void> {
-		if (this.app.vault.getFolderByPath(path) !== null) return;
+		if (this.files.folderExists(path)) return;
 		try {
-			await this.app.vault.createFolder(path);
+			await this.files.createFolder(path);
 		} catch (err) {
-			if (this.app.vault.getFolderByPath(path) === null) throw err;
+			if (!this.files.folderExists(path)) throw err;
 		}
 	}
 
-	async decide(name: string, location: FolderLocation): Promise<DecisionResult> {
+	async decide(name: string, location: FolderLocation): Promise<Decision | DecisionResult> {
 		const inv = this.entries.find((b) => b.name === name);
 		if (inv === undefined) return "unknown";
-		const target = normalizePath(targetFolder(location, this.s));
-		const newPath = normalizePath(`${target}/${inv.file.name}`);
+		const target = this.files.normalize(targetFolder(location, this.s));
+		const newPath = this.files.normalize(`${target}/${inv.file.name}`);
 		if (newPath === inv.file.path) return "unchanged";
-		if (this.app.vault.getFileByPath(newPath) !== null) return "collision";
+		if (this.files.fileAt(newPath) !== null) return "collision";
 
 		const previousEntry = { ...inv.entry };
 		const fromPath = inv.file.path;
 		try {
 			await this.ensureFolder(target);
-			await this.app.fileManager.renameFile(inv.file, newPath);
+			await this.files.move(inv.file, newPath);
 		} catch (err) {
 			console.error("OCR Preview: Move failed", err);
-			new Notice(`OCR Preview: "${name}" could not be moved.`);
+			this.files.notify(`OCR Preview: "${name}" could not be moved.`);
 			return "error";
 		}
 
@@ -244,26 +270,36 @@ export class Inventory {
 			newPath,
 			new Date().toISOString(),
 		);
-		this.lastAction = { name, fromPath, toPath: newPath, previousEntry };
+		const decided = this.manifest.entries[name]?.decided ?? null;
 		await this.reconcile();
-		return "ok";
+		return { name, location, fromPath, toPath: newPath, decided, previousEntry };
 	}
 
-	async undo(): Promise<string | null> {
-		const last = this.lastAction;
-		if (last === null) return null;
-		const file = this.app.vault.getFileByPath(last.toPath);
-		if (file === null) {
-			this.lastAction = null;
-			return null;
+	/**
+	 * Reverts `decision` while it is still current: the file is where the
+	 * decision put it and the entry records that decision. So the Undo of an
+	 * older notice reverts its own decision, never the latest one.
+	 */
+	async undo(decision: Decision): Promise<"undone" | "not-current" | "failed"> {
+		const last = decision;
+		const entry = this.manifest.entries[last.name];
+		const file = this.files.fileAt(last.toPath);
+		if (
+			file === null ||
+			entry === undefined ||
+			entry.path !== last.toPath ||
+			entry.status !== last.location ||
+			entry.decided !== last.decided
+		) {
+			return "not-current";
 		}
 		try {
 			const folder = last.fromPath.slice(0, last.fromPath.lastIndexOf("/"));
 			await this.ensureFolder(folder);
-			await this.app.fileManager.renameFile(file, last.fromPath);
+			await this.files.move(file, last.fromPath);
 		} catch (err) {
 			console.error("OCR Preview: Undo failed", err);
-			return null;
+			return "failed";
 		}
 		this.manifest = {
 			...this.manifest,
@@ -272,9 +308,8 @@ export class Inventory {
 				[last.name]: last.previousEntry,
 			},
 		};
-		this.lastAction = null;
 		await this.reconcile();
-		return last.name;
+		return "undone";
 	}
 
 	async updateEntry(
@@ -301,35 +336,24 @@ export class Inventory {
 
 	async replaceOldVersion(name: string): Promise<boolean> {
 		const s = this.s;
-		const accepted = normalizePath(s.acceptedFolder);
-		const rejected = normalizePath(s.rejectedFolder);
-		const file = this.app.vault
-			.getMarkdownFiles()
+		const accepted = this.files.normalize(s.acceptedFolder);
+		const rejected = this.files.normalize(s.rejectedFolder);
+		const file = this.files
+			.markdownFiles()
 			.find(
 				(f) =>
 					f.name === name &&
 					(f.parent?.path === accepted || f.parent?.path === rejected),
 			);
 		if (file === undefined) return false;
-		const cache = this.app.metadataCache.getFileCache(file);
-		const oldDate = oldDateFrom(
-			this.manifest.entries[name],
-			cache?.frontmatter ?? {},
-		);
-		let target = normalizePath(`${rejected}/${file.basename}-${oldDate}.md`);
-		let attempt = 2;
-		while (this.app.vault.getFileByPath(target) !== null) {
-			target = normalizePath(
-				`${rejected}/${file.basename}-${oldDate}-${attempt}.md`,
-			);
-			attempt++;
-		}
+		const oldDate = oldDateFrom(this.manifest.entries[name], this.files.frontmatter(file));
+		const target = this.freeRejectedPath(`${file.basename}-${oldDate}`);
 		try {
 			await this.ensureFolder(rejected);
-			await this.app.fileManager.renameFile(file, target);
+			await this.files.move(file, target);
 		} catch (err) {
 			console.error("OCR Preview: Old version could not be renamed", err);
-			new Notice(`OCR Preview: "${name}" could not be replaced.`);
+			this.files.notify(`OCR Preview: "${name}" could not be replaced.`);
 			return false;
 		}
 		this.manifest = {
@@ -345,5 +369,36 @@ export class Inventory {
 		};
 		await this.reconcile();
 		return true;
+	}
+
+	/**
+	 * Before a re-conversion overwrites an edited preview: copies the preview
+	 * folder's file into the rejected folder, where it shows as a rejected
+	 * entry of its own. False when no such file exists or the copy failed.
+	 */
+	async keepEditedCopy(name: string): Promise<boolean> {
+		const folder = this.files.normalize(this.s.previewFolder);
+		const file = this.files.fileAt(this.files.normalize(`${folder}/${name}`));
+		if (file === null) return false;
+		const oldDate = oldDateFrom(this.manifest.entries[name], this.files.frontmatter(file));
+		const target = this.freeRejectedPath(`${file.basename}-edited-${oldDate}`);
+		try {
+			await this.ensureFolder(this.files.normalize(this.s.rejectedFolder));
+			await this.files.copy(file, target);
+		} catch (err) {
+			console.error("OCR Preview: Edited preview could not be copied", err);
+			return false;
+		}
+		return true;
+	}
+
+	/** `<rejected>/<stem>.md`, or with `-2`, `-3`, … appended until no file has the path. */
+	private freeRejectedPath(stem: string): string {
+		const rejected = this.files.normalize(this.s.rejectedFolder);
+		let target = this.files.normalize(`${rejected}/${stem}.md`);
+		for (let attempt = 2; this.files.fileAt(target) !== null; attempt++) {
+			target = this.files.normalize(`${rejected}/${stem}-${attempt}.md`);
+		}
+		return target;
 	}
 }

@@ -21,7 +21,7 @@ import type { KeymapEventHandler } from "obsidian";
 
 import type OcrPreviewPlugin from "./main.ts";
 import { EditStateTracker } from "./edit-state.ts";
-import { Inventory, type InventoryEntry } from "./file-actions.ts";
+import { Inventory, type Decision, type InventoryEntry } from "./file-actions.ts";
 import { isConvertible, isDisplayableSource, isImageSource } from "./input-formats.ts";
 import { MarkdownColumn, type Representation } from "./md-pane.ts";
 import { PdfColumn } from "./pdf-pane.ts";
@@ -398,6 +398,7 @@ export class OcrComparisonView extends ItemView {
 
 	private async loadPreview(name: string, run: number): Promise<void> {
 		await this.saveChangeImmediately(true);
+		await this.plugin.inventoryReady;
 		if (this.closed || run !== this.openRun) return;
 		const item = this.inventory?.entries.find((b) => b.name === name);
 		if (item === undefined) {
@@ -525,8 +526,8 @@ export class OcrComparisonView extends ItemView {
 			this.reportCollision(name, location);
 			return;
 		}
-		if (result !== "ok") return;
-		await this.finishDecision(name, location, nextItem);
+		if (typeof result === "string") return;
+		await this.finishDecision(result, nextItem);
 	}
 
 	private canDecide(name: string): boolean {
@@ -539,12 +540,8 @@ export class OcrComparisonView extends ItemView {
 		);
 	}
 
-	private async finishDecision(
-		name: string,
-		location: FolderLocation,
-		nextItem: string | null,
-	): Promise<void> {
-
+	private async finishDecision(decision: Decision, nextItem: string | null): Promise<void> {
+		const { name, location } = decision;
 		const label =
 			location === "accepted" ? "Accepted" : location === "rejected" ? "Rejected" : "Reset";
 		const notice = new Notice(`${label}: ${name.replace(/\.md$/, "")}`, 6000);
@@ -552,7 +549,10 @@ export class OcrComparisonView extends ItemView {
 			cls: "ocr-knopf ocr-knopf-klein",
 			text: "Undo",
 		});
-		undoBtn.addEventListener("click", () => void this.undo());
+		undoBtn.addEventListener("click", () => {
+			notice.hide();
+			void this.undo(decision);
+		});
 
 		this.update();
 		if (location === "open") {
@@ -597,13 +597,19 @@ export class OcrComparisonView extends ItemView {
 			this.reportCollision(name, location);
 			return;
 		}
-		if (result === "ok") await this.finishDecision(name, location, nextItem);
+		if (typeof result !== "string") await this.finishDecision(result, nextItem);
 	}
 
-	private async undo(): Promise<void> {
-		const name = await this.inventory.undo();
+	private async undo(decision: Decision): Promise<void> {
+		const result = await this.inventory.undo(decision);
+		if (result === "not-current") {
+			new Notice(
+				`OCR Preview: "${decision.name.replace(/\.md$/, "")}" has changed since — nothing undone.`,
+			);
+			return;
+		}
 		this.update();
-		if (name !== null) this.safelyOpenPreview(name);
+		if (result === "undone") this.safelyOpenPreview(decision.name);
 	}
 
 	private noSelection(): void {
