@@ -75,11 +75,12 @@ export interface ConversionHost {
 	 * as foreign rather than as safe to overwrite.
 	 */
 	previewSource(entryName: string, folder: string): string | null;
-	previewAtRisk(entryName: string, folder: string): PreviewAtRisk;
+	/** What converting `entryName` again would destroy. */
+	previewAtRisk(entryName: string): PreviewAtRisk;
 	/** Asks before a re-conversion; resolves false when the user declines or closes. */
 	confirmReconvert(message: string): Promise<boolean>;
 	/** Copies the edited preview into the rejected folder; false when that failed. */
-	keepEditedCopy(entryName: string, folder: string): Promise<boolean>;
+	keepEditedCopy(entryName: string): Promise<boolean>;
 	/** Preview folder as configured and normalized for vault lookups. */
 	previewFolder(): { configured: string; normalized: string };
 	reconcile(): Promise<void>;
@@ -326,8 +327,8 @@ export class ConversionController {
 				this.host.notify("OCR Preview: Conversion requires file system access (Desktop).");
 				return;
 			}
-			const risk = this.host.previewAtRisk(entryName, folder.normalized);
-			if (risk !== null && !(await this.confirmReconvert(entryName, folder.normalized, risk))) {
+			const risk = this.host.previewAtRisk(entryName);
+			if (risk !== null && !(await this.confirmReconvert(entryName, risk))) {
 				return;
 			}
 			const progress = this.host.showProgress(`OCR Preview: Converting "${name}" …`, () =>
@@ -446,7 +447,6 @@ export class ConversionController {
 	 */
 	private async confirmReconvert(
 		entryName: string,
-		folder: string,
 		risk: NonNullable<PreviewAtRisk>,
 	): Promise<boolean> {
 		const message =
@@ -454,7 +454,7 @@ export class ConversionController {
 				? `"${entryName}" has manual edits. Converting again overwrites them; a copy of the edited file is kept in the rejected folder.`
 				: `"${entryName}" is already ${risk}. Converting again creates a new version to review.`;
 		if (!(await this.host.confirmReconvert(message))) return false;
-		if (risk === "edited" && !(await this.host.keepEditedCopy(entryName, folder))) {
+		if (risk === "edited" && !(await this.host.keepEditedCopy(entryName))) {
 			this.host.notify(
 				`OCR Preview: "${entryName}" was not converted — the copy of its edits could not be kept.`,
 			);

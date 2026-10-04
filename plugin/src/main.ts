@@ -23,12 +23,6 @@ export default class OcrPreviewPlugin extends Plugin {
 	private searchableCopyHost!: SearchableCopyHost;
 
 	private reconcileTimer: number | null = null;
-	/**
-	 * Vault events fire for every file while the vault indexes; reconciling on
-	 * them would drop the rows of files not indexed yet. Before layout-ready
-	 * they are ignored: the layout-ready reconcile sees the whole vault.
-	 */
-	private layoutReady = false;
 	private markInventoryReady!: () => void;
 	/** Resolves after the first reconcile; a restored view waits for it before opening. */
 	readonly inventoryReady = new Promise<void>((done) => {
@@ -57,9 +51,8 @@ export default class OcrPreviewPlugin extends Plugin {
 		this.registerView(VIEW_TYPE, (leaf) => new OcrComparisonView(leaf, this));
 
 		this.app.workspace.onLayoutReady(async () => {
-			this.layoutReady = true;
 			try {
-				await this.inventory.reconcile();
+				await this.inventory.start();
 			} finally {
 				this.markInventoryReady();
 			}
@@ -204,7 +197,6 @@ export default class OcrPreviewPlugin extends Plugin {
 	}
 
 	triggerReconcile(): void {
-		if (!this.layoutReady) return;
 		if (this.reconcileTimer !== null) window.clearTimeout(this.reconcileTimer);
 		this.reconcileTimer = window.setTimeout(() => {
 			this.reconcileTimer = null;

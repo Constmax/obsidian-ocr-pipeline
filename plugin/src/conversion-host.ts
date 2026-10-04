@@ -179,15 +179,7 @@ export function createConversionHost(
 			const dest = app.metadataCache.getFirstLinkpathDest(recorded, item.file.path);
 			return dest?.path ?? item.file.path;
 		},
-		previewAtRisk(entryName, folder) {
-			const item = inventory().entries.find((entry) => entry.name === entryName);
-			if (item === undefined) return null;
-			// The preview folder's file is what pdf2md overwrites; edits to a
-			// decided file elsewhere stay where they are.
-			if (item.file.parent?.path === folder && item.entry["manually-edited"]) return "edited";
-			const status = item.entry.status;
-			return status === "accepted" || status === "rejected" ? status : null;
-		},
+		previewAtRisk: (entryName) => inventory().previewAtRisk(entryName),
 		confirmReconvert: (message) =>
 			confirmInModal(app, "Convert again?", message, "Convert again"),
 		keepEditedCopy: (entryName) => inventory().keepEditedCopy(entryName),
