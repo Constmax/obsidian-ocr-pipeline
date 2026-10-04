@@ -11,6 +11,7 @@ import { PageCases } from "./page-cases.ts";
 import { isConvertible } from "./input-formats.ts";
 import type { Inventory } from "./file-actions.ts";
 import { ExemptionModal } from "./exemption-modal.ts";
+import { confirmInModal } from "./confirm-modal.ts";
 import { ProgressPresenter, type ProgressNotice, type ProgressSurfaces } from "./progress-display.ts";
 import type { SearchableCopyHost } from "./searchable-copy.ts";
 import type { OcrEngine } from "./ocr-settings.ts";
@@ -178,6 +179,18 @@ export function createConversionHost(
 			const dest = app.metadataCache.getFirstLinkpathDest(recorded, item.file.path);
 			return dest?.path ?? item.file.path;
 		},
+		previewAtRisk(entryName, folder) {
+			const item = inventory().entries.find((entry) => entry.name === entryName);
+			if (item === undefined) return null;
+			// The preview folder's file is what pdf2md overwrites; edits to a
+			// decided file elsewhere stay where they are.
+			if (item.file.parent?.path === folder && item.entry["manually-edited"]) return "edited";
+			const status = item.entry.status;
+			return status === "accepted" || status === "rejected" ? status : null;
+		},
+		confirmReconvert: (message) =>
+			confirmInModal(app, "Convert again?", message, "Convert again"),
+		keepEditedCopy: (entryName) => inventory().keepEditedCopy(entryName),
 		previewFolder() {
 			const configured = settings().previewFolder;
 			return { configured, normalized: normalizePath(configured) };
