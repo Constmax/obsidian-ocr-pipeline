@@ -14,7 +14,7 @@ scan pages would raise there, so the truth set holds vector pages only —
 deterministic input, exact fingerprints. `run` populates the page cache from
 Issue #11 along the way; a second run reuses it without recomputation.
 `score` compares candidates against bench/structure_truth.json, which holds
-fingerprints and short anchors but no page text.
+fingerprints but no page text.
 """
 
 import argparse
@@ -62,7 +62,8 @@ def run_candidates():
             key = f"{source}#{pres.number}"
             candidates[key] = {
                 "paragraphs": list(pres.paragraphs),
-                "discarded": list(pres.discarded),
+                "discarded": [(line.text, reason)
+                              for line, reason in pres.discarded],
                 "trace": list(pres.trace),
                 "diagram": pres.is_diagram,
             }
@@ -128,7 +129,7 @@ def bless_candidates(ids=None):
             print(f"!! no candidate for {page['id']} ({key})")
             continue
         page["blocks"] = S.reference_paragraphs(
-            candidates[key]["paragraphs"])
+            candidates[key]["paragraphs"], anchors=False)
         print(f"blessed {page['id']} "
               f"({len(page['blocks'])} blocks) from {key}")
     TRUTH.write_text(json.dumps(truth, ensure_ascii=False, indent=1) + "\n",

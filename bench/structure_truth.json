@@ -1,5 +1,5 @@
 {
- "description": "Structure truth set for issue #20: 20 hand-checked vector pages across all assembly layouts. Sources resolve against VAULT_ROOT. Each blessed page holds structural blocks (fingerprints plus short anchors), never page text — the same copyright rule as bench/BENCHMARK-SET.md. Score with `python bench/structure_bench.py score`; bless checked candidates with `bless` (local only, never in CI). Vector pages only: their text-layer input is deterministic, so exact fingerprints are stable across runs. OCR wobble would flake them; tile seams are covered by pdf2md/test/test_seam.py instead.",
+ "description": "Structure truth set for issue #20: 20 hand-checked vector pages across all assembly layouts. Sources resolve against VAULT_ROOT. Each blessed page holds structural blocks (fingerprints only), never page text — the same copyright rule as bench/BENCHMARK-SET.md. Score with `python bench/structure_bench.py score`; bless checked candidates with `bless` (local only, never in CI). Vector pages only: their text-layer input is deterministic, so exact fingerprints are stable across runs. OCR wobble would flake them; tile seams are covered by pdf2md/test/test_seam.py instead.",
  "pages": [
   {
    "id": "s01",
