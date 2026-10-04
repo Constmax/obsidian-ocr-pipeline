@@ -2,10 +2,11 @@
 // and vault listeners that trigger reconciliation. PDF conversion is
 // delegated to the ConversionController.
 
-import { Menu, Notice, Plugin, TAbstractFile, TFile, normalizePath } from "obsidian";
+import { Menu, Notice, Plugin, TAbstractFile, TFile } from "obsidian";
 
 import { VIEW_TYPE, OcrComparisonView, PdfSelectModal, PageSelectModal } from "./view.ts";
 import { Inventory } from "./file-actions.ts";
+import { vaultFiles } from "./vault-files.ts";
 import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
 import { parseOcrSettings } from "./ocr-settings.ts";
 import { ConversionController } from "./conversion-controller.ts";
@@ -22,9 +23,14 @@ export default class OcrPreviewPlugin extends Plugin {
 	private searchableCopyHost!: SearchableCopyHost;
 
 	private reconcileTimer: number | null = null;
+	private markInventoryReady!: () => void;
+	/** Resolves after the first reconcile; a restored view waits for it before opening. */
+	readonly inventoryReady = new Promise<void>((done) => {
+		this.markInventoryReady = done;
+	});
 
 	async onload(): Promise<void> {
-		this.inventory = new Inventory(this.app, () => this.settings);
+		this.inventory = new Inventory(vaultFiles(this.app), () => this.settings);
 		const progressStatus = this.addStatusBarItem();
 		progressStatus.addClass("mod-clickable");
 		progressStatus.setAttribute("aria-label", "Show conversion progress");
@@ -45,7 +51,11 @@ export default class OcrPreviewPlugin extends Plugin {
 		this.registerView(VIEW_TYPE, (leaf) => new OcrComparisonView(leaf, this));
 
 		this.app.workspace.onLayoutReady(async () => {
-			await this.inventory.reconcile();
+			try {
+				await this.inventory.start();
+			} finally {
+				this.markInventoryReady();
+			}
 			for (const view of this.openViews()) view.update();
 		});
 

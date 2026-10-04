@@ -94,7 +94,9 @@ Applies only when the view has focus:
   **Open in Obsidian**, with their keyboard shortcuts shown on the buttons.
 - **Accept** / **Reject** move the file, update
   the manifest, show a **6-second Notice with Undo**, and automatically jump
-  to the next matching entry.
+  to the next matching entry. Each notice's Undo reverts its own decision,
+  also after later ones, as long as nothing moved or decided that entry since;
+  otherwise it says so and changes nothing.
 - **⋯**: Note… · Replace old version (only when `re-generated`) · Reset status · Copy path.
 - **Assign PDF…**: Appears in error banner if no original was found;
   opens a suggestion list of all vault PDFs and displayable images. The assignment lands
@@ -139,7 +141,11 @@ The state is defined by the three folders (`_ocr-preview/`, `_accepted/`,
 deleted. The rule is: **the filesystem wins, always.** The plugin never moves
 a file to match JSON — doing so would silently undo a deliberate manual move.
 
-Six reconciliation rules (triggered on open, settings change, and debounced vault events):
+Six reconciliation rules (triggered on open, settings change, and debounced vault events).
+At startup the plugin only reads the manifest; the first reconcile runs in
+`onLayoutReady`, once the vault index is complete, and no reconcile runs
+before it. A view restored with the workspace waits for that first reconcile
+before it opens its entry.
 
 1. **Exact `parent.path` comparison** during listing — no `startsWith`:
    `_accepted` lives *inside* `_ocr-preview`; a prefix test would list accepted files as open.
@@ -155,6 +161,17 @@ Six reconciliation rules (triggered on open, settings change, and debounced vaul
    so a re-run creates a second file with the same name. Two signals, each sufficient on its own: the same file exists simultaneously open *and* decided, or the `ocr-date` of the open version differs from the logged one. Result: status `re-created`, old decision moves to `previous`, and the line displays a "Re-created" badge.
    **"Replace old version"** (⋯ menu) renames the old version to
    `_rejected/<stem>-<old-ocr-date>.md` — nothing is lost; the old version receives its own entry via reconciliation.
+
+**Converting an edited or decided preview again** (any route: file menu,
+command, Convert PDF button) first asks in a modal. pdf2md overwrites the
+preview folder's file, and reconciliation resets `note`, `checked-until` and
+`manually-edited`. When that file is manually edited, confirming first copies
+it to `_rejected/<stem>-edited-<ocr-date>.md` (a copy, not a move: a
+`--pages` run merges into the existing file); a failed copy stops the
+conversion. A decided preview's file stays where it is, so no copy is made.
+Cancel, Esc or closing the modal converts nothing. `manually-edited` is set on
+the first keystroke in the view, even if a conflict later refuses that write:
+a false positive costs one question, a false negative loses edits.
 
 File movement runs exclusively via `fileManager.renameFile` (updates links in vault), never via `vault.rename`. Therefore, diagram images (`![[…png]]`, stored shared in `_ocr-preview/assets/`) continue working after moving. Target folders are checked via `getFolderByPath` beforehand and created if needed. Writes to manifest are debounced (500 ms) and serialized via a Promise chain; unreadable JSON is renamed to `review-status.json.corrupted` and rebuilt from folder structure.
 
