@@ -3,8 +3,10 @@
 A PDF that already has a text layer (OCR from another app) and highlights
 goes through OCRmyPDF with the arguments `build_ocr_args` builds. With
 `--skip-text` OCRmyPDF leaves that page alone, but its default PDF/A output
-runs Ghostscript over the whole file: it dropped every annotation and, for
-appleocr-style text layers, split the font into one subset per glyph.
+runs Ghostscript over the whole file: it dropped every annotation, and on a
+real page (`BGB AT Fall 2 1/p001`) split the text layer into one font per
+glyph. The stub's layer does not reproduce that split, so this test pins the
+annotations and the text; the font split is measured on the real page.
 
 The stub engine of test_hocr_text_layer_order.py stands in for recognition,
 both for the fixture's text layer and in the Stage-1 call, so no real OCR
@@ -26,6 +28,7 @@ import pytest
 BIN = Path(__file__).resolve().parent.parent
 STUB = BIN / "test" / "hocr_order_stub_engine.py"
 
+PINNED_OCRMYPDF = "17.8.0"
 STUB_ENV = dict(os.environ, HOCR_ORDER=json.dumps([["L", 0], ["L", 1], ["R", 0]]))
 
 pytestmark = pytest.mark.slow  # runs the OCRmyPDF CLI; `make test-fast` skips it
@@ -45,7 +48,8 @@ def ocrmypdf():
         import ocrmypdf as module
     except ImportError:
         _require(False, "ocrmypdf is not installed")
-    _require(module.__version__ == "17.8.0", f"ocrmypdf {module.__version__} is not the pinned 17.8.0")
+    _require(module.__version__ == PINNED_OCRMYPDF,
+             f"ocrmypdf {module.__version__} is not the pinned {PINNED_OCRMYPDF}")
     for tool in ("tesseract", "pdftotext"):
         _require(shutil.which(tool) is not None, f"{tool} is not on PATH")
     return module
