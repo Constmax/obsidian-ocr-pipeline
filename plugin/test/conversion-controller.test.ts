@@ -12,6 +12,7 @@ import {
 	resolveCli,
 	resolvePdf2md,
 	type ConversionHost,
+	type PreviewAtRisk,
 	type ConvertFunction,
 	type PdfSource,
 	type ProgressDisplay,
@@ -46,6 +47,12 @@ class FakeHost implements ConversionHost {
 	lookups: Array<[string, string]> = [];
 	/** Origin of an already existing preview; null = no preview yet. */
 	existingPreviewSource: string | null = null;
+	/** What a re-conversion would destroy; null = nothing. */
+	atRisk: PreviewAtRisk = null;
+	confirmAnswer = true;
+	confirms: string[] = [];
+	copySucceeds = true;
+	copies: string[] = [];
 
 	notify(message: string): void {
 		this.notices.push(message);
@@ -74,6 +81,17 @@ class FakeHost implements ConversionHost {
 	}
 	previewFolder(): { configured: string; normalized: string } {
 		return this.folder;
+	}
+	previewAtRisk(): PreviewAtRisk {
+		return this.atRisk;
+	}
+	async confirmReconvert(message: string): Promise<boolean> {
+		this.confirms.push(message);
+		return this.confirmAnswer;
+	}
+	async keepEditedCopy(entryName: string): Promise<boolean> {
+		this.copies.push(entryName);
+		return this.copySucceeds;
 	}
 	async reconcile(): Promise<void> {
 		this.reconciles++;
@@ -305,6 +323,65 @@ test("duplicate basename does not block re-converting the same source", async ()
 	assert.equal(calls.length, 1);
 	calls[0]!.finish(result());
 	await running;
+});
+
+test("an edited preview: asks first, keeps a copy, then converts", async () => {
+	const host = new FakeHost();
+	host.atRisk = "edited";
+	const { calls, controller } = setup(host);
+	const running = controller.run(PDF, "2");
+	await new Promise((done) => setImmediate(done));
+
+	assert.deepEqual(host.confirms, [
+		'"case-01.md" has manual edits. Converting again overwrites them; a copy of the edited file is kept in the rejected folder.',
+	]);
+	assert.deepEqual(host.copies, ["case-01.md"]);
+	assert.equal(calls.length, 1);
+	calls[0]!.finish(result());
+	await running;
+});
+
+test("a decided preview: asks first, converts without a copy", async () => {
+	const host = new FakeHost();
+	host.atRisk = "accepted";
+	const { calls, controller } = setup(host);
+	const running = controller.run(PDF);
+	await new Promise((done) => setImmediate(done));
+
+	assert.deepEqual(host.confirms, [
+		'"case-01.md" is already accepted. Converting again creates a new version to review.',
+	]);
+	assert.deepEqual(host.copies, []);
+	assert.equal(calls.length, 1);
+	calls[0]!.finish(result());
+	await running;
+});
+
+test("declining the re-conversion spawns nothing and leaves the controller idle", async () => {
+	const host = new FakeHost();
+	host.atRisk = "edited";
+	host.confirmAnswer = false;
+	const { calls, controller } = setup(host);
+	await controller.run(PDF);
+
+	assert.equal(calls.length, 0);
+	assert.deepEqual(host.copies, []);
+	assert.deepEqual(host.progress, []);
+	assert.equal(controller.ensureIdle(), true);
+});
+
+test("a failed copy of the edited preview stops the conversion", async () => {
+	const host = new FakeHost();
+	host.atRisk = "edited";
+	host.copySucceeds = false;
+	const { calls, controller } = setup(host);
+	await controller.run(PDF);
+
+	assert.equal(calls.length, 0);
+	assert.deepEqual(host.notices, [
+		'OCR Preview: "case-01.md" was not converted — the copy of its edits could not be kept.',
+	]);
+	assert.equal(controller.isRunning, false);
 });
 
 test("without file-system access nothing is spawned", async () => {
