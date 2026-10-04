@@ -15,7 +15,7 @@ before anything moves into the wiki. The code calls it the comparison view
 
 | Column | Content |
 |---|---|
-| **Previews** | File list with status filter (Open · Accepted · Rejected · All), text filter, a Convert PDF button (same as the command *Convert PDF and open in OCR comparison*), refresh, and progress for lists of at least five entries. Mixed-status lists are grouped in the same order used by `j`/`k`. Below each line: `14 p. · 9 OCR · 2 Diagram`, colored side marking by status, yellow dot on OCR pages. Three separate empty states: Folder missing (→ Settings), Folder empty (→ copyable pdf2md command), Filter empty. |
+| **Previews** | File list with status filter (Open · Accepted · Rejected · All), text filter, a Convert PDF button (same as the command *Convert PDF and open in OCR comparison*), refresh, and progress for lists of at least five entries. Mixed-status lists are grouped in the same order used by `j`/`k`. Below each line: `14 p. · 9 OCR · 2 Diagram`, colored side marking by status, yellow dot on OCR pages. Separate empty states: pdf2md not installed (no previews and no runnable pdf2md → setup.sh, Settings), Folder missing (→ Settings), Folder empty (→ copyable pdf2md command), Filter empty. A failed start names the missing command and links to `docs/installation.md`. |
 | **Original PDF** | Pages of the original PDF, lazy-rendered. Header with filename, `p. n / m`, zoom −/+, "Open in PDF viewer". |
 | **Markdown** | The generated `.md`, page by page, with provenance badge (`Text layer` / `OCR` / `Diagram`) and layout info, a **Marked** badge on pages that have a page case, and a flag button that marks the page as wrong. Toggle **Rendered \| Source**. |
 
@@ -204,7 +204,14 @@ The settings tab has four tabs, each built from Obsidian's `SettingGroup`:
 
 - **General:** Operating mode, Markdown column default, scroll sync. Column
   widths have no field: they are set by dragging the column borders in the view
-  and saved in `columnWidths`.
+  and saved in `columnWidths`. Below them, on the desktop, **Installation**:
+  - *Path to pdf2md* (`pdf2mdPath`): empty searches `~/bin`, `/usr/local/bin`
+    and `PATH` and shows what it found. A path that is not absolute, does not
+    exist, is a folder or is not executable is reported under the field and
+    not saved. Conversions and page cases use it.
+  - *Check installation* runs `pdf2md --check --out <preview folder>` (which
+    creates the preview folder) and `reprocess-raw --check-engine` for the
+    configured OCR engine, and shows their lines as they are.
 - **Folders:** Preview folder, Accepted folder, Rejected folder, status file
   (all cleaned via `normalizePath()`, with a live indicator if a folder is
   missing).

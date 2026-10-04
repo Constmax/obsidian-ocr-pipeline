@@ -45,6 +45,10 @@
       "stderr": ["pdf2md case: skript.md has no page 9"]
     }
   },
+  "installationCheck": {
+    "comment": "Issue #28: Settings -> Check installation spawns `pdf2md <args>` from the vault root with the preview folder. It relies on the exit code (success or check-failed) and shows every output line as it is.",
+    "args": ["--check", "--out", "_ocr-preview"]
+  },
   "stage1": {
     "shortPages": {
       "command": "column_tools.py verify-pages",

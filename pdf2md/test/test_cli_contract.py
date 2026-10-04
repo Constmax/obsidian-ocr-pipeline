@@ -120,6 +120,13 @@ def test_exit_codes_match_the_contract():
     assert pdf2md_cli.EXIT_CANCELLED_EMPTY == codes["cancelled-empty"]
 
 
+def test_installation_check_arguments_parse_as_a_check():
+    args = pdf2md_cli._parser().parse_args(CONTRACT["installationCheck"]["args"])
+    assert args.check
+    assert args.source is None
+    assert args.out == Path(CONTRACT["installationCheck"]["args"][-1])
+
+
 def test_input_suffixes_match_the_contract():
     assert conversion.INPUT_SUFFIXES == frozenset(CONTRACT["inputSuffixes"])
 
