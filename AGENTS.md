@@ -22,13 +22,16 @@ The plugin is where the user meets this code. Domain terms: `CONTEXT.md`.
 - **Real pages.** A quality fix is done when real pages from the user's vault
   change, measured the way their stage measures: Stage-2 assembly by page
   cases (`pdf2md/AGENTS.md`), reading order by the truth set
-  (`bench/AGENTS.md`). Synthetic fixtures pin the behaviour; the real pages
-  show that the fix is done.
+  (`bench/AGENTS.md`). Synthetic fixtures pin the behaviour, written red
+  first with `mattpocock-skills:tdd`; the real pages show that the fix is
+  done.
 - **Unseen pages.** Before changing a heuristic, name the target pages and
   the measurement that says done. Pages you tuned on stop counting as
   validation.
 - **Green.** `make check` passes, the reference docs below are updated in the
-  same PR, and an independent review ran.
+  same PR, and an independent review ran with
+  `mattpocock-skills:code-review`. Any code review the user asks for uses
+  that skill too, not the built-in `/code-review`.
 
 ## Working rules
 
@@ -40,10 +43,12 @@ The plugin is where the user meets this code. Domain terms: `CONTEXT.md`.
   per issue, and check `git branch --show-current` before every commit and
   push.
 - **Queue.** The work order lives in GitHub issues: a tracking issue lists
-  its items as sub-issues, in order. Record findings outside the current
-  issue on the tracking issue or as a new issue, and keep them out of the PR.
-- **Diagnose first.** For a bug: reproduce it, find the cause, then fix. The
-  PR states the cause.
+  its items as sub-issues, in order. Grill a new plan with the user
+  (`mattpocock-skills:grilling`) before its sub-issues exist. Record findings
+  outside the current issue on the tracking issue or as a new issue, and keep
+  them out of the PR.
+- **Diagnose first.** For a bug: reproduce it, find the cause, then fix,
+  with `mattpocock-skills:diagnosing-bugs`. The PR states the cause.
 - **Language.** Code, comments, commit messages, `docs/` and the AGENTS
   files are English. `README.md` and `bench/ERGEBNIS.md` are German.
   Frontmatter keys and progress-event keys stay German: they are contract
@@ -67,6 +72,11 @@ The plugin is where the user meets this code. Domain terms: `CONTEXT.md`.
 - `make test-fast`: unit tests, a few seconds. `make check`: everything CI
   runs, one target per CI job. Mark a test `@pytest.mark.slow` when it runs a
   CLI or pipeline end to end.
+- While iterating, run `make test-fast` and the tests your change touches;
+  run `make check` once before the PR. It takes a machine-wide lock, so a
+  second run waits for the first instead of overloading the machine. With
+  `pytest-xdist` installed for `PYTHON` (`python3 -m pip install
+  pytest-xdist`) the Python tests run on all cores.
 - `make check-cases [ISSUE=n]`: replays the page cases of the vault
   (`VAULT_ROOT`). Cases hold page text, so it is never part of `make check`
   or CI; see `pdf2md/AGENTS.md`.
@@ -98,11 +108,16 @@ gate exists).
 
 ## Agent skills
 
+`mattpocock-skills:*` are Claude Code plugin skills, enabled for this repo in
+`.claude/settings.json`. Where a rule names one, a Claude agent runs that
+skill; other agents (Codex) apply the rule itself.
+
 - **Issue tracker:** GitHub Issues on `Constmax/obsidian-ocr-pipeline` via
   `gh`; see `docs/agents/issue-tracker.md`.
 - **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`,
   `ready-for-human`, `wontfix`; see `docs/agents/triage-labels.md`.
 - **Domain docs:** single context, root `CONTEXT.md` + `docs/adr/` (created
-  lazily); see `docs/agents/domain.md`.
-- **Code review:** when the user asks for a code review, always use the
-  `mattpocock-skills:code-review` skill, not the built-in `/code-review`.
+  lazily); see `docs/agents/domain.md`. Sharpen a term or record a decision
+  with `mattpocock-skills:domain-modeling`.
+- **Agent docs:** `mattpocock-skills:writing-for-agents` when editing an
+  AGENTS file, `CLAUDE.md` or `skill/SKILL.md`.

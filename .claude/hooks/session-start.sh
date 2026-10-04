@@ -61,7 +61,7 @@ if ! shellcheck --version 2>/dev/null | grep -q "version: ${SHELLCHECK_VERSION#v
 fi
 
 # Python 3.12 venvs via uv (as setup.sh does):
-#   dev      — pytest job: pytest pyyaml pymupdf numpy pillow (+ pikepdf)
+#   dev      — pytest job: pytest pytest-xdist pyyaml pymupdf numpy pillow (+ pikepdf)
 #   ocrmypdf — pinned ocrmypdf + pytest; the Makefile picks it up by itself
 # Standalone installer: pip into system Python is refused under PEP 668.
 if ! command -v uv >/dev/null 2>&1; then
@@ -79,7 +79,7 @@ make_venv() {
   # A no-op in milliseconds once everything is installed.
   uv pip install -q --python "$py" "$@"
 }
-make_venv dev pytest pyyaml pymupdf numpy pillow pikepdf
+make_venv dev pytest pytest-xdist pyyaml pymupdf numpy pillow pikepdf
 make_venv ocrmypdf pytest "ocrmypdf==$OCRMYPDF_VERSION"
 
 # Plugin: npm ci only when package-lock.json changed (same stamp the Makefile uses).

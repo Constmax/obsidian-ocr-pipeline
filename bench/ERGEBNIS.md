@@ -2735,3 +2735,143 @@ Spalte bleibt eigener Absatz; Gleichstand entscheidet die Spalte mit der
 Nachbarnummer; Absatz über den Steg zählt für beide Spalten) ändern auf keiner
 der 1404 Seiten etwas; sie schließen die im Review benannten Fälle synthetisch
 ab.
+
+## Nachtrag 2026-10-02 (30): Seitenkoordinaten für jede Kachel (#146)
+
+Bis #146 blieben die Boxen gekachelter OCR-Seiten in Kachelkoordinaten: bei
+waagerechten Kacheln y, bei senkrechten x. Der Zusammenbau schneidet aber mit
+seitenabsoluten Grenzen (Kopf-, Fuß- und Fußnotenzone, Seitenzahlen). Jetzt
+rechnet die Kachelschleife jede Kachel sofort auf die Seite zurück
+(`ocr.to_page()`); Kästen werden danach für jeden Modus nach x und y
+zugeordnet.
+
+**Aufbau.** `bench/bench_ocr.py --seiten 40` zweimal ohne Cache, PaddleOCR-VL-1.5-4bit,
+150 dpi, M1 8 GB: `main` (`0629ed1`) gegen den Branch. Dieselben 40 Seiten:
+24 ganz gelesen, 8 senkrecht und 8 waagerecht gekachelt. Der Modelltext ist
+in beiden Läufen gleich, es ändern sich nur Boxen und damit der Zusammenbau.
+
+| | `main` | #146 |
+|---|---|---|
+| Wortgenauigkeit gesamt | 98,7 % | 98,7 % |
+| Zitattreue gesamt | 93,8 % | 93,8 % |
+| Reihenfolge (Median) | 98,1 % | 98,1 % |
+
+Die drei Maße zählen Wörter, keine Absatzgrenzen, und bleiben deshalb gleich.
+Geändert haben sich drei Vorschauseiten, alle waagerecht gekachelt und alle
+besser (gegen den Textlayer geprüft):
+
+- `UNIREP_KK_SR_LH_12_12_2025` S. 8 und `Klausur_2134_Zivilrecht` S. 2: Ein
+  Absatz riss an der Kachelnaht mitten im Satz ab. Die untere Kachel begann
+  wieder bei y ≈ 0, deshalb sah der Zusammenbau einen Sprung nach oben. Jetzt
+  ist es ein Absatz, wie im Textlayer.
+- `UNIREP_KK_ZR_LH_23_02_2026` S. 11: Die Seitenzahl hing an der letzten
+  Fußnote. Mit dem echten y liegt sie in der Fußzone und fällt weg.
+
+Auf fünf weiteren Seiten liegen Zeilen jetzt in einem anderen Kasten oder in
+keinem; die Vorschau ändert sich dadurch nicht (vier gekachelte Seiten und
+`UNIREP_KK_ZR_LH_16_01_2026` S. 13, ganz gelesen).
+
+**Seitenfälle.** Elf der zwölf Fälle im Vault sind gekachelt. Ihre Seiten
+wurden mit dem Fix neu gelesen. Der Text ist zeilengleich, die erwarteten
+Blöcke blieben. `make check-cases`: vorher 11 offen, 1 upstream; nachher
+ebenso, kein Fall passt neu. Drei Fälle weichen anders ab:
+
+- `SchuldR BT II Fall 14/p003`: Eine Zeile vom Spaltenende hing an Fußnote 1.
+  Jetzt steht sie in ihrem Absatz. Der erwartete Block trägt noch den alten
+  Fehler, deshalb zählt der Fall mehr Abweichungen.
+- `Verwaltungsrecht AT Fall 2/p002`: Zwei Fußnotenzeilen standen als Fließtext
+  mitten auf der Seite. Jetzt sind es die Fußnoten 1 und 2. Der erwartete
+  Block hat keine Fußnoten.
+- `Verwaltungsrecht AT Fall 2/p003`: Eine entgleiste Wiederholungszeile
+  (upstream) stand als eigener Block da und hängt jetzt am Absatz davor.
+  Falsch ist sie in beiden Fällen.
+
+**Grenzen.** Seitencache-Einträge gekachelter Seiten im alten Format
+(`line_format` < 3) werden nicht wiederverwendet. Die Seite wird beim
+nächsten Lauf neu gelesen, ganz gelesene Seiten bleiben im Cache. Eine ganz
+gelesene Seite aus dem alten Cache behält die Kästen, die sie damals nach
+der Höhe allein bekam, bis sie neu gelesen wird.
+
+## Nachtrag 2026-10-02 (31): Wohin die Zeit eines Paddle-fast-Laufs geht (#133, #206)
+
+Frage aus #133: Wird die Stufe 1 schneller, wenn OCRmyPDF wegfällt? Dafür
+wurde ein Paddle-fast-Lauf in seine Teile zerlegt.
+
+**Aufbau.**
+- **Seiten:** 8 Scanseiten, `raw/ZR/Erbrecht/erbrecht-fall-04.pdf` S. 2–5 und
+  `raw/StR/Rep-Faelle/strafrecht-fall-14.pdf` S. 2–5. Die Seitenbilder (ein
+  JPEG je Seite, 8,2–11,6 MP, im Mittel 9,6 MP; Handyfoto-Scans) wurden mit
+  `pdfimages -j` herausgezogen und mit `img2pdf -s 300dpi` zu einem reinen
+  Bild-PDF zusammengesetzt. Zum Vergleich: A4 bei 300 dpi hat 8,7 MP.
+- **Engine:** `--engine paddle --paddle-mode fast` aus dem Checkout `906b71b`.
+- **Umgebung:** M1, 8 GB, macOS 26.2; `~/.venvs/ocrmypdf` mit ocrmypdf 17.8.0,
+  rapidocr 3.9.2, onnxruntime 1.26.0, pyobjc-framework-Vision 12.2.1,
+  pypdfium2 5.11.0; Tesseract 5.5.2.
+- **Ablauf:** Alle Varianten liefen nacheinander, nie zwei zugleich.
+- **Varianten:**
+  - M1: `reprocess-raw <pdf> --output <out> --engine paddle --paddle-mode fast`
+    (der Weg des Plugins)
+  - M2: `ocrmypdf` allein mit den Argumenten aus `build_ocr_args`
+    (`--rotate-pages --deskew --optimize 3`, PDF/A, `--jobs 1`)
+  - M3: wie M2 mit `--optimize 0 --output-type pdf`
+  - M4: wie M3 ohne `--rotate-pages --deskew`
+  - M5: ohne OCRmyPDF; je Seite pypdfium2 bei 300 dpi,
+    `tesseract <png> - --psm 0` (OSD), `FastRecognizer().recognize()`,
+    `order_lines()` und `render_page()`. M5 schreibt kein PDF.
+- **Zeitmessung:** Wanduhr je Prozess, mit Modellladen. M5 misst ab dem
+  Import, ohne den Start des Interpreters; das begünstigt M5 leicht.
+
+```text
+pdfimages -j -f 2 -l 5 erbrecht-fall-04.pdf a
+pdfimages -j -f 2 -l 5 strafrecht-fall-14.pdf b
+img2pdf -s 300dpi a-*.jpg b-*.jpg -o input.pdf
+BASE="--plugin ocrmypdf_paddle --paddle-mode fast -l deu --skip-text --jobs 1 --max-image-mpixels 400"
+reprocess-raw input.pdf --output m1.pdf --engine paddle --paddle-mode fast       # M1
+ocrmypdf $BASE --rotate-pages --deskew --optimize 3 input.pdf m2.pdf              # M2
+ocrmypdf $BASE --rotate-pages --deskew --optimize 0 --output-type pdf input.pdf m3.pdf   # M3
+ocrmypdf $BASE --optimize 0 --output-type pdf input.pdf m4.pdf                    # M4
+```
+
+| Variante | s/Seite, Runde 1 | Runde 2 |
+|---|---:|---:|
+| M1 Plugin-Weg | 12,7 | 14,5 |
+| M2 OCRmyPDF allein | 12,3 | 13,3 |
+| M3 ohne PDF/A und Optimierung | 11,0 | 18,1 |
+| M4 zusätzlich ohne Drehen und Entzerren | 5,5 | 9,0 |
+| M5 ohne OCRmyPDF | 7,2 | 12,5 |
+
+M5 je Schritt (Runde 1): Rastern 1,2, OSD 1,9, Erkennung 4,1, Ordnen 0,01,
+hOCR 0,02 s/Seite.
+
+**Befunde (Runde 1):**
+- **Pipeline um OCRmyPDF** (Zusammenführen, MediaBox, Herunterrechnen, Quality
+  Gate, B5): etwa 0,4 s/Seite (M1 − M2).
+- **PDF/A und `--optimize 3`:** etwa 1,3 s/Seite (M2 − M3).
+- **Drehen und Entzerren:** etwa 5,5 s/Seite (M3 − M4), knapp die Hälfte des
+  Laufs (43 %). Darin stecken die Tesseract-Aufrufe
+  (`PaddleOcrEngine.get_orientation` und `get_deskew`, die OSD allein 1,9 s in
+  M5), das zusätzliche Vorschau-Raster für `--rotate-pages` sowie das Drehen
+  und Schreiben des entzerrten Bildes, alles auf voller Auflösung.
+- **Mehraufwand von OCRmyPDF gegenüber einem eigenen Weg:** etwa
+  0,2 s/Seite. M4 (mit OCRmyPDF, ohne Drehen und Entzerren) braucht 5,5 s, M5
+  ohne OSD (7,2 − 1,9) 5,3 s. Auch ein eigener Weg muss rastern
+  (1,2 s in M5).
+- **Textlayer (Ausgaben aus Runde 2):** M1 bis M4 liefern fast dieselbe
+  Wortzahl (4.328–4.369, `pdftotext`). Die Varianten ändern das Tempo, nicht
+  den Text.
+
+**Folgerung.** OCRmyPDF zu entfernen (#133) spart für sich keine Zeit. Die
+großen Posten sind Drehen/Entzerren und PDF/A/Optimierung, und beide lassen
+sich innerhalb von OCRmyPDF einstellen. #133 bleibt geparkt. Der Hebel steht
+in #206.
+
+**Grenzen.**
+- **Wenige Seiten:** 8 Seiten einer Scanart (große Handyfotos, über A4 bei
+  300 dpi). Auf den
+  gerenderten Vektorseiten des Stufe-1-Benchmarks dauert Paddle fast
+  3,2 s/Seite (Nachtrag 26). Ob der Anteil von Drehen und Entzerren dort
+  ebenso hoch ist, ist nicht gemessen.
+- **Runde 2 unter Fremdlast:** Andere Prozesse liefen mit, die Werte liegen
+  8–73 % höher und streuen. Sie bestätigen nur die Größenordnung.
+- **Nicht getrennt:** Drehen und Entzerren sind zusammen gemessen. Das
+  Trennen ist der erste Schritt in #206.

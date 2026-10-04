@@ -4,6 +4,7 @@
 The handler tests run without MLX; the CLI tests replace the model with a
 fake adapter.
 """
+import io
 import json
 import os
 import re
@@ -67,6 +68,39 @@ def test_reset_makes_cancellable_again(handler):
 
     _signal(signal.SIGINT)
     assert cancellation.requested() is True
+
+
+class _SignalMidWrite(io.RawIOBase):
+    """A stderr whose first write is interrupted by SIGTERM, as when the
+    plugin cancels while a progress event is being written (Issue #194)."""
+
+    def __init__(self):
+        self.written = b""
+        self.fired = False
+
+    def writable(self):
+        return True
+
+    def write(self, data):
+        if not self.fired:
+            self.fired = True
+            _signal(signal.SIGTERM)
+        self.written += bytes(data)
+        return len(data)
+
+
+def test_signal_during_a_stderr_write_does_not_reenter_it(handler, monkeypatch, capfd):
+    """Issue #194: the handler wrote to sys.stderr itself; landing inside a
+    progress write that raised RuntimeError ("reentrant call"), exit 1."""
+    raw = _SignalMidWrite()
+    monkeypatch.setattr(sys, "stderr", io.TextIOWrapper(io.BufferedWriter(raw)))
+
+    sys.stderr.write('{"typ": "seite"}\n')
+    sys.stderr.flush()
+
+    assert cancellation.requested() is True
+    assert raw.written == b'{"typ": "seite"}\n'
+    assert "SIGTERM received" in capfd.readouterr().err
 
 
 def _make_vector_pdf(path: Path, pages: int = 50) -> None:
@@ -141,64 +175,45 @@ def test_sigterm_before_first_page_no_partial_file():
         ), "Temp folder still under pdf2md/out-C"
 
 
+class _CancelOnLastPage:
+    """Stands in for the model; the user cancels once while page 3 of 3 runs.
+    A page can take several model calls (tiles `_L`, `_R`), so only the first
+    one signals: a second signal would stop the page."""
+
+    def __init__(self):
+        self.signalled = False
+
+    def prepare(self):
+        pass
+
+    def __call__(self, image, max_tokens=None):
+        if Path(image).name.startswith("_seite003") and not self.signalled:
+            self.signalled = True
+            _signal(signal.SIGTERM)
+        return "Seitentext"
+
+
 @pytest.mark.slow
-def test_sigterm_during_last_page_complete():
-    """Issue #25: SIGTERM during last page yields complete file."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        pdf_path = Path(tmpdir) / "cancellation-late.pdf"
-        _make_vector_pdf(pdf_path, pages=50)
+def test_sigterm_during_last_page_complete(tmp_path, monkeypatch, capsys):
+    """Issue #25: SIGTERM during last page yields complete file.
 
-        out_dir = Path(tmpdir) / "out"
-        out_dir.mkdir()
+    In-process with a stand-in model, so the signal lands inside page 3. The
+    earlier subprocess version signalled after page event 49 and lost the
+    race when page 50 had not started yet (exit 6, Issue #192)."""
+    pdf = tmp_path / "late.pdf"
+    _make_vector_pdf(pdf, pages=3)
+    out = tmp_path / "out"
 
-        proc = subprocess.Popen(
-            [
-                sys.executable,
-                "pdf2md/pdf2md.py",
-                str(pdf_path),
-                "--fortschritt",
-                "--diagramm-seiten",
-                "50",
-                "--out",
-                str(out_dir),
-            ],
-            cwd=str(Path(__file__).resolve().parent.parent.parent),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+    model = _CancelOnLastPage()
+    code = _run_cli(monkeypatch, model, pdf, "--ocr-only",
+                    "--kein-woerterbuch", "--fortschritt", "--out", out)
 
-        penultimate = threading.Event()
-        stderr_lines: list[str] = []
-
-        def read_stderr():
-            for line in proc.stderr:
-                stderr_lines.append(line)
-                event = json.loads(line) if line.startswith("{") else {}
-                if event.get("typ") == "seite" and event.get("nr") == 49:
-                    penultimate.set()
-
-        thread = threading.Thread(target=read_stderr, daemon=True)
-        thread.start()
-        assert penultimate.wait(timeout=120), "no page event 49 — run hanging?"
-        os.kill(proc.pid, signal.SIGTERM)
-        proc.wait(timeout=120)
-        stdout = proc.stdout.read() if proc.stdout else ""
-        stderr = "".join(stderr_lines)
-
-        assert proc.returncode == 0, (
-            f"Exit code {proc.returncode} instead of 0\nstdout: {stdout}\n"
-            f"stderr: {stderr}"
-        )
-        target = out_dir / "cancellation-late.md"
-        assert target.exists(), "File missing despite full run"
-        text = target.read_text(encoding="utf-8")
-        assert "abgebrochen" not in text, (
-            f"Aborted note in complete file:\n{text}"
-        )
-        assert '"typ": "fertig"' in stderr, (
-            "Fertig event missing after completed last page"
-        )
+    assert model.signalled
+    assert code == 0
+    text = (out / "late.md").read_text(encoding="utf-8")
+    assert "abgebrochen" not in text, f"Aborted note in complete file:\n{text}"
+    assert "%% S. 3 " in text
+    assert '"typ": "fertig"' in capsys.readouterr().err
 
 
 @pytest.mark.slow
@@ -226,18 +241,20 @@ def test_sigint_halfway_through_run():
             text=True,
         )
 
-        start = threading.Event()
+        # Wait for a finished page, not the start event: under load the signal
+        # would otherwise land before page 1 and the run exits 7, not 6.
+        first_page = threading.Event()
         stderr_lines: list[str] = []
 
         def read_stderr():
             for line in proc.stderr:
                 stderr_lines.append(line)
-                if '"typ": "start"' in line:
-                    start.set()
+                if '"typ": "seite"' in line:
+                    first_page.set()
 
         thread = threading.Thread(target=read_stderr, daemon=True)
         thread.start()
-        assert start.wait(timeout=120), "no start event — run hanging?"
+        assert first_page.wait(timeout=120), "no page event — run hanging?"
         os.kill(proc.pid, signal.SIGINT)
         proc.wait(timeout=120)
         stdout = proc.stdout.read() if proc.stdout else ""
@@ -318,17 +335,19 @@ def test_sigint_halfway_through_run():
 
 
 def _run_cli(monkeypatch, adapter, *argv):
-    """Run pdf2md's main() in-process with `adapter` in place of the model."""
+    """Run pdf2md's main() in-process with `adapter` in place of the model;
+    the exit code, 0 when main() returns."""
     monkeypatch.setattr(pdf2md_cli, "LazyMlxOcrAdapter", lambda _model: adapter)
     monkeypatch.setattr(sys, "argv", ["pdf2md.py", *map(str, argv)])
     try:
-        with pytest.raises(SystemExit) as info:
-            pdf2md_cli.main()
+        pdf2md_cli.main()
+        return 0
+    except SystemExit as stop:
+        return stop.code
     finally:
         cancellation.reset()
         signal.signal(signal.SIGINT, signal.default_int_handler)
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
-    return info.value.code
 
 
 class _SlowAdapter:

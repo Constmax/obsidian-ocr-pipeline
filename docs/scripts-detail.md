@@ -24,12 +24,14 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 
 ### Engine Selection
 
-- `auto`: Uses Apple Vision if `ocrmypdf-appleocr` is installed, otherwise Tesseract
-- `apple`: Forces Apple Vision (fails with error if plugin is missing)
+- `auto`: Uses PaddleOCR in fast mode when its `--paddle-check fast` passes, otherwise Apple Vision if `ocrmypdf-appleocr` is installed, otherwise Tesseract (#198). An installed but unready PaddleOCR is passed over with its reason on stderr. With `--split-columns` or `--split-columns-all`, `auto` skips PaddleOCR, because PaddleOCR reads whole pages and would ignore the split
+- `apple`: Forces Apple Vision (fails with error if plugin is missing). Every Apple Vision run also loads `bin/appleocr_no_boxes.py`, which keeps the red line boxes `ocrmypdf-appleocr` strokes under the scan out of the text layer (#209)
 - `tesseract`: Forces Tesseract (automatically applies `--tesseract-pagesegmode 1` for column detection and `--clean` when `unpaper` is available)
-- `paddle`: PaddleOCR PP-OCRv5 through the `ocrmypdf_paddle` plugin (fails with an error before any OCR if the plugin does not load or `--paddle-check` finds its runtime, models or, in fast mode, Apple Vision not ready; an `ocrmypdf_paddle` from before that option is reported as too old). Never chosen by `auto`; the Stage-1 benchmark (#71) retained it in fast mode, which the plugin offers. Runs one OCR job whatever `--jobs` says (`--jobs` still applies to a fallback engine). `--paddle-mode fast` lets Apple Vision read the lines and PP-OCRv5 re-read only citation lines (macOS 13+, see [paddle-textlayer.md](paddle-textlayer.md)). `setup.sh` installs the plugin into the Stage-1 venv through `install-paddle.sh` ([installation.md](installation.md#paddleocr-install-paddlesh)).
+- `paddle`: PaddleOCR PP-OCRv5 through the `ocrmypdf_paddle` plugin (fails with an error before any OCR if the plugin does not load or `--paddle-check` finds its runtime, models or, in fast mode, Apple Vision not ready; an `ocrmypdf_paddle` from before that option is reported as too old). The Stage-1 benchmark (#71) retained it in fast mode, which the plugin offers and `auto` prefers. Runs one OCR job whatever `--jobs` says (`--jobs` still applies to a fallback engine). `--paddle-mode fast` lets Apple Vision read the lines and PP-OCRv5 re-read only citation lines (macOS 13+, see [paddle-textlayer.md](paddle-textlayer.md)). `setup.sh` installs the plugin into the Stage-1 venv through `install-paddle.sh` ([installation.md](installation.md#paddleocr-install-paddlesh)).
 
 `resolve_engine` in `pdf-lib.sh` turns the requested engine into one resolved value (`apple`, `tesseract` or `paddle`); the OCR arguments and the fallbacks below are derived from that value alone.
+
+Every OCRmyPDF call writes plain PDF (`--output-type pdf`), not OCRmyPDF's default PDF/A. The PDF/A conversion runs Ghostscript over the whole file: it dropped every annotation (highlights included) and split an existing text layer into one font per glyph, which pdf.js renders measurably slower (#210). The Ghostscript steps before OCR (`fix_mediabox` for oversized pages, `gs_downscale` unless `--dpi 0`) still rewrite the file; they keep an existing text layer's fonts and the highlights, but drop an annotation Ghostscript cannot parse, such as one with a broken appearance stream. The column split carries page content only, so split pages lose their annotations.
 
 ### DPI Tuning
 
@@ -37,6 +39,10 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 - `200`: Reduced memory usage, slight quality loss on fine print (--fast Default)
 - `150`: Absolute minimum — fallback for OOM crashes with `--jobs 1`
 - `0`: Downscaling completely disabled
+
+`--dpi` is an exact upper limit (#201): colour and grayscale images above it are resampled to it, not only those above Ghostscript's default 1.5× threshold (a 400-DPI scan used to pass untouched at `--dpi 300`). Resampled images are re-encoded as JPEG at `JPEG_QFACTOR` (`pdf-lib.sh`, 1.6: on a 400-DPI scan 32 % smaller than Ghostscript's default quality at equal Tesseract confidence). JPEG images at or below the limit pass through unchanged; other images at or below it (Flate/PNG scans) are re-encoded by Ghostscript as before, now at the same quality. Bitonal (1-bit) images stay bitonal and are only resampled by whole factors (600 → 300, not 400 → 300). The plugin passes its "Maximum scan resolution" setting as `--dpi`.
+
+`--force-ocr` on a page that already has text undoes the limit: OCRmyPDF rasterizes such pages at 400 DPI. The plugin never passes `--force-ocr`.
 
 Downscaling defaults to **Bicubic** resampling (`/Bicubic`) instead of Ghostscript's default `/Subsample` to preserve text edge sharpness.
 
@@ -83,9 +89,9 @@ On failure the gate walks a fixed fallback matrix:
 |---|---|---|
 | Apple Vision | Tesseract | Tesseract with column split |
 | Tesseract | Tesseract with column split | Apple Vision (if installed) |
-| PaddleOCR | Apple Vision, or Tesseract without it | — |
+| PaddleOCR | Apple Vision, or Tesseract without it | Tesseract, after Apple Vision (#198) |
 
-The column-split retry needs `pikepdf`, re-merges to the original format and is skipped when `--split-columns` already splits. PaddleOCR never splits: it orders both columns itself, and `--split-columns`/`--split-columns-all` with `--engine paddle` are ignored with a warning, for the fallback engine too (#153; split mode cost words and order in `bench/ERGEBNIS.md`, Nachtrag 26). An engine switch re-runs OCR with `--force-ocr`. Every switch is printed on stderr with its reason (`🔄 Fallback: PaddleOCR accurate → Apple Vision (quality gate failed)`), and the summary names the engine that produced the file (`pdf-auto`: per file, plus a fallback count). If every attempt fails, no file is written.
+The column-split retry needs `pikepdf`, re-merges to the original format and is skipped when `--split-columns` already splits. PaddleOCR never splits: it orders both columns itself, and `--split-columns`/`--split-columns-all` with `--engine paddle` are ignored with a warning, for the fallback engine too (#153; split mode cost words and order in `bench/ERGEBNIS.md`, Nachtrag 26). An engine switch re-runs OCR on the same pre-OCR input with the first attempt's text handling: `--skip-text` unless the run asked for `--force-ocr`, so pages that already carry text are not rasterized (#215). A gate failure caused by a bad existing text layer is therefore not repaired by the fallback; rerun with `--force-ocr` (CLI only: the plugin never passes it). Every switch is printed on stderr with its reason (`🔄 Fallback: PaddleOCR accurate → Apple Vision (quality gate failed)`), and the summary names the engine that produced the file (`pdf-auto`: per file, plus a fallback count). If every attempt fails, no file is written.
 
 ### Multi-Part File Detection
 
@@ -231,7 +237,14 @@ gs -sDEVICE=pdfwrite \
    -dGrayImageDownsampleType=/Bicubic \
    -dDownsampleMonoImages=true  -dMonoImageResolution=300 \
    -dMonoImageDownsampleType=/Bicubic \
-   -sOutputFile=downscaled.pdf input.pdf
+   -dColorImageDownsampleThreshold=1.0 \
+   -dGrayImageDownsampleThreshold=1.0 \
+   -dMonoImageDownsampleThreshold=1.0 \
+   -sOutputFile=downscaled.pdf \
+   -c "<< /ColorACSImageDict << /QFactor 1.6 /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>
+         /GrayACSImageDict  << /QFactor 1.6 /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>
+      >> setdistillerparams" \
+   -f input.pdf
 ```
 
 **Rationale**: Phone scans and online tools produce 400-600 DPI files → 300+ megapixels per page → exceeds PIL allocation limits → OOM crash. 300 DPI represents Tesseract's optimal target resolution; Bicubic resampling preserves font edge sharpness superior to Ghostscript default `/Subsample`.
@@ -399,14 +412,27 @@ replace positional runner state. Temporary files and repeated-header context are
 scoped to one request. Tests can provide a lightweight OCR adapter and collect
 structured events without invoking argparse or intercepting `sys.exit`.
 
+A page's recognized lines are `RecognizedLine` records (`assembly.py`,
+Issue #144): `text` (bold as `**`), `box` in thousandths or None, `column`
+and `container`. The column is the tile index of a vertical tile (left 0,
+right 1) or what `split_columns()` finds on a text-layer page or a page read
+whole, and None where neither knows it (horizontal tiles, full-width lines).
+The container is `tabelle` or the `kasten{i}` that `assign_boxes()` puts the
+line in. Boxes are in page coordinates: the model reads a tile, and the tile
+loop maps each tile's boxes back to the page (`ocr.to_page()`, Issue #146)
+before it assigns boxes, sorts and trims the seam; a retried tile maps its
+halves back to the tile the same way. A line's container is then decided on
+the page for every mode.
+
 One page's lines become its page block in one place,
 `page_block(lines, context, meta) -> PageBlock` in `conversion.py`: assembly,
 the dictionary pass of an OCR page, the page marker and the diagram callout.
 `BlockContext` holds what a run shares (running lines, wordbook,
 `--dictionary-correct`, `--diagram-image-only`), `PageMeta` what the page adds
-(number, source, marker detail, diagram image name, each line's column);
+(number, source, marker detail, diagram image name);
 `PageMeta.from_cache_entry(entry, diagram_image)` reads it from a page-cache
-entry. The conversion builds every block this way, and the `--pages` merge
+entry. The block also returns the lines assembly discarded, each with its
+reason: `running_line`, `page_number` or `boilerplate`. The conversion builds every block this way, and the `--pages` merge
 counts a kept page's dictionary findings through the same assembly and
 dictionary step. `page_block` needs neither the model nor the PDF, so a
 page-cache entry can be turned into its block again. A block carries no
@@ -463,9 +489,7 @@ above 70 or below 950, a bare page number above 80 or below 905.
   digits, 40 % of the footer's, and two words; the end piece may start with
   half a glyph. Only footer lines count: the end of a header ("Fall 9" of
   "Muster - Fall 9") in the footer band may be a heading. A text layer is
-  not cut, so text-layer pages keep such lines. On a horizontally tiled
-  page y is tile-relative (#146), so the band also reaches into the upper
-  tile.
+  not cut, so text-layer pages keep such lines.
 - A misread header or footer that is not a running line of the text layer
   (a scan without one, for example) is dropped only by the fixed patterns.
 
@@ -513,6 +537,7 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --pages "1,3-5" --out _ocr-preview
 - Empty entries (`1,,3`, `,`), page 0, descending ranges (`5-3`), non-numeric entries and pages beyond the end of the PDF are rejected with a one-line error (exit code 1) before any page is processed.
 - `assembly_context()` (header/footer detection) evaluates entire document so boilerplate analysis remains unaffected by page filtering.
 - Paragraphs: a line starts a new paragraph at a list label, a heading, a box edge or a wider gap. Letter labels are one letter or one letter repeated (`a)`, `bb)`, `aaa)`) or a lowercase roman numeral (`iv.`), so a line starting with an abbreviation (`gem.`, `vgl.`, `ff.`, `i. V.m.`, `o. ä.`) continues its paragraph. A label that repeats the start of the line above and lies inside that line's box is dropped as read twice. On an OCR page, bold comes per recognized line and boxes come from ruled lines of the image. There a line that carries on the sentence (it starts lowercase, or the text before ends on an article, preposition, conjunction or `gem.`/`vgl.`/`bzw.`/`i. V.m.`) is cut off neither by an all-bold line nor by the heading-like line before it; after a bold heading only the second signal counts. At normal spacing, a box edge on such a page does not split before a line that carries on the sentence, even after a period, nor after text that stops mid-sentence: on a lowercase letter (the end of any word, capitalised or not), a comma, a semicolon or a hyphen or dash, but not on a colon, a digit or an abbreviation in capitals such as `BGB`. Otherwise it splits. Without line coordinates, a period of `gem.`, `vgl.`, `bzw.` or `i. V.m.` ends no paragraph (Issue #163).
+- Headings: a paragraph that starts with an outline label (`A.`, `I.`, `1.`, `a)`, `aa)`, `(1)`) becomes a heading of its outline level when it has at most 90 characters (or is all bold) and either carries bold or does not end like a sentence. A final legal form (`e.V.`, `e. V.`) ends no sentence; any other final abbreviation (`nach h.M.`, `z. B.`) does. A `?`, optionally closed by a quote or bracket, ends no sentence after a letter or roman label (`III. Anspruch aus § 1 XG?`, `d) …?`) but does after a numbered label (`1.`, `2)`, `(3)`): question lists are numbered (Issue #164). A labelled paragraph that stays body text gets its label bolded unless the label starts with a digit.
 - Generated `.md` retains original PDF page numbers in markers (`%% p. N %%`).
 - **An existing preview is merged, not replaced (Issue #106).** The selected pages replace their blocks, new ones are inserted in page order, and every other block stays verbatim, manual edits included. Without an existing preview only the selected pages are written, and `seiten` counts those.
 - The frontmatter of a merged file describes the whole merged file. `seiten`, `seiten-textlayer`, `seiten-ocr` and `seiten-diagramm` come from the page markers and, where available, the page cache. For a kept page, `seiten-entgleist` and the `woerter-*` counts come from its page-cache entry, which is what a full run would report; a kept page without an entry counts as not derailed and without findings. An earlier `abgebrochen` note stays until its missing pages are filled. A cancelled `--pages` run adds no note, because pages it did not reach keep their previous blocks.
@@ -522,9 +547,23 @@ python pdf2md/pdf2md.py raw/ZR/skript.pdf --pages "1,3-5" --out _ocr-preview
 ## Page Cache and `--refresh-cache` (Stage 2)
 
 Every completed page is written atomically below
-`<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains parsed lines with
-their boxes, each line's column (`columns`, Issue #14; None where unknown),
-source and layout metadata, and derailment/repair traces. Each
+`<out>/.cache/<pdf-stem>/<page>.json`. The JSON contains the page's
+recognized lines, source and layout metadata, and derailment/repair traces.
+Lines are stored in `line_format: 3`, one object per line with `text` and,
+where set, `box`, `column` and `container`, every box in page coordinates.
+Before format 3 a tiled page (`senkrecht`, `waagerecht`) kept its boxes in
+its tiles, and the tile of a line is lost after the seam is trimmed, so a
+tiled entry in an older format is not reused: the page is read with the model
+again. Other pages in an older format stay valid; a page read whole keeps the
+containers it got then, when a box was matched by height alone, until it is
+read again. Format 2 (Issue #144) stores lines like format 3. Entries written
+before Issue #144 have no `line_format`: their lines are `[text, box,
+container?]` lists, with the columns in a parallel `columns` array (Issue #14)
+or not at all. Those that stay valid are read through
+`page_cache.recognized_lines()`, the one upgrade path, which page cases use
+too; a missing column is None. A page case is never captured from a tiled
+entry in an older format ("Page cases"). `--lines-dump`
+writes each page's lines in the same object form. Each
 run persists its pages while assembling from memory; a resumed or repeated run
 reads matching pages back from disk instead of recomputing them. Consequently,
 a stopped run resumes at the first missing page by default and a second pass
@@ -610,12 +649,13 @@ expected block); without either, or when they were made from other lines,
 from the current page-cache entry. Note and issue of an existing case stay
 unless given. A changed expected block sets the case back to `open`.
 
-Capturing a page needs its page-cache entry and the source named in
+Capturing a page needs its page-cache entry, in page coordinates (not a
+tiled entry from before format 3), and the source named in
 `quelle-pdf`, unchanged since the conversion; a relative `quelle-pdf` is
 looked up from the working directory and from every folder above the preview.
 `stash` exits with code 1 and one line on stderr without them. `add` then
 works from the stash or the existing case and fails only when there is
-neither. The page cache stays in the preview folder, so a page is stashed
+neither, or when it holds a tiled page in tile coordinates. The page cache stays in the preview folder, so a page is stashed
 and first marked while its preview is under review, before it is accepted.
 
 On success `add` prints `case <stem>/pNNN: <status>, fault stage <stage>`,
@@ -633,11 +673,12 @@ A case file (`schema: 2`) holds:
 | Key | Content |
 |---|---|
 | `pdf`, `pdf_sha256` | Source path and the SHA-256 it had when the lines were recognized |
-| `page` | The page-cache entry: recognized lines, source, layout, mode, trace |
+| `page` | The page-cache entry: recognized lines, source, layout, mode, trace; an entry from before Issue #144 is read through `page_cache.recognized_lines()` |
 | `diagram_image`, `diagram_image_only` | What the page block needs besides the lines |
 | `running_lines` | Frozen copy of the source's running lines |
 | `footer_lines` | The running lines among them found in the footer zone; a schema-1 case is upgraded with all its running lines |
 | `produced`, `expected` | The two page blocks, marker line included |
+| `discarded` | The lines the produced block discarded, each a line object with its `reason` (`running_line`, `page_number`, `boilerplate`); missing in cases from before Issue #144 |
 | `note`, `issue` | The user's note and an optional issue number |
 | `status` | `open` or `fixed` |
 | `fault_stage`, `fault_stage_by` | `assembly` or `upstream`; set by `coverage` or by the `user` |

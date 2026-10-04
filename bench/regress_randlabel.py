@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression der Randlabel-Regel: mit gegen ohne promote_margin_labels().
+"""Regression der Randlabel-Regel: mit gegen ohne _promote_margin_labels().
 
   source ~/.venvs/mlxocr/bin/activate && python bench/regress_randlabel.py
 
@@ -34,7 +34,7 @@ def main():
     for s in seiten:
         nach_datei.setdefault(s["file"], []).append(s["page"])
 
-    echt = A.promote_margin_labels
+    echt = A._promote_margin_labels
     n, gleich, geaendert, verlust = 0, 0, [], []
     for datei in sorted(nach_datei):
         pfad = VAULT / datei
@@ -59,12 +59,12 @@ def main():
                 gleich += 1
                 continue
             try:
-                A.promote_margin_labels = lambda z, *r, **k: z
+                A._promote_margin_labels = lambda z, *r, **k: z
                 a = seite_bauen(page, context)
-                A.promote_margin_labels = echt
+                A._promote_margin_labels = echt
                 b = seite_bauen(page, context)
             except Exception as e:
-                A.promote_margin_labels = echt
+                A._promote_margin_labels = echt
                 print(f"  FEHLER {datei} S.{nr}: {e}")
                 continue
             if a == b:

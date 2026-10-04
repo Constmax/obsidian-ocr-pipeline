@@ -106,7 +106,11 @@ checkout, as `bench/reading_order.py` does.
 
 For development, `make check` also needs Node ≥ 22 and `shellcheck`
 (`brew install node shellcheck`); neither is part of the `Brewfile`, because
-using the pipeline needs neither.
+using the pipeline needs neither. The Python tests run with the `PYTHON` of
+the Makefile (default `python3`), which needs `pytest`, `pyyaml`, `pymupdf`,
+`numpy` and `pillow`; with `pytest-xdist` added they run on all cores
+(`python3 -m pip install pytest-xdist`, or `--user` / a venv where PEP 668
+refuses the system Python).
 
 ## Python 3.12 expat Bug
 
@@ -233,7 +237,7 @@ Opens terminal at vault root. PATH/Scripts function normally since they live in
 `.claude/hooks/session-start.sh` (registered in `.claude/settings.json`) builds
 the toolchain `make check` needs, with the same pins as CI: apt packages
 `tesseract-ocr poppler-utils qpdf ghostscript`, shellcheck `v0.11.0`, Python
-3.12 venvs `$VENV_ROOT/dev` (pytest, pyyaml, pymupdf, numpy, pillow, pikepdf;
+3.12 venvs `$VENV_ROOT/dev` (pytest, pytest-xdist, pyyaml, pymupdf, numpy, pillow, pikepdf;
 put first on `PATH` for the session) and `$VENV_ROOT/ocrmypdf` (ocrmypdf
 `17.8.0` + pytest, which the Makefile picks up by itself), and `npm ci` in
 `plugin/`. It runs only when `CLAUDE_CODE_REMOTE=true`, on `startup` and

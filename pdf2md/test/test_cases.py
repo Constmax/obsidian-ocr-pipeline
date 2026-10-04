@@ -16,6 +16,7 @@ import fitz
 import pytest
 
 import cases
+import page_cache
 from assembly import AssemblyContext
 from conversion import ConversionRequest, convert_document
 
@@ -121,7 +122,9 @@ def test_a_marked_page_becomes_a_case_with_produced_and_expected_block(vault):
     assert len(case["pdf_sha256"]) == 64
     assert case["page"]["number"] == 1
     assert case["page"]["source"] == "textlayer"
-    assert [line[0] for line in case["page"]["lines"]][0] == HEADER
+    assert page_cache.recognized_lines(case["page"])[0].text == HEADER
+    assert [(line["text"], line["reason"]) for line in case["discarded"]] \
+        == [(HEADER, "running_line")]
     assert case["running_lines"] == [HEADER]
     assert case["footer_lines"] == []
     assert case["produced"] == PRODUCED
@@ -164,7 +167,8 @@ def test_marking_ignores_a_stash_of_other_lines(vault):
 
     _, case, missing = cases.add(preview, 1)
 
-    assert case["page"]["lines"][1][0].startswith("Eine ganz andere Seite")
+    assert page_cache.recognized_lines(case["page"])[1].text.startswith(
+        "Eine ganz andere Seite")
     assert "Eine ganz andere Seite" in case["produced"]
     assert "Eine ganz neue Seite" in case["expected"]
     assert missing == ["neue"]
@@ -217,7 +221,8 @@ def test_marking_again_after_a_rerun_takes_the_new_lines(vault):
     _edit(preview, "geworden. ", "geworden.\n\n")
     _, case, missing = cases.add(preview, 1)
 
-    assert case["page"]["lines"][1][0].startswith("Eine ganz andere Seite")
+    assert page_cache.recognized_lines(case["page"])[1].text.startswith(
+        "Eine ganz andere Seite")
     assert "Eine ganz andere Seite" in case["produced"]
     assert (case["fault_stage"], missing) == ("assembly", [])
     assert (case["note"], case["issue"], case["status"]) == (
@@ -270,6 +275,34 @@ def test_a_source_that_changed_since_the_conversion_cannot_be_captured(vault):
 
     with pytest.raises(cases.CaseError, match="changed since page 1"):
         cases.stash(preview, 1)
+
+
+def test_a_tiled_page_from_before_page_coordinates_cannot_be_captured(vault):
+    """Before Issue #146 a tiled page kept its boxes in its tiles; a case
+    would replay them as page coordinates."""
+    root, _, preview = vault
+    entry = root / "_ocr-preview" / ".cache" / "skript" / "001.json"
+    payload = json.loads(entry.read_text(encoding="utf-8"))
+    payload["page"].update(mode="senkrecht @50%", line_format=2)
+    entry.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(cases.CaseError, match="tile coordinates"):
+        cases.stash(preview, 1)
+
+
+def test_marking_falls_back_to_no_stash_in_tile_coordinates(vault):
+    root, _, preview = vault
+    cases.stash(preview, 1)
+    for path in (root / "_ocr-preview" / ".cache" / "skript" / "001.json",
+                 cases.stash_path(preview, 1)):
+        record = json.loads(path.read_text(encoding="utf-8"))
+        record["page"].update(mode="senkrecht @50%", line_format=2)
+        path.write_text(json.dumps(record), encoding="utf-8")
+    _split_first_sentence(preview)
+
+    with pytest.raises(cases.CaseError, match="tile coordinates"):
+        cases.add(preview, 1)
+    assert not cases.case_path(preview, 1).exists()
 
 
 def test_a_relative_source_is_found_from_the_vault_root(vault, monkeypatch):
@@ -500,6 +533,7 @@ def test_the_fault_stage_can_be_set_and_stays_when_marking_again(vault):
 
 
 def test_markup_and_a_hyphenated_word_are_covered_by_the_lines():
+    # Lines as a case from before Issue #144 holds them.
     case = {
         "page": {"lines": [["Rechtsfolge ist der Schadens-", None],
                            # a decomposed umlaut, as some text layers hold it
@@ -769,3 +803,18 @@ def test_make_check_cases_replays_the_cases_of_the_vault(corrected):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "1 page case(s): 1 open" in result.stdout
+
+
+def test_a_page_rewritten_in_the_new_line_format_is_the_same_page():
+    """A cache entry from before Issue #144 and its rewrite hold the same
+    lines: a stash made from one still belongs to the other."""
+    old = {"number": 1, "source": "textlayer", "mode": "textlayer",
+           "lines": [["Text", [1, 2, 3, 4]]], "columns": [0]}
+    new = {"number": 1, "source": "textlayer", "mode": "textlayer",
+           "line_format": 2,
+           "lines": [{"text": "Text", "box": [1, 2, 3, 4], "column": 0}]}
+    assert cases._same_page({"page": old, "pdf_sha256": "x"},
+                            {"page": new, "pdf_sha256": "x"})
+    assert not cases._same_page({"page": old, "pdf_sha256": "x"},
+                                {"page": {**new, "number": 2},
+                                 "pdf_sha256": "x"})
