@@ -826,6 +826,20 @@
 	color: var(--text-warning);
 }
 
+.ocr-pfad-hinweis.ocr-path-ok {
+	color: var(--text-muted);
+}
+
+.ocr-installation-check {
+	margin: 8px 0 0;
+	padding: 8px 12px;
+	font-size: var(--font-ui-smaller);
+	white-space: pre-wrap;
+	user-select: text;
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+}
+
 .ocr-seiten-eingabe {
 	width: 200px;
 }

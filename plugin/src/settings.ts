@@ -7,7 +7,8 @@ import {
 	SettingGroup,
 	normalizePath,
 } from "obsidian";
-import { checkEngineHere } from "./conversion-host.ts";
+import { INSTALL_DOCS_URL, commandPathProblem, findCli } from "./conversion-controller.ts";
+import { checkEngineHere, checkPdf2mdHere } from "./conversion-host.ts";
 import type OcrPreviewPlugin from "./main.ts";
 import {
 	DEFAULT_OCR_SETTINGS,
@@ -35,6 +36,8 @@ export interface Settings extends OcrSettings {
 	 *  column borders in the view. */
 	columnWidths: [number, number, number];
 	syncActive: boolean;
+	/** Full path to pdf2md; empty searches ~/bin, /usr/local/bin and PATH. */
+	pdf2mdPath: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -46,6 +49,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	operationMode: "review-flow",
 	columnWidths: [20, 40, 40],
 	syncActive: true,
+	pdf2mdPath: "",
 	...DEFAULT_OCR_SETTINGS,
 };
 
@@ -173,6 +177,94 @@ export class SettingsTab extends PluginSettingTab {
 		});
 
 		this.hint("Column widths are set by dragging the column borders in the view.");
+
+		if (Platform.isDesktopApp) this.installationSettings();
+	}
+
+	/** The pdf2md path and the installation check of both CLIs. */
+	private installationSettings(): void {
+		const group = new SettingGroup(this.containerEl).setHeading("Installation");
+
+		group.addSetting((setting) => {
+			setting
+				.setName("Path to pdf2md")
+				.setDesc("Leave empty to search ~/bin, /usr/local/bin and PATH, where setup.sh installs it.");
+			const hint = setting.descEl.createDiv({ cls: "ocr-pfad-hinweis" });
+			const showHint = (path: string) => {
+				if (path.length > 0) {
+					hint.removeClass("ocr-path-ok");
+					const problem = commandPathProblem(path);
+					const saved = this.plugin.settings.pdf2mdPath;
+					hint.setText(
+						problem === null || path === saved
+							? (problem ?? "")
+							: `${problem}. Not saved; still using ${saved || "the automatic search"}.`,
+					);
+					return;
+				}
+				const found = findCli("pdf2md");
+				hint.setText(found === null ? "pdf2md was not found." : `Found: ${found}`);
+				hint.toggleClass("ocr-path-ok", found !== null);
+			};
+			setting.addText((t) => {
+				t.setPlaceholder("Search automatically").setValue(this.plugin.settings.pdf2mdPath);
+				// "change": saves on blur or Enter, not every keystroke. An invalid
+				// path is reported and not saved.
+				t.inputEl.addEventListener("change", () => {
+					const path = t.getValue().trim();
+					if (path.length === 0 || commandPathProblem(path) === null) {
+						this.plugin.settings.pdf2mdPath = path;
+						void this.plugin.saveSettings();
+						for (const view of this.plugin.openViews()) view.update();
+					}
+					showHint(path);
+				});
+			});
+			showHint(this.plugin.settings.pdf2mdPath);
+		});
+
+		group.addSetting((setting) => {
+			setting
+				.setName("Check installation")
+				.setDesc(
+					"Runs pdf2md --check against the preview folder (creating it if needed) and " +
+						"reprocess-raw --check-engine for the OCR engine of searchable copies.",
+				);
+			const output = setting.descEl.createEl("pre", { cls: "ocr-installation-check" });
+			output.hide();
+			const docs = setting.descEl.createEl("a", {
+				text: "How to install or repair: docs/installation.md",
+				href: INSTALL_DOCS_URL,
+			});
+			docs.hide();
+			setting.addButton((b) =>
+				b.setButtonText("Check").onClick(async () => {
+					b.setDisabled(true).setButtonText("Checking…");
+					output.setText("");
+					output.show();
+					docs.hide();
+					try {
+						const engine = this.plugin.settings.ocrEngine;
+						const [stage2, stage1] = await Promise.all([
+							checkPdf2mdHere(this.app, this.plugin.settings),
+							checkEngineHere(this.app, engine),
+						]);
+						output.setText(
+							[
+								`PDF → Markdown (pdf2md): ${stage2.code === 0 ? "ready" : "not ready"}`,
+								...stage2.lines,
+								"",
+								`Searchable copy (${ENGINE_LABELS[engine]}): ${stage1 === null ? "ready" : "not ready"}`,
+								...(stage1 === null ? [] : [stage1]),
+							].join("\n"),
+						);
+						docs.toggle(stage2.code !== 0 || stage1 !== null);
+					} finally {
+						b.setDisabled(false).setButtonText("Check");
+					}
+				}),
+			);
+		});
 	}
 
 	private folderSettings(): void {

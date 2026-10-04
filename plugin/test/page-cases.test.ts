@@ -216,7 +216,7 @@ test("a stash that cannot start or throws resolves too", async () => {
 	);
 
 	assert.deepEqual(warnings, [
-		`OCR Preview: Page 1 of "${PREVIEW}" was not stashed — pdf2md not found. Please run setup.sh in repo.`,
+		`OCR Preview: Page 1 of "${PREVIEW}" was not stashed — pdf2md not found. Install it with setup.sh: https://github.com/Constmax/obsidian-ocr-pipeline/blob/main/docs/installation.md.`,
 		`OCR Preview: Page 1 of "${PREVIEW}" was not stashed — Error: boom.`,
 		`OCR Preview: Page 1 of "${PREVIEW}" was not stashed — Error: sync boom.`,
 		`OCR Preview: Page 1 of "${PREVIEW}" was not stashed — pdf2md case did not answer.`,

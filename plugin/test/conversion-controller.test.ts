@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ChildProcess } from "node:child_process";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
 	CONVERSION_IDLE_TIMEOUT_MS,
@@ -10,6 +13,10 @@ import {
 	classifyFailure,
 	classifyOcrFailure,
 	resolveCli,
+	findCli,
+	commandPathProblem,
+	pdf2mdExecutable,
+	INSTALL_DOCS_URL,
 	resolvePdf2md,
 	type ConversionHost,
 	type PreviewAtRisk,
@@ -474,7 +481,6 @@ test("classifyFailure maps exit codes, signals, timeouts, and ENOENT", () => {
 		[{ code: 6, timeout: true }, "partial-output", "cancelled — partial file created (incomplete)"],
 		[{ code: null, signal: "SIGTERM" }, "signal", "cancelled (Signal SIGTERM)"],
 		[{ code: null }, "start-error", "Start error"],
-		[{ code: 4 }, "missing-dependency", "Code 4"],
 		[{ code: 1 }, "exit-code", "Code 1"],
 	];
 	for (const [overrides, kind, codeText] of cases) {
@@ -482,6 +488,12 @@ test("classifyFailure maps exit codes, signals, timeouts, and ENOENT", () => {
 		assert.equal(failure.kind, kind, JSON.stringify(overrides));
 		assert.equal(failure.message, `OCR Preview: Conversion failed (${codeText}).`);
 	}
+	const check = classifyFailure(result({ code: 4 }));
+	assert.equal(check.kind, "missing-dependency");
+	assert.equal(
+		check.message,
+		"OCR Preview: Conversion failed (Code 4, an installation check failed). Settings → General → Check installation lists every check.",
+	);
 });
 
 test("classifyFailure detail: last stderr line, else last stdout line without progress arrows", () => {
@@ -495,7 +507,7 @@ test("classifyFailure detail: last stderr line, else last stdout line without pr
 	);
 	assert.equal(
 		classifyFailure(result({ code: 4, stderrLast: ["[fehlt] mlx_vlm: nicht installiert"] })).message,
-		"OCR Preview: Conversion failed (Code 4) — [fehlt] mlx_vlm: nicht installiert.",
+		"OCR Preview: Conversion failed (Code 4, an installation check failed) — [fehlt] mlx_vlm: nicht installiert. Settings → General → Check installation lists every check.",
 	);
 	assert.equal(
 		classifyFailure(result({ code: null, signal: "SIGTERM", timeout: true }), 60_000).message,
@@ -508,10 +520,9 @@ test("classifyFailure: ENOENT on start means pdf2md is missing", () => {
 		result({ code: null, stderrLast: ["Error: spawn /home/test/bin/pdf2md ENOENT"] }),
 	);
 	assert.equal(failure.kind, "not-found");
-	// The doubled period is the message as main.ts produced it before #53.
 	assert.equal(
 		failure.message,
-		"OCR Preview: Conversion failed (Start error) — pdf2md not found. Please run setup.sh in repo..",
+		`OCR Preview: Conversion failed (Start error) — pdf2md not found. Install it with setup.sh: ${INSTALL_DOCS_URL}.`,
 	);
 });
 
@@ -703,7 +714,7 @@ test("classifyOcrFailure maps signals, start errors, ENOENT, and exit codes", ()
 		[
 			{ code: null, stderrLast: ["Error: spawn /home/test/bin/reprocess-raw ENOENT"] },
 			"not-found",
-			"OCR Preview: Searchable copy failed (Start error) — reprocess-raw not found. Please run setup.sh in repo.",
+			`OCR Preview: Searchable copy failed (Start error) — reprocess-raw not found. Install it with setup.sh: ${INSTALL_DOCS_URL}.`,
 		],
 		[{ code: 1, stderrLast: ["Traceback", "ValueError: bad page."] }, "exit-code", "OCR Preview: Searchable copy failed (Code 1) — ValueError: bad page."],
 		[{ code: 2 }, "exit-code", "OCR Preview: Searchable copy failed (Code 2)."],
@@ -735,4 +746,37 @@ test("runOcr: a cancelled run reports cancellation and drops short pages", async
 
 	assert.deepEqual((await running)?.shortPages, []);
 	assert.deepEqual(host.notices, ['OCR Preview: Searchable copy of "case-01" cancelled — no file written.']);
+});
+
+test("findCli: null when no candidate exists; resolveCli then falls back to ~/bin", () => {
+	const none = () => false;
+	assert.equal(findCli("pdf2md", "/opt/a", "/home/test", none), null);
+	assert.equal(resolveCli("pdf2md", "/opt/a", "/home/test", none), "/home/test/bin/pdf2md");
+	assert.equal(
+		findCli("pdf2md", "/opt/a", "/home/test", (c) => c === "/opt/a/pdf2md"),
+		"/opt/a/pdf2md",
+	);
+});
+
+test("commandPathProblem: relative, missing, directory, not executable, executable", () => {
+	const dir = mkdtempSync(join(tmpdir(), "ocr-cli-"));
+	try {
+		const plain = join(dir, "plain");
+		const runnable = join(dir, "pdf2md");
+		writeFileSync(plain, "");
+		writeFileSync(runnable, "#!/bin/sh\n");
+		chmodSync(runnable, 0o755);
+		assert.equal(commandPathProblem("~/bin/pdf2md"), "Enter a full path, starting with /");
+		assert.equal(commandPathProblem(join(dir, "missing")), "No file at this path");
+		assert.equal(commandPathProblem(dir), "This is not a file");
+		assert.equal(commandPathProblem(plain), "This file is not executable");
+		assert.equal(commandPathProblem(runnable), null);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("pdf2mdExecutable: a configured path wins over the search", () => {
+	assert.equal(pdf2mdExecutable("/opt/pdf2md"), "/opt/pdf2md");
+	assert.equal(pdf2mdExecutable(""), resolveCli("pdf2md"));
 });

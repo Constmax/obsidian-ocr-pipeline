@@ -13,6 +13,7 @@ import {
 	PROGRESS_PROTOCOL,
 	SHORT_PAGE_LINE,
 	checkEngine,
+	checkPdf2md,
 	parseProgressEvent,
 	type ConversionResult,
 	type SpawnFunction,
@@ -40,6 +41,7 @@ interface Contract {
 	exitCodes: Record<string, number>;
 	inputSuffixes: string[];
 	previewFormat: number;
+	installationCheck: { args: string[] };
 	stage1: {
 		shortPages: { stderr: string[]; shortPageNumbers: number[] };
 		failure: { stdout: string[]; reason: string };
@@ -212,4 +214,24 @@ test("contract: --check-engine arguments and the reason of an unusable engine", 
 	child.emit("close", contract.exitCodes[spec.notUsable.exitCode]);
 	assert.equal(await pending, spec.notUsable.reason);
 	assert.deepEqual(calls, [spec.args]);
+});
+
+test("contract: installation check arguments", async () => {
+	const calls: string[][] = [];
+	const child = new EventEmitter() as EventEmitter & {
+		stdout: EventEmitter & { setEncoding(): void };
+		stderr: EventEmitter & { setEncoding(): void };
+	};
+	child.stdout = Object.assign(new EventEmitter(), { setEncoding: () => {} });
+	child.stderr = Object.assign(new EventEmitter(), { setEncoding: () => {} });
+	const spawnFn = ((_command: string, args: readonly string[]) => {
+		calls.push([...args]);
+		return child;
+	}) as unknown as SpawnFunction;
+
+	const args = contract.installationCheck.args;
+	const pending = checkPdf2md("/x/pdf2md", args[args.length - 1]!, "/vault", spawnFn);
+	child.emit("close", contract.exitCodes["check-failed"]);
+	assert.equal((await pending).code, contract.exitCodes["check-failed"]);
+	assert.deepEqual(calls, [args]);
 });
