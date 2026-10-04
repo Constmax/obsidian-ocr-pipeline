@@ -2875,3 +2875,28 @@ in #206.
   8–73 % höher und streuen. Sie bestätigen nur die Größenordnung.
 - **Nicht getrennt:** Drehen und Entzerren sind zusammen gemessen. Das
   Trennen ist der erste Schritt in #206.
+
+## Nachtrag 2026-10-04 (32): Steg neben einer gewölbten Spalte (#240)
+
+**Anlass:** `Reymann JuS 2014 918/p004` (Zweispalter, 300 dpi) wird im Textlayer von Paddle fast zeilenweise über beide Spalten gelesen. Die rechte Spalte ist zum Bund hin gewölbt: Ihre Zeilen steigen um 2–6° (Steigung −0,04 bis −0,10), die linke liegt gerade, beide Spaltenkanten stehen senkrecht. `_skew()` nimmt den Median über alle Zeilen (−0,9°); die Drehung darum kippt die gerade linke Spalte um bis zu ±27 px in den rund 50 px breiten Steg, `_gutter()` findet keinen.
+
+**Änderung:** Findet `_gutter()` auf der entzerrten Seite keinen Steg, sucht `order_lines()` noch einmal auf den ungedrehten Zeilen und nimmt diese, wenn dort ein Steg liegt. Seiten mit Steg bleiben unverändert.
+
+**Aufbau:** Alle fünf handgeprüften Sätze (t 16, n 13, m 13, q 13, r 13 Seiten), `reading_order.py prepare` und `recognize` (PP-OCRv5-Zeilen), dazu die Apple-Vision-Zeilen derselben Seitenbilder (`apple.vision_lines`). Verglichen wurde `order_lines()` von `main` (`8508f9b`) mit dem neuen Stand, bewertet mit `score_page()` gegen die Wahrheit.
+
+**Ergebnis:**
+
+| Seite | Zeilen | `main` | neu |
+|---|---|---:|---:|
+| r07 | PP-OCRv5 | 78,8 % | 99,1 % |
+| r07 | Vision | 78,4 % | 99,2 % |
+
+Alle anderen 67 Seiten liefern in beiden Zeilenquellen dieselbe Reihenfolge wie `main`. r07 ist der verschränkte Fall aus Nachtrag 25 (#127). Dort ragen hängende Fußnotenziffern in den Steg, und die Spalten neigen sich verschieden (Median links −1,0° bzw. −1,5°, rechts −1,8°); die Drehung um −1,8° schließt den Steg, ungedreht findet `_gutter()` ihn (PP-OCRv5 bei x ≈ 1182, Vision bei x ≈ 1178). r07 war beim Entwurf nicht angesehen.
+
+Echter Lauf (`reprocess-raw.sh --engine paddle --paddle-mode fast`, Dokument mit 6 Seiten): p004 wird links, dann rechts gelesen; die übrigen 5 Seiten liefern denselben Text wie vorher (`pdftotext -raw`).
+
+**Verworfen:** Zeilen in einer Reihe nach ihrer Dicke (Fläche durch Länge) statt der Höhe ihres Rechtecks zu gruppieren. Auf p004 sinken die Rücksprünge in der rechten Spalte damit von 7 auf 1. Auf den fünf Sätzen ändert es aber rund 25 Reihenfolgen mit gemischten Abweichungen unter 0,6 Punkten (schlechter: t11, n10, m03, m05, q06, q10; besser: t02, n06, m09, m10, m11, r06), und ungesehene Belege für den Nutzen fehlen. Folgeissue.
+
+**Grenzen:**
+- **p004 ist Entwurfsseite** und zählt nicht als Validierung; die einzige ungesehene Bestätigung ist r07.
+- **Rücksprünge bleiben:** Auf p004 liest die rechte Spalte 7 Zeilenpaare vertauscht, weil das Rechteck einer schrägen Zeile höher ist als die Toleranz einer Reihe.
