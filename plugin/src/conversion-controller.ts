@@ -124,7 +124,6 @@ export interface TextLayerRequest {
 	source: PdfSource;
 	engine: OcrEngine;
 	splitColumns: boolean;
-	maxDpi: number;
 	/** Pages exempt from the B5 gate, e.g. "1,5-7". */
 	allowPages?: string;
 }
@@ -406,7 +405,6 @@ export class ConversionController {
 				{
 					engine: request.engine,
 					splitColumns: request.splitColumns,
-					maxDpi: request.maxDpi,
 					...(request.allowPages && request.allowPages.length > 0
 						? { allowPages: request.allowPages }
 						: {}),
