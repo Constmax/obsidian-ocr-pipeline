@@ -108,7 +108,7 @@ test("load only reads the manifest: a row whose file is not indexed yet keeps it
 	vault.add("_ocr-preview/a.md");
 	const { inventory } = setup(vault);
 	await inventory.load();
-	await inventory.reconcile();
+	await inventory.start();
 	await inventory.updateEntry("a.md", { note: "check p. 3", "manually-edited": true });
 	vault.raw.set(SETTINGS.statusFile, writeManifest(inventory.manifest));
 
@@ -119,9 +119,14 @@ test("load only reads the manifest: a row whose file is not indexed yet keeps it
 	await restarted.load();
 	assert.equal(restarted.manifest.entries["a.md"]?.note, "check p. 3");
 
+	// A reconcile before layout-ready (a vault event, a view) changes nothing.
+	await restarted.reconcile();
+	assert.equal(restarted.manifest.entries["a.md"]?.note, "check p. 3");
+	assert.deepEqual(restarted.entries, []);
+
 	// Layout-ready: the file is indexed, the first reconcile keeps the row.
 	early.add("_ocr-preview/a.md");
-	await restarted.reconcile();
+	await restarted.start();
 	assert.equal(restarted.manifest.entries["a.md"]?.note, "check p. 3");
 	assert.equal(restarted.manifest.entries["a.md"]?.["manually-edited"], true);
 });
@@ -143,7 +148,7 @@ test("undo on an older notice reverts that decision, not the latest one", async 
 	vault.add("_ocr-preview/x.md");
 	vault.add("_ocr-preview/y.md");
 	const { inventory } = setup(vault);
-	await inventory.reconcile();
+	await inventory.start();
 
 	const x = await decided(inventory, "x.md");
 	const y = await decided(inventory, "y.md");
@@ -162,7 +167,7 @@ test("undo of a decision that is no longer current changes nothing", async () =>
 	const vault = new FakeVault();
 	vault.add("_ocr-preview/x.md");
 	const { inventory } = setup(vault);
-	await inventory.reconcile();
+	await inventory.start();
 
 	const accept = await decided(inventory, "x.md");
 	const reject = await inventory.decide("x.md", "rejected");
@@ -182,7 +187,7 @@ test("keepEditedCopy copies the preview into the rejected folder under a free na
 	vault.add("_ocr-preview/a.md", { "ocr-date": "2026-10-01" });
 	vault.add("_ocr-preview/_rejected/a-edited-2026-10-01.md");
 	const { inventory } = setup(vault);
-	await inventory.reconcile();
+	await inventory.start();
 
 	assert.equal(await inventory.keepEditedCopy("a.md"), true);
 	assert.ok(vault.files.has("_ocr-preview/a.md"));
@@ -192,4 +197,35 @@ test("keepEditedCopy copies the preview into the rejected folder under a free na
 test("keepEditedCopy without a file in the preview folder reports failure", async () => {
 	const { inventory } = setup();
 	assert.equal(await inventory.keepEditedCopy("missing.md"), false);
+});
+
+test("undo keeps a note added after the decision", async () => {
+	const vault = new FakeVault();
+	vault.add("_ocr-preview/x.md");
+	const { inventory } = setup(vault);
+	await inventory.start();
+
+	const accept = await decided(inventory, "x.md");
+	await inventory.updateEntry("x.md", { note: "added while the notice showed" });
+	assert.equal(await inventory.undo(accept), "undone");
+	assert.equal(inventory.manifest.entries["x.md"]?.status, "open");
+	assert.equal(inventory.manifest.entries["x.md"]?.note, "added while the notice showed");
+});
+
+test("previewAtRisk: edits in the preview folder, a decision, or nothing", async () => {
+	const vault = new FakeVault();
+	vault.add("_ocr-preview/edited.md");
+	vault.add("_ocr-preview/plain.md");
+	vault.add("_ocr-preview/done.md");
+	const { inventory } = setup(vault);
+	await inventory.start();
+	await inventory.updateEntry("edited.md", { "manually-edited": true });
+	await decided(inventory, "done.md");
+	// Edits to a decided file are not what pdf2md overwrites.
+	await inventory.updateEntry("done.md", { "manually-edited": true });
+
+	assert.equal(inventory.previewAtRisk("edited.md"), "edited");
+	assert.equal(inventory.previewAtRisk("plain.md"), null);
+	assert.equal(inventory.previewAtRisk("done.md"), "accepted");
+	assert.equal(inventory.previewAtRisk("missing.md"), null);
 });

@@ -52,7 +52,7 @@ class FakeHost implements ConversionHost {
 	confirmAnswer = true;
 	confirms: string[] = [];
 	copySucceeds = true;
-	copies: Array<[string, string]> = [];
+	copies: string[] = [];
 
 	notify(message: string): void {
 		this.notices.push(message);
@@ -89,8 +89,8 @@ class FakeHost implements ConversionHost {
 		this.confirms.push(message);
 		return this.confirmAnswer;
 	}
-	async keepEditedCopy(entryName: string, folder: string): Promise<boolean> {
-		this.copies.push([entryName, folder]);
+	async keepEditedCopy(entryName: string): Promise<boolean> {
+		this.copies.push(entryName);
 		return this.copySucceeds;
 	}
 	async reconcile(): Promise<void> {
@@ -335,7 +335,7 @@ test("an edited preview: asks first, keeps a copy, then converts", async () => {
 	assert.deepEqual(host.confirms, [
 		'"case-01.md" has manual edits. Converting again overwrites them; a copy of the edited file is kept in the rejected folder.',
 	]);
-	assert.deepEqual(host.copies, [["case-01.md", "_ocr-preview"]]);
+	assert.deepEqual(host.copies, ["case-01.md"]);
 	assert.equal(calls.length, 1);
 	calls[0]!.finish(result());
 	await running;

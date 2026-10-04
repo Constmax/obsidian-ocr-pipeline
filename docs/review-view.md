@@ -143,9 +143,9 @@ a file to match JSON — doing so would silently undo a deliberate manual move.
 
 Six reconciliation rules (triggered on open, settings change, and debounced vault events).
 At startup the plugin only reads the manifest; the first reconcile runs in
-`onLayoutReady`, and vault events before it are ignored. Earlier, rule 4 would
-drop the rows of files not indexed yet, with their notes. A view restored
-with the workspace waits for that first reconcile before it opens its entry.
+`onLayoutReady`, once the vault index is complete, and no reconcile runs
+before it. A view restored with the workspace waits for that first reconcile
+before it opens its entry.
 
 1. **Exact `parent.path` comparison** during listing — no `startsWith`:
    `_accepted` lives *inside* `_ocr-preview`; a prefix test would list accepted files as open.

@@ -1,5 +1,6 @@
 import type { TFile } from "obsidian";
 
+import type { PreviewAtRisk } from "./conversion-controller.ts";
 import type { Settings } from "./settings.ts";
 import {
 	emptyManifest,
@@ -70,6 +71,12 @@ export class Inventory {
 
 	private writeChain: Promise<void> = Promise.resolve();
 	private writeTimer: number | null = null;
+	/**
+	 * False until the vault index is complete (layout-ready). Before that,
+	 * reconcile would drop the rows of files not indexed yet, with their notes
+	 * and review state, so it does nothing.
+	 */
+	private indexed = false;
 
 	private readonly files: InventoryFiles;
 	private readonly settings: () => Settings;
@@ -138,11 +145,7 @@ export class Inventory {
 		return found;
 	}
 
-	/**
-	 * Reads the manifest only. The first reconcile waits for layout-ready:
-	 * before that the vault index is incomplete, and reconcile would drop the
-	 * rows of files it cannot see yet, with their notes and review state.
-	 */
+	/** Reads the manifest only; the first reconcile is `start()`. */
 	async load(): Promise<void> {
 		const now = new Date().toISOString();
 		const path = this.files.normalize(this.s.statusFile);
@@ -170,7 +173,14 @@ export class Inventory {
 		this.manifest = previous;
 	}
 
+	/** Layout-ready: the vault index is complete; runs the first reconcile. */
+	async start(): Promise<void> {
+		this.indexed = true;
+		await this.reconcile();
+	}
+
 	async reconcile(previous: StatusManifest = this.manifest): Promise<void> {
+		if (!this.indexed) return;
 		const now = new Date().toISOString();
 		const files = this.collectFiles();
 		const result = reconcile(files, previous, now, (p) =>
@@ -280,8 +290,7 @@ export class Inventory {
 	 * decision put it and the entry records that decision. So the Undo of an
 	 * older notice reverts its own decision, never the latest one.
 	 */
-	async undo(decision: Decision): Promise<"undone" | "not-current" | "failed"> {
-		const last = decision;
+	async undo(last: Decision): Promise<"undone" | "not-current" | "failed"> {
 		const entry = this.manifest.entries[last.name];
 		const file = this.files.fileAt(last.toPath);
 		if (
@@ -305,7 +314,14 @@ export class Inventory {
 			...this.manifest,
 			entries: {
 				...this.manifest.entries,
-				[last.name]: last.previousEntry,
+				// Only what the decision changed: a note added meanwhile stays.
+				[last.name]: {
+					...entry,
+					status: last.previousEntry.status,
+					path: last.previousEntry.path,
+					decided: last.previousEntry.decided,
+					previous: last.previousEntry.previous,
+				},
 			},
 		};
 		await this.reconcile();
@@ -376,6 +392,20 @@ export class Inventory {
 	 * folder's file into the rejected folder, where it shows as a rejected
 	 * entry of its own. False when no such file exists or the copy failed.
 	 */
+	/**
+	 * What converting `name` again would destroy: manual edits in the preview
+	 * folder's file (what pdf2md overwrites), or a decision. Edits to a decided
+	 * file elsewhere stay where they are.
+	 */
+	previewAtRisk(name: string): PreviewAtRisk {
+		const item = this.entries.find((entry) => entry.name === name);
+		if (item === undefined) return null;
+		const folder = this.files.normalize(this.s.previewFolder);
+		if (item.file.parent?.path === folder && item.entry["manually-edited"]) return "edited";
+		const status = item.entry.status;
+		return status === "accepted" || status === "rejected" ? status : null;
+	}
+
 	async keepEditedCopy(name: string): Promise<boolean> {
 		const folder = this.files.normalize(this.s.previewFolder);
 		const file = this.files.fileAt(this.files.normalize(`${folder}/${name}`));
