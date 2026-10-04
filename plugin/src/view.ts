@@ -608,7 +608,7 @@ export class OcrComparisonView extends ItemView {
 		this.openQueue.cancel();
 		this.requestedName = null;
 		this.reloadName = null;
-		void this.saveChangeImmediately().catch((err) => {
+		void this.saveChangeImmediately(true).catch((err) => {
 			console.error("OCR Preview: Failed to save before clearing selection", err);
 		});
 		this.activeName = null;
@@ -857,11 +857,16 @@ export class OcrComparisonView extends ItemView {
 			if (name === null) return;
 			const run = this.openRun;
 			let reload = false;
+			// A read that fails must not leave the chain rejected: every later save would be skipped.
 			this.mdWriteChain = this.mdWriteChain.then(async () => {
-				const disk = await this.app.vault.read(file);
-				const verdict = this.savePolicy.verdict(disk);
-				if (verdict === "conflict") this.warnConflict(file, disk);
-				reload = verdict === "reload";
+				try {
+					const disk = await this.app.vault.read(file);
+					const verdict = this.savePolicy.verdict(disk);
+					if (verdict === "conflict") this.warnConflict(file, disk);
+					reload = verdict === "reload";
+				} catch (err) {
+					console.error("OCR Preview: Reading the open preview failed", err);
+				}
 			});
 			await this.mdWriteChain;
 			const unchanged =
