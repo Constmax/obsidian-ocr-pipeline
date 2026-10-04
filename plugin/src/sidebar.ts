@@ -53,6 +53,7 @@ function hasMixedStatuses(entries: readonly InventoryEntry[]): boolean {
 export class Sidebar {
 	onSelect: ((name: string) => void) | null = null;
 	onRefresh: (() => void) | null = null;
+	onConvert: (() => void) | null = null;
 	onSettings: (() => void) | null = null;
 
 	private filter: StatusFilter = "open";
@@ -75,6 +76,12 @@ export class Sidebar {
 	) {
 		this.header = root.createDiv({ cls: "ocr-liste-kopf" });
 		this.header.createSpan({ cls: "ocr-liste-titel", text: "Previews" });
+		const convertBtn = this.header.createEl("button", {
+			cls: "ocr-ikonknopf",
+			attr: { "aria-label": "Convert PDF", title: "Convert PDF" },
+		});
+		setIcon(convertBtn.createSpan({ cls: "ocr-ikon" }), "file-plus");
+		convertBtn.addEventListener("click", () => this.onConvert?.());
 		const refreshBtn = this.header.createEl("button", {
 			cls: "ocr-ikonknopf",
 			attr: { "aria-label": "Refresh", title: "Refresh" },

@@ -8,8 +8,9 @@ by comparing candidate paragraphs against a hand-checked reference.
 
 References hold fingerprints (SHA-1 over normalized text), never page text,
 so the truth file stays free of copyrighted course material — the same rule
-as bench/BENCHMARK-SET.md and bench/reading_order_truth.json. Short anchors
-(single headings, footnote cues) remain readable for reviewers.
+as bench/BENCHMARK-SET.md and bench/reading_order_truth.json. Readable
+anchors exist only in local output (`reference_paragraphs` default, used by
+the page-case diff); the committed truth is written with ``anchors=False``.
 
 All functions are pure (no fitz, no model, no vault) so scoring runs in CI.
 """
@@ -72,8 +73,12 @@ def parse_paragraphs(paragraphs):
     }
 
 
-def reference_paragraphs(paragraphs):
-    """Build the committable reference for hand-checked paragraphs."""
+def reference_paragraphs(paragraphs, anchors=True):
+    """Describe hand-checked paragraphs as reference blocks.
+
+    ``anchors`` adds the first 60 characters of each block for local
+    diffs; pass False for anything that is committed.
+    """
     out = []
     for block in paragraphs:
         if not block.strip():
@@ -97,6 +102,9 @@ def reference_paragraphs(paragraphs):
             out.append({"hash": fingerprint(block),
                         "anchor": block[:60].replace("\n", " "),
                         "refs": refs})
+    if not anchors:
+        for block in out:
+            del block["anchor"]
     return out
 
 
@@ -118,7 +126,7 @@ def compare_structure(reference_blocks, candidate_paragraphs):
     sequence, so any merge, split, loss, or reorder fails the comparison.
     """
     parsed = parse_paragraphs(candidate_paragraphs)
-    actual = reference_paragraphs(candidate_paragraphs)
+    actual = reference_paragraphs(candidate_paragraphs, anchors=False)
     hashes_match = ([b["hash"] for b in reference_blocks]
                     == [b["hash"] for b in actual])
     ref_levels = [b["heading"] for b in reference_blocks if "heading" in b]
