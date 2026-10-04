@@ -696,3 +696,12 @@ test("pdf2md check: a missing pdf2md names its path", async () => {
 	child.emit("error", new Error("spawn /x/pdf2md ENOENT"));
 	assert.deepEqual(await promise, { code: null, lines: ["pdf2md not found (/x/pdf2md)"] });
 });
+
+test("pdf2md check: a stopped check says so once", async () => {
+	const child = new FakeChild();
+	const promise = checkPdf2md("/x/pdf2md", "_ocr-preview", "/vault", spawnMock([], child));
+
+	child.stderr.emit("data", "Traceback\n");
+	child.emit("close", null, "SIGTERM");
+	assert.deepEqual(await promise, { code: null, lines: ["Traceback", "pdf2md --check stopped (SIGTERM)"] });
+});

@@ -7,7 +7,7 @@ import {
 	SettingGroup,
 	normalizePath,
 } from "obsidian";
-import { commandPathProblem, findCli } from "./conversion-controller.ts";
+import { INSTALL_DOCS_URL, commandPathProblem, findCli } from "./conversion-controller.ts";
 import { checkEngineHere, checkPdf2mdHere } from "./conversion-host.ts";
 import type OcrPreviewPlugin from "./main.ts";
 import {
@@ -192,13 +192,19 @@ export class SettingsTab extends PluginSettingTab {
 			const hint = setting.descEl.createDiv({ cls: "ocr-pfad-hinweis" });
 			const showHint = (path: string) => {
 				if (path.length > 0) {
-					hint.removeClass("ocr-pfad-ok");
-					hint.setText(commandPathProblem(path) ?? "");
+					hint.removeClass("ocr-path-ok");
+					const problem = commandPathProblem(path);
+					const saved = this.plugin.settings.pdf2mdPath;
+					hint.setText(
+						problem === null || path === saved
+							? (problem ?? "")
+							: `${problem}. Not saved; still using ${saved || "the automatic search"}.`,
+					);
 					return;
 				}
 				const found = findCli("pdf2md");
 				hint.setText(found === null ? "pdf2md was not found." : `Found: ${found}`);
-				hint.toggleClass("ocr-pfad-ok", found !== null);
+				hint.toggleClass("ocr-path-ok", found !== null);
 			};
 			setting.addText((t) => {
 				t.setPlaceholder("Search automatically").setValue(this.plugin.settings.pdf2mdPath);
@@ -206,11 +212,12 @@ export class SettingsTab extends PluginSettingTab {
 				// path is reported and not saved.
 				t.inputEl.addEventListener("change", () => {
 					const path = t.getValue().trim();
+					if (path.length === 0 || commandPathProblem(path) === null) {
+						this.plugin.settings.pdf2mdPath = path;
+						void this.plugin.saveSettings();
+						for (const view of this.plugin.openViews()) view.update();
+					}
 					showHint(path);
-					if (path.length > 0 && commandPathProblem(path) !== null) return;
-					this.plugin.settings.pdf2mdPath = path;
-					void this.plugin.saveSettings();
-					this.plugin.openView()?.update();
 				});
 			});
 			showHint(this.plugin.settings.pdf2mdPath);
@@ -225,11 +232,17 @@ export class SettingsTab extends PluginSettingTab {
 				);
 			const output = setting.descEl.createEl("pre", { cls: "ocr-installation-check" });
 			output.hide();
+			const docs = setting.descEl.createEl("a", {
+				text: "How to install or repair: docs/installation.md",
+				href: INSTALL_DOCS_URL,
+			});
+			docs.hide();
 			setting.addButton((b) =>
 				b.setButtonText("Check").onClick(async () => {
 					b.setDisabled(true).setButtonText("Checking…");
 					output.setText("");
 					output.show();
+					docs.hide();
 					try {
 						const engine = this.plugin.settings.ocrEngine;
 						const [stage2, stage1] = await Promise.all([
@@ -245,6 +258,7 @@ export class SettingsTab extends PluginSettingTab {
 								...(stage1 === null ? [] : [stage1]),
 							].join("\n"),
 						);
+						docs.toggle(stage2.code !== 0 || stage1 !== null);
 					} finally {
 						b.setDisabled(false).setButtonText("Check");
 					}

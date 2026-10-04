@@ -531,13 +531,10 @@ export async function checkPdf2md(
 	});
 	if (result.code === null) {
 		const error = result.stderrLast[result.stderrLast.length - 1] ?? "";
-		lines.push(
-			/ENOENT/.test(error)
-				? `pdf2md not found (${cli})`
-				: result.timeout
-					? "pdf2md --check did not answer"
-					: error,
-		);
+		if (/ENOENT/.test(error)) lines.push(`pdf2md not found (${cli})`);
+		else if (result.timeout) lines.push("pdf2md --check did not answer");
+		else if (result.signal !== null) lines.push(`pdf2md --check stopped (${result.signal})`);
+		else if (!lines.includes(error)) lines.push(error);
 	}
 	return { code: result.code, lines };
 }

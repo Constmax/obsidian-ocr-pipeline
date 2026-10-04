@@ -826,7 +826,7 @@
 	color: var(--text-warning);
 }
 
-.ocr-pfad-hinweis.ocr-pfad-ok {
+.ocr-pfad-hinweis.ocr-path-ok {
 	color: var(--text-muted);
 }
 

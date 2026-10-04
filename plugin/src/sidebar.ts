@@ -3,6 +3,7 @@
 
 import { Notice, setIcon } from "obsidian";
 
+import { INSTALL_DOCS_URL } from "./conversion-controller.ts";
 import type { InventoryEntry } from "./file-actions.ts";
 import type { FolderLocation, Status } from "./types.ts";
 
@@ -194,11 +195,11 @@ export class Sidebar {
 		if ((this.folderMissing || this.inventory.length === 0) && this.pdf2mdMissing()) {
 			this.emptyState(
 				"pdf2md is not installed.",
-				"Install it with setup.sh, see docs/installation.md in the repository. " +
-					"If it is installed elsewhere, set its path in the settings.",
+				"Install it with setup.sh. If it is installed elsewhere, set its path in the settings.",
 				"Open settings",
 				() => this.onSettings?.(),
 			);
+			this.emptyEl.createEl("a", { text: "Installation guide", href: INSTALL_DOCS_URL });
 			return;
 		}
 		if (this.folderMissing) {
