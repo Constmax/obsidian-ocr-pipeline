@@ -31,6 +31,8 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 
 `resolve_engine` in `pdf-lib.sh` turns the requested engine into one resolved value (`apple`, `tesseract` or `paddle`); the OCR arguments and the fallbacks below are derived from that value alone.
 
+Every OCRmyPDF call writes plain PDF (`--output-type pdf`), not OCRmyPDF's default PDF/A. The PDF/A conversion runs Ghostscript over the whole file: it dropped every annotation (highlights included) and split an existing text layer into one font per glyph, which pdf.js renders measurably slower (#210). The Ghostscript steps before OCR (`fix_mediabox` for oversized pages, `gs_downscale` unless `--dpi 0`) still rewrite the file; they keep an existing text layer's fonts and the highlights, but drop an annotation Ghostscript cannot parse, such as one with a broken appearance stream. The column split carries page content only, so split pages lose their annotations.
+
 ### DPI Tuning
 
 - `300`: Sweet spot for OCR — Tesseract's optimal resolution, required for fine legal print in Hemmer scripts (Default)
