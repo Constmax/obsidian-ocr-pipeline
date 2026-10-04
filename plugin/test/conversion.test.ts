@@ -10,6 +10,7 @@ import {
 	convertPdf,
 	abortChild,
 	checkEngine,
+	checkPdf2md,
 	createSearchableCopy,
 	stage1Path,
 	terminateProcessGroup,
@@ -664,9 +665,34 @@ test("engine check: a CLI that cannot start is a reason too", async () => {
 	const promise = checkEngine("paddle", "/x/reprocess-raw", "/vault", spawnMock([], child));
 
 	child.emit("error", new Error("spawn /x/reprocess-raw ENOENT"));
-	assert.equal(await promise, "Error: spawn /x/reprocess-raw ENOENT");
+	assert.equal(await promise, "reprocess-raw not found (/x/reprocess-raw)");
 	const silent = new FakeChild();
 	const quiet = checkEngine("apple", "/x/reprocess-raw", "/vault", spawnMock([], silent));
 	silent.emit("close", 1);
 	assert.equal(await quiet, "reprocess-raw --check-engine failed (exit code 1)");
+});
+
+test("pdf2md check: runs against the preview folder and keeps every line", async () => {
+	const calls: Array<{ command: string; args: string[]; options: object }> = [];
+	const child = new FakeChild();
+	const promise = checkPdf2md("/x/pdf2md", "_ocr-preview", "/vault", spawnMock(calls, child));
+
+	child.stdout.emit("data", "[ ok ] python: 3.12\n[fehlt] mlx_vlm: nicht installiert\n\n—\n");
+	child.stderr.emit("data", "Hinweis: Modell fehlt\n");
+	child.emit("close", 4);
+	assert.deepEqual(await promise, {
+		code: 4,
+		lines: ["[ ok ] python: 3.12", "[fehlt] mlx_vlm: nicht installiert", "—", "Hinweis: Modell fehlt"],
+	});
+	assert.equal(calls[0]!.command, "/x/pdf2md");
+	assert.deepEqual(calls[0]!.args, ["--check", "--out", "_ocr-preview"]);
+	assert.equal((calls[0]!.options as { cwd: string }).cwd, "/vault");
+});
+
+test("pdf2md check: a missing pdf2md names its path", async () => {
+	const child = new FakeChild();
+	const promise = checkPdf2md("/x/pdf2md", "_ocr-preview", "/vault", spawnMock([], child));
+
+	child.emit("error", new Error("spawn /x/pdf2md ENOENT"));
+	assert.deepEqual(await promise, { code: null, lines: ["pdf2md not found (/x/pdf2md)"] });
 });

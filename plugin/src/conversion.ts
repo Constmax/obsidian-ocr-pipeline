@@ -484,6 +484,9 @@ export async function checkEngine(
 		onTimeout: (child) => child.kill("SIGKILL"),
 	});
 	if (result.code === 0) return null;
+	if (result.code === null && result.stderrLast.some((line) => /ENOENT/.test(line))) {
+		return `reprocess-raw not found (${cli})`;
+	}
 	const reason = result.stderrLast
 		.map((line) => line.replace(/^❌\s*/, ""))
 		.join(" ")
@@ -492,6 +495,51 @@ export async function checkEngine(
 	return result.timeout
 		? "reprocess-raw --check-engine did not answer"
 		: `reprocess-raw --check-engine failed (exit code ${result.code ?? result.signal ?? "unknown"})`;
+}
+
+/** `pdf2md` arguments of the installation check, before the preview folder. */
+export const PDF2MD_CHECK_ARGS = ["--check", "--out"] as const;
+
+/** The installation check of one CLI: its exit code and every output line. */
+export interface InstallationCheck {
+	code: number | null;
+	lines: string[];
+}
+
+/**
+ * Stage 2: `pdf2md --check --out <out>` (issue #28). pdf2md prints one line
+ * per check and exits 0 when all pass, 4 when one fails. It prints only at
+ * the end, after importing mlx_vlm, so it gets the engine check's timeout.
+ * Never throws.
+ */
+export async function checkPdf2md(
+	cli: string,
+	out: string,
+	cwd: string,
+	spawnFn: SpawnFunction = spawn,
+): Promise<InstallationCheck> {
+	const lines: string[] = [];
+	const keep = (line: string) => {
+		if (line.trim().length > 0) lines.push(line);
+		return true;
+	};
+	const result = await runProcess(cli, [...PDF2MD_CHECK_ARGS, out], { cwd, stdio: ["ignore", "pipe", "pipe"] }, spawnFn, {
+		idleTimeoutMs: ENGINE_CHECK_TIMEOUT_MS,
+		onTimeout: (child) => child.kill("SIGKILL"),
+		onStdoutLine: keep,
+		onStderrLine: keep,
+	});
+	if (result.code === null) {
+		const error = result.stderrLast[result.stderrLast.length - 1] ?? "";
+		lines.push(
+			/ENOENT/.test(error)
+				? `pdf2md not found (${cli})`
+				: result.timeout
+					? "pdf2md --check did not answer"
+					: error,
+		);
+	}
+	return { code: result.code, lines };
 }
 
 /**

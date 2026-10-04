@@ -32,6 +32,7 @@ import type { FolderLocation, Preview } from "./types.ts";
 import { parsePreview, buildPreview, previewFormatWarning } from "./preview-parser.ts";
 import { LatestTaskQueue } from "./open-queue.ts";
 import { createPageCases } from "./conversion-host.ts";
+import { pdf2mdExecutable, pdf2mdMissing } from "./conversion-controller.ts";
 import type { PageCase, PageCases } from "./page-cases.ts";
 
 export const VIEW_TYPE = "ocr-preview-comparison";
@@ -107,7 +108,9 @@ export class OcrComparisonView extends ItemView {
 		// own scope, registerHotkeys crashes on `undefined` and the hotkeys
 		// never fire.
 		this.scope = new Scope(this.app.scope);
-		this.pageCases = createPageCases(this.app);
+		this.pageCases = createPageCases(this.app, () =>
+			pdf2mdExecutable(this.plugin.settings.pdf2mdPath),
+		);
 	}
 
 	getViewType(): string {
@@ -136,6 +139,7 @@ export class OcrComparisonView extends ItemView {
 		this.sidebar = new Sidebar(
 			listCol,
 			() => this.plugin.settings.previewFolder,
+			() => pdf2mdMissing(this.plugin.settings.pdf2mdPath),
 		);
 		this.sidebar.onSelect = (name) => this.safelyOpenPreview(name);
 		this.sidebar.onRefresh = () => void this.reconcile();

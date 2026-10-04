@@ -5,8 +5,8 @@ import { FileSystemAdapter, Notice, Platform, TFile, normalizePath, type App } f
 
 import { homedir } from "os";
 
-import { resolveCli, resolvePdf2md, type ConversionHost } from "./conversion-controller.ts";
-import { checkEngine, runPageCase } from "./conversion.ts";
+import { pdf2mdExecutable, resolveCli, type ConversionHost } from "./conversion-controller.ts";
+import { checkEngine, checkPdf2md, runPageCase, type InstallationCheck } from "./conversion.ts";
 import { PageCases } from "./page-cases.ts";
 import { isConvertible } from "./input-formats.ts";
 import type { Inventory } from "./file-actions.ts";
@@ -32,19 +32,46 @@ export function checkEngineHere(app: App, engine: OcrEngine): Promise<string | n
  * so the preview's vault-relative path names it. Null without file-system
  * access.
  */
-export function createPageCases(app: App): PageCases | null {
+export function createPageCases(app: App, pdf2md: () => string): PageCases | null {
 	const adapter = app.vault.adapter;
 	if (!Platform.isDesktopApp || !(adapter instanceof FileSystemAdapter)) return null;
 	const cwd = adapter.getBasePath();
-	return new PageCases((args) => runPageCase(args, resolvePdf2md(), cwd));
+	return new PageCases((args) => runPageCase(args, pdf2md(), cwd));
+}
+
+/**
+ * `pdf2md --check` against the preview folder, run from the vault folder
+ * like a conversion. Without file-system access it reports that instead.
+ */
+export function checkPdf2mdHere(app: App, settings: Settings): Promise<InstallationCheck> {
+	const adapter = app.vault.adapter;
+	if (!(adapter instanceof FileSystemAdapter)) {
+		return Promise.resolve({ code: null, lines: ["The check requires file system access (Desktop)."] });
+	}
+	return checkPdf2md(
+		pdf2mdExecutable(settings.pdf2mdPath),
+		normalizePath(settings.previewFolder),
+		adapter.getBasePath(),
+	);
+}
+
+/** A Notice whose URLs are links, e.g. the installation docs in a failure. */
+export function noticeWithLinks(message: string): void {
+	const fragment = createFragment();
+	let last = 0;
+	for (const match of message.matchAll(/https:\/\/[^\s)]*[^\s).,]/g)) {
+		fragment.appendText(message.slice(last, match.index));
+		fragment.createEl("a", { text: match[0], href: match[0] });
+		last = match.index + match[0].length;
+	}
+	fragment.appendText(message.slice(last));
+	new Notice(fragment);
 }
 
 export function createSearchableCopyHost(app: App, settings: () => Settings): SearchableCopyHost {
 	return {
 		isDesktop: Platform.isDesktopApp,
-		notify(message) {
-			new Notice(message);
-		},
+		notify: noticeWithLinks,
 		// The adapter checks the disk, so an unindexed or hidden file counts too.
 		exists: (path) => app.vault.adapter.exists(normalizePath(path)),
 		settings: () => settings(),
@@ -145,9 +172,7 @@ export function createConversionHost(
 		},
 	};
 	return {
-		notify(message) {
-			new Notice(message);
-		},
+		notify: noticeWithLinks,
 		showProgress(message, onCancel) {
 			current = new ProgressPresenter(surfaces, message, onCancel);
 			return current;

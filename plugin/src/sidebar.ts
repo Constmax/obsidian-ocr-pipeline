@@ -73,6 +73,7 @@ export class Sidebar {
 	constructor(
 		root: HTMLElement,
 		private previewFolder: () => string,
+		private pdf2mdMissing: () => boolean,
 	) {
 		this.header = root.createDiv({ cls: "ocr-liste-kopf" });
 		this.header.createSpan({ cls: "ocr-liste-titel", text: "Previews" });
@@ -190,6 +191,16 @@ export class Sidebar {
 		this.emptyEl.empty();
 		this.emptyEl.hide();
 
+		if ((this.folderMissing || this.inventory.length === 0) && this.pdf2mdMissing()) {
+			this.emptyState(
+				"pdf2md is not installed.",
+				"Install it with setup.sh, see docs/installation.md in the repository. " +
+					"If it is installed elsewhere, set its path in the settings.",
+				"Open settings",
+				() => this.onSettings?.(),
+			);
+			return;
+		}
 		if (this.folderMissing) {
 			this.emptyState(
 				`The preview folder "${this.previewFolder()}" does not exist.`,
