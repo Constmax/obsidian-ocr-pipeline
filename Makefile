@@ -80,4 +80,4 @@ test-py:
 # Without OCRMYPDF_PYTHON pointing at an ocrmypdf install these tests skip;
 # CI sets REQUIRE_OCRMYPDF=1 so a missing install fails there instead.
 test-ocrmypdf:
-	$(OCRMYPDF_PYTHON) -m pytest bin/test/test_hocr_text_layer_order.py bin/test/test_appleocr_no_boxes.py ocrmypdf_paddle/test -q
+	$(OCRMYPDF_PYTHON) -m pytest bin/test/test_hocr_text_layer_order.py bin/test/test_appleocr_no_boxes.py bin/test/test_existing_text_layer.py ocrmypdf_paddle/test -q
