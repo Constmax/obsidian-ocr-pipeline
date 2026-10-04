@@ -63,11 +63,11 @@ RESOLVED_ENGINE=tesseract; APPLE_AVAILABLE=true; SPLIT_COLUMNS=false; ENGINE_DES
 PYTHON_BIN="{python_bin}"
 WORK_DIR="$PWD"
 ocr_args=(-l deu --deskew)
-# Only the engine switch rebuilds its args with --force-ocr.
+# Only the engine switch rebuilds its args, with --skip-text.
 run_ocr() {{
     local args="$3[*]"
     case " ${{!args}} " in
-        *" --force-ocr "*) echo good > "$2" ;;
+        *" --skip-text "*) echo good > "$2" ;;
         *) echo bad > "$2" ;;
     esac
 }}
