@@ -38,7 +38,7 @@ engine.
 - A source that changed during OCR, or is read-only or locked, or sits in a
   folder that is not writable, is not replaced.
 - In-place adds only a text layer (`pdf-combine --text-only`): no
-  Ghostscript step (MediaBox fix, downscaling, column split), no deskew,
+  Ghostscript step (MediaBox fix, downscaling, column split), no rotation or deskew,
   `--optimize 0`. The page images and annotations stay byte for byte. A PDF
   whose pages all have text is refused, because OCRmyPDF would add nothing.
 - Every run can be undone: the replaced file is kept by `--keep-original`

@@ -60,8 +60,8 @@ Options:
                         modified. FILE must not exist yet and is never
                         overwritten; on failure nothing is written.
    --in-place           Add a text layer to the source and keep its pages
-                        as they are (no downscaling, MediaBox fix, deskew,
-                        optimization or column split). On failure nothing is
+                        as they are (no downscaling, MediaBox fix, rotation,
+                        deskew, optimization or column split). On failure nothing is
                         written (no _FAILED_ file); the source stays
                         unchanged if it was modified while OCR ran. Refused
                         when every page already has text.
