@@ -376,6 +376,26 @@ def test_skewed_page_is_read_like_the_upright_page():
         assert texts(order_lines(as_recognized(rotated(upright, degrees)), W, H)) == expected
 
 
+def sloped(text, x0, y0, x1, slope, height=LINE):
+    """A line starting at (x0, y0) whose right end moves by `slope` per pixel."""
+    rise = slope * (x1 - x0)
+    return TextLine(
+        text, ((x0, y0), (x1, y0 + rise), (x1, y0 + rise + height), (x0, y0 + height)), 0.9
+    )
+
+
+def bowed_column(prefix, x0, top, count, slope):
+    return [sloped(f"{prefix}{i}", x0, top + i * STEP, 2280, slope) for i in range(count)]
+
+
+def test_bowed_right_column_beside_a_straight_left_column_keeps_its_gutter():
+    # Scanned near the spine: the right column's lines rise while both column
+    # edges stay upright. The median slope of all lines is no page rotation;
+    # turning by it tilts the left column into the narrow gutter.
+    lines = column("L", (200, 1160), 400, 20) + bowed_column("R", 1212, 400, 20, -0.08)
+    assert texts(order_lines(as_recognized(lines), W, H)) == names("L", 20) + names("R", 20)
+
+
 def test_output_is_a_permutation_with_unplaceable_lines_last():
     lines = column("L", LEFT, 400, 10) + column("R", RIGHT, 400, 10)
     empty = box("   ", 200, 2000, 900)

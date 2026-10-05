@@ -7,7 +7,9 @@ alternate line by line. order_lines() rebuilds the reading order from line
 geometry alone:
 
 1. Estimate the page skew from long lines and measure every line in deskewed
-   coordinates.
+   coordinates. When step 3 finds no gutter there, it looks again in page
+   coordinates: one column bowed towards the spine slopes its lines while
+   the column edges stay upright, so the median slope is no rotation.
 2. Cut off a header and a footer band at a horizontal gap that no line
    crosses, near the top or the bottom of the page.
 3. Look for a gutter between 30 % and 70 % of the text width that almost no
@@ -97,9 +99,16 @@ def order_lines(lines: Sequence[TextLine], width: int, height: int) -> list[Text
     boxes, unplaced = _measure(lines, width, height)
     if len(boxes) < 2:
         return list(lines)
-    h = statistics.median(box.h for box in boxes)
-    header, body, footer = _bands(boxes, height, h)
-    gutter = _gutter(body, height, h)
+    layout = _layout(boxes, height)
+    if layout[-1] is None:
+        # One column bowed towards the spine slopes its lines while both
+        # column edges stay upright; their median slope is no page rotation,
+        # and turning by it can tilt the straight column into the gutter.
+        upright, _ = _measure(lines, width, height, deskew=False)
+        retry = _layout(upright, height)
+        if retry[-1] is not None:
+            boxes, layout = upright, retry
+    h, header, body, footer, gutter = layout
     if gutter is None:
         middle = _column(body, h)
     else:
@@ -109,8 +118,17 @@ def order_lines(lines: Sequence[TextLine], width: int, height: int) -> list[Text
     return [lines[box.index] for box in ordered] + [lines[i] for i in unplaced]
 
 
+def _layout(
+    boxes: list[_Box], height: int
+) -> tuple[float, list[_Box], list[_Box], list[_Box], float | None]:
+    """Line height, header, body and footer bands, and the gutter if any."""
+    h = statistics.median(box.h for box in boxes)
+    header, body, footer = _bands(boxes, height, h)
+    return h, header, body, footer, _gutter(body, height, h)
+
+
 def _measure(
-    lines: Sequence[TextLine], width: int, height: int
+    lines: Sequence[TextLine], width: int, height: int, deskew: bool = True
 ) -> tuple[list[_Box], list[int]]:
     placed: list[tuple[int, tuple[Point, ...]]] = []
     unplaced: list[int] = []
@@ -120,7 +138,7 @@ def _measure(
             unplaced.append(i)
         else:
             placed.append((i, polygon))
-    angle = _skew([polygon for _, polygon in placed])
+    angle = _skew([polygon for _, polygon in placed]) if deskew else 0.0
     cos, sin = math.cos(-angle), math.sin(-angle)
     cx, cy = width / 2, height / 2
     boxes = []

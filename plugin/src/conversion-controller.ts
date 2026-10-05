@@ -4,9 +4,9 @@
 // Stage-2 result. Free of Obsidian imports so it runs under `node --test`; the
 // plugin supplies a ConversionHost.
 
-import { existsSync } from "fs";
+import { accessSync, constants, existsSync, statSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { isAbsolute, join } from "path";
 import type { ChildProcess } from "child_process";
 
 import {
@@ -145,21 +145,63 @@ export interface FailureDescription {
 	message: string;
 }
 
-/** Candidate order: ~/bin, /usr/local/bin, then PATH; falls back to ~/bin. */
+/** Where setup.sh and the installation troubleshooting are documented. */
+export const INSTALL_DOCS_URL =
+	"https://github.com/Constmax/obsidian-ocr-pipeline/blob/main/docs/installation.md";
+
+/** Failure detail for a CLI that could not be started because it is missing. */
+export function missingCliDetail(name: string): string {
+	return `${name} not found. Install it with setup.sh: ${INSTALL_DOCS_URL}`;
+}
+
+/** Candidate order: ~/bin, /usr/local/bin, then PATH; null when none exists. */
+export function findCli(
+	name: string,
+	searchPath: string = process.env.PATH ?? "",
+	home: string = homedir(),
+	exists: (candidate: string) => boolean = existsSync,
+): string | null {
+	const candidates = [join(home, "bin", name), join("/usr/local/bin", name)];
+	for (const part of searchPath.split(":")) {
+		if (part.length > 0) candidates.push(join(part, name));
+	}
+	return candidates.find(exists) ?? null;
+}
+
+/** Like findCli, but falls back to ~/bin, so a start error names the expected place. */
 export function resolveCli(
 	name: string,
 	searchPath: string = process.env.PATH ?? "",
 	home: string = homedir(),
 	exists: (candidate: string) => boolean = existsSync,
 ): string {
-	const candidates = [join(home, "bin", name), join("/usr/local/bin", name)];
-	for (const part of searchPath.split(":")) {
-		if (part.length > 0) candidates.push(join(part, name));
+	return findCli(name, searchPath, home, exists) ?? join(home, "bin", name);
+}
+
+/** Why `path` cannot be run as a command, or null when it can. */
+export function commandPathProblem(path: string): string | null {
+	if (!isAbsolute(path)) return "Enter a full path, starting with /";
+	try {
+		if (!statSync(path).isFile()) return "This is not a file";
+		accessSync(path, constants.X_OK);
+		return null;
+	} catch (err) {
+		return (err as NodeJS.ErrnoException).code === "ENOENT"
+			? "No file at this path"
+			: "This file is not executable";
 	}
-	for (const candidate of candidates) {
-		if (exists(candidate)) return candidate;
-	}
-	return candidates[0]!;
+}
+
+/** The pdf2md command: the configured path, else the search of resolveCli. */
+export function pdf2mdExecutable(configured: string): string {
+	return configured.length > 0 ? configured : resolvePdf2md();
+}
+
+/** True when no runnable pdf2md is configured or found. */
+export function pdf2mdMissing(configured: string): boolean {
+	return configured.length > 0
+		? commandPathProblem(configured) !== null
+		: findCli("pdf2md") === null;
 }
 
 export function resolvePdf2md(
@@ -205,7 +247,7 @@ export function classifyFailure(
 	} else if (result.code === EXIT_CODES.checkFailed) {
 		// pdf2md's EXIT_CHECK: a dependency check failed.
 		kind = "missing-dependency";
-		codeText = `Code ${EXIT_CODES.checkFailed}`;
+		codeText = `Code ${EXIT_CODES.checkFailed}, an installation check failed`;
 	} else {
 		kind = "exit-code";
 		codeText = `Code ${result.code}`;
@@ -214,7 +256,10 @@ export function classifyFailure(
 	let extra = detail.length > 0 ? ` — ${detail}` : "";
 	if (result.code === null && /ENOENT/.test(detail)) {
 		if (kind === "start-error") kind = "not-found";
-		extra = " — pdf2md not found. Please run setup.sh in repo.";
+		extra = ` — ${missingCliDetail("pdf2md")}`;
+	}
+	if (kind === "missing-dependency") {
+		extra = `${extra.replace(/\.$/, "")}. Settings → General → Check installation lists every check`;
 	}
 	return { kind, message: `OCR Preview: Conversion failed (${codeText})${extra}.` };
 }
@@ -241,7 +286,7 @@ export function classifyOcrFailure(result: ConversionResult): FailureDescription
 	} else if (result.code === null) {
 		kind = /ENOENT/.test(detail) ? "not-found" : "start-error";
 		codeText = "Start error";
-		if (kind === "not-found") detail = "reprocess-raw not found. Please run setup.sh in repo";
+		if (kind === "not-found") detail = missingCliDetail("reprocess-raw");
 	} else {
 		kind = "exit-code";
 		codeText = `Code ${result.code}`;

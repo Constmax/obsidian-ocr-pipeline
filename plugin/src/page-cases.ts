@@ -7,6 +7,7 @@
 // Free of Obsidian imports so it runs under `node --test`.
 
 import type { PageCaseResult } from "./conversion.ts";
+import { missingCliDetail } from "./conversion-controller.ts";
 
 /** Runs `pdf2md <args>` from the vault root; never rejects. */
 export type CaseRunner = (args: string[]) => Promise<PageCaseResult>;
@@ -63,7 +64,7 @@ export function parseCaseLine(line: string): PageCase | null {
 function failureReason(result: PageCaseResult): string {
 	const last = result.stderrLast[result.stderrLast.length - 1] ?? "";
 	if (result.code === null && /ENOENT/.test(last)) {
-		return "pdf2md not found. Please run setup.sh in repo";
+		return missingCliDetail("pdf2md");
 	}
 	if (result.timeout) return "pdf2md case did not answer";
 	const reason = last
