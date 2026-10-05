@@ -168,7 +168,7 @@ function setup(host = new FakeHost()) {
 const OCR_REQUEST: TextLayerRequest = {
 	source: PDF,
 	engine: "apple",
-	splitColumns: true,
+	keepOriginal: ".ocr-originals/1/case-01.pdf",
 	allowPages: "1",
 };
 
@@ -556,7 +556,7 @@ test("runOcr: passes paths and options, indeterminate progress, leaves success t
 	]);
 	assert.equal(call.spawnFn, undefined);
 	assert.equal(call.options.engine, "apple");
-	assert.equal(call.options.splitColumns, true);
+	assert.equal(call.options.keepOriginal, ".ocr-originals/1/case-01.pdf");
 	assert.equal(call.options.allowPages, "1");
 
 	call.options.onChild!(child);

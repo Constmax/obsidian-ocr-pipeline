@@ -52,7 +52,8 @@ export type { OcrEngine };
 export interface TextLayerOptions {
 	/** Omitted: the CLI default (`auto`). */
 	engine?: OcrEngine;
-	splitColumns?: boolean;
+	/** `--keep-original`: the replaced PDF stays at this path. */
+	keepOriginal?: string;
 	/** Pages exempt from the B5 gate, e.g. "1,5-7". */
 	allowPages?: string;
 	onChild?: (child: ChildProcess) => void;
@@ -507,7 +508,7 @@ export function addTextLayer(
 ): Promise<TextLayerResult> {
 	const args = [source, "--in-place"];
 	if (options.engine !== undefined) args.push(...engineArgs(options.engine));
-	if (options.splitColumns) args.push("--split-columns");
+	if (options.keepOriginal !== undefined) args.push("--keep-original", options.keepOriginal);
 	if (options.allowPages && options.allowPages.length > 0) {
 		args.push("--allow-pages", options.allowPages);
 	}
