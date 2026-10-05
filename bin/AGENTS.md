@@ -6,14 +6,14 @@ split-merged pages, leptonica rewriting `/tmp` paths on macOS).
 
 ## Plugin path
 
-The plugin's "Create searchable copy (OCR)" runs `reprocess-raw --output`
-(`plugin/src/conversion.ts`, `createSearchableCopy`) with the engine,
-column-split and maximum-DPI (`--dpi`) settings the user chose
-(`plugin/src/ocr-settings.ts`). With
-`--engine paddle`, `lib_init` ignores the split flags: PaddleOCR reads whole
-pages (#153). `auto` (the plugin default) uses PaddleOCR fast when it is ready,
-except with a split request, which keeps Apple Vision/Tesseract (#198). A change reaches the user only through the flags and engines
-that call passes.
+The plugin's "Add OCR text layer" runs `reprocess-raw --in-place
+--keep-original <path>` (`plugin/src/conversion.ts`, `addTextLayer`) with the
+engine the user chose (`plugin/src/ocr-settings.ts`). `--in-place` passes
+`pdf-combine --text-only`: no `fix_mediabox`, no `gs_downscale`, no rotation or deskew,
+`--optimize 0`, no column split (#180). `auto` (the plugin default) uses
+PaddleOCR fast when it is ready (#198). A change reaches the user only through
+these flags and the engines; the split, `--dpi` and `--force-ocr` paths are
+shell-only.
 
 ## Pipeline
 

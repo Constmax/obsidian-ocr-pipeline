@@ -1,4 +1,4 @@
-// Obsidian side of the ConversionController and the searchable-copy action:
+// Obsidian side of the ConversionController and the "Add OCR text layer" action:
 // Notices, vault paths, the inventory, the comparison view, and opening files.
 
 import { FileSystemAdapter, Notice, Platform, TFile, normalizePath, type App } from "obsidian";
@@ -11,15 +11,15 @@ import { PageCases } from "./page-cases.ts";
 import { isConvertible } from "./input-formats.ts";
 import type { Inventory } from "./file-actions.ts";
 import { ExemptionModal } from "./exemption-modal.ts";
+import type { TextLayerHost } from "./text-layer.ts";
 import { confirmInModal } from "./confirm-modal.ts";
 import { ProgressPresenter, type ProgressNotice, type ProgressSurfaces } from "./progress-display.ts";
-import type { SearchableCopyHost } from "./searchable-copy.ts";
 import type { OcrEngine } from "./ocr-settings.ts";
 import type { Settings } from "./settings.ts";
 
 /**
  * `reprocess-raw --check-engine` for this machine, run from the vault folder
- * like a searchable copy: null when `engine` is usable, otherwise the reason.
+ * like the OCR text layer: null when `engine` is usable, otherwise the reason.
  */
 export function checkEngineHere(app: App, engine: OcrEngine): Promise<string | null> {
 	const adapter = app.vault.adapter;
@@ -68,21 +68,45 @@ export function noticeWithLinks(message: string): void {
 	new Notice(fragment);
 }
 
-export function createSearchableCopyHost(app: App, settings: () => Settings): SearchableCopyHost {
+/** Hidden vault folder where `--keep-original` leaves a replaced PDF until it is trashed. */
+const ORIGINALS_FOLDER = ".ocr-originals";
+
+export function createTextLayerHost(app: App, settings: () => Settings): TextLayerHost {
 	return {
 		isDesktop: Platform.isDesktopApp,
 		notify: noticeWithLinks,
-		// The adapter checks the disk, so an unindexed or hidden file counts too.
-		exists: (path) => app.vault.adapter.exists(normalizePath(path)),
 		settings: () => settings(),
-		async openPdf(path) {
-			const file = app.vault.getFileByPath(normalizePath(path));
-			if (file === null) return false;
-			await app.workspace.getLeaf("tab").openFile(file);
-			return true;
-		},
-		wait: (ms) => new Promise((done) => window.setTimeout(done, ms)),
 		checkEngine: (engine) => checkEngineHere(app, engine),
+		async originalSlot(fileName) {
+			// One folder per run keeps the file name, which the trash shows.
+			const folder = normalizePath(`${ORIGINALS_FOLDER}/${Date.now()}`);
+			try {
+				if (await app.vault.adapter.exists(folder)) return null;
+				await app.vault.adapter.mkdir(folder);
+				return `${folder}/${fileName}`;
+			} catch {
+				return null;
+			}
+		},
+		async trashOriginal(path) {
+			try {
+				if (await app.vault.adapter.trashSystem(path)) return true;
+				await app.vault.adapter.trashLocal(path);
+				return true;
+			} catch {
+				return false;
+			}
+		},
+		async releaseOriginalSlot(path) {
+			const folder = path.slice(0, path.lastIndexOf("/"));
+			try {
+				const { files, folders } = await app.vault.adapter.list(folder);
+				// Only an empty folder: rmdir(folder, false) fails with EISDIR in Obsidian 1.13.
+				if (files.length === 0 && folders.length === 0) await app.vault.adapter.rmdir(folder, true);
+			} catch {
+				// An empty hidden folder left behind is harmless.
+			}
+		},
 		offerExemptions(offer) {
 			// Stays until the user acts on it or clicks it away.
 			const notice = new Notice(offer.message, 0);

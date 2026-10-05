@@ -1,12 +1,21 @@
 # Safe Stage-1 OCR from the Obsidian review view
 
 **Status:** Implemented (#63 `reprocess-raw --output`, #64 process module, #65
-settings, #66 action and entry points, #67 page exemptions). Kept as the design
+settings, #66 action and entry points, #67 page exemptions); since #180 the
+action writes into the source with `reprocess-raw --in-place`. Kept as the design
 record: the steps below describe the intent, and the *Implemented in* notes
 say where the code landed. Current behavior is documented in
 [`review-view.md`](review-view.md) and [`scripts-detail.md`](scripts-detail.md).
 PaddleOCR in the engine setting (#73): implemented, fast mode only, offered
 where `reprocess-raw --check-engine` passes; #71 decides whether it stays.
+
+**Superseded in part by #180:** the user decided that the action writes the
+text layer into the source PDF instead of a sibling copy. The action is now
+**Add OCR text layer** and runs `reprocess-raw --in-place`, with the safety
+invariants below (updated for #180). The 1.0 review (#234) added three
+safeguards: the replaced file goes to the trash, in-place adds only a text
+layer, and a PDF whose pages all have text is refused. Sections 1 and 3 below
+describe the original copy design.
 
 ## Goal
 
@@ -20,11 +29,22 @@ engine.
 ## Safety invariants
 
 - The plugin remains a thin desktop client around installed Stage-1 CLIs.
-- The source PDF is untouched by default.
-- A destination appears in the vault only after processing and all quality
-  gates succeed.
-- Failure or cancellation leaves no partial PDF or `_FAILED_` artifact in the
-  vault.
+- The source PDF changes only after processing and all quality gates
+  succeed, in one atomic rename of a hidden same-folder copy over it; it is
+  never a partial file. (Before #180: the source was untouched and a sibling
+  destination appeared only after the gates passed.)
+- Failure or cancellation leaves the source byte-identical and no partial
+  PDF, hidden temporary copy or `_FAILED_` artifact in the vault.
+- A source that changed during OCR, or is read-only or locked, or sits in a
+  folder that is not writable, is not replaced.
+- In-place adds only a text layer (`pdf-combine --text-only`): no
+  Ghostscript step (MediaBox fix, downscaling, column split), no rotation or deskew,
+  `--optimize 0`. The page images and annotations stay byte for byte. A PDF
+  whose pages all have text is refused, because OCRmyPDF would add nothing.
+- Every run can be undone: the replaced file is kept by `--keep-original`
+  and the plugin moves it to the trash.
+- Once the rename starts, cancellation is ignored, so the reported outcome is
+  the real one.
 - Existing text is preserved by default. Destructive force-OCR behavior is a
   separate, exceptional workflow.
 - Cancellation terminates the whole process group, including OCRmyPDF and its

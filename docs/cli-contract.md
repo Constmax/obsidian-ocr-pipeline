@@ -38,6 +38,7 @@ Stage 1 has no structured channel. The plugin reads three kinds of human lines, 
 
 - **B5 short pages** (stderr of `column_tools.py verify-pages`, passed through by `reprocess-raw`): `   🗑️  Page 3: only 5 characters (min: 50)`. The plugin collects the page numbers with `SHORT_PAGE_LINE` and offers them as exemptions.
 - **Failure reason:** the last line starting with `❌` (stdout or stderr), e.g. `❌ File not found: missing.pdf`. The plugin shows it without the marker.
+- **Run mode** (#180): the plugin runs `reprocess-raw <pdf> --in-place --keep-original <vault path>`. Every refusal, including `❌ Source changed during processing, not replacing it: …` and `❌ Every page already has a text layer, nothing to add: …`, reaches the user through the failure-reason rule above; none is pinned separately. Once the replacing rename starts, the script ignores `SIGTERM`, so a cancelled run never reports success and a successful one never reports cancellation.
 - **Engine check** (#73, `stage1.checkEngine`): `reprocess-raw --check-engine --engine paddle --paddle-mode fast` exits `0` (`success`) when a run would start on that engine and `4` (`check-failed`) otherwise, with the reason on stderr. The plugin joins the last stderr lines, drops the `❌` marker, and shows the result as the reason PaddleOCR is not offered or not used. Stage-1 usage errors still exit `1`.
 
 ## 4. Page Cases (`pdf2md case`)

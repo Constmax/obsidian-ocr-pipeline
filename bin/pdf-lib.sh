@@ -51,6 +51,7 @@ NO_QUALITY_GATE=false     # --no-quality-gate flag
 SPLIT_COLUMNS=false       # --split-columns flag
 SPLIT_ALL_PAGES=false     # --split-columns-all flag (force --all instead of per-page --auto)
 KEEP_SPLIT=false          # --keep-split flag (suppress merge)
+TEXT_ONLY=false           # --text-only flag: add a text layer, keep the pages (reprocess-raw --in-place)
 SPLIT_MAP=""              # Path to split_map.json (set by split_two_column_pdf)
 PYTHON_BIN=""             # Python with pikepdf (set by lib_init)
 PIPELINE_PAGES=""         # Page count of the merged input (set by run_pdf_pipeline)
@@ -120,6 +121,7 @@ parse_common_option() {
         --split-columns)     SPLIT_COLUMNS=true ;;
         --split-columns-all) SPLIT_COLUMNS=true; SPLIT_ALL_PAGES=true ;;
         --keep-split)        KEEP_SPLIT=true ;;
+        --text-only)         TEXT_ONLY=true ;;
         --no-quality-gate)   NO_QUALITY_GATE=true ;;
         *) usage_error "Unknown option: $1" ;;
     esac
@@ -506,17 +508,21 @@ build_ocr_args() {
     # column halves (own orientation detection is unreliable — see
     # "confidence too low to rotate" warnings observed on split pages) and
     # mismatched rotation between the two halves would break the merge.
-    if [ "$no_rotate" = false ]; then
+    # --text-only keeps the pages as they are, /Rotate included (#180).
+    if [ "$no_rotate" = false ] && [ "$TEXT_ONLY" = false ]; then
         args+=(--rotate-pages)
     fi
-    if [ "$no_deskew" = false ]; then
+    if [ "$no_deskew" = false ] && [ "$TEXT_ONLY" = false ]; then
         args+=(--deskew)
     fi
     # PaddleOCR runs one OCR job: parallel workers each load the models.
     local jobs="$JOBS"
     [ "$engine" = paddle ] && jobs=1
+    # --optimize 0 leaves the page images as they are.
+    local optimize="$OPTIMIZE_LEVEL"
+    [ "$TEXT_ONLY" = true ] && optimize=0
     args+=(
-        --optimize "$OPTIMIZE_LEVEL"
+        --optimize "$optimize"
         --jobs "$jobs"
         --max-image-mpixels "$MAX_IMAGE_MPIXELS"
     )
@@ -529,7 +535,8 @@ build_ocr_args() {
             args=(--plugin ocrmypdf_paddle --paddle-mode "${PADDLE_MODE:-accurate}" "${args[@]}") ;;
         tesseract)
             args+=(--tesseract-pagesegmode 1)
-            if [ "$use_clean" = true ] && [ "$HAS_UNPAPER" = true ]; then
+            # --clean only cleans the OCR input, but --text-only runs no unpaper at all.
+            if [ "$use_clean" = true ] && [ "$HAS_UNPAPER" = true ] && [ "$TEXT_ONLY" = false ]; then
                 args+=(--clean)
             fi ;;
     esac
@@ -699,7 +706,9 @@ _ocr_attempt() {
 # back. Writes <output.pdf> only as a merged result that passed the gate.
 _split_retry() {
     local input="$1" output="$2" args_name="$3" scratch_dir="$4"
-    if [ "$SPLIT_COLUMNS" = true ] || [ "$no_split" = true ] || [ -z "$PYTHON_BIN" ]; then
+    # The split re-renders every page with Ghostscript (#180).
+    if [ "$SPLIT_COLUMNS" = true ] || [ "$no_split" = true ] || [ -z "$PYTHON_BIN" ] \
+        || [ "$TEXT_ONLY" = true ]; then
         return 1
     fi
     echo "   🔄 Retry with --split-columns..."
@@ -924,13 +933,20 @@ _pdf_pipeline_steps() {
 
     # ── MediaBox fix, then downscale ──
     # The fix must come first: oversized pages rasterize at 140 MP at 300 DPI.
-    local pre_ocr="$run_dir/fixed.pdf"
-    fix_mediabox "$merged" "$pre_ocr"
-    if [ "$TARGET_DPI" -gt 0 ]; then
-        gs_downscale "$pre_ocr" "$run_dir/downscaled.pdf" "$TARGET_DPI"
-        pre_ocr="$run_dir/downscaled.pdf"
+    # --text-only keeps Ghostscript off the pages: it drops annotations whose
+    # appearance stream it cannot read (#243) and re-encodes images.
+    local pre_ocr="$merged"
+    if [ "$TEXT_ONLY" = true ]; then
+        echo "   ⏭️  Text layer only: pages kept as they are"
     else
-        echo "   ⏭️  Downscaling skipped (--dpi 0)"
+        pre_ocr="$run_dir/fixed.pdf"
+        fix_mediabox "$merged" "$pre_ocr"
+        if [ "$TARGET_DPI" -gt 0 ]; then
+            gs_downscale "$pre_ocr" "$run_dir/downscaled.pdf" "$TARGET_DPI"
+            pre_ocr="$run_dir/downscaled.pdf"
+        else
+            echo "   ⏭️  Downscaling skipped (--dpi 0)"
+        fi
     fi
 
     # ── Column split ──
@@ -1125,6 +1141,9 @@ lib_init() {
     fi
     if [ "$SPLIT_COLUMNS" = true ]; then
         echo "   📐 --split-columns active (split + re-merge)"
+    fi
+    if [ "$TEXT_ONLY" = true ]; then
+        echo "   📄 --text-only active (pages kept: no downscale, deskew or optimization)"
     fi
     return 0
 }

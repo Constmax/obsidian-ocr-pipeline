@@ -10,8 +10,8 @@ import {
 	convertPdf,
 	abortChild,
 	checkEngine,
+	addTextLayer,
 	checkPdf2md,
-	createSearchableCopy,
 	stage1Path,
 	terminateProcessGroup,
 	type ConversionResult,
@@ -373,25 +373,23 @@ test("empty pages string: no --seiten in args", async () => {
 	]);
 });
 
-// ── Stage 1: createSearchableCopy ──────────────────────────────────────────
+// ── Stage 1: addTextLayer ──────────────────────────────────────────
 
-test("searchable copy: exact arguments, own process group, extended PATH", async () => {
+test("text layer: exact arguments, own process group, extended PATH", async () => {
 	const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
 	const child = new FakeChild();
 	let reported: unknown = null;
 	// A launchd-like PATH, so the expectation does not depend on the shell running the tests.
 	const savedPath = process.env.PATH;
 	process.env.PATH = "/usr/bin:/bin";
-	const promise = createSearchableCopy(
+	const promise = addTextLayer(
 		"raw/case-01.pdf",
-		"raw/case-01-ocr.pdf",
 		"/Users/test/bin/reprocess-raw",
 		"/vault",
 		spawnMock(calls, child),
 		{
 			engine: "tesseract",
-			splitColumns: true,
-			maxDpi: 250,
+			keepOriginal: ".ocr-originals/1/case-01.pdf",
 			allowPages: "1,5-7",
 			onChild: (k) => {
 				reported = k;
@@ -400,7 +398,7 @@ test("searchable copy: exact arguments, own process group, extended PATH", async
 	);
 	process.env.PATH = savedPath;
 
-	child.stdout.emit("data", "✅ Written: /vault/raw/case-01-ocr.pdf\n");
+	child.stdout.emit("data", "✅ Overwritten: /vault/raw/case-01.pdf\n");
 	child.emit("close", 0);
 	const result = await promise;
 
@@ -413,13 +411,11 @@ test("searchable copy: exact arguments, own process group, extended PATH", async
 	assert.equal(command, "/Users/test/bin/reprocess-raw");
 	assert.deepEqual(args, [
 		"raw/case-01.pdf",
-		"--output",
-		"raw/case-01-ocr.pdf",
+		"--in-place",
 		"--engine",
 		"tesseract",
-		"--split-columns",
-		"--dpi",
-		"250",
+		"--keep-original",
+		".ocr-originals/1/case-01.pdf",
 		"--allow-pages",
 		"1,5-7",
 	]);
@@ -432,44 +428,41 @@ test("searchable copy: exact arguments, own process group, extended PATH", async
 	assert.notEqual(options.env.PATH, "/usr/bin:/bin");
 	assert.equal(reported, child);
 	assert.equal(result.code, 0);
-	assert.deepEqual(result.stdoutLast, ["✅ Written: /vault/raw/case-01-ocr.pdf"]);
+	assert.deepEqual(result.stdoutLast, ["✅ Overwritten: /vault/raw/case-01.pdf"]);
 });
 
-test("searchable copy: defaults pass only source and destination", async () => {
+test("text layer: defaults pass only the source and --in-place", async () => {
 	const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
 	const child = new FakeChild();
-	const promise = createSearchableCopy(
+	const promise = addTextLayer(
 		"raw/case-01.pdf",
-		"raw/case-01-ocr.pdf",
 		"/Users/test/bin/reprocess-raw",
 		"/vault",
 		spawnMock(calls, child),
-		{ splitColumns: false, allowPages: "" },
+		{ allowPages: "" },
 	);
 
 	child.emit("close", 0);
 	await promise;
-	assert.deepEqual(calls[0]!.args, ["raw/case-01.pdf", "--output", "raw/case-01-ocr.pdf"]);
+	assert.deepEqual(calls[0]!.args, ["raw/case-01.pdf", "--in-place"]);
 });
 
-test("searchable copy: PaddleOCR always runs in fast mode (issue #73)", async () => {
+test("text layer: PaddleOCR always runs in fast mode (issue #73)", async () => {
 	const calls: Array<{ command: string; args: string[]; options: unknown }> = [];
 	const child = new FakeChild();
-	const promise = createSearchableCopy(
+	const promise = addTextLayer(
 		"raw/case-01.pdf",
-		"raw/case-01-ocr.pdf",
 		"/Users/test/bin/reprocess-raw",
 		"/vault",
 		spawnMock(calls, child),
-		{ engine: "paddle", splitColumns: false },
+		{ engine: "paddle" },
 	);
 
 	child.emit("close", 0);
 	await promise;
 	assert.deepEqual(calls[0]!.args, [
 		"raw/case-01.pdf",
-		"--output",
-		"raw/case-01-ocr.pdf",
+		"--in-place",
 		"--engine",
 		"paddle",
 		"--paddle-mode",
@@ -477,27 +470,27 @@ test("searchable copy: PaddleOCR always runs in fast mode (issue #73)", async ()
 	]);
 });
 
-test("searchable copy: spawn errors and ordinary failure are results, not exceptions", async () => {
-	const thrown = await createSearchableCopy("a.pdf", "b.pdf", "/x/reprocess-raw", "/vault", () => {
+test("text layer: spawn errors and ordinary failure are results, not exceptions", async () => {
+	const thrown = await addTextLayer("a.pdf", "/x/reprocess-raw", "/vault", () => {
 		throw new Error("spawn not available");
 	});
 	assert.equal(thrown.code, null);
 	assert.deepEqual(thrown.stderrLast, ["Error: spawn not available"]);
 
 	const missing = new FakeChild();
-	const missingRun = createSearchableCopy("a.pdf", "b.pdf", "/x/reprocess-raw", "/vault", spawnMock([], missing));
+	const missingRun = addTextLayer("a.pdf", "/x/reprocess-raw", "/vault", spawnMock([], missing));
 	missing.emit("error", new Error("spawn /x/reprocess-raw ENOENT"));
 	const missingResult = await missingRun;
 	assert.equal(missingResult.code, null);
 	assert.deepEqual(missingResult.stderrLast, ["Error: spawn /x/reprocess-raw ENOENT"]);
 
 	const failing = new FakeChild();
-	const failingRun = createSearchableCopy("a.pdf", "b.pdf", "/x/reprocess-raw", "/vault", spawnMock([], failing));
-	failing.stdout.emit("data", "❌ Output already exists, not overwriting: /vault/b.pdf\n");
+	const failingRun = addTextLayer("a.pdf", "/x/reprocess-raw", "/vault", spawnMock([], failing));
+	failing.stdout.emit("data", "❌ Source changed during processing, not replacing it: /vault/a.pdf\n");
 	failing.emit("close", 1);
 	const failingResult = await failingRun;
 	assert.equal(failingResult.code, 1);
-	assert.deepEqual(failingResult.stdoutLast, ["❌ Output already exists, not overwriting: /vault/b.pdf"]);
+	assert.deepEqual(failingResult.stdoutLast, ["❌ Source changed during processing, not replacing it: /vault/a.pdf"]);
 });
 
 test("stage1Path: adds missing tool folders first and system folders last", () => {
@@ -600,7 +593,7 @@ test(
 		const fixture = new URL("./fixtures/process-tree.sh", import.meta.url).pathname;
 		try {
 			let leader: ChildProcess | null = null;
-			const running = createSearchableCopy(pidFile, "unused.pdf", fixture, dir, spawn, {
+			const running = addTextLayer(pidFile, fixture, dir, spawn, {
 				onChild: (child) => {
 					leader = child;
 				},

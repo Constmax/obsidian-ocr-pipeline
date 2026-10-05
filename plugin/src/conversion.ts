@@ -2,7 +2,7 @@
 // `--out` and collects the last output lines; machine-readable progress is
 // available via the `--fortschritt` flag. `pdf2md case …` keeps and lists page
 // cases. Stage 1: calls `reprocess-raw
-// --output` in its own process group, so cancellation reaches OCRmyPDF and
+// --in-place` in its own process group, so cancellation reaches OCRmyPDF and
 // every other descendant.
 
 import { spawn, type ChildProcess } from "child_process";
@@ -49,12 +49,11 @@ export interface ConversionOptions {
 import type { OcrEngine } from "./ocr-settings.ts";
 export type { OcrEngine };
 
-export interface SearchableCopyOptions {
+export interface TextLayerOptions {
 	/** Omitted: the CLI default (`auto`). */
 	engine?: OcrEngine;
-	splitColumns?: boolean;
-	/** `--dpi`; omitted: the CLI default (300). */
-	maxDpi?: number;
+	/** `--keep-original`: the replaced PDF stays at this path. */
+	keepOriginal?: string;
 	/** Pages exempt from the B5 gate, e.g. "1,5-7". */
 	allowPages?: string;
 	onChild?: (child: ChildProcess) => void;
@@ -465,7 +464,7 @@ export const ENGINE_CHECK_TIMEOUT_MS = 60_000;
 
 /**
  * Stage 1: `reprocess-raw --check-engine` for `engine` (issue #73). Resolves
- * to null when a searchable copy would run on that engine here, otherwise to
+ * to null when an OCR text layer would run on that engine here, otherwise to
  * the reason, read from the CLI's stderr. Never throws.
  */
 export async function checkEngine(
@@ -540,23 +539,21 @@ export async function checkPdf2md(
 }
 
 /**
- * Stage 1: `reprocess-raw <source> --output <destination> [options]` with
+ * Stage 1: `reprocess-raw <source> --in-place [options]` with
  * `cwd` as working directory, in a new process group (`detached: true`) so
  * terminateProcessGroup reaches every descendant. No timeout in the first
  * release: OCR time grows with page count, and the user can cancel.
  */
-export function createSearchableCopy(
+export function addTextLayer(
 	source: string,
-	destination: string,
 	cli: string,
 	cwd: string,
 	spawnFn: SpawnFunction = spawn,
-	options: SearchableCopyOptions = {},
-): Promise<SearchableCopyResult> {
-	const args = [source, "--output", destination];
+	options: TextLayerOptions = {},
+): Promise<TextLayerResult> {
+	const args = [source, "--in-place"];
 	if (options.engine !== undefined) args.push(...engineArgs(options.engine));
-	if (options.splitColumns) args.push("--split-columns");
-	if (options.maxDpi !== undefined) args.push("--dpi", String(options.maxDpi));
+	if (options.keepOriginal !== undefined) args.push("--keep-original", options.keepOriginal);
 	if (options.allowPages && options.allowPages.length > 0) {
 		args.push("--allow-pages", options.allowPages);
 	}
@@ -579,7 +576,7 @@ export function createSearchableCopy(
 }
 
 /** A Stage-1 result with the pages the B5 gate reported as too short. */
-export interface SearchableCopyResult extends ConversionResult {
+export interface TextLayerResult extends ConversionResult {
 	/** Ascending page numbers; empty unless the B5 gate failed. */
 	shortPages: number[];
 }
