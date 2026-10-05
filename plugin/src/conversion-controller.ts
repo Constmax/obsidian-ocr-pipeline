@@ -123,7 +123,8 @@ export interface ControllerDependencies {
 export interface TextLayerRequest {
 	source: PdfSource;
 	engine: OcrEngine;
-	splitColumns: boolean;
+	/** `--keep-original`: where the CLI leaves the replaced PDF for the trash. */
+	keepOriginal: string;
 	/** Pages exempt from the B5 gate, e.g. "1,5-7". */
 	allowPages?: string;
 }
@@ -404,7 +405,7 @@ export class ConversionController {
 				undefined,
 				{
 					engine: request.engine,
-					splitColumns: request.splitColumns,
+					keepOriginal: request.keepOriginal,
 					...(request.allowPages && request.allowPages.length > 0
 						? { allowPages: request.allowPages }
 						: {}),

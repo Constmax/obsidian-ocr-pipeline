@@ -39,6 +39,9 @@ export function createPageCases(app: App): PageCases | null {
 	return new PageCases((args) => runPageCase(args, resolvePdf2md(), cwd));
 }
 
+/** Hidden vault folder where `--keep-original` leaves a replaced PDF until it is trashed. */
+const ORIGINALS_FOLDER = ".ocr-originals";
+
 export function createTextLayerHost(app: App, settings: () => Settings): TextLayerHost {
 	return {
 		isDesktop: Platform.isDesktopApp,
@@ -47,6 +50,35 @@ export function createTextLayerHost(app: App, settings: () => Settings): TextLay
 		},
 		settings: () => settings(),
 		checkEngine: (engine) => checkEngineHere(app, engine),
+		async originalSlot(fileName) {
+			// One folder per run keeps the file name, which the trash shows.
+			const folder = normalizePath(`${ORIGINALS_FOLDER}/${Date.now()}`);
+			try {
+				if (await app.vault.adapter.exists(folder)) return null;
+				await app.vault.adapter.mkdir(folder);
+				return `${folder}/${fileName}`;
+			} catch {
+				return null;
+			}
+		},
+		async trashOriginal(path) {
+			try {
+				if (await app.vault.adapter.trashSystem(path)) return true;
+				await app.vault.adapter.trashLocal(path);
+				return true;
+			} catch {
+				return false;
+			}
+		},
+		async releaseOriginalSlot(path) {
+			const folder = path.slice(0, path.lastIndexOf("/"));
+			try {
+				const { files, folders } = await app.vault.adapter.list(folder);
+				if (files.length === 0 && folders.length === 0) await app.vault.adapter.rmdir(folder, false);
+			} catch {
+				// An empty hidden folder left behind is harmless.
+			}
+		},
 		offerExemptions(offer) {
 			// Stays until the user acts on it or clicks it away.
 			const notice = new Notice(offer.message, 0);

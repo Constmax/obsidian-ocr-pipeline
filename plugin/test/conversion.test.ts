@@ -388,7 +388,7 @@ test("text layer: exact arguments, own process group, extended PATH", async () =
 		spawnMock(calls, child),
 		{
 			engine: "tesseract",
-			splitColumns: true,
+			keepOriginal: ".ocr-originals/1/case-01.pdf",
 			allowPages: "1,5-7",
 			onChild: (k) => {
 				reported = k;
@@ -413,7 +413,8 @@ test("text layer: exact arguments, own process group, extended PATH", async () =
 		"--in-place",
 		"--engine",
 		"tesseract",
-		"--split-columns",
+		"--keep-original",
+		".ocr-originals/1/case-01.pdf",
 		"--allow-pages",
 		"1,5-7",
 	]);
@@ -437,7 +438,7 @@ test("text layer: defaults pass only the source and --in-place", async () => {
 		"/Users/test/bin/reprocess-raw",
 		"/vault",
 		spawnMock(calls, child),
-		{ splitColumns: false, allowPages: "" },
+		{ allowPages: "" },
 	);
 
 	child.emit("close", 0);
@@ -453,7 +454,7 @@ test("text layer: PaddleOCR always runs in fast mode (issue #73)", async () => {
 		"/Users/test/bin/reprocess-raw",
 		"/vault",
 		spawnMock(calls, child),
-		{ engine: "paddle", splitColumns: false },
+		{ engine: "paddle" },
 	);
 
 	child.emit("close", 0);

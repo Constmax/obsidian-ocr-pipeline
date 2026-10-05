@@ -13,7 +13,8 @@ import {
 } from "../src/text-layer.ts";
 
 const SOURCE: PdfSource = { path: "raw/a/case-01.pdf", basename: "case-01" };
-const DONE = "OCR Preview: Text layer added — raw/a/case-01.pdf.";
+const DONE = "OCR Preview: Text layer added — raw/a/case-01.pdf. The original is in the trash.";
+const SLOT = ".ocr-originals/1/case-01.pdf";
 
 function result(overrides: Partial<TextLayerResult> = {}): TextLayerResult {
 	return {
@@ -30,8 +31,14 @@ function result(overrides: Partial<TextLayerResult> = {}): TextLayerResult {
 class FakeHost implements TextLayerHost {
 	isDesktop = true;
 	notices: string[] = [];
-	ocr: OcrSettings = { ocrEngine: "tesseract", splitColumns: true };
+	ocr: OcrSettings = { ocrEngine: "tesseract" };
 	offers: ExemptionOffer[] = [];
+	slots: string[] = [];
+	/** null: the slot cannot be created. */
+	slotFolder: string | null = ".ocr-originals/1";
+	trashed: string[] = [];
+	trashWorks = true;
+	released: string[] = [];
 	/** Answer of the engine check: null = usable, otherwise the reason. */
 	engineProblem: string | null = null;
 	engineChecks: string[] = [];
@@ -48,6 +55,19 @@ class FakeHost implements TextLayerHost {
 	async checkEngine(engine: OcrEngine): Promise<string | null> {
 		this.engineChecks.push(engine);
 		return this.engineProblem;
+	}
+	async originalSlot(fileName: string): Promise<string | null> {
+		if (this.slotFolder === null) return null;
+		const slot = `${this.slotFolder}/${fileName}`;
+		this.slots.push(slot);
+		return slot;
+	}
+	async trashOriginal(path: string): Promise<boolean> {
+		if (this.trashWorks) this.trashed.push(path);
+		return this.trashWorks;
+	}
+	async releaseOriginalSlot(path: string): Promise<void> {
+		this.released.push(path);
 	}
 }
 
@@ -73,30 +93,56 @@ test("normal run: saved settings, no page exemptions, the PDF itself gets the la
 	await runAddTextLayer(SOURCE, controller, host);
 
 	// No destination, no force-OCR field: the source keeps its path and its existing text.
-	assert.deepEqual(controller.requests, [{ source: SOURCE, engine: "tesseract", splitColumns: true }]);
+	assert.deepEqual(controller.requests, [{ source: SOURCE, engine: "tesseract", keepOriginal: SLOT }]);
+	assert.deepEqual(host.slots, [SLOT]);
+	assert.deepEqual(host.trashed, [SLOT]);
+	assert.deepEqual(host.released, [SLOT]);
 	assert.deepEqual(host.notices, [DONE]);
+});
+
+test("an original that cannot go to the trash stays in its slot, and the notice says where", async () => {
+	const host = new FakeHost();
+	host.trashWorks = false;
+	await runAddTextLayer(SOURCE, new FakeController(), host);
+
+	assert.deepEqual(host.released, [SLOT]);
+	assert.deepEqual(host.notices, [
+		"OCR Preview: Text layer added — raw/a/case-01.pdf. The original could not be moved to the trash; it is at .ocr-originals/1/case-01.pdf.",
+	]);
+});
+
+test("no run without a slot for the original", async () => {
+	const host = new FakeHost();
+	host.slotFolder = null;
+	const controller = new FakeController();
+	await runAddTextLayer(SOURCE, controller, host);
+
+	assert.deepEqual(controller.requests, []);
+	assert.deepEqual(host.notices, [
+		'OCR Preview: No text layer added to "case-01" — there is no place to keep the original for the trash. The PDF is unchanged.',
+	]);
 });
 
 test("settings are read when the action starts", async () => {
 	const host = new FakeHost();
 	const controller = new FakeController();
-	host.ocr = { ocrEngine: "auto", splitColumns: false };
+	host.ocr = { ocrEngine: "auto" };
 	await runAddTextLayer(SOURCE, controller, host);
-	host.ocr = { ocrEngine: "apple", splitColumns: true };
+	host.ocr = { ocrEngine: "apple" };
 	await runAddTextLayer({ path: "raw/other.pdf", basename: "other" }, controller, host);
 
 	assert.deepEqual(
-		controller.requests.map((r) => [r.engine, r.splitColumns]),
+		controller.requests.map((r) => [r.engine, r.keepOriginal]),
 		[
-			["auto", false],
-			["apple", true],
+			["auto", SLOT],
+			["apple", ".ocr-originals/1/other.pdf"],
 		],
 	);
 });
 
 test("PaddleOCR runs when the engine check finds it usable (issue #73)", async () => {
 	const host = new FakeHost();
-	host.ocr = { ocrEngine: "paddle", splitColumns: false };
+	host.ocr = { ocrEngine: "paddle" };
 	const controller = new FakeController();
 	await runAddTextLayer(SOURCE, controller, host);
 
@@ -108,28 +154,16 @@ test("PaddleOCR runs when the engine check finds it usable (issue #73)", async (
 	assert.deepEqual(host.notices, [DONE]);
 });
 
-test("PaddleOCR never splits columns, whatever the toggle says (issue #153)", async () => {
-	const host = new FakeHost();
-	host.ocr = { ocrEngine: "paddle", splitColumns: true };
-	const controller = new FakeController();
-	await runAddTextLayer(SOURCE, controller, host);
-
-	assert.deepEqual(
-		controller.requests.map((r) => [r.engine, r.splitColumns]),
-		[["paddle", false]],
-	);
-});
-
 test("a stored PaddleOCR that is not usable falls back to Automatic, visibly", async () => {
 	const host = new FakeHost();
-	host.ocr = { ocrEngine: "paddle", splitColumns: true };
+	host.ocr = { ocrEngine: "paddle" };
 	host.engineProblem = "PaddleOCR engine is not ready: model file missing: /m/x.onnx";
 	const controller = new FakeController();
 	await runAddTextLayer(SOURCE, controller, host);
 
 	assert.deepEqual(
-		controller.requests.map((r) => [r.engine, r.splitColumns]),
-		[["auto", true]],
+		controller.requests.map((r) => r.engine),
+		["auto"],
 	);
 	assert.deepEqual(host.notices, [
 		"OCR Preview: This run uses Automatic, because Apple Vision + RapidOCR (Paddle fast) cannot run here — " +
@@ -142,7 +176,7 @@ test("other engines are not checked before a run", async () => {
 	const host = new FakeHost();
 	const controller = new FakeController();
 	for (const ocrEngine of ["auto", "apple", "tesseract"] as const) {
-		host.ocr = { ocrEngine, splitColumns: false };
+		host.ocr = { ocrEngine };
 		await runAddTextLayer(SOURCE, controller, host);
 	}
 	assert.deepEqual(host.engineChecks, []);
@@ -158,12 +192,15 @@ test("failure without short pages, cancellation, or a refused run offers and rep
 		assert.equal(controller.requests.length, 1);
 		assert.deepEqual(host.offers, [], JSON.stringify(answer));
 		assert.deepEqual(host.notices, [], JSON.stringify(answer));
+		// Nothing was replaced: nothing goes to the trash, the empty slot is removed.
+		assert.deepEqual(host.trashed, [], JSON.stringify(answer));
+		assert.deepEqual(host.released, [SLOT], JSON.stringify(answer));
 	}
 });
 
 test("a running conversion refuses before any engine check", async () => {
 	const host = new FakeHost();
-	host.ocr = { ocrEngine: "paddle", splitColumns: false };
+	host.ocr = { ocrEngine: "paddle" };
 	const controller = new FakeController();
 	controller.idle = false;
 	await runAddTextLayer(SOURCE, controller, host);

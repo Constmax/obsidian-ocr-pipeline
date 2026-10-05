@@ -211,11 +211,9 @@ export class SettingsTab extends PluginSettingTab {
 				.setDesc(
 					"Used for new OCR text layers. Automatic uses Apple Vision + RapidOCR " +
 						"(Paddle fast) when it is ready, otherwise Apple Vision when its OCRmyPDF " +
-						"plugin is installed, and Tesseract after that. With two-column splitting " +
-						"on, it skips Paddle fast. Apple Vision + " +
+						"plugin is installed, and Tesseract after that. Apple Vision + " +
 						"RapidOCR (Paddle fast) reads with Apple Vision, re-reads citations with " +
-						"RapidOCR, and keeps two-column pages in reading order without a column " +
-						"split; it is " +
+						"RapidOCR, and keeps two-column pages in reading order; it is " +
 						"offered once the installation check passes.",
 				)
 				.addDropdown((d) => {
@@ -233,23 +231,6 @@ export class SettingsTab extends PluginSettingTab {
 					});
 					void this.offerPaddle(d, engineSetting);
 				});
-		});
-
-		group.addSetting((setting) => {
-			setting
-				.setName("Split two-column pages")
-				.setDesc(
-					"Detects two-column pages, recognizes each column on its own, and merges " +
-						"the pages back. Recommended for two-column scripts with Apple Vision or " +
-						"Tesseract; needs pikepdf. Apple Vision + RapidOCR (Paddle fast) always " +
-						"reads whole pages.",
-				)
-				.addToggle((t) =>
-					t.setValue(this.plugin.settings.splitColumns).onChange(async (val) => {
-						this.plugin.settings.splitColumns = val;
-						await this.plugin.saveSettings();
-					}),
-				);
 		});
 	}
 

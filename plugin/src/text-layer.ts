@@ -3,6 +3,8 @@
 // the ConversionController with the saved OCR settings, so the PDF keeps its
 // path and every link to it (#180). The CLI replaces the file only after all
 // checks passed, in one rename; on failure or cancellation it stays as it was.
+// The replaced file is kept (`--keep-original`) and moved to the trash, so
+// every run can be undone.
 // When the B5 gate reports pages with too little text, the action offers
 // "Run with page exemptions…" and reruns only with the list the user
 // confirms. Nothing here touches the Stage-2 preview inventory. Free of
@@ -34,6 +36,12 @@ export interface TextLayerHost {
 	offerExemptions(offer: ExemptionOffer): void;
 	/** `reprocess-raw --check-engine`: null when the engine is usable here, otherwise the reason. */
 	checkEngine(engine: OcrEngine): Promise<string | null>;
+	/** A vault path `<new empty hidden folder>/<fileName>` for `--keep-original`; null if none can be made. */
+	originalSlot(fileName: string): Promise<string | null>;
+	/** Moves the kept original to the trash; false if it is still at `path`. */
+	trashOriginal(path: string): Promise<boolean>;
+	/** Removes the slot's folder if it is empty. */
+	releaseOriginalSlot(path: string): Promise<void>;
 }
 
 const PAGE_LIST = /^\d+(-\d+)?(,\d+(-\d+)?)*$/;
@@ -112,13 +120,33 @@ export async function runAddTextLayer(
 	}
 	if (!controller.ensureIdle()) return;
 
-	const { ocrEngine, splitColumns } = host.settings();
-	const engine = await usableEngine(ocrEngine, host);
+	const engine = await usableEngine(host.settings().ocrEngine, host);
+	const keepOriginal = await host.originalSlot(source.path.split("/").pop() ?? source.path);
+	if (keepOriginal === null) {
+		host.notify(
+			`OCR Preview: No text layer added to "${source.basename}" — there is no place to keep the original for the trash. The PDF is unchanged.`,
+		);
+		return;
+	}
+	try {
+		await run(source, controller, host, engine, keepOriginal, allowPages);
+	} finally {
+		await host.releaseOriginalSlot(keepOriginal);
+	}
+}
+
+async function run(
+	source: PdfSource,
+	controller: Pick<ConversionController, "ensureIdle" | "runOcr">,
+	host: TextLayerHost,
+	engine: OcrEngine,
+	keepOriginal: string,
+	allowPages: string | undefined,
+): Promise<void> {
 	const result = await controller.runOcr({
 		source,
 		engine,
-		// PaddleOCR orders both columns itself; splitting costs words and order (#153).
-		splitColumns: engine === "paddle" ? false : splitColumns,
+		keepOriginal,
 		...(allowPages ? { allowPages } : {}),
 	});
 	if (result === null) return;
@@ -138,5 +166,9 @@ export async function runAddTextLayer(
 		}
 		return;
 	}
-	host.notify(`OCR Preview: Text layer added — ${source.path}.`);
+	host.notify(
+		(await host.trashOriginal(keepOriginal))
+			? `OCR Preview: Text layer added — ${source.path}. The original is in the trash.`
+			: `OCR Preview: Text layer added — ${source.path}. The original could not be moved to the trash; it is at ${keepOriginal}.`,
+	);
 }
