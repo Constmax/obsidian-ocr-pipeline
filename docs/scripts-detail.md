@@ -31,7 +31,7 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 
 `resolve_engine` in `pdf-lib.sh` turns the requested engine into one resolved value (`apple`, `tesseract` or `paddle`); the OCR arguments and the fallbacks below are derived from that value alone.
 
-Every OCRmyPDF call writes plain PDF (`--output-type pdf`), not OCRmyPDF's default PDF/A. The PDF/A conversion runs Ghostscript over the whole file: it dropped every annotation (highlights included) and split an existing text layer into one font per glyph, which pdf.js renders measurably slower (#210). The Ghostscript steps before OCR (`fix_mediabox` for oversized pages, `gs_downscale` unless `--dpi 0`) still rewrite the file; they keep an existing text layer's fonts and the highlights, but drop an annotation Ghostscript cannot parse, such as one with a broken appearance stream. The column split carries page content only, so split pages lose their annotations.
+Every OCRmyPDF call writes plain PDF (`--output-type pdf`), not OCRmyPDF's default PDF/A. The PDF/A conversion runs Ghostscript over the whole file: it dropped every annotation (highlights included) and split an existing text layer into one font per glyph, which pdf.js renders measurably slower (#210). The Ghostscript steps before OCR (`fix_mediabox` for oversized pages, `gs_downscale` unless `--dpi 0`) still rewrite the file; they keep an existing text layer's fonts and the highlights, but drop an annotation Ghostscript cannot parse, such as one with a broken appearance stream. The column split carries page content only, so split pages lose their annotations. `--text-only` (the plugin's in-place mode) runs none of these steps.
 
 ### DPI Tuning
 
@@ -40,7 +40,7 @@ Every OCRmyPDF call writes plain PDF (`--output-type pdf`), not OCRmyPDF's defau
 - `150`: Absolute minimum — fallback for OOM crashes with `--jobs 1`
 - `0`: Downscaling completely disabled
 
-`--dpi` is an exact upper limit (#201): colour and grayscale images above it are resampled to it, not only those above Ghostscript's default 1.5× threshold (a 400-DPI scan used to pass untouched at `--dpi 300`). Resampled images are re-encoded as JPEG at `JPEG_QFACTOR` (`pdf-lib.sh`, 1.6: on a 400-DPI scan 32 % smaller than Ghostscript's default quality at equal Tesseract confidence). JPEG images at or below the limit pass through unchanged; other images at or below it (Flate/PNG scans) are re-encoded by Ghostscript as before, now at the same quality. Bitonal (1-bit) images stay bitonal and are only resampled by whole factors (600 → 300, not 400 → 300). The plugin passes its "Maximum scan resolution" setting as `--dpi`.
+`--dpi` is an exact upper limit (#201): colour and grayscale images above it are resampled to it, not only those above Ghostscript's default 1.5× threshold (a 400-DPI scan used to pass untouched at `--dpi 300`). Resampled images are re-encoded as JPEG at `JPEG_QFACTOR` (`pdf-lib.sh`, 1.6: on a 400-DPI scan 32 % smaller than Ghostscript's default quality at equal Tesseract confidence). JPEG images at or below the limit pass through unchanged; other images at or below it (Flate/PNG scans) are re-encoded by Ghostscript as before, now at the same quality. Bitonal (1-bit) images stay bitonal and are only resampled by whole factors (600 → 300, not 400 → 300). The plugin never passes `--dpi`: its in-place runs skip downscaling (#180).
 
 `--force-ocr` on a page that already has text undoes the limit: OCRmyPDF rasterizes such pages at 400 DPI. The plugin never passes `--force-ocr`.
 
@@ -154,7 +154,7 @@ Alphanumeric with Natural Sort. Use numerical prefixes for explicit ordering: `0
 ## reprocess-raw
 
 ```bash
-reprocess-raw <raw-pdf-file> [--output FILE | --in-place] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
+reprocess-raw <raw-pdf-file> [--output FILE | --in-place [--keep-original FILE]] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
 reprocess-raw --check-engine [--engine E] [--paddle-mode M]
 ```
 
@@ -169,7 +169,11 @@ Wrapper around `pdf-combine` for the scenario "re-process an existing `raw/` fil
 
 ### Plugin mode: `--in-place`
 
-The interface the Obsidian plugin uses (#180): the default mode without its artifacts. The same checks and the same atomic replacement run, but failed checks, a failing `pdf-combine`, a source changed or made read-only during OCR, and cancellation (`SIGTERM` to the process group) write nothing: no `_FAILED_` file, no hidden temporary copy, the source byte-identical. Without `pikepdf` the script fails before OCR. `--in-place` and `--output` exclude each other. A change to the source in the milliseconds between the final comparison and the rename is still lost. `SIGKILL` between the hidden copy and the rename can leave a hidden `.<name>.pdf.XXXXXX` file.
+The interface the Obsidian plugin uses (#180): the default mode without its artifacts. The same checks and the same atomic replacement run, but failed checks, a failing `pdf-combine`, a source changed or made read-only during OCR, and cancellation (`SIGTERM` to the process group) write nothing: no `_FAILED_` file, no hidden temporary copy, the source byte-identical. Without `pikepdf` the script fails before OCR. `--in-place` and `--output` exclude each other.
+
+`--in-place` only adds a text layer: it passes `pdf-combine --text-only`, which skips `fix_mediabox` and `gs_downscale`, leaves out `--deskew`, runs OCRmyPDF with `--optimize 0`, and never retries with a column split. The page images and annotations stay byte for byte, including an annotation Ghostscript would drop (#243). Flags that re-render pages (`--split-columns`, `--split-columns-all`, `--keep-split`, `--force-ocr`, `--dpi`) are usage errors with `--in-place`. A PDF whose every page already has text (`verify-pages --min-chars 1`) is refused before OCR, because `--skip-text` would add nothing. Both in-place modes refuse a folder that is not writable before OCR, and print a `❌` line when creating, writing or renaming the hidden copy fails.
+
+`--keep-original FILE` (with `--in-place` only) keeps the replaced file at FILE: a hard link made just before the rename, or a copy where hard links fail. FILE's folder must exist and FILE must not; both are checked before OCR. When nothing is replaced, FILE is not left behind. The plugin passes a fresh folder under `.ocr-originals/` and moves the file to the trash afterwards. A change to the source in the milliseconds between the final comparison and the rename is still lost. `SIGKILL` between the hidden copy and the rename can leave a hidden `.<name>.pdf.XXXXXX` file.
 
 ### Source-preserving mode: `--output FILE`
 

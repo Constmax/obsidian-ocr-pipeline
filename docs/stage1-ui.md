@@ -12,8 +12,10 @@ where `reprocess-raw --check-engine` passes; #71 decides whether it stays.
 **Superseded in part by #180:** the user decided that the action writes the
 text layer into the source PDF instead of a sibling copy. The action is now
 **Add OCR text layer** and runs `reprocess-raw --in-place`, with the safety
-invariants below (updated for #180). Sections 1 and 3 below describe the
-original copy design.
+invariants below (updated for #180). The 1.0 review (#234) added three
+safeguards: the replaced file goes to the trash, in-place adds only a text
+layer, and a PDF whose pages all have text is refused. Sections 1 and 3 below
+describe the original copy design.
 
 ## Goal
 
@@ -33,8 +35,14 @@ engine.
   destination appeared only after the gates passed.)
 - Failure or cancellation leaves the source byte-identical and no partial
   PDF, hidden temporary copy or `_FAILED_` artifact in the vault.
-- A source that changed during OCR, or is read-only or locked, is not
-  replaced.
+- A source that changed during OCR, or is read-only or locked, or sits in a
+  folder that is not writable, is not replaced.
+- In-place adds only a text layer (`pdf-combine --text-only`): no
+  Ghostscript step (MediaBox fix, downscaling, column split), no deskew,
+  `--optimize 0`. The page images and annotations stay byte for byte. A PDF
+  whose pages all have text is refused, because OCRmyPDF would add nothing.
+- Every run can be undone: the replaced file is kept by `--keep-original`
+  and the plugin moves it to the trash.
 - Once the rename starts, cancellation is ignored, so the reported outcome is
   the real one.
 - Existing text is preserved by default. Destructive force-OCR behavior is a

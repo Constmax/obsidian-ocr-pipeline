@@ -124,7 +124,9 @@ bekommt damit eine Oberfläche. Aus dem Vault heraus startet das Plugin auch
 die Konvertierung (**OCR → Markdown**, PDF oder Seitenbild, mit Seitenauswahl)
 und die Stufe-1-Aktion **Add OCR text layer**, die die Textebene direkt ins
 PDF schreibt: Pfad und Links bleiben gleich, ersetzt wird erst nach allen
-Prüfungen und in einem Schritt. Zweck und Bedienung:
+Prüfungen und in einem Schritt. Bilder und Anmerkungen bleiben unverändert,
+das ersetzte Original landet im Papierkorb, und ein PDF, dessen Seiten alle
+schon Text haben, wird abgelehnt. Zweck und Bedienung:
 [docs/review-view.md](docs/review-view.md).
 
 ## Neuer Laptop — Einmal-Setup
