@@ -157,6 +157,9 @@ VAULT_ROOT=~/JuraExamenVault plugin/install-plugin.sh --enable
   the pre-rename id `ocr-vorschau`. Without it: Settings → Community Plugins →
   Enable "OCR Preview". Reload once (`Cmd+R`) either way.
 - Usage: [review-view.md](review-view.md).
+- Settings → OCR Preview → General → **Check installation** runs both checks
+  from inside Obsidian, with Obsidian's `PATH`. If `pdf2md` lives somewhere
+  else than `~/bin`, set *Path to pdf2md* there.
 
 ## Verification
 

@@ -62,6 +62,10 @@ The plugin spawns `pdf2md` from the vault root with the preview's vault-relative
 - **Input formats:** `inputSuffixes` = `INPUT_SUFFIXES` in `pdf2md/conversion.py` = `CONVERTIBLE_EXTENSIONS` in `plugin/src/input-formats.ts`.
 - **Preview format version:** `previewFormat` = `vorschau-format` written by `assembly.build_frontmatter` = `SUPPORTED_PREVIEW_FORMAT` in the parser. The review view shows a notice for a preview with an unknown version.
 
+## 6. Installation Check
+
+The installation check in the settings (#28, `installationCheck`) runs `pdf2md --check --out <preview folder>` from the vault root without `--progress`. It relies on the exit code only (`success` or `check-failed`) and shows every output line as it is, so the wording of those lines is not part of the contract.
+
 ## Outside the Contract
 
 `pdf2md --check --progress` prints one JSON document on stdout (`"typ": "check"`). The plugin does not read it; it is documented in [`scripts-detail.md`](scripts-detail.md#--check-stage-2).

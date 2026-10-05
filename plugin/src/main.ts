@@ -9,7 +9,7 @@ import { Inventory } from "./file-actions.ts";
 import { vaultFiles } from "./vault-files.ts";
 import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
 import { parseOcrSettings } from "./ocr-settings.ts";
-import { ConversionController } from "./conversion-controller.ts";
+import { ConversionController, pdf2mdExecutable } from "./conversion-controller.ts";
 import { isConvertible } from "./input-formats.ts";
 import { createConversionHost, createTextLayerHost } from "./conversion-host.ts";
 import { runAddTextLayer, type TextLayerHost } from "./text-layer.ts";
@@ -43,6 +43,7 @@ export default class OcrPreviewPlugin extends Plugin {
 				(entryName) => this.revealView(entryName),
 				progressStatus,
 			),
+			{ resolveExecutable: () => pdf2mdExecutable(this.settings.pdf2mdPath) },
 		);
 		this.textLayerHost = createTextLayerHost(this.app, () => this.settings);
 		await this.loadSettings();
@@ -180,6 +181,9 @@ export default class OcrPreviewPlugin extends Plugin {
 			if (saved["columnWidths"]) loaded.columnWidths = saved["columnWidths"] as [number, number, number];
 
 			if (typeof saved["syncActive"] === "boolean") loaded.syncActive = saved["syncActive"];
+
+			const pdf2mdPath = str("pdf2mdPath");
+			if (pdf2mdPath !== undefined) loaded.pdf2mdPath = pdf2mdPath;
 
 			// OCR engine and column split: data from before these settings and
 			// invalid values (e.g. an engine this version does not offer) fall
