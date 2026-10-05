@@ -12,7 +12,10 @@
 # Without --output the accepted result replaces the source in place, in one
 # atomic rename. On failure the source remains unchanged; the failed result is
 # saved alongside for inspection (<name>_FAILED_*.pdf). --in-place does the
-# same but writes nothing on failure or cancellation (the plugin's mode).
+# same but writes nothing on failure or cancellation (the plugin's mode). It
+# only adds a text layer (pdf-combine --text-only: no Ghostscript, deskew,
+# optimization or column split), refuses a PDF whose pages all have text, and
+# with --keep-original leaves the replaced file under that name.
 #
 # With --output the source is never written. The result is published under
 # the new name without overwriting anything, and failure or cancellation
@@ -41,7 +44,7 @@ fi
 
 if [ $# -lt 1 ]; then
     cat <<EOF
-Usage: $(basename "$0") <raw-pdf-file> [--output FILE | --in-place] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
+Usage: $(basename "$0") <raw-pdf-file> [--output FILE | --in-place [--keep-original FILE]] [pdf-combine-options] [--min-chars N] [--allow-pages LIST]
        $(basename "$0") --check-engine [--engine E] [--paddle-mode M]
 
 Re-processes an existing raw/ PDF file using the current pipeline
@@ -56,9 +59,15 @@ Options:
    --output FILE        Write the result to FILE instead; the source is never
                         modified. FILE must not exist yet and is never
                         overwritten; on failure nothing is written.
-   --in-place           Replace the source, but on failure write nothing
-                        (no _FAILED_ file). The source stays unchanged if it
-                        was modified while OCR ran.
+   --in-place           Add a text layer to the source and keep its pages
+                        as they are (no downscaling, MediaBox fix, deskew,
+                        optimization or column split). On failure nothing is
+                        written (no _FAILED_ file); the source stays
+                        unchanged if it was modified while OCR ran. Refused
+                        when every page already has text.
+   --keep-original FILE With --in-place: the replaced file stays at FILE
+                        (a hard link, or a copy). FILE's folder must exist
+                        and FILE must not.
    --min-chars N        Minimum characters per page (Default: 50)
    --allow-pages LIST   Exempt pages from check 2, e.g. "1,5-7"
                         (known cover/diagram pages without body text)
@@ -86,6 +95,7 @@ MIN_CHARS=50
 ALLOW_PAGES=""
 DEST_ARG=""
 IN_PLACE=""
+KEEP_ORIGINAL=""
 COMBINE_ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -106,12 +116,38 @@ while [ $# -gt 0 ]; do
             DEST_ARG="$2"; shift 2 ;;
         --in-place)
             IN_PLACE=1; shift ;;
+        --keep-original)
+            require_option_value "$@"
+            KEEP_ORIGINAL="$2"; shift 2 ;;
         *) COMBINE_ARGS+=("$1"); shift ;;
     esac
 done
 
 if [ -n "$IN_PLACE" ] && [ -n "$DEST_ARG" ]; then
     usage_error "--in-place and --output exclude each other"
+fi
+if [ -n "$KEEP_ORIGINAL" ] && [ -z "$IN_PLACE" ]; then
+    usage_error "--keep-original needs --in-place"
+fi
+if [ -n "$IN_PLACE" ]; then
+    # Each of these makes Ghostscript or OCRmyPDF rewrite the pages (#180).
+    for arg in ${COMBINE_ARGS[@]+"${COMBINE_ARGS[@]}"}; do
+        case "$arg" in
+            --split-columns|--split-columns-all|--keep-split|--force-ocr|--dpi)
+                usage_error "--in-place adds only a text layer: $arg is not allowed" ;;
+        esac
+    done
+    COMBINE_ARGS+=(--text-only)
+fi
+
+if [ -n "$KEEP_ORIGINAL" ]; then
+    KEEP_DIR="$(cd "$(dirname "$KEEP_ORIGINAL")" 2>/dev/null && pwd -P)" || {
+        echo "❌ --keep-original folder not found: $(dirname "$KEEP_ORIGINAL")"; exit 1
+    }
+    KEEP_ORIGINAL="$KEEP_DIR/$(basename "$KEEP_ORIGINAL")"
+    if [ -e "$KEEP_ORIGINAL" ] || [ -L "$KEEP_ORIGINAL" ]; then
+        echo "❌ --keep-original already exists, not overwriting: $KEEP_ORIGINAL"; exit 1
+    fi
 fi
 
 # ── --output: resolve and reject the destination before any processing ──
@@ -143,6 +179,10 @@ fi
 if [ -z "$DEST" ] && [ ! -w "$(readlink -f "$SRC_ABS")" ]; then
     echo "❌ Source is read-only or locked, not replacing it: $SRC_ABS"; exit 1
 fi
+# The hidden copy and the rename need the folder.
+if [ -z "$DEST" ] && [ ! -w "$(dirname "$(readlink -f "$SRC_ABS")")" ]; then
+    echo "❌ Folder is not writable, cannot replace the PDF in it: $(dirname "$(readlink -f "$SRC_ABS")")"; exit 1
+fi
 
 BASE="$(basename "$SRC_ABS" .pdf)"
 ORIG_PAGES=$(pdfinfo "$SRC_ABS" 2>/dev/null | awk '/^Pages:/ {print $2}')
@@ -161,6 +201,12 @@ done
 if [ -z "$PYTHON_BIN" ] && [ -n "$DEST$IN_PLACE" ]; then
     echo "⚠️  pikepdf not found — cannot check B5 gate, aborting for safety"
     exit 1
+fi
+
+# OCRmyPDF skips a page that has any text, so there would be nothing to add.
+if [ -n "$IN_PLACE" ] \
+    && "$PYTHON_BIN" "$SCRIPT_DIR/column_tools.py" verify-pages "$SRC_ABS" --min-chars 1 >/dev/null 2>&1; then
+    echo "❌ Every page already has a text layer, nothing to add: $SRC_ABS"; exit 1
 fi
 
 # WORK_DIR lives in $TMPDIR, outside the vault. TMP_DEST is the hidden
@@ -250,14 +296,29 @@ replace_source() {
         echo "❌ Source became read-only or locked during processing: $SRC_ABS"
         reject_result readonly
     fi
-    TMP_DEST=$(mktemp "$(dirname "$target")/.$(basename "$target").XXXXXX")
-    cp -p "$target" "$TMP_DEST"
-    cat "$OUT" > "$TMP_DEST"
+    TMP_DEST=$(mktemp "$(dirname "$target")/.$(basename "$target").XXXXXX") || {
+        echo "❌ Cannot create a temporary file in $(dirname "$target")"
+        reject_result replace
+    }
+    if ! { cp -p "$target" "$TMP_DEST" && cat "$OUT" > "$TMP_DEST"; }; then
+        echo "❌ Cannot write the temporary file $TMP_DEST"
+        reject_result replace
+    fi
     # ponytail: a change between cmp and mv is still lost; that window is milliseconds.
     # From here on the run finishes: a SIGTERM after the rename would report a
     # cancelled run whose result is already in place.
     trap '' TERM INT
-    mv -f "$TMP_DEST" "$target"
+    if [ -n "$KEEP_ORIGINAL" ] && ! ln "$target" "$KEEP_ORIGINAL" 2>/dev/null \
+        && ! cp -p "$target" "$KEEP_ORIGINAL"; then
+        rm -f "$KEEP_ORIGINAL"
+        echo "❌ Cannot keep the original at $KEEP_ORIGINAL, not replacing it"
+        reject_result keep
+    fi
+    if ! mv -f "$TMP_DEST" "$target"; then
+        [ -n "$KEEP_ORIGINAL" ] && rm -f "$KEEP_ORIGINAL"
+        echo "❌ Cannot replace $SRC_ABS"
+        reject_result replace
+    fi
     TMP_DEST=""
 }
 

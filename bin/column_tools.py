@@ -523,7 +523,8 @@ def verify_all_pages(pdf_path: str, min_chars: int = 50, allow_pages: set = None
     allow_pages = allow_pages or set()
     result = subprocess.run(
         ["pdftotext", "-raw", pdf_path, "-"],
-        capture_output=True, text=True, timeout=60
+        # Without its text, every page would pass for one with text.
+        capture_output=True, text=True, timeout=60, check=True
     )
     pages_text = result.stdout.split("\x0c")
     if pages_text and not pages_text[-1].strip():

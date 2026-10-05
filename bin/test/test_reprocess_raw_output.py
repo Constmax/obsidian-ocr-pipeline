@@ -95,7 +95,8 @@ def sb(tmp_path):
     vault = tmp_path / "vault"
     vault.mkdir()
     source = vault / "casebook.pdf"
-    source.write_text(_fake_pdf([LONG, LONG, LONG]))
+    # A scan: no page has text yet (--in-place refuses a PDF whose pages all do).
+    source.write_text(_fake_pdf(["", "", ""]))
     result = tmp_path / "result.pdf"
     result.write_text(_fake_pdf(["y" * 60] * 3))
     tmp = tmp_path / "tmp"
@@ -400,7 +401,7 @@ def test_in_place_replaces_source_and_keeps_its_mode(sb):
     assert sb.source.stat().st_mode & 0o777 == 0o640
     _assert_only_source(sb)
     calls = sb.log.read_text().splitlines()
-    assert len(calls) == 1 and calls[0].endswith(" casebook_reprocessed --engine tesseract")
+    assert len(calls) == 1 and calls[0].endswith(" casebook_reprocessed --engine tesseract --text-only")
     assert "--force-ocr" not in calls[0]
 
 
@@ -521,3 +522,136 @@ def test_in_place_sigterm_during_rename_still_finishes(sb):
     assert proc.returncode == 0, output
     assert sb.source.read_text() == sb.result.read_text()
     _assert_only_source(sb)
+
+
+def test_legacy_refuses_a_source_changed_during_ocr_and_keeps_the_result(sb):
+    result = _run(sb, FAKE_CREATE_FILE=str(sb.source))
+
+    assert result.returncode != 0
+    assert "Source changed during processing" in result.output, result.output
+    assert sb.source.read_text() == "intruder\n"
+    assert (sb.vault / "casebook_FAILED_changed.pdf").read_text() == sb.result.read_text()
+
+
+# ── --in-place safeguards (1.0 decision on #180) ──────────────────────────
+
+def test_in_place_refuses_a_pdf_whose_pages_all_have_text(sb):
+    sb.source.write_text(_fake_pdf([LONG, "a", LONG]))
+    sb.source_bytes = sb.source.read_bytes()
+    sb.source_mtime = sb.source.stat().st_mtime_ns
+
+    result = _run(sb, "--in-place")
+
+    assert result.returncode != 0
+    assert "❌ Every page already has a text layer, nothing to add:" in result.output, result.output
+    assert not sb.log.exists()
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+def test_in_place_runs_when_one_page_has_no_text(sb):
+    sb.source.write_text(_fake_pdf([LONG, "", LONG]))
+
+    result = _run(sb, "--in-place")
+
+    assert result.returncode == 0, result.output
+    assert sb.source.read_text() == sb.result.read_text()
+
+
+@pytest.mark.parametrize("flags", [
+    ["--split-columns"], ["--split-columns-all"], ["--keep-split"], ["--force-ocr"], ["--dpi", "300"],
+])
+def test_in_place_rejects_flags_that_rewrite_pages(sb, flags):
+    result = _run(sb, "--in-place", *flags)
+
+    assert result.returncode != 0
+    assert f"--in-place adds only a text layer: {flags[0]} is not allowed" in result.output, result.output
+    assert not sb.log.exists()
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+def test_folder_not_writable_fails_before_ocr(sb):
+    sb.vault.chmod(0o555)
+    try:
+        result = _run(sb, "--in-place")
+    finally:
+        sb.vault.chmod(0o755)
+
+    assert result.returncode != 0
+    assert "❌ Folder is not writable, cannot replace the PDF in it:" in result.output, result.output
+    assert not sb.log.exists()
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+def test_failed_rename_reports_and_leaves_the_source(sb):
+    _write_exe(sb.override / "mv", "exit 1\n")
+
+    result = _run(sb, "--in-place")
+
+    assert result.returncode != 0
+    assert "❌ Cannot replace" in result.output, result.output
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+# ── --keep-original: the plugin moves the replaced file to the trash ──────
+
+def test_keep_original_holds_the_replaced_bytes(sb):
+    keep = sb.root / "originals" / "casebook.pdf"
+    keep.parent.mkdir()
+
+    result = _run(sb, "--in-place", "--keep-original", keep)
+
+    assert result.returncode == 0, result.output
+    assert keep.read_bytes() == sb.source_bytes
+    assert sb.source.read_text() == sb.result.read_text()
+    _assert_only_source(sb)
+
+
+def test_keep_original_copies_where_hard_links_fail(sb):
+    keep = sb.root / "originals" / "casebook.pdf"
+    keep.parent.mkdir()
+    _write_exe(sb.override / "ln", "exit 1\n")
+
+    result = _run(sb, "--in-place", "--keep-original", keep)
+
+    assert result.returncode == 0, result.output
+    assert keep.read_bytes() == sb.source_bytes
+    assert sb.source.read_text() == sb.result.read_text()
+
+
+@pytest.mark.parametrize("failure", ["short-page", "rename"])
+def test_keep_original_is_left_out_when_nothing_is_replaced(sb, failure):
+    keep = sb.root / "originals" / "casebook.pdf"
+    keep.parent.mkdir()
+    if failure == "short-page":
+        sb.result.write_text(_fake_pdf([LONG, "short", LONG]))
+    else:
+        _write_exe(sb.override / "mv", "exit 1\n")
+
+    result = _run(sb, "--in-place", "--keep-original", keep)
+
+    assert result.returncode != 0
+    assert not keep.exists()
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+@pytest.mark.parametrize("problem", ["exists", "no-folder"])
+def test_keep_original_target_is_checked_before_ocr(sb, problem):
+    keep = sb.root / "originals" / "casebook.pdf"
+    if problem == "exists":
+        keep.parent.mkdir()
+        keep.write_text("older")
+
+    result = _run(sb, "--in-place", "--keep-original", keep)
+
+    assert result.returncode != 0
+    assert "❌ --keep-original" in result.output, result.output
+    assert not sb.log.exists()
+    _assert_clean(sb, ["casebook.pdf"])
+
+
+def test_keep_original_needs_in_place(sb):
+    result = _run(sb, "--keep-original", sb.root / "keep.pdf")
+
+    assert result.returncode != 0
+    assert "--keep-original needs --in-place" in result.output, result.output
+    assert not sb.log.exists()
