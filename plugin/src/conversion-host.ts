@@ -74,7 +74,8 @@ export function createTextLayerHost(app: App, settings: () => Settings): TextLay
 			const folder = path.slice(0, path.lastIndexOf("/"));
 			try {
 				const { files, folders } = await app.vault.adapter.list(folder);
-				if (files.length === 0 && folders.length === 0) await app.vault.adapter.rmdir(folder, false);
+				// Only an empty folder: rmdir(folder, false) fails with EISDIR in Obsidian 1.13.
+				if (files.length === 0 && folders.length === 0) await app.vault.adapter.rmdir(folder, true);
 			} catch {
 				// An empty hidden folder left behind is harmless.
 			}
