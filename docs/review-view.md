@@ -249,7 +249,7 @@ command that asks for a PDF (command id `create-searchable-copy`, kept so
 hotkeys survive). The comparison view offers no entry for it (#96): pure OCR
 never opens or requires the view. It adds the text layer to the PDF itself
 with `reprocess-raw --in-place` (#180), so the path and every link stay the
-same. In-place adds only the text layer: no downscaling, MediaBox fix, deskew,
+same. In-place adds only the text layer: no downscaling, MediaBox fix, rotation, deskew,
 optimization or column split, so images and annotations stay as they were. A
 PDF whose pages all have text is refused. The CLI replaces the file only after
 all checks passed, in one rename; failure, cancellation or a PDF changed during

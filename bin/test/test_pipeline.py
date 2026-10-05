@@ -240,7 +240,7 @@ def test_combine_force_ocr(box):
 
 def test_combine_text_only_keeps_the_pages(box, tmp_path):
     """--text-only (reprocess-raw --in-place, #180) adds only the text layer:
-    no Ghostscript (MediaBox fix, downscale), no deskew, no optimization."""
+    no Ghostscript (MediaBox fix, downscale), no rotation, deskew or optimization."""
     _stub(tmp_path / "stubs" / "gs", 'echo "gs $*" >> "$FAKE_LOG"\nexit 1\n')
     # A pixel-sized page: without --text-only, fix_mediabox runs Ghostscript.
     _stub(tmp_path / "stubs" / "pdfinfo", 'printf "Pages: 1\\nPage size: 2439 x 3413 pts\\n"\n')
@@ -253,7 +253,7 @@ def test_combine_text_only_keeps_the_pages(box, tmp_path):
     assert box.calls("gs") == []
     [ocr] = box.calls("ocrmypdf")
     words = ocr.split()
-    assert _ocr_flags(ocr) == {"--skip-text", "--rotate-pages"}
+    assert _ocr_flags(ocr) == {"--skip-text"}
     assert words[words.index("--optimize") + 1] == "0"
 
 
@@ -266,7 +266,8 @@ def test_combine_text_only_retries_without_split_or_deskew(box):
     assert result.returncode == 0, result.stdout + result.stderr
     assert box.files()["out.pdf"] == "apple(a)"
     assert box.calls("column_tools split") == []
-    assert all("--deskew" not in c.split() for c in box.calls("ocrmypdf"))
+    for call in box.calls("ocrmypdf"):
+        assert not {"--deskew", "--rotate-pages", "--clean"} & set(call.split()), call
 
 
 @pytest.mark.parametrize("script", SINGLE)

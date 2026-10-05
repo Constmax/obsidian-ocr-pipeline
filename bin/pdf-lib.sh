@@ -508,7 +508,8 @@ build_ocr_args() {
     # column halves (own orientation detection is unreliable — see
     # "confidence too low to rotate" warnings observed on split pages) and
     # mismatched rotation between the two halves would break the merge.
-    if [ "$no_rotate" = false ]; then
+    # --text-only keeps the pages as they are, /Rotate included (#180).
+    if [ "$no_rotate" = false ] && [ "$TEXT_ONLY" = false ]; then
         args+=(--rotate-pages)
     fi
     if [ "$no_deskew" = false ] && [ "$TEXT_ONLY" = false ]; then
@@ -534,7 +535,8 @@ build_ocr_args() {
             args=(--plugin ocrmypdf_paddle --paddle-mode "${PADDLE_MODE:-accurate}" "${args[@]}") ;;
         tesseract)
             args+=(--tesseract-pagesegmode 1)
-            if [ "$use_clean" = true ] && [ "$HAS_UNPAPER" = true ]; then
+            # --clean only cleans the OCR input, but --text-only runs no unpaper at all.
+            if [ "$use_clean" = true ] && [ "$HAS_UNPAPER" = true ] && [ "$TEXT_ONLY" = false ]; then
                 args+=(--clean)
             fi ;;
     esac
