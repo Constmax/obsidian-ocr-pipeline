@@ -3,8 +3,8 @@
 OCR pipeline for scanned legal study materials, used inside the user's
 Obsidian vault. Two use cases, one plugin:
 
-- **Searchable copy** (Stage 1, `bin/`): scanned PDF → the same PDF with an
-  invisible text layer.
+- **OCR text layer** (Stage 1, `bin/`): scanned PDF → the same PDF, in place,
+  with an invisible text layer.
 - **PDF → Markdown** (Stage 2, `pdf2md/`): scanned PDF or page image → a
   preview with one page block per source page.
 - **Review** (Stage 3, `plugin/`): the Obsidian plugin runs both and shows a
@@ -102,7 +102,7 @@ the code:
 
 Design records hold the reasoning behind decisions; the status header at the
 top says what is done: `docs/plugin-roadmap.md` (thin client),
-`docs/stage1-ui.md` (searchable-copy action), `docs/paddle-textlayer.md`
+`docs/stage1-ui.md` (OCR text layer action), `docs/paddle-textlayer.md`
 (PaddleOCR engine), `docs/BUGREPORT-2026-07-06-split-merge.md` (why the B5
 gate exists).
 

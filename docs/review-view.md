@@ -216,27 +216,25 @@ The settings tab has four tabs, each built from Obsidian's `SettingGroup`:
   (all cleaned via `normalizePath()`, with a live indicator if a folder is
   missing).
 - **PDF → Markdown:** placeholder; pdf2md options join here (#28).
-- **Searchable copy:** see below.
+- **OCR text layer:** see below.
 
 Two former settings are fixed values now: the PDF render scale cap (2,
 `RENDER_SCALE_MAX` in `src/pdf-pane.ts`) and the Markdown eager limit (200
 pages, `EAGER_LIMIT` in `src/md-pane.ts`). Saved values from older versions are
 ignored and drop out on the next save.
 
-**Searchable copy** (for the Stage-1 action, #66): OCR engine (Automatic,
+**OCR text layer** (for the Stage-1 action, #66): OCR engine (Automatic,
 Apple Vision, Tesseract, Apple Vision + RapidOCR (Paddle fast), which reads with
 Apple Vision and re-reads citation lines with RapidOCR; default Automatic,
-which uses Paddle fast when it is ready, then Apple Vision, then Tesseract, and
-skips Paddle while Split two-column pages is on, #198),
-Split two-column pages (default off), and Maximum scan resolution (#201, default
-300, 0 = off), passed as `--dpi`: scans above it are downscaled to it before OCR,
-scans at or below it keep their resolution (JPEG scans pass through unchanged,
-other images are re-encoded, see `docs/scripts-detail.md`). The field saves when
-it loses focus; an invalid value is discarded and the saved one shown again.
-`parseOcrSettings()` in `src/ocr-settings.ts`
-validates all three on load: data from before these settings and invalid values
-(such as an engine this version does not know) fall back to the defaults field
-by field. Obsidian on mobile shows only a desktop-only notice in this section.
+which uses Paddle fast when it is ready, then Apple Vision, then Tesseract,
+#198). `parseOcrSettings()` in `src/ocr-settings.ts` validates it on load: data
+from before this setting and an engine this version does not know fall back to
+Automatic. Obsidian on mobile shows only a desktop-only notice in this section.
+
+The column split and Maximum scan resolution (#201) settings were removed with
+#180: the action adds only a text layer to the PDF itself, and both would
+re-render its pages with Ghostscript. Their saved values drop out on the next
+save. The CLI keeps both flags for shell use.
 
 PaddleOCR (#73) runs as `--engine paddle --paddle-mode fast` and appears in the
 list only after `reprocess-raw --check-engine` passes on this machine (the
@@ -244,15 +242,28 @@ settings tab runs it each time it opens); otherwise the setting names the
 reason. A stored PaddleOCR is checked again before every run: when it is not
 usable (another Mac, a removed venv), the run uses Automatic and a notice says
 why. The benchmark in #71 retained it (`bench/ERGEBNIS.md`, Nachtrag 26).
-PaddleOCR always reads whole pages: with it, the Split two-column pages toggle
-has no effect (#153).
+PaddleOCR reads whole pages and keeps two-column pages in reading order (#153).
 
-The action itself is **Create searchable copy (OCR)**: in the PDF file menu
-and as a command that asks for a PDF. The comparison view offers no entry for
-it (#96): pure OCR never opens or requires the view. It writes `<stem>-ocr.pdf` beside the source with
-`reprocess-raw --output`, stops if that file already exists, never touches the
-source, and opens the new PDF. Its progress notice has no page count, but it
-can be hidden and brought back from the status bar like the conversion's.
+The action itself is **Add OCR text layer**: in the PDF file menu and as a
+command that asks for a PDF (command id `create-searchable-copy`, kept so
+hotkeys survive). The comparison view offers no entry for it (#96): pure OCR
+never opens or requires the view. It adds the text layer to the PDF itself
+with `reprocess-raw --in-place` (#180), so the path and every link stay the
+same. In-place adds only the text layer: no downscaling, MediaBox fix, rotation, deskew,
+optimization or column split, so images and annotations stay as they were. A
+PDF whose pages all have text is refused. The CLI replaces the file only after
+all checks passed, in one rename; failure, cancellation or a PDF changed during
+the run leave it unchanged and write nothing else.
+
+Every run can be undone: the plugin passes `--keep-original
+.ocr-originals/<timestamp>/<file name>`, the CLI keeps the replaced file there
+(a hard link, or a copy), and after success the plugin moves it to the system
+trash, or to the vault's `.trash` when the system trash is unavailable. The
+success notice says so. If neither works, the notice names the path where the
+original stays. Afterwards the empty run folder is removed. Without a run folder
+the action does not start.
+Its progress notice has no page count, but it can be hidden and brought back
+from the status bar like the conversion's.
 
 ## Testing
 

@@ -14,9 +14,7 @@ import {
 	DEFAULT_OCR_SETTINGS,
 	DESKTOP_ONLY_MESSAGE,
 	OCR_ENGINES,
-	MAX_DPI_LIMIT,
 	isOcrEngine,
-	parseMaxDpiInput,
 	type OcrEngine,
 	type OcrSettings,
 } from "./ocr-settings.ts";
@@ -63,13 +61,13 @@ const ENGINE_LABELS: Record<OcrEngine, string> = {
 	paddle: "Apple Vision + RapidOCR (Paddle fast)",
 };
 
-type TabId = "general" | "folders" | "pdf-to-markdown" | "searchable-copy";
+type TabId = "general" | "folders" | "pdf-to-markdown" | "text-layer";
 
 const TABS: ReadonlyArray<[TabId, string]> = [
 	["general", "General"],
 	["folders", "Folders"],
 	["pdf-to-markdown", "PDF → Markdown"],
-	["searchable-copy", "Searchable copy"],
+	["text-layer", "OCR text layer"],
 ];
 
 export class SettingsTab extends PluginSettingTab {
@@ -108,7 +106,7 @@ export class SettingsTab extends PluginSettingTab {
 		if (this.activeTab === "general") this.generalSettings();
 		else if (this.activeTab === "folders") this.folderSettings();
 		else if (this.activeTab === "pdf-to-markdown") this.pdfToMarkdownSettings();
-		else this.searchableCopySettings();
+		else this.textLayerSettings();
 	}
 
 	/** Muted note above or below a group. */
@@ -254,7 +252,7 @@ export class SettingsTab extends PluginSettingTab {
 								`PDF → Markdown (pdf2md): ${stage2.code === 0 ? "ready" : "not ready"}`,
 								...stage2.lines,
 								"",
-								`Searchable copy (${ENGINE_LABELS[engine]}): ${stage1 === null ? "ready" : "not ready"}`,
+								`OCR text layer (${ENGINE_LABELS[engine]}): ${stage1 === null ? "ready" : "not ready"}`,
 								...(stage1 === null ? [] : [stage1]),
 							].join("\n"),
 						);
@@ -291,25 +289,23 @@ export class SettingsTab extends PluginSettingTab {
 		this.folderField(group, "Status file", "Path to review-status.json.", "statusFile", true);
 	}
 
-	/** Engine and column split for "Create searchable copy"; desktop only. */
-	private searchableCopySettings(): void {
+	/** Engine and column split for "Add OCR text layer"; desktop only. */
+	private textLayerSettings(): void {
 		if (!Platform.isDesktopApp) {
 			this.hint(DESKTOP_ONLY_MESSAGE);
 			return;
 		}
-		const group = new SettingGroup(this.containerEl).setHeading("Searchable copy");
+		const group = new SettingGroup(this.containerEl).setHeading("OCR text layer");
 
 		group.addSetting((engineSetting) => {
 			engineSetting
 				.setName("OCR engine")
 				.setDesc(
-					"Used for new searchable copies. Automatic uses Apple Vision + RapidOCR " +
+					"Used for new OCR text layers. Automatic uses Apple Vision + RapidOCR " +
 						"(Paddle fast) when it is ready, otherwise Apple Vision when its OCRmyPDF " +
-						"plugin is installed, and Tesseract after that. With two-column splitting " +
-						"on, it skips Paddle fast. Apple Vision + " +
+						"plugin is installed, and Tesseract after that. Apple Vision + " +
 						"RapidOCR (Paddle fast) reads with Apple Vision, re-reads citations with " +
-						"RapidOCR, and keeps two-column pages in reading order without a column " +
-						"split; it is " +
+						"RapidOCR, and keeps two-column pages in reading order; it is " +
 						"offered once the installation check passes.",
 				)
 				.addDropdown((d) => {
@@ -326,52 +322,6 @@ export class SettingsTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 					void this.offerPaddle(d, engineSetting);
-				});
-		});
-
-		group.addSetting((setting) => {
-			setting
-				.setName("Split two-column pages")
-				.setDesc(
-					"Detects two-column pages, recognizes each column on its own, and merges " +
-						"the pages back. Recommended for two-column scripts with Apple Vision or " +
-						"Tesseract; needs pikepdf. Apple Vision + RapidOCR (Paddle fast) always " +
-						"reads whole pages.",
-				)
-				.addToggle((t) =>
-					t.setValue(this.plugin.settings.splitColumns).onChange(async (val) => {
-						this.plugin.settings.splitColumns = val;
-						await this.plugin.saveSettings();
-					}),
-				);
-		});
-
-		group.addSetting((setting) => {
-			setting
-				.setName("Maximum scan resolution")
-				.setDesc(
-					"Dots per inch. Scans above this resolution are downscaled to it before OCR, which makes " +
-						"the copy smaller and OCR faster; scans at or below it keep their resolution. " +
-						"0 turns it off.",
-				)
-				.addText((t) => {
-					t.inputEl.type = "number";
-					t.inputEl.min = "0";
-					t.inputEl.max = String(MAX_DPI_LIMIT);
-					t.setPlaceholder(String(DEFAULT_OCR_SETTINGS.maxDpi)).setValue(
-						String(this.plugin.settings.maxDpi),
-					);
-					// "change", not onChange: saves once on blur or Enter, not a
-					// half-typed "30" on the way to "300". Invalid input shows the
-					// saved value again instead of silently diverging from it.
-					t.inputEl.addEventListener("change", () => {
-						const dpi = parseMaxDpiInput(t.getValue());
-						if (dpi !== null && dpi !== this.plugin.settings.maxDpi) {
-							this.plugin.settings.maxDpi = dpi;
-							void this.plugin.saveSettings();
-						}
-						t.setValue(String(this.plugin.settings.maxDpi));
-					});
 				});
 		});
 	}
@@ -391,7 +341,7 @@ export class SettingsTab extends PluginSettingTab {
 		const reason = problem.replace(/\.$/, "");
 		const text =
 			this.plugin.settings.ocrEngine === "paddle"
-				? `${ENGINE_LABELS.paddle} is not usable here: ${reason}. Searchable copies use Automatic until it is.`
+				? `${ENGINE_LABELS.paddle} is not usable here: ${reason}. OCR text layers use Automatic until it is.`
 				: `${ENGINE_LABELS.paddle} is not offered: ${reason}.`;
 		setting.descEl.createDiv({ cls: "ocr-einstellungen-hinweis", text });
 	}

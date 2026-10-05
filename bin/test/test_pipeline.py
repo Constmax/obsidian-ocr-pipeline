@@ -238,6 +238,38 @@ def test_combine_force_ocr(box):
     assert [_ocr_flags(c) for c in box.calls("ocrmypdf")] == [{"--force-ocr", "--rotate-pages", "--deskew"}]
 
 
+def test_combine_text_only_keeps_the_pages(box, tmp_path):
+    """--text-only (reprocess-raw --in-place, #180) adds only the text layer:
+    no Ghostscript (MediaBox fix, downscale), no rotation, deskew or optimization."""
+    _stub(tmp_path / "stubs" / "gs", 'echo "gs $*" >> "$FAKE_LOG"\nexit 1\n')
+    # A pixel-sized page: without --text-only, fix_mediabox runs Ghostscript.
+    _stub(tmp_path / "stubs" / "pdfinfo", 'printf "Pages: 1\\nPage size: 2439 x 3413 pts\\n"\n')
+    _write(box.work, {"a.pdf": "a"})
+
+    result = box.run("pdf-combine.sh", "out", "--text-only")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert box.files()["out.pdf"] == "ocr(a)"
+    assert box.calls("gs") == []
+    [ocr] = box.calls("ocrmypdf")
+    words = ocr.split()
+    assert _ocr_flags(ocr) == {"--skip-text"}
+    assert words[words.index("--optimize") + 1] == "0"
+
+
+def test_combine_text_only_retries_without_split_or_deskew(box):
+    _write(box.work, {"a.pdf": "a"})
+
+    result = box.run("pdf-combine.sh", "out", "--text-only", "--engine", "tesseract",
+                     bad_text="ocr(a)", apple="1")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert box.files()["out.pdf"] == "apple(a)"
+    assert box.calls("column_tools split") == []
+    for call in box.calls("ocrmypdf"):
+        assert not {"--deskew", "--rotate-pages", "--clean"} & set(call.split()), call
+
+
 @pytest.mark.parametrize("script", SINGLE)
 def test_single_output_skips_its_own_previous_output(box, script):
     _write(box.work, {"a.pdf": "a", "out.pdf": "old result"})

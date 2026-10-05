@@ -59,9 +59,10 @@ def _ocrmypdf(*args, env=None):
     subprocess.run([sys.executable, "-m", "ocrmypdf", "-q", *args], check=True, env=env)
 
 
-def _stage1_args():
+def _stage1_args(text_only=False):
     """The OCRmyPDF arguments of a Tesseract run, as build_ocr_args builds them."""
     script = ('source "$SCRIPT_DIR/pdf-lib.sh"; RESOLVED_ENGINE=tesseract; '
+              f'TEXT_ONLY={str(text_only).lower()}; '
               'detect_optimizers; JOBS=1; build_ocr_args ocr_args; printf "%s\\n" "${ocr_args[@]}"')
     out = subprocess.run(["bash", "-c", script], env=dict(os.environ, SCRIPT_DIR=str(BIN)),
                          capture_output=True, text=True, check=True).stdout
@@ -108,3 +109,56 @@ def test_existing_text_layer_and_highlights_survive(tmp_path, ocrmypdf):
     before = _fingerprint(source)
     assert before["annots"] == ["/Highlight"] and before["words"], before
     assert _fingerprint(output) == before
+
+
+def _scan_with_notes(tmp_path):
+    """A textless scan with a highlight and a FreeText note whose appearance
+    stream has a malformed /BBox, the note Ghostscript drops (#243)."""
+    import pikepdf
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (2480, 3508), "white")
+    ImageDraw.Draw(image).rectangle([200, 200, 2200, 400], fill="gray")
+    scan = tmp_path / "scan.pdf"
+    image.save(scan, "PDF", resolution=300)
+    source = tmp_path / "notes.pdf"
+    with pikepdf.open(scan) as pdf:
+        appearance = pdf.make_stream(b"0 0 1 rg 0 0 100 20 re f",
+                                     Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Form,
+                                     BBox=[0, 0, 100])
+        note = pikepdf.Dictionary(Type=pikepdf.Name.Annot, Subtype=pikepdf.Name.FreeText,
+                                  Rect=[50, 600, 150, 620], Contents="note", DA="/Helv 10 Tf 0 g",
+                                  AP=pikepdf.Dictionary(N=appearance))
+        highlight = pikepdf.Dictionary(Type=pikepdf.Name.Annot, Subtype=pikepdf.Name.Highlight,
+                                       Rect=[50, 700, 300, 730], C=[1, 1, 0],
+                                       QuadPoints=[50, 730, 300, 730, 50, 700, 300, 700])
+        pdf.pages[0].obj.Annots = pdf.make_indirect(
+            pikepdf.Array([pdf.make_indirect(highlight), pdf.make_indirect(note)]))
+        pdf.save(source)
+    return source
+
+
+def _pages(path):
+    """Annotations and the raw bytes of every page image."""
+    import pikepdf
+
+    with pikepdf.open(path) as pdf:
+        page = pdf.pages[0]
+        annots = [str(a.Subtype) for a in page.obj.get("/Annots", [])]
+        images = sorted(image.read_raw_bytes() for image in page.get_images().values())
+    return annots, images
+
+
+def test_text_only_adds_text_and_keeps_images_and_notes(tmp_path, ocrmypdf):
+    """reprocess-raw --in-place runs OCRmyPDF with --text-only (#180): the
+    original's images and every annotation stay byte for byte."""
+    source = _scan_with_notes(tmp_path)
+    output = tmp_path / "ocr.pdf"
+    args = _stage1_args(text_only=True)
+    assert "--deskew" not in args and args[args.index("--optimize") + 1] == "0"
+
+    _ocrmypdf("--plugin", str(STUB), *args, str(source), str(output), env=STUB_ENV)
+
+    assert _pages(output) == _pages(source)
+    assert _pages(source)[0] == ["/Highlight", "/FreeText"]
+    assert _fingerprint(output)["words"]

@@ -11,8 +11,8 @@ import { Settings, SettingsTab, DEFAULT_SETTINGS } from "./settings.ts";
 import { parseOcrSettings } from "./ocr-settings.ts";
 import { ConversionController, pdf2mdExecutable } from "./conversion-controller.ts";
 import { isConvertible } from "./input-formats.ts";
-import { createConversionHost, createSearchableCopyHost } from "./conversion-host.ts";
-import { runSearchableCopy, type SearchableCopyHost } from "./searchable-copy.ts";
+import { createConversionHost, createTextLayerHost } from "./conversion-host.ts";
+import { runAddTextLayer, type TextLayerHost } from "./text-layer.ts";
 
 const RECONCILE_DEBOUNCE_MS = 500;
 
@@ -20,7 +20,7 @@ export default class OcrPreviewPlugin extends Plugin {
 	settings: Settings = { ...DEFAULT_SETTINGS };
 	inventory!: Inventory;
 	conversion!: ConversionController;
-	private searchableCopyHost!: SearchableCopyHost;
+	private textLayerHost!: TextLayerHost;
 
 	private reconcileTimer: number | null = null;
 	private markInventoryReady!: () => void;
@@ -45,7 +45,7 @@ export default class OcrPreviewPlugin extends Plugin {
 			),
 			{ resolveExecutable: () => pdf2mdExecutable(this.settings.pdf2mdPath) },
 		);
-		this.searchableCopyHost = createSearchableCopyHost(this.app, () => this.settings);
+		this.textLayerHost = createTextLayerHost(this.app, () => this.settings);
 		await this.loadSettings();
 		await this.inventory.load();
 
@@ -123,8 +123,8 @@ export default class OcrPreviewPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: "create-searchable-copy",
-			name: "Create searchable copy (OCR)",
-			callback: () => this.selectPdfForSearchableCopy(),
+			name: "Add OCR text layer",
+			callback: () => this.selectPdfForTextLayer(),
 		});
 
 		this.addCommand({
@@ -281,16 +281,16 @@ export default class OcrPreviewPlugin extends Plugin {
 		pageModal.open();
 	}
 
-	/** Stage 1 for exactly this PDF: writes `<stem>-ocr.pdf` beside it. */
-	createSearchableCopy(file: TFile): void {
-		void runSearchableCopy(
+	/** Stage 1 for exactly this PDF: adds the text layer to the PDF itself. */
+	addTextLayer(file: TFile): void {
+		void runAddTextLayer(
 			{ path: file.path, basename: file.basename },
 			this.conversion,
-			this.searchableCopyHost,
+			this.textLayerHost,
 		);
 	}
 
-	private selectPdfForSearchableCopy(): void {
+	private selectPdfForTextLayer(): void {
 		if (!this.conversion.ensureIdle()) return;
 		// Stage 1 only: `bin/pdf-auto` and the column split assume PDF input,
 		// so this list stays PDF-only while conversion accepts images too
@@ -299,8 +299,8 @@ export default class OcrPreviewPlugin extends Plugin {
 			this.app,
 			this.app.vault.getFiles().filter((f) => f.extension === "pdf"),
 		);
-		modal.setPlaceholder("Search PDF for a searchable copy…");
-		modal.onSelection = (file) => this.createSearchableCopy(file);
+		modal.setPlaceholder("Search PDF for an OCR text layer…");
+		modal.onSelection = (file) => this.addTextLayer(file);
 		modal.open();
 	}
 
@@ -323,9 +323,9 @@ export default class OcrPreviewPlugin extends Plugin {
 			if (file.extension === "pdf") {
 				menu.addItem((i) =>
 					i
-						.setTitle("Create searchable copy (OCR)")
+						.setTitle("Add OCR text layer")
 						.setIcon("scan-text")
-						.onClick(() => this.createSearchableCopy(file)),
+						.onClick(() => this.addTextLayer(file)),
 				);
 			}
 			const stem = `${file.basename}.md`;

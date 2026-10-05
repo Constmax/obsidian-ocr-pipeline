@@ -5,21 +5,18 @@ import {
 	DEFAULT_OCR_SETTINGS,
 	OCR_ENGINES,
 	isOcrEngine,
-	parseMaxDpiInput,
 	parseOcrSettings,
 } from "../src/ocr-settings.ts";
 
-test("defaults: automatic engine, no column split, 300 DPI limit", () => {
-	assert.deepEqual(DEFAULT_OCR_SETTINGS, { ocrEngine: "auto", splitColumns: false, maxDpi: 300 });
+test("defaults: automatic engine", () => {
+	assert.deepEqual(DEFAULT_OCR_SETTINGS, { ocrEngine: "auto" });
 });
 
 test("saved values survive a reload through data.json", () => {
 	for (const ocrEngine of OCR_ENGINES) {
-		for (const splitColumns of [true, false]) {
-			const saved = { previewFolder: "_ocr-preview", ocrEngine, splitColumns, maxDpi: 250 };
-			const reloaded = JSON.parse(JSON.stringify(saved)) as unknown;
-			assert.deepEqual(parseOcrSettings(reloaded), { ocrEngine, splitColumns, maxDpi: 250 });
-		}
+		const saved = { previewFolder: "_ocr-preview", ocrEngine };
+		const reloaded = JSON.parse(JSON.stringify(saved)) as unknown;
+		assert.deepEqual(parseOcrSettings(reloaded), { ocrEngine });
 	}
 });
 
@@ -29,56 +26,23 @@ test("data from before these settings existed gets the defaults", () => {
 	}
 });
 
-test("invalid values fall back field by field", () => {
+test("an invalid engine falls back to the default", () => {
 	for (const ocrEngine of ["easyocr", "Paddle", "", 3, null, ["apple"], {}]) {
-		assert.deepEqual(
-			parseOcrSettings({ ocrEngine, splitColumns: true }),
-			{ ocrEngine: "auto", splitColumns: true, maxDpi: 300 },
-			JSON.stringify(ocrEngine),
-		);
-	}
-	for (const splitColumns of ["true", "false", 1, 0, null]) {
-		assert.deepEqual(
-			parseOcrSettings({ ocrEngine: "tesseract", splitColumns }),
-			{ ocrEngine: "tesseract", splitColumns: false, maxDpi: 300 },
-			JSON.stringify(splitColumns),
-		);
-	}
-	for (const maxDpi of [-1, 2.5, "300", null, Number.NaN, 2401, 1e21]) {
-		assert.deepEqual(
-			parseOcrSettings({ ocrEngine: "apple", splitColumns: true, maxDpi }),
-			{ ocrEngine: "apple", splitColumns: true, maxDpi: 300 },
-			JSON.stringify(maxDpi),
-		);
+		assert.deepEqual(parseOcrSettings({ ocrEngine }), { ocrEngine: "auto" }, JSON.stringify(ocrEngine));
 	}
 });
 
-test("a DPI limit of 0 (off) is kept (issue #201)", () => {
-	assert.equal(parseOcrSettings({ maxDpi: 0 }).maxDpi, 0);
-});
-
-test("only the OCR fields are returned", () => {
+test("only the OCR field is returned; settings removed in #180 drop out", () => {
 	assert.deepEqual(
-		Object.keys(parseOcrSettings({ ocrEngine: "apple", splitColumns: true, previewFolder: "x" })).sort(),
-		["maxDpi", "ocrEngine", "splitColumns"],
+		Object.keys(
+			parseOcrSettings({ ocrEngine: "apple", splitColumns: true, maxDpi: 300, previewFolder: "x" }),
+		),
+		["ocrEngine"],
 	);
 });
 
 test("PaddleOCR is a valid stored engine (issue #73)", () => {
 	assert.deepEqual([...OCR_ENGINES], ["auto", "apple", "tesseract", "paddle"]);
 	assert.equal(isOcrEngine("paddle"), true);
-	assert.deepEqual(parseOcrSettings({ ocrEngine: "paddle", splitColumns: false }), {
-		ocrEngine: "paddle",
-		splitColumns: false,
-		maxDpi: 300,
-	});
-});
-
-test("the DPI field: empty is the default, invalid text is rejected (issue #201)", () => {
-	assert.equal(parseMaxDpiInput(""), 300);
-	assert.equal(parseMaxDpiInput(" 250 "), 250);
-	assert.equal(parseMaxDpiInput("0"), 0);
-	for (const text of ["-5", "2.5", "abc", "2401", "1e21"]) {
-		assert.equal(parseMaxDpiInput(text), null, text);
-	}
+	assert.deepEqual(parseOcrSettings({ ocrEngine: "paddle" }), { ocrEngine: "paddle" });
 });

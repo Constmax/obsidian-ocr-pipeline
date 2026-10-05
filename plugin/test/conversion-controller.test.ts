@@ -23,14 +23,14 @@ import {
 	type ConvertFunction,
 	type PdfSource,
 	type ProgressDisplay,
-	type SearchableCopyFunction,
-	type SearchableCopyRequest,
+	type TextLayerFunction,
+	type TextLayerRequest,
 } from "../src/conversion-controller.ts";
 import type {
 	ConversionOptions,
 	ConversionResult,
 	ProgressEvent,
-	SearchableCopyOptions,
+	TextLayerOptions,
 } from "../src/conversion.ts";
 
 const PDF: PdfSource = { path: "raw/case-01.pdf", basename: "case-01" };
@@ -132,9 +132,9 @@ function page(num: number, total: number, derailed = false): ProgressEvent {
 }
 
 interface OcrCall {
-	args: [string, string, string, string];
+	args: [string, string, string];
 	spawnFn: unknown;
-	options: SearchableCopyOptions;
+	options: TextLayerOptions;
 	/** Missing shortPages default to none. */
 	finish: (result: ConversionResult & { shortPages?: number[] }) => void;
 }
@@ -148,10 +148,10 @@ function setup(host = new FakeHost()) {
 		new Promise((finish) => {
 			calls.push({ args: [pdf, out, pdf2md, cwd], spawnFn, options, finish });
 		});
-	const searchableCopy: SearchableCopyFunction = (source, destination, cli, cwd, spawnFn, options = {}) =>
+	const addTextLayer: TextLayerFunction = (source, cli, cwd, spawnFn, options = {}) =>
 		new Promise((resolve) => {
 			ocrCalls.push({
-				args: [source, destination, cli, cwd],
+				args: [source, cli, cwd],
 				spawnFn,
 				options,
 				finish: (r) => resolve({ shortPages: [], ...r }),
@@ -163,7 +163,7 @@ function setup(host = new FakeHost()) {
 			aborted.push(child);
 		},
 		resolveExecutable: () => "/home/test/bin/pdf2md",
-		searchableCopy,
+		addTextLayer,
 		abortGroup: (child) => {
 			groupAborted.push(child);
 		},
@@ -172,12 +172,10 @@ function setup(host = new FakeHost()) {
 	return { host, calls, ocrCalls, aborted, groupAborted, controller };
 }
 
-const OCR_REQUEST: SearchableCopyRequest = {
+const OCR_REQUEST: TextLayerRequest = {
 	source: PDF,
-	destination: "raw/case-01-ocr.pdf",
 	engine: "apple",
-	splitColumns: true,
-	maxDpi: 300,
+	keepOriginal: ".ocr-originals/1/case-01.pdf",
 	allowPages: "1",
 };
 
@@ -564,22 +562,20 @@ test("runOcr: passes paths and options, indeterminate progress, leaves success t
 	const call = ocrCalls[0]!;
 	assert.deepEqual(call.args, [
 		"raw/case-01.pdf",
-		"raw/case-01-ocr.pdf",
 		"/home/test/bin/reprocess-raw",
 		"/vault",
 	]);
 	assert.equal(call.spawnFn, undefined);
 	assert.equal(call.options.engine, "apple");
-	assert.equal(call.options.splitColumns, true);
-	assert.equal(call.options.maxDpi, 300);
+	assert.equal(call.options.keepOriginal, ".ocr-originals/1/case-01.pdf");
 	assert.equal(call.options.allowPages, "1");
 
 	call.options.onChild!(child);
-	const done = result({ stdoutLast: ["✅ Written: /vault/raw/case-01-ocr.pdf"] });
+	const done = result({ stdoutLast: ["✅ Overwritten: /vault/raw/case-01.pdf"] });
 	call.finish(done);
 
 	assert.deepEqual(await running, { ...done, shortPages: [] });
-	assert.deepEqual(host.progress, ['OCR Preview: Creating searchable copy of "case-01" …']);
+	assert.deepEqual(host.progress, ['OCR Preview: Adding OCR text layer to "case-01" …']);
 	assert.equal(host.hidden, 1);
 	assert.deepEqual(host.notices, []);
 	// Stage 1 has no Markdown result: no inventory reconciliation.
@@ -604,7 +600,7 @@ test("runOcr: failure is reported with the script's ❌ reason", async () => {
 			stdoutLast: [
 				"📋 B5 Gate: checking chars/page (min: 50)...",
 				"❌ B5 gate failed (see pages above) — /vault/raw/case-01.pdf remains unchanged",
-				"No file written: /vault/raw/case-01-ocr.pdf",
+				"No file written: /vault/raw/case-01.pdf remains unchanged",
 			],
 			stderrLast: ["🗑️  Page 3: only 5 characters (min: 50)"],
 		}),
@@ -612,7 +608,7 @@ test("runOcr: failure is reported with the script's ❌ reason", async () => {
 
 	assert.equal((await running)?.code, 1);
 	assert.deepEqual(host.notices, [
-		"OCR Preview: Searchable copy failed (Code 1) — B5 gate failed (see pages above) — /vault/raw/case-01.pdf remains unchanged.",
+		"OCR Preview: OCR text layer failed (Code 1) — B5 gate failed (see pages above) — /vault/raw/case-01.pdf remains unchanged.",
 	]);
 });
 
@@ -629,10 +625,10 @@ test("runOcr: cancel stops the process group, not the single child", async () =>
 	assert.deepEqual(groupAborted, [child]);
 	assert.deepEqual(aborted, []);
 	assert.deepEqual(host.progress, [
-		'OCR Preview: Creating searchable copy of "case-01" …',
+		'OCR Preview: Adding OCR text layer to "case-01" …',
 		'OCR Preview: "case-01" is being cancelled …',
 	]);
-	assert.deepEqual(host.notices, ['OCR Preview: Searchable copy of "case-01" cancelled — no file written.']);
+	assert.deepEqual(host.notices, ['OCR Preview: OCR text layer for "case-01" cancelled — the PDF is unchanged.']);
 	assert.equal(controller.isRunning, false);
 });
 
@@ -689,35 +685,35 @@ test("runOcr: refused while any conversion runs, and without file-system access"
 	const offline = setup(noAccess);
 	assert.equal(await offline.controller.runOcr(OCR_REQUEST), null);
 	assert.equal(offline.ocrCalls.length, 0);
-	assert.deepEqual(noAccess.notices, ["OCR Preview: A searchable copy requires file system access (Desktop)."]);
+	assert.deepEqual(noAccess.notices, ["OCR Preview: An OCR text layer requires file system access (Desktop)."]);
 	assert.equal(offline.controller.isRunning, false);
 });
 
 test("runOcr: a rejected call is reported and the controller is idle again", async () => {
 	const host = new FakeHost();
 	const controller = new ConversionController(host, {
-		searchableCopy: () => Promise.reject(new Error("boom")),
+		addTextLayer: () => Promise.reject(new Error("boom")),
 		resolveReprocessRaw: () => "/home/test/bin/reprocess-raw",
 	});
 
 	assert.equal(await controller.runOcr(OCR_REQUEST), null);
-	assert.deepEqual(host.notices, ["OCR Preview: Searchable copy failed — Error: boom."]);
+	assert.deepEqual(host.notices, ["OCR Preview: OCR text layer failed — Error: boom."]);
 	assert.equal(host.hidden, 1);
 	assert.equal(controller.isRunning, false);
 });
 
 test("classifyOcrFailure maps signals, start errors, ENOENT, and exit codes", () => {
 	const cases: Array<[Partial<ConversionResult>, string, string]> = [
-		[{ code: null, signal: "SIGKILL" }, "killed", "OCR Preview: Searchable copy failed (force terminated (SIGKILL))."],
-		[{ code: null, signal: "SIGTERM" }, "signal", "OCR Preview: Searchable copy failed (terminated (Signal SIGTERM))."],
-		[{ code: null, stderrLast: ["Error: spawn EACCES"] }, "start-error", "OCR Preview: Searchable copy failed (Start error) — Error: spawn EACCES."],
+		[{ code: null, signal: "SIGKILL" }, "killed", "OCR Preview: OCR text layer failed (force terminated (SIGKILL))."],
+		[{ code: null, signal: "SIGTERM" }, "signal", "OCR Preview: OCR text layer failed (terminated (Signal SIGTERM))."],
+		[{ code: null, stderrLast: ["Error: spawn EACCES"] }, "start-error", "OCR Preview: OCR text layer failed (Start error) — Error: spawn EACCES."],
 		[
 			{ code: null, stderrLast: ["Error: spawn /home/test/bin/reprocess-raw ENOENT"] },
 			"not-found",
-			`OCR Preview: Searchable copy failed (Start error) — reprocess-raw not found. Install it with setup.sh: ${INSTALL_DOCS_URL}.`,
+			`OCR Preview: OCR text layer failed (Start error) — reprocess-raw not found. Install it with setup.sh: ${INSTALL_DOCS_URL}.`,
 		],
-		[{ code: 1, stderrLast: ["Traceback", "ValueError: bad page."] }, "exit-code", "OCR Preview: Searchable copy failed (Code 1) — ValueError: bad page."],
-		[{ code: 2 }, "exit-code", "OCR Preview: Searchable copy failed (Code 2)."],
+		[{ code: 1, stderrLast: ["Traceback", "ValueError: bad page."] }, "exit-code", "OCR Preview: OCR text layer failed (Code 1) — ValueError: bad page."],
+		[{ code: 2 }, "exit-code", "OCR Preview: OCR text layer failed (Code 2)."],
 	];
 	for (const [overrides, kind, message] of cases) {
 		const failure = classifyOcrFailure(result(overrides));
@@ -745,7 +741,7 @@ test("runOcr: a cancelled run reports cancellation and drops short pages", async
 	ocrCalls[0]!.finish({ ...result({ code: 1 }), shortPages: [2] });
 
 	assert.deepEqual((await running)?.shortPages, []);
-	assert.deepEqual(host.notices, ['OCR Preview: Searchable copy of "case-01" cancelled — no file written.']);
+	assert.deepEqual(host.notices, ['OCR Preview: OCR text layer for "case-01" cancelled — the PDF is unchanged.']);
 });
 
 test("findCli: null when no candidate exists; resolveCli then falls back to ~/bin", () => {
