@@ -4,8 +4,8 @@ The document-wide gate fails a result under 200 characters per page on
 average and then walks the whole fallback chain. reprocess-raw checks every
 page itself (B5, at least 50 characters, with exemptions), so on its path
 the gate's average drops to 1 character per page: a slide deck gets its text
-layer from one OCR pass, and only a pass that read no text at all moves to
-the next engine. The garbage and split checks stay. pdf-combine on its own
+layer from one OCR pass, and only a pass that read (next to) no text moves
+to the next engine. The garbage and split checks stay. pdf-combine on its own
 keeps the average of 200.
 
 The toolchain is the stubbed one of test_pipeline.py.
@@ -15,17 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from test_pipeline import BASH, box, failure_reason  # noqa: F401  (fixture)
+from test_pipeline import BASH, _ocr_calls, box, failure_reason  # noqa: F401  (fixture)
 
 
 pytestmark = pytest.mark.slow  # end-to-end runs; `make test-fast` skips them
 
 BIN = Path(__file__).resolve().parent.parent
 SLIDE_CHARS = "120"  # per page: over the B5 floor, under the average of 200
-
-
-def _ocr_calls(box):
-    return [call for call in box.calls("ocrmypdf") if "--paddle-check" not in call.split()]
 
 
 def _reprocess(box, tmp_path, *args, **fake):

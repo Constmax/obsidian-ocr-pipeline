@@ -600,10 +600,8 @@ run_ocr() {
 # Checks OCR quality of a PDF. Exits 0 if OK, 1 if garbage, with
 # QUALITY_FAIL_REASON set to the failed metric.
 # Metrics:
-#   1. chars/page on average ≥ MIN_AVERAGE_CHARS (default 200). reprocess-raw
-#      checks every page itself (B5) and passes 1: slide decks and sparse
-#      pages stay under 200, and only a result without any text needs the
-#      next engine (#218).
+#   1. chars/page on average ≥ MIN_AVERAGE_CHARS (--min-average-chars,
+#      default 200)
 #   2. garbage_score < 0.40 (column-mixing / symbol corruption)
 quality_check() {
     local pdf="$1" threshold="$MIN_AVERAGE_CHARS"
@@ -620,7 +618,8 @@ quality_check() {
     # way, but -raw is the representative choice for what a human actually
     # gets when reading these files.
     text=$(pdftotext -raw "$pdf" - 2>/dev/null || true)
-    chars=$(printf '%s' "$text" | wc -c | tr -d ' ')
+    # pdftotext ends every page in a form feed, an empty page too: not text.
+    chars=$(printf '%s' "$text" | tr -d '\f' | wc -c | tr -d ' ')
     pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/^Pages:/ {print $2}')
 
     if [ -z "$pages" ] || [ "$pages" -eq 0 ]; then

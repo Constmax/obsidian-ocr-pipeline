@@ -79,7 +79,7 @@ pdf-auto <folder> [--output-dir <dir>] [--engine ...] [--dpi N] [--jobs N] \
 ### Quality Gate
 
 After every OCR run, the pipeline automatically validates:
-1. **Characters/page** on average ≥ `--min-average-chars` (default 200; catches total failures). `reprocess-raw`, and with it the plugin, passes `1`: lecture slides, diagrams and mostly blank pages stay under 200 and used to fail after three full OCR passes, while its B5 gate (Check 2 below) checks every page anyway. On that path only a result without any text moves to the next engine (#218)
+1. **Characters/page** on average ≥ `--min-average-chars` (default 200; catches total failures). `reprocess-raw`, and with it the plugin, passes `1`: lecture slides, diagrams and mostly blank pages stay under 200 and used to fail after three full OCR passes, while its B5 gate (Check 2 below) checks every page anyway. On that path only a result with less than one character per page on average (in practice: no text) moves to the next engine (#218). Characters are counted as bytes of `pdftotext -raw` output without its page-ending form feeds, so an umlaut counts twice
 2. **Garbage score** < 0.40 (catches column mixing, §→88 corruption, unexpected mid-word capitals)
 3. **iso ratio** < 0.40 (special check: >40% 1-2 character words = guaranteed column mixing)
 

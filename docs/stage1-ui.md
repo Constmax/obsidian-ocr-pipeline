@@ -179,8 +179,9 @@ further pages, the new prefill keeps the confirmed exemptions and adds the new
 pages. A cancelled run never offers exemptions. Exemptions only affect B5;
 `pdf-combine`'s document-wide average no longer stands in their way:
 `reprocess-raw` lowers it to 1 character per page, so slide decks and mostly
-blank documents rely on B5 plus the garbage check, and only a result without
-any text moves to the next engine (#218).
+blank documents rely on B5 plus the garbage check, and only a result with
+less than one character per page on average (in practice: no text) moves to
+the next engine (#218).
 
 An exceptional **Rebuild OCR text layer…** action may be designed after the
 safe workflow ships. It must warn that force OCR rasterizes born-digital text

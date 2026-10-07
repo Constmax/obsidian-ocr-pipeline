@@ -10,7 +10,9 @@ The plugin's "Add OCR text layer" runs `reprocess-raw --in-place
 --keep-original <path>` (`plugin/src/conversion.ts`, `addTextLayer`) with the
 engine the user chose (`plugin/src/ocr-settings.ts`). `--in-place` passes
 `pdf-combine --text-only`: no `fix_mediabox`, no `gs_downscale`, no rotation or deskew,
-`--optimize 0`, no column split (#180). `auto` (the plugin default) uses
+`--optimize 0`, no column split (#180). Every reprocess-raw run also passes
+`--min-average-chars 1`: its B5 gate checks every page, so the quality
+gate's average of 200 no longer fails slide decks (#218). `auto` (the plugin default) uses
 PaddleOCR fast when it is ready (#198). A change reaches the user only through
 these flags and the engines; the split, `--dpi` and `--force-ocr` paths are
 shell-only.
