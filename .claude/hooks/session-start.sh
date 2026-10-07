@@ -39,10 +39,13 @@ log() { echo "[session-start $(date +%T)] $*" >&2; }
 
 # System tools: tesseract (ocrmypdf demands it even with an engine plugin),
 # poppler (pdftotext -raw for the quality gate), qpdf and ghostscript.
+# German language data too: the tests stub it, but a real Stage-1 run passes
+# -l deu (bin/pdf-lib.sh build_ocr_args).
 missing=()
 for pair in tesseract:tesseract-ocr pdftotext:poppler-utils qpdf:qpdf gs:ghostscript; do
   command -v "${pair%%:*}" >/dev/null 2>&1 || missing+=("${pair#*:}")
 done
+tesseract --list-langs 2>/dev/null | grep -qx deu || missing+=(tesseract-ocr-deu)
 if [ ${#missing[@]} -gt 0 ]; then
   log "apt-get install ${missing[*]}"
   # Third-party PPAs in the base image may be blocked; their warnings are harmless.
