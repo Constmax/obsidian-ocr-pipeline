@@ -112,6 +112,7 @@ case "$cmd" in
     merge) [ -n "${FAKE_MERGE_FAIL:-}" ] && exit 1
            printf 'merged(%s)' "$(cat "$3")" > "$4" ;;
     verify) case "$(cat "$3")" in *split\\(*) exit 0 ;; *) exit 1 ;; esac ;;
+    verify-pages) exit 1 ;;  # a scan: pages without text, short pages
 esac
 '''
 
@@ -130,6 +131,7 @@ def box(tmp_path):
                              'n=(); while [ "$1" != "-o" ]; do n+=("$1"); shift; done\n'
                              '( IFS=,; printf "img(%s)" "${n[*]}" ) > "$2"\n')
     _stub(stubs / "unpaper", "exit 0\n")
+    _stub(stubs / "tesseract", "exit 0\n")
     # Word statistics of the garbage heuristic: no python3 → defer to metric 1.
     _stub(stubs / "python3", "exit 1\n")
     _stub(stubs / "sysctl", f"echo {64 * GB}\n")
@@ -182,6 +184,16 @@ def _ocr_flags(call):
     words = call.split()
     return {flag for flag in ("--skip-text", "--force-ocr", "--clean", "--rotate-pages", "--deskew")
             if flag in words}
+
+
+def failure_reason(result, keep=5):
+    """The line the plugin shows as the failure reason (classifyOcrFailure):
+    the last line starting with ❌ among the last `keep` non-empty lines of
+    stdout, then of stderr, trimmed."""
+    def tail(text):
+        return [line.strip() for line in text.splitlines() if line.strip()][-keep:]
+    lines = tail(result.stdout) + tail(result.stderr)
+    return next((line for line in reversed(lines) if line.startswith("❌")), None)
 
 
 def _assert_no_scratch(box):
@@ -353,6 +365,25 @@ def test_single_output_failure_writes_nothing(box, script, options, fake):
     assert box.files() == {"a.pdf": "a"}
     assert "❌" in result.stdout + result.stderr
     _assert_no_scratch(box)
+
+
+@pytest.mark.parametrize("script", SINGLE)
+@pytest.mark.parametrize("options,fake,reason", [
+    ([], {"bad_text": "ocr(a) ocr(split(a))"},
+     "❌ Quality gate failed: only 0 characters per page (min: 200) — no file written"),
+    ([], {"ocr_fail": "1"}, "❌ OCR failed on every attempt — no file written"),
+    (["--no-quality-gate"], {"ocr_fail": "1"}, "❌ OCR failed — no file written"),
+    # The plugin reads stderr after stdout: the merge step's own line wins.
+    (["--split-columns"], {"merge_fail": "1"}, "❌ column_tools.py merge failed"),
+], ids=["quality-gate", "every-run-crashed", "ocr", "re-merge"])
+def test_single_output_failure_names_its_cause_last(box, script, options, fake, reason):
+    """#217: the plugin shows the last ❌ line; the CLI adds none after the cause."""
+    _write(box.work, {"a.pdf": "a"})
+
+    result = box.run(script, "out", *options, **fake)
+
+    assert result.returncode == 1, result.stdout
+    assert failure_reason(result) == reason, result.stdout + result.stderr
 
 
 @pytest.mark.parametrize("script", SINGLE)

@@ -9,7 +9,9 @@ missing. The toolchain is the stubbed one of test_pipeline.py.
 
 Run with: python3 -m pytest bin/test -q
 """
+import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -100,3 +102,53 @@ def test_a_plugin_from_before_the_check_asks_for_a_reinstall(box):
     assert result.returncode == 4
     assert "too old for this pipeline" in result.stderr
     assert "usage:" not in result.stderr and "output_pdf" not in result.stderr
+
+
+def _path_without(tmp_path, tool):
+    """PATH with every command of the current PATH except `tool`."""
+    links = tmp_path / f"path-without-{tool}"
+    links.mkdir()
+    for folder in os.environ["PATH"].split(os.pathsep):
+        folder = Path(folder)
+        if not folder.is_dir():
+            continue
+        for exe in folder.iterdir():
+            target = links / exe.name
+            if exe.name != tool and not target.exists() and os.access(exe, os.X_OK):
+                target.symlink_to(exe)
+    return str(links)
+
+
+def test_missing_tesseract_is_not_usable(box, tmp_path):
+    """#217: OCRmyPDF 17.8 needs tesseract with every engine plugin."""
+    stubs = tmp_path / "stubs"
+    (stubs / "tesseract").unlink()
+    box.env["PATH"] = f"{stubs}{os.pathsep}{_path_without(tmp_path, 'tesseract')}"
+
+    result = _check(box, apple="1")
+
+    assert result.returncode == 4, result.stdout + result.stderr
+    assert "❌ Missing tools: tesseract" in result.stderr
+
+
+def test_missing_pikepdf_is_not_usable(box, tmp_path):
+    """#217: --in-place and --output check the B5 gate with pikepdf."""
+    box.env["VENV_ROOT"] = str(tmp_path / "no-venvs")
+
+    result = _check(box, apple="1")
+
+    assert result.returncode == 4, result.stdout + result.stderr
+    assert "❌ pikepdf not found" in result.stderr
+
+
+def test_a_run_without_tesseract_fails_before_ocr(box, tmp_path):
+    stubs = tmp_path / "stubs"
+    (stubs / "tesseract").unlink()
+    box.env["PATH"] = f"{stubs}{os.pathsep}{_path_without(tmp_path, 'tesseract')}"
+    _write(box.work, {"a.pdf": "a"})
+
+    result = box.run("pdf-combine.sh", "out", apple="1")
+
+    assert result.returncode == 1, result.stdout
+    assert "❌ Missing tools: tesseract" in result.stderr
+    assert box.calls("ocrmypdf") == []

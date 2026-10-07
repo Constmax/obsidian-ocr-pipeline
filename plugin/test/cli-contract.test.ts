@@ -45,6 +45,7 @@ interface Contract {
 	stage1: {
 		shortPages: { stderr: string[]; shortPageNumbers: number[] };
 		failure: { stdout: string[]; reason: string };
+		qualityGate: { line: string; reason: string };
 		checkEngine: {
 			args: string[];
 			notUsable: { exitCode: string; stderr: string[]; reason: string };
@@ -192,6 +193,21 @@ test("contract: the Stage-1 failure line gives the failure reason", () => {
 	assert.equal(
 		failure.message,
 		`OCR Preview: OCR text layer failed (Code ${contract.exitCodes["error"]}) — ${contract.stage1.failure.reason}.`,
+	);
+});
+
+test("contract: a quality-gate failure gives its cause, not the unchanged source", () => {
+	const spec = contract.stage1.qualityGate;
+	const failure = classifyOcrFailure(
+		result({
+			code: contract.exitCodes["error"],
+			stdoutLast: [spec.line, "/vault/scan.pdf remains unchanged"],
+			stderrLast: ["🔄 Fallback: Apple Vision → Tesseract (quality gate failed)"],
+		}),
+	);
+	assert.equal(
+		failure.message,
+		`OCR Preview: OCR text layer failed (Code ${contract.exitCodes["error"]}) — ${spec.reason}.`,
 	);
 });
 
