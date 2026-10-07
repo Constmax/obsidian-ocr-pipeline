@@ -40,6 +40,8 @@ def sandbox(tmp_path):
     _stub(stubs, "ocrmypdf", f'[ "$1" = "--plugin" ] && exit 1\necho "ocrmypdf $*" >> "{log}"\nexit 1\n')
     for tool in ("gs", "qpdf", "pdfinfo", "pdftotext", "img2pdf"):
         _stub(stubs, tool, f'echo "{tool} $*" >> "{log}"\nexit 1\n')
+    # Checked before any run (#217); never called with a plugin engine.
+    _stub(stubs, "tesseract", "exit 0\n")
     # python3 without pikepdf: `python3 -c "import pikepdf"` fails.
     _stub(stubs, "python3", "exit 1\n")
     # `sysctl -n hw.memsize` exists only on macOS; on Linux CI it fails and
