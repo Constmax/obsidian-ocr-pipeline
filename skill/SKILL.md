@@ -225,6 +225,7 @@ pdf-auto "$VAULT_ROOT/raw/assets" --cleanup --fast --engine tesseract --split-co
 | `zsh: killed` | `--jobs 1 --dpi 200` nachreichen (detect_safe_jobs sollte das verhindern) |
 | Spalten werden vermischt | `--engine tesseract --split-columns` nachreichen (Erkennung + strukturelle Trennung, Original-Seitenzahl bleibt erhalten) |
 | Erkennung trifft bei ungewöhnlichem Layout nicht zu | `--split-columns-all` erzwingt Split auf allen Seiten |
+| `❌ Missing tools: tesseract` | `./setup.sh` erneut ausführen. OCRmyPDF 17.8 braucht Tesseract auch mit Apple Vision oder PaddleOCR |
 | `❌ pikepdf not found — required by --split-columns` | `./setup.sh` erneut ausführen. Ohne pikepdf bricht jeder Split-Lauf vor dem OCR ab (kein Rückfall mehr, der stillschweigend Halbseiten liefert) |
 | `pdftotext` liefert vermischte Zeilen trotz korrekt aussehender PDF | `pdftotext -raw` statt Default-Modus (Poppler-Lesereihenfolge erkennt rekonstruierte Zweispalten nicht zuverlässig, siehe oben) |
 | OCR-Qualität schlecht (Garbage-Score > 0.40) | Quality-Gate retryed automatisch; manuell: Engine wechseln + `--dpi 0` |
