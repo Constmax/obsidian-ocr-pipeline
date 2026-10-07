@@ -240,7 +240,7 @@ Opens terminal at vault root. PATH/Scripts function normally since they live in
 `.claude/hooks/session-start.sh` (registered in `.claude/settings.json`) builds
 the toolchain `make check` needs, with the same pins as CI: apt packages
 `tesseract-ocr tesseract-ocr-deu poppler-utils qpdf ghostscript` (German data
-only here: CI stubs it, real Stage-1 runs pass `-l deu`), shellcheck `v0.11.0`, Python
+only here: the tests use a stub engine, real Stage-1 runs pass `-l deu`), shellcheck `v0.11.0`, Python
 3.12 venvs `$VENV_ROOT/dev` (pytest, pytest-xdist, pyyaml, pymupdf, numpy, pillow, pikepdf;
 put first on `PATH` for the session) and `$VENV_ROOT/ocrmypdf` (ocrmypdf
 `17.8.0` + pytest, which the Makefile picks up by itself), and `npm ci` in
