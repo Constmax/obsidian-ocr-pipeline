@@ -13,6 +13,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from test_pipeline import BASH, box, failure_reason  # noqa: F401  (fixture)
+
 BIN = Path(__file__).resolve().parent.parent
 CONTRACT = json.loads(
     (BIN.parent / "contracts" / "cli-contract.json").read_text(encoding="utf-8"))
@@ -63,6 +67,24 @@ def test_reprocess_raw_reports_its_failure_on_a_contract_line(tmp_path):
 
     assert result.returncode == CONTRACT["exitCodes"]["error"]
     assert result.stdout.splitlines() == spec["stdout"]
+
+
+@pytest.mark.slow  # runs the pipeline end to end on stubbed tools
+def test_reprocess_raw_reports_a_quality_gate_failure_on_the_contract_line(box, tmp_path):
+    """#217: the cause, not reprocess-raw's own summary, is the plugin's reason."""
+    spec = STAGE1["qualityGate"]
+    scan = tmp_path / "vault" / "scan.pdf"
+    scan.parent.mkdir()
+    scan.write_text("scan")
+
+    result = subprocess.run(
+        [BASH, str(BIN / "reprocess-raw.sh"), str(scan), "--in-place"],
+        env=dict(box.env, FAKE_BAD_TEXT="ocr(scan)"),
+        capture_output=True, text=True, timeout=30, check=False)
+
+    assert result.returncode == CONTRACT["exitCodes"]["error"], result.stdout + result.stderr
+    assert failure_reason(result) == spec["line"], result.stdout + result.stderr
+    assert scan.read_text() == "scan"
 
 
 def test_check_engine_reports_an_unusable_engine_on_contract_lines(tmp_path):
