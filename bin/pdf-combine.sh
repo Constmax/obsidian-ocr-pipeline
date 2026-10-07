@@ -100,8 +100,7 @@ echo "🔤 Step 2/2: Merge + OCR + Optimization..."
 pipeline_options=(--no-clean)
 [ "$FORCE_OCR" = true ] && pipeline_options+=(--force-ocr)
 if ! run_pdf_pipeline "${pipeline_options[@]}" "$OUTPUT_FILE" "${PDF_LIST[@]}"; then
-    echo ""
-    echo "❌ No result — no file written"
+    # Its ❌ line names the cause; the plugin shows the last one (#217).
     exit 1
 fi
 

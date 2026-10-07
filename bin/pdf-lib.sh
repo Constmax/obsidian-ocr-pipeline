@@ -36,6 +36,8 @@ RESOLVED_ENGINE=""        # apple|tesseract|paddle — the one engine state (set
 ENGINE_DESC=""            # RESOLVED_ENGINE for humans, e.g. "Apple Vision (auto)"
 OCR_RESULT_DESC=""        # Engine behind the last OCR result, with fallback (set by ocr_with_retry)
 OCR_FALLBACK=false        # true when the last OCR result came from a fallback engine
+OCR_GATE_FAILED=false     # true when an attempt of ocr_with_retry produced a result that failed the gate
+QUALITY_FAIL_REASON=""    # Metric the last quality_check failed on (set by quality_check)
 FALLBACK_COUNT=0          # Results from a fallback engine in this run (pdf-auto summary)
 HAS_JBIG2=false
 HAS_PNGQUANT=false
@@ -143,6 +145,31 @@ check_deps() {
         return 1
     fi
     return 0
+}
+
+# check_ocr_tools
+# check_deps for a run: OCRmyPDF 17.8 needs tesseract with every engine
+# plugin, Apple Vision and PaddleOCR too (#217).
+check_ocr_tools() {
+    check_deps ocrmypdf qpdf gs pdftotext tesseract && return 0
+    if ! command -v tesseract >/dev/null 2>&1; then
+        echo "   OCRmyPDF needs tesseract with every engine: ./setup.sh (brew install tesseract)" >&2
+    fi
+    return 1
+}
+
+# find_pikepdf_python
+# Prints the Python that imports pikepdf (for column_tools.py): the ocrmypdf
+# venv's, else python3. Returns 1 when neither does.
+find_pikepdf_python() {
+    local candidate
+    for candidate in "${VENV_ROOT:-$HOME/.venvs}/ocrmypdf/bin/python3" "python3"; do
+        if "$candidate" -c "import pikepdf" 2>/dev/null; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
 }
 
 # detect_apple_ocr
@@ -562,7 +589,8 @@ run_ocr() {
 # ════════════════════════════════════════════════════════════
 
 # quality_check <pdf> [--threshold N]
-# Checks OCR quality of a PDF. Exits 0 if OK, 1 if garbage.
+# Checks OCR quality of a PDF. Exits 0 if OK, 1 if garbage, with
+# QUALITY_FAIL_REASON set to the failed metric.
 # Metrics:
 #   1. chars/page ≥ threshold (default 200)
 #   2. garbage_score < 0.40 (column-mixing / symbol corruption)
@@ -594,6 +622,7 @@ quality_check() {
     # ── Metric 1: raw character density ──
     if [ "$chars_per_page" -lt "$threshold" ]; then
         echo "   🗑️  Quality-FAIL: Only $chars_per_page chars/page (min: $threshold)"
+        QUALITY_FAIL_REASON="only $chars_per_page characters per page (min: $threshold)"
         return 1
     fi
     echo "   📊 Quality: $chars_per_page chars/page ✓"
@@ -602,6 +631,7 @@ quality_check() {
     if [ -n "$SPLIT_MAP" ] && [ -f "$SPLIT_MAP" ] && [ -n "$PYTHON_BIN" ] && [ -f "$SCRIPT_DIR/column_tools.py" ]; then
         if ! "$PYTHON_BIN" "$SCRIPT_DIR/column_tools.py" verify "$pdf" --map "$SPLIT_MAP"; then
             echo "   🗑️  Quality-FAIL: One-sided text loss on split page detected"
+            QUALITY_FAIL_REASON="one column of a split page lost its text"
             return 1
         fi
     fi
@@ -667,12 +697,14 @@ print(total, isolated, mixed_case, digit_alpha)
     # iso-ratio > 0.40 is still caught below as column-mixing (separate check).
     if [ "$(python3 -c "print(1 if $garbage_score > 0.40 else 0)")" = "1" ]; then
         echo "   🗑️  Quality-FAIL: Garbage score $garbage_score > 0.40"
+        QUALITY_FAIL_REASON="garbage score $garbage_score (max: 0.40)"
         return 1
     fi
 
     # Special case: extremely high isolated-char ratio (>40 %) → guaranteed column mixing
     if [ "$(python3 -c "print(1 if $isolated_r > 0.40 else 0)")" = "1" ]; then
         echo "   🗑️  Quality-FAIL: Column mixing detected (iso=$isolated_r)"
+        QUALITY_FAIL_REASON="columns mixed (short-word ratio $isolated_r, max: 0.40)"
         return 1
     fi
 
@@ -683,7 +715,8 @@ print(total, isolated, mixed_case, digit_alpha)
 # _ocr_attempt <input.pdf> <output.pdf> <args_array_name>
 # Internal: one OCR run plus the quality gate. Returns 0 if <output.pdf>
 # passed; otherwise 1 with OCR_FAIL_REASON set. A result that failed the gate
-# stays at <output.pdf> (the best effort); a failed run leaves none.
+# stays at <output.pdf> (the best effort) and sets OCR_GATE_FAILED; a failed
+# run leaves none.
 _ocr_attempt() {
     local input="$1" output="$2" args_name="$3"
     if ! run_ocr "$input" "$output" "$args_name"; then
@@ -696,6 +729,7 @@ _ocr_attempt() {
         return 0
     fi
     OCR_FAIL_REASON="quality gate failed"
+    OCR_GATE_FAILED=true
     return 1
 }
 
@@ -766,7 +800,9 @@ _split_retry() {
 # OCR_RESULT_DESC and OCR_FALLBACK for the summary. <args_array_name> is
 # passed by name (bash 3.2).
 # Returns 0 if the final result passes quality, 1 if all attempts fail
-# (<output.pdf> then holds the best effort, if any).
+# (<output.pdf> then holds the best effort, if any). OCR_GATE_FAILED tells
+# whether any attempt produced a result (QUALITY_FAIL_REASON: why the last
+# one failed the gate) or every run failed.
 #
 # Scratch files are placed in $WORK_DIR (set by the caller, cleaned via its
 # EXIT trap) rather than next to $output — otherwise an interrupted run can
@@ -796,6 +832,8 @@ ocr_with_retry() {
     OCR_RESULT_DESC="$ENGINE_DESC"
     OCR_FALLBACK=false
     OCR_FAIL_REASON=""
+    OCR_GATE_FAILED=false
+    QUALITY_FAIL_REASON=""
 
     echo "   🔤 OCR (attempt 1): $ENGINE_DESC"
     if _ocr_attempt "$input" "$ocr_tmp" "$args_name"; then
@@ -980,9 +1018,15 @@ _pdf_pipeline_steps() {
     else
         # WORK_DIR for this call only: the retries' scratch files and split
         # map land in the run folder, not in the caller's WORK_DIR.
-        # ocr_with_retry returns 1 on a best-effort (quality-gate-failed) result.
+        # ocr_with_retry returns 1 when no attempt passed the gate.
         if ! WORK_DIR="$run_dir" ocr_with_retry "$pre_ocr" "$result" ocr_args; then
-            echo "   ❌ Quality gate failed — no file written"; return 1
+            # The plugin shows the last ❌ line: it names the cause (#217).
+            if [ "$OCR_GATE_FAILED" = true ]; then
+                echo "   ❌ Quality gate failed: $QUALITY_FAIL_REASON — no file written"
+            else
+                echo "   ❌ OCR failed on every attempt — no file written"
+            fi
+            return 1
         fi
     fi
 
@@ -1041,14 +1085,20 @@ require_paddle_engine_for_mode() {
 
 # check_engine <engine>
 # `reprocess-raw --check-engine`: resolves <engine> with the same checks as
-# lib_init (tools, Apple Vision, PaddleOCR readiness; not pikepdf, which only
-# --split-columns needs) and exits without touching a file: 0 if a run would start on it,
-# 4 (`check-failed`, contracts/cli-contract.json) with the reason on stderr
-# otherwise. The plugin asks this before it offers an engine.
+# lib_init (tools, Apple Vision, PaddleOCR readiness) plus pikepdf, which
+# reprocess-raw's B5 gate needs (#217), and exits without touching a file: 0
+# if a run would start on it, 4 (`check-failed`, contracts/cli-contract.json)
+# with the reason on stderr otherwise. The plugin asks this before it offers
+# an engine.
 check_engine() {
     local engine="${1:-auto}"
     require_paddle_engine_for_mode "$engine"
-    check_deps ocrmypdf qpdf gs pdftotext || exit 4
+    check_ocr_tools || exit 4
+    if ! find_pikepdf_python >/dev/null; then
+        echo "❌ pikepdf not found — reprocess-raw needs it for the B5 gate" >&2
+        echo "   Install: ./setup.sh (or pip install pikepdf into the ocrmypdf venv)" >&2
+        exit 4
+    fi
     detect_apple_ocr
     if [ "$engine" = paddle ]; then
         detect_paddle_ocr
@@ -1082,7 +1132,7 @@ lib_init() {
     fi
 
     echo "🔍 Checking dependencies..."
-    check_deps ocrmypdf qpdf gs pdftotext || exit 1
+    check_ocr_tools || exit 1
 
     # Apple Vision is probed for every engine: it is also a fallback.
     detect_apple_ocr
@@ -1094,13 +1144,7 @@ lib_init() {
     detect_optimizers
 
     # ── Python binary with pikepdf (for column_tools.py) ──
-    PYTHON_BIN=""
-    for candidate in "${VENV_ROOT:-$HOME/.venvs}/ocrmypdf/bin/python3" "python3"; do
-        if "$candidate" -c "import pikepdf" 2>/dev/null; then
-            PYTHON_BIN="$candidate"
-            break
-        fi
-    done
+    PYTHON_BIN=$(find_pikepdf_python) || true
     if [ -z "$PYTHON_BIN" ]; then
         # Fail before any processing: without pikepdf there is no split map,
         # and an unmergeable split returns doubled half-pages (issue #47).

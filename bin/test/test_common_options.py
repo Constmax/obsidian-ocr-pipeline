@@ -48,6 +48,8 @@ def _sandbox(tmp_path, ram_gb):
     # The Apple Vision plugin probe fails; every real OCR call is logged.
     _stub(stubs, "ocrmypdf", f'[ "$1" = "--plugin" ] && exit 1\necho "ocrmypdf $*" >> "{log}"\nexit 1\n')
     _stub(stubs, "qpdf", "echo 1\n")
+    # OCRmyPDF needs tesseract with every engine; runs check for it (#217).
+    _stub(stubs, "tesseract", "exit 0\n")
     # fix_mediabox reads the page size; without it `read` ends the script under set -e.
     _stub(stubs, "pdfinfo", 'printf "Pages: 1\\nPage size: 595 x 842 pts (A4)\\n"\n')
     # gs_downscale runs gs unguarded: like the real one, write -sOutputFile.

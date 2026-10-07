@@ -190,13 +190,7 @@ if [ -z "$ORIG_PAGES" ]; then
     echo "❌ Cannot determine page count of $SRC_ABS"; exit 1
 fi
 
-PYTHON_BIN=""
-for candidate in "${VENV_ROOT:-$HOME/.venvs}/ocrmypdf/bin/python3" "python3"; do
-    if "$candidate" -c "import pikepdf" 2>/dev/null; then
-        PYTHON_BIN="$candidate"
-        break
-    fi
-done
+PYTHON_BIN=$(find_pikepdf_python) || true
 # --output and --in-place keep no result for inspection, so fail before OCR.
 if [ -z "$PYTHON_BIN" ] && [ -n "$DEST$IN_PLACE" ]; then
     echo "⚠️  pikepdf not found — cannot check B5 gate, aborting for safety"
@@ -324,7 +318,9 @@ replace_source() {
 
 echo "🔄 Reprocessing: $SRC_ABS ($ORIG_PAGES pages)"
 if ! "$PDF_COMBINE" "$WORK_DIR" "$OUTNAME" ${COMBINE_ARGS[@]+"${COMBINE_ARGS[@]}"}; then
-    echo "❌ pdf-combine failed — $SRC_ABS remains unchanged"
+    # pdf-combine printed the cause on a ❌ line; the plugin shows the last
+    # one, so this line has no marker (#217).
+    echo "   $SRC_ABS remains unchanged"
     exit 1
 fi
 

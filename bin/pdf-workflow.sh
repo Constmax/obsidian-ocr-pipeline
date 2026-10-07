@@ -114,8 +114,7 @@ fi
 echo ""
 echo "🔤 Step 3/3: Merge + OCR + Optimization..."
 if ! run_pdf_pipeline "$OUTPUT_FILE" "${PDF_LIST[@]}"; then
-    echo ""
-    echo "❌ No result — no file written"
+    # Its ❌ line names the cause; the plugin shows the last one (#217).
     exit 1
 fi
 
