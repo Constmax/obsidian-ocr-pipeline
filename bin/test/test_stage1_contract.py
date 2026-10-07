@@ -91,10 +91,17 @@ def test_check_engine_reports_an_unusable_engine_on_contract_lines(tmp_path):
     spec = STAGE1["checkEngine"]
     stubs = tmp_path / "stubs"
     stubs.mkdir()
-    for tool, body in [("ocrmypdf", "exit 1\n"), ("qpdf", ""), ("gs", ""), ("pdftotext", "")]:
+    for tool, body in [("ocrmypdf", "exit 1\n"), ("qpdf", ""), ("gs", ""), ("pdftotext", ""),
+                       ("tesseract", "")]:
         (stubs / tool).write_text("#!/bin/bash\n" + body)
         (stubs / tool).chmod(0o755)
-    env = dict(os.environ, PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}")
+    # A Python with pikepdf, which --check-engine requires (#217).
+    venv_python = tmp_path / "venvs" / "ocrmypdf" / "bin" / "python3"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("#!/bin/bash\nexit 0\n")
+    venv_python.chmod(0o755)
+    env = dict(os.environ, PATH=f"{stubs}{os.pathsep}{os.environ['PATH']}",
+               VENV_ROOT=str(tmp_path / "venvs"))
 
     result = subprocess.run(
         ["bash", str(BIN / "reprocess-raw.sh"), *spec["args"]],
