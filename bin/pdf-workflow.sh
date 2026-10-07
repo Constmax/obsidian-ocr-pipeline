@@ -24,6 +24,7 @@ Options:
    --split-columns-all             Like --split-columns, but split ALL pages (no auto-detect)
    --keep-split                    Suppress re-merge (keep half-pages)
    --no-quality-gate               Disable quality check + auto-retry
+   --min-average-chars N           Quality check: minimum characters per page on average (default 200)
 EOF
     exit 1
 fi

@@ -139,6 +139,9 @@ if [ -n "$IN_PLACE" ]; then
     done
     COMBINE_ARGS+=(--text-only)
 fi
+# The B5 gate below checks every page, so pdf-combine's average only has to
+# catch a result without any text: slide decks stay under 200 (#218).
+COMBINE_ARGS+=(--min-average-chars 1)
 
 if [ -n "$KEEP_ORIGINAL" ]; then
     KEEP_DIR="$(cd "$(dirname "$KEEP_ORIGINAL")" 2>/dev/null && pwd -P)" || {

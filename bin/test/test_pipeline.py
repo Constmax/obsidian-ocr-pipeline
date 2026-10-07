@@ -95,10 +95,12 @@ while [ "$1" != "--" ]; do parts+=("$(cat "$1")"); shift; done
 
 # The quality gate reads pdftotext: 300 characters pass, nothing fails.
 # FAKE_BAD_TEXT lists contents (space-separated) whose OCR text is empty.
+# FAKE_TEXT_CHARS sets the count of the others; FAKE_TEXT replaces them.
 PDFTOTEXT = '''
 content="$(cat "$2")"
 for bad in ${FAKE_BAD_TEXT:-}; do [ "$content" = "$bad" ] && exit 0; done
-head -c 300 /dev/zero | tr "\\0" x
+if [ -n "${FAKE_TEXT:-}" ]; then printf '%s' "$FAKE_TEXT"; exit 0; fi
+head -c "${FAKE_TEXT_CHARS:-300}" /dev/zero | tr "\\0" x
 '''
 
 # column_tools.py <cmd> ...: split/merge wrap the content; verify accepts
@@ -112,7 +114,9 @@ case "$cmd" in
     merge) [ -n "${FAKE_MERGE_FAIL:-}" ] && exit 1
            printf 'merged(%s)' "$(cat "$3")" > "$4" ;;
     verify) case "$(cat "$3")" in *split\\(*) exit 0 ;; *) exit 1 ;; esac ;;
-    verify-pages) exit 1 ;;  # a scan: pages without text, short pages
+    # A scan: pages without text, short pages. FAKE_B5_PASS: OCR results
+    # (wrapped contents) have enough text on every page.
+    verify-pages) case "$(cat "$3")" in *\\(*) [ -n "${FAKE_B5_PASS:-}" ] ;; *) exit 1 ;; esac ;;
 esac
 '''
 
