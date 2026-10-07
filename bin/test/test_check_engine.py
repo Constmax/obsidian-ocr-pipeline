@@ -119,11 +119,15 @@ def _path_without(tmp_path, tool):
     return str(links)
 
 
-def test_missing_tesseract_is_not_usable(box, tmp_path):
-    """#217: OCRmyPDF 17.8 needs tesseract with every engine plugin."""
+def _remove_tesseract(box, tmp_path):
     stubs = tmp_path / "stubs"
     (stubs / "tesseract").unlink()
     box.env["PATH"] = f"{stubs}{os.pathsep}{_path_without(tmp_path, 'tesseract')}"
+
+
+def test_missing_tesseract_is_not_usable(box, tmp_path):
+    """#217: OCRmyPDF 17.8 needs tesseract with every engine plugin."""
+    _remove_tesseract(box, tmp_path)
 
     result = _check(box, apple="1")
 
@@ -142,9 +146,7 @@ def test_missing_pikepdf_is_not_usable(box, tmp_path):
 
 
 def test_a_run_without_tesseract_fails_before_ocr(box, tmp_path):
-    stubs = tmp_path / "stubs"
-    (stubs / "tesseract").unlink()
-    box.env["PATH"] = f"{stubs}{os.pathsep}{_path_without(tmp_path, 'tesseract')}"
+    _remove_tesseract(box, tmp_path)
     _write(box.work, {"a.pdf": "a"})
 
     result = box.run("pdf-combine.sh", "out", apple="1")

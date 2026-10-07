@@ -72,7 +72,12 @@ OCR engine runs from exactly one of them:
 | `~/.venvs/mlxocr` (Python 3.12 via uv) | `setup.sh` ⑥, Apple Silicon only | Stage 2: PaddleOCR-VL 1.5 through MLX | `pdf2md/requirements.txt` (`mlx-vlm`, `pymupdf`, `pikepdf`, `pillow`, `numpy`) | `pdf2md` wrapper, plugin conversion |
 
 Tesseract itself comes from Homebrew (`tesseract-lang` in the `Brewfile`); the
-Apple Vision engine needs macOS.
+Apple Vision engine needs macOS. OCRmyPDF 17.8 needs `tesseract` with every
+engine, Apple Vision and PaddleOCR included: without it every Stage-1 run and
+`reprocess-raw --check-engine` stop with `❌ Missing tools: tesseract` (#217).
+`--check-engine` also fails with `❌ pikepdf not found` when no Python on the
+venv path imports `pikepdf`, which `reprocess-raw`'s B5 gate needs; rerun
+`./setup.sh` for either.
 
 ### PaddleOCR (`install-paddle.sh`)
 
