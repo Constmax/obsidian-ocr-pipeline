@@ -182,14 +182,60 @@ def test_page_number_is_discarded_at_the_page_edge_only():
 def test_provider_lines_are_discarded_as_boilerplate():
     assert discarded([
         z("Juristisches Repetitorium für Recht"),
-        z("hemmer"),
         z("– 1 –"),
         z("26-I"),
-        z("Mainz - Man"),
         z("Schuldrecht AT – Fall 12 | Skript"),
     ]) == [("Juristisches Repetitorium für Recht", "boilerplate"),
-           ("hemmer", "boilerplate"), ("– 1 –", "boilerplate"),
-           ("26-I", "boilerplate"), ("Mainz - Man", "boilerplate")]
+           ("– 1 –", "boilerplate"), ("26-I", "boilerplate")]
+
+
+def test_a_subject_label_under_the_header_of_a_scan_is_discarded():
+    lines = [z("**BGB-AT**", y0=108), *stack("Der Anspruch ist entstanden.", y=200)]
+    assert discarded(lines, source="ocr") == [("**BGB-AT**", "boilerplate")]
+    assert discarded(lines) == []
+
+
+def test_zone_signals_are_discarded_at_the_page_edge():
+    lines = [z("hemmer", y0=20), z("Seite 3", y0=40),
+             *stack("Der Anspruch ist entstanden.", "Mehr.", y=200),
+             z("BGB AT", y0=960)]
+    expected = [("hemmer", "boilerplate"), ("Seite 3", "boilerplate"),
+                ("BGB AT", "boilerplate")]
+    assert discarded(lines) == expected
+    assert discarded(lines, source="ocr") == expected
+
+
+def test_city_lines_are_discarded_at_the_edge_of_an_ocr_page_only():
+    """A text layer's running lines are found by assembly_context (Issue #221)."""
+    lines = [z("Mainz - Man", y0=75), z("Passau - Reg"),  # no box: may be the header
+             *stack("Der Anspruch ist entstanden.", "Mehr.", y=200)]
+    assert discarded(lines, source="ocr") == [
+        ("Mainz - Man", "boilerplate"), ("Passau - Reg", "boilerplate")]
+    assert discarded(lines) == []
+
+
+def test_a_running_head_with_its_page_number_is_discarded_below_the_header_zone():
+    """It differs on every page, so it is no running line (Issue #221)."""
+    head = "Fall 3 - Lösung - Seite 4"
+    lines = [z(head, y0=120), *stack("Der Anspruch ist entstanden.", y=200)]
+    assert discarded(lines) == [(head, "boilerplate")]
+
+
+def test_a_short_statute_line_in_the_middle_of_a_page_is_kept():
+    """A citation broken across lines: its `BGB` line is body text, and the
+    sentence runs on past it (Issue #221)."""
+    lines = stack("Der Anspruch des Verkäufers folgt aus § 433 Abs. 2",
+                  "BGB", "und ist auch fällig.", y=500)
+    sentence = "Der Anspruch des Verkäufers folgt aus § 433 Abs. 2 BGB und ist auch fällig."
+    assert paragraphs(lines) == [sentence]
+    assert paragraphs(lines, source="ocr") == [sentence]
+
+
+def test_short_lines_like_zone_signals_are_kept_in_the_middle_of_a_page():
+    texts = ("StGB AT", "Seite 3", "Fall 3 Lösung", "Berlin –", "Mainz - Man")
+    lines = [z(text, y0=300 + 40 * i) for i, text in enumerate(texts)]
+    assert discarded(lines, source="ocr") == []
+    assert discarded(lines) == []
 
 
 # --- Headings and enumerations ---------------------------------------------
