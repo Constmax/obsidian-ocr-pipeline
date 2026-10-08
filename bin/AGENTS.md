@@ -32,7 +32,8 @@ shell-only.
 - `bin/test` holds behavioral tests with stubbed tools on `PATH`; only
   `test_hocr_text_layer_order.py`, `test_existing_text_layer.py` and
   `test_appleocr_no_boxes.py` (macOS) run the pinned ocrmypdf, and
-  `test_downscale.py` the real Ghostscript (slow, skipped without `gs`).
+  `test_downscale.py` the real Ghostscript and `test_mediabox.py` the real
+  Ghostscript, qpdf and pdfinfo (slow, skipped without them).
 
 ## Pinned toolchain
 

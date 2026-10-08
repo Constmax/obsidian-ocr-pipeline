@@ -33,7 +33,7 @@ detection, and `--dpi`/`--jobs` win over the `--fast` presets.
 
 `resolve_engine` in `pdf-lib.sh` turns the requested engine into one resolved value (`apple`, `tesseract` or `paddle`); the OCR arguments and the fallbacks below are derived from that value alone.
 
-Every OCRmyPDF call writes plain PDF (`--output-type pdf`), not OCRmyPDF's default PDF/A. The PDF/A conversion runs Ghostscript over the whole file: it dropped every annotation (highlights included) and split an existing text layer into one font per glyph, which pdf.js renders measurably slower (#210). The Ghostscript steps before OCR (`fix_mediabox` for oversized pages, `gs_downscale` unless `--dpi 0`) still rewrite the file; they keep an existing text layer's fonts and the highlights, but drop an annotation Ghostscript cannot parse, such as one with a broken appearance stream. The column split carries page content only, so split pages lose their annotations. `--text-only` (the plugin's in-place mode) runs none of these steps.
+Every OCRmyPDF call writes plain PDF (`--output-type pdf`), not OCRmyPDF's default PDF/A. The PDF/A conversion runs Ghostscript over the whole file: it dropped every annotation (highlights included) and split an existing text layer into one font per glyph, which pdf.js renders measurably slower (#210). The Ghostscript steps before OCR (`fix_mediabox` for pixel-sized pages, `gs_downscale` unless `--dpi 0`) still rewrite the file; they keep an existing text layer's fonts and the highlights, but drop an annotation Ghostscript cannot parse, such as one with a broken appearance stream. The column split carries page content only, so split pages lose their annotations. `--text-only` (the plugin's in-place mode) runs none of these steps.
 
 ### DPI Tuning
 
@@ -216,8 +216,8 @@ Prior to OCR, every PDF passes through three automated stages without requiring 
 ```
 Stage 1: MediaBox Fix        Stage 2: Downscale         Stage 3: Column Split
 ┌──────────────────┐       ┌─────────────────┐        ┌──────────────────┐
-│ Page > 650×900   │  →    │ 300 DPI         │   →    │ (if --split-     │
-│ pts?             │       │ Bicubic         │        │  columns active) │
+│ Page side >      │  →    │ 300 DPI         │   →    │ (if --split-     │
+│ 1263 pts?        │       │ Bicubic         │        │  columns active) │
 │ → scale to A4    │       │                 │        │ Left + right     │
 │   (595×842 pts)  │       │                 │        │ half-page        │
 └──────────────────┘       └─────────────────┘        └──────────────────┘
@@ -227,7 +227,7 @@ Stage 1: MediaBox Fix        Stage 2: Downscale         Stage 3: Column Split
 
 **Problem**: Certain PDFs (typically Hemmer scans) define MediaBox using image pixel dimensions (e.g., 2439×3413 pts @ 72 PPI), setting logical page dimensions to 33.9 × 47.4 inches. Rasterizing at 300 DPI during OCR yields 144 megapixels per page, exceeding available RAM (even on 16 GB systems).
 
-**Solution**: `fix_mediabox()` identifies pages exceeding 650×900 pts and scales them via Ghostscript `-dPDFFitPage` to standard A4 (595×842 pts). At 300 DPI, this consumes only 8.7 megapixels per page, running comfortably on 8 GB RAM systems.
+**Solution**: `fix_mediabox()` checks every page and scales only those whose longer side is above 1263 pts (1.5 × A4 height) via Ghostscript `-dPDFFitPage` to standard A4 (595×842 pts); qpdf puts them back between the other pages. Slides (960×540) and landscape A4 keep their size and orientation (#219). At 300 DPI, this consumes only 8.7 megapixels per page, running comfortably on 8 GB RAM systems.
 
 No flag required — executes automatically prior to downscaling.
 

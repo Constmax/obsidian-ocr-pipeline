@@ -50,8 +50,8 @@ def _sandbox(tmp_path, ram_gb):
     _stub(stubs, "qpdf", "echo 1\n")
     # OCRmyPDF needs tesseract with every engine; runs check for it (#217).
     _stub(stubs, "tesseract", "exit 0\n")
-    # fix_mediabox reads the page size; without it `read` ends the script under set -e.
-    _stub(stubs, "pdfinfo", 'printf "Pages: 1\\nPage size: 595 x 842 pts (A4)\\n"\n')
+    # fix_mediabox reads the per-page sizes; an A4 page needs no Ghostscript.
+    _stub(stubs, "pdfinfo", 'printf "Pages: 1\\nPage    1 size: 595 x 842 pts (A4)\\n"\n')
     # gs_downscale runs gs unguarded: like the real one, write -sOutputFile.
     _stub(stubs, "gs", 'for a in "$@"; do case "$a" in -sOutputFile=*) out="${a#-sOutputFile=}" ;; esac; done\n'
                        'cp "${@: -1}" "$out"\n')

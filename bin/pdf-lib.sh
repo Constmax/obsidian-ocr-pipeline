@@ -24,8 +24,7 @@ FAST_DPI=200             # --fast floor: never below 200 with tesseract
 FAST_JOBS=1
 DOWNSAMPLE_TYPE="Bicubic"  # was /Subsample — smears text edges
 JPEG_QFACTOR=1.6         # JPEG QFactor of downscaled images: -32 % at equal OCR confidence (#201)
-A4_MAX_W=650             # Max page width in pts before MediaBox fix (A4=595 + 10 %)
-A4_MAX_H=900             # Max page height in pts before MediaBox fix (A4=842 + 7 %)
+PIXEL_PAGE_MIN_PT=1263   # Longer page side in pts above which fix_mediabox refits a page (1.5 × A4 height, #219)
 MAX_IMAGE_MPIXELS=400    # ocrmypdf --max-image-mpixels safety net (Default 250) for inputs without fix_mediabox
 
 # ── Global state (set by callers or detect_*) ───────────────
@@ -342,35 +341,61 @@ detect_safe_jobs() {
 # ════════════════════════════════════════════════════════════
 
 # fix_mediabox <input.pdf> <output.pdf>
-# Corrects page MediaBox from pixel dimensions (72 PPI metadata) to A4.
+# Corrects page MediaBoxes from pixel dimensions (72 PPI metadata) to A4.
 # Problem: Some PDFs have MediaBox set to image pixel dimensions
 # (e.g. 2439×3413 pts), which means ocrmypdf rasterizes at
-# insane sizes (144 MP at 300 DPI). This fixes them to A4.
+# insane sizes (144 MP at 300 DPI). Checked per page: only a page whose
+# longer side is above PIXEL_PAGE_MIN_PT is refitted; slides and landscape
+# A4 keep their size (#219).
 # Returns 0; output is guaranteed to exist (copy if no fix needed).
 fix_mediabox() {
     local input="$1" output="$2"
-    local w h
+    local total count oversized
 
-    read -r w h < <(pdfinfo "$input" 2>/dev/null | awk '/^Page size:/ {gsub(/pts/, "", $3); gsub(/pts/, "", $5); print int($3), int($5)}')
-    if [ -z "$w" ] || [ -z "$h" ]; then
+    # "<pages> <oversized> <oversized pages, comma-separated>"; pdfinfo clamps -l.
+    read -r total count oversized < <(pdfinfo -f 1 -l 999999 "$input" 2>/dev/null | awk -v min="$PIXEL_PAGE_MIN_PT" '
+        /^Page +[0-9]+ size:/ {
+            n++
+            if (($4 > $6 ? $4 : $6) > min) { m++; list = list sep $2; sep = "," }
+        }
+        END { print n + 0, m + 0, list }')
+    if [ -z "$oversized" ]; then
         cp "$input" "$output"
         return 0
     fi
 
-    if [ "$w" -le "$A4_MAX_W" ] && [ "$h" -le "$A4_MAX_H" ]; then
-        # Already A4-compliant — no fix needed
-        cp "$input" "$output"
-        return 0
+    echo "   📐 MediaBox fix: $count of $total pages pixel-sized → A4 (595×842 pts)"
+
+    # All pages oversized: one pass. Otherwise refit only those pages, then
+    # put them back between the others (the original stays the primary
+    # input, so its outline and document-level objects survive).
+    local fitted="$output"
+    local page_list=()
+    if [ "$count" -lt "$total" ]; then
+        fitted="$output.fit.pdf"
+        page_list=("-sPageList=$oversized")
     fi
-
-    echo "   📐 MediaBox fix: ${w}×${h} pts → A4 (595×842 pts)"
-
     gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.7 \
        -dNOPAUSE -dQUIET -dBATCH \
        -dPDFFitPage \
        -dDEVICEWIDTHPOINTS=595 -dDEVICEHEIGHTPOINTS=842 \
-       -sOutputFile="$output" \
+       ${page_list[@]+"${page_list[@]}"} \
+       -sOutputFile="$fitted" \
        "$input" 2>/dev/null
+
+    if [ "$fitted" != "$output" ] && [ -f "$fitted" ]; then
+        local pages=() page next=1 status=0
+        for ((page = 1; page <= total; page++)); do
+            case ",$oversized," in
+                *",$page,"*) pages+=("$fitted" "$next"); next=$((next + 1)) ;;
+                *) pages+=("$input" "$page") ;;
+            esac
+        done
+        # Exit 3: written, with warnings (common on damaged scans).
+        qpdf "$input" --pages "${pages[@]}" -- "$output" 2>/dev/null || status=$?
+        rm -f "$fitted"
+        if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then rm -f "$output"; fi
+    fi
 
     if [ ! -f "$output" ]; then
         echo "   ⚠️  MediaBox fix failed, continuing with original"

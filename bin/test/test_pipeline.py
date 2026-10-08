@@ -129,7 +129,7 @@ def box(tmp_path):
     _stub(stubs / "ocrmypdf", OCRMYPDF)
     _stub(stubs / "qpdf", QPDF)
     _stub(stubs / "pdftotext", PDFTOTEXT)
-    _stub(stubs / "pdfinfo", 'printf "Pages: 1\\nPage size: 595 x 842 pts (A4)\\n"\n')
+    _stub(stubs / "pdfinfo", 'printf "Pages: 1\\nPage    1 size: 595 x 842 pts (A4)\\n"\n')
     _stub(stubs / "gs", 'for a in "$@"; do case "$a" in -sOutputFile=*) out="${a#-sOutputFile=}" ;; esac; done\n'
                         'cp "${@: -1}" "$out"\n')
     _stub(stubs / "img2pdf", 'echo "img2pdf $*" >> "$FAKE_LOG"\n'
@@ -265,7 +265,7 @@ def test_combine_text_only_keeps_the_pages(box, tmp_path):
     no Ghostscript (MediaBox fix, downscale), no rotation, deskew or optimization."""
     _stub(tmp_path / "stubs" / "gs", 'echo "gs $*" >> "$FAKE_LOG"\nexit 1\n')
     # A pixel-sized page: without --text-only, fix_mediabox runs Ghostscript.
-    _stub(tmp_path / "stubs" / "pdfinfo", 'printf "Pages: 1\\nPage size: 2439 x 3413 pts\\n"\n')
+    _stub(tmp_path / "stubs" / "pdfinfo", 'printf "Pages: 1\\nPage    1 size: 2439 x 3413 pts\\n"\n')
     _write(box.work, {"a.pdf": "a"})
 
     result = box.run("pdf-combine.sh", "out", "--text-only")
