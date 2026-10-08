@@ -22,7 +22,9 @@ def _column_gap(with_box, second_look=False):
     """
     if len(with_box) < 8:
         return None
-    type_set = [z for z in with_box if not is_boilerplate(z.text, z.box[1])] or with_box
+    # ocr_page: leave out anything that may be a header, on either page kind.
+    type_set = [z for z in with_box
+                if not is_boilerplate(z.text, z.box[1], ocr_page=True)] or with_box
     height = statistics.median(z.box[3] - z.box[1] for z in type_set) or 10
 
     def continues_row(z):
@@ -176,8 +178,10 @@ def _blocks(column, factor=0.8):
 
 def question_answer_grid(left, right, tol=3):
     """Two columns as Markdown table if right depends on left."""
-    left = [z for z in left if not is_boilerplate(clean_text(z.text), z.box[1])]
-    right = [z for z in right if not is_boilerplate(clean_text(z.text), z.box[1])]
+    left = [z for z in left
+            if not is_boilerplate(clean_text(z.text), z.box[1], ocr_page=True)]
+    right = [z for z in right
+             if not is_boilerplate(clean_text(z.text), z.box[1], ocr_page=True)]
     if len(left) < 6 or len(right) < 6:
         return None
     starts = sorted(z.box[1] for z in left if _is_line_start(z.text))

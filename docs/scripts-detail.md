@@ -485,7 +485,7 @@ page's paragraphs are assembled, so a header the model glued to the first
 paragraph is dropped too. It drops the document's running lines and:
 
 - fixed patterns (`BOILERPLATE`) anywhere;
-- `RUNNING_HEADS`, short running heads that carry the page number
+- `NUMBERED_HEADS`, short header lines that carry the page number
   ("Fall 3 - Lösung - Seite 4"), anywhere: they differ on every page, so
   `assembly_context()` cannot find them, and they sit below the header zone;
 - a bare page number near the page edge;
@@ -501,6 +501,8 @@ a weaker signal needs a zone nearer the edge: zone signals above 70 or below
 950 on a text-layer page; on an OCR page zone signals and city lines above
 120 (a scan's header and subject label sit lower) or below 950, and a city
 line without a box counts as well; a bare page number above 80 or below 905.
+Column detection (`layout.py`) leaves such lines out of its statistics with
+the OCR-page zones on either page kind.
 
 - `assembly_context()` in `conversion.py` reads the running lines from the
   PDF's text layer, placing a line by its centre. A line counts when it

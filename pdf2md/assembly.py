@@ -63,16 +63,17 @@ BOILERPLATE = [
     re.compile(r"^\d{1,3}\s*[-–]\s*[Il1]\s*$"),           # "26-I"
 ]
 
-# Running heads that carry the page number. assembly_context() cannot find
-# them in a text layer, the number differs on every page, and they sit below
-# the header zone (Issue #221): they count anywhere, as short lines.
-RUNNING_HEADS = [
+# Header lines that carry the page number ("Fall 3 - Lösung - Seite 4"). They
+# are no running lines: the number differs on every page, so
+# assembly_context() cannot find them, and they sit below the header zone
+# (Issue #221). They count anywhere, as short lines.
+NUMBERED_HEADS = [
     re.compile(r"(Lösung|Sachverhalte?|Übersicht)\s*[-–]\s*Seite", re.I),
     re.compile(r"^(Lösung|Sachverhalte?|Übersicht)\s*,\s*Seite\s+\d+\s*$", re.I),
     re.compile(r"^Lösung\s*[-–].*Seite\s+\d+\s*$"),
     re.compile(r"^Klausur\s*Nr\.?\s*\d+\s*[-–]\s*Lösung,\s*Seite\s+\d+\s*$"),
 ]
-RUNNING_HEAD_MAX = 45
+NUMBERED_HEAD_MAX = 45
 
 # Weak signals that count as boilerplate only in header/footer zones: in the
 # body they are a statute line of a broken citation ("BGB") or a heading
@@ -90,6 +91,8 @@ ZONE_SIGNALS = [
 # its top on this scale. A weaker boilerplate signal needs a zone nearer the
 # page edge.
 HEADER_ZONE = 70            # zone signals on a text-layer page
+OCR_HEADER_ZONE = 120       # zone signals and city lines on an OCR page: its
+                            # provider line and subject label sit lower (#221)
 FOOTER_ZONE = 950
 PAGE_NUMBER_HEADER = 80     # a bare page number
 PAGE_NUMBER_FOOTER = 905
@@ -215,7 +218,7 @@ def _boilerplate_reason(text, y=None, context=None, ocr_page=False):
         return "running_line"
     if any(p.search(t) for p in BOILERPLATE):
         return "boilerplate"
-    if len(t) <= RUNNING_HEAD_MAX and any(p.search(t) for p in RUNNING_HEADS):
+    if len(t) <= NUMBERED_HEAD_MAX and any(p.search(t) for p in NUMBERED_HEADS):
         return "boilerplate"
 
     if (y is not None
@@ -223,23 +226,23 @@ def _boilerplate_reason(text, y=None, context=None, ocr_page=False):
             and re.fullmatch(r"\d{1,4}", t)):
         return "page_number"
 
-    # A scan's header (provider line, subject label) sits lower than a text
-    # layer's, down to the course-label zone (Issue #221).
-    header_zone = RUNNING_LABEL_ZONE if ocr_page else HEADER_ZONE
+    header_zone = OCR_HEADER_ZONE if ocr_page else HEADER_ZONE
     at_edge = y is not None and (y <= header_zone or y >= FOOTER_ZONE)
     if at_edge and any(p.search(t) for p in ZONE_SIGNALS):
         return "boilerplate"
-    # City lines only on a scan: a text layer's running lines are found by
-    # assembly_context(), and no text-layer page in the vault has one left.
-    # A line the model returned without a box may be one.
-    if (ocr_page and (at_edge or y is None)
-            and (CITY_FRAGMENT.match(t)
-                 or (t.count(" - ") >= 2
-                     and sum(1 for s in CITIES if s in t) >= 2)
-                 or (len(t) <= 40 and "-" in t
-                     and any(s in t for s in CITIES)))):
+    # City lines only on an OCR page: a text layer's running lines are found
+    # by assembly_context(), and no text-layer page in the vault has one
+    # left. A line the model returned without a box may be one.
+    if ocr_page and (at_edge or y is None) and _is_city_line(t):
         return "boilerplate"
     return None
+
+
+def _is_city_line(t):
+    """A provider footer's list of cities, or a piece of it."""
+    return bool(CITY_FRAGMENT.match(t)
+                or (t.count(" - ") >= 2 and sum(1 for s in CITIES if s in t) >= 2)
+                or (len(t) <= 40 and "-" in t and any(s in t for s in CITIES)))
 
 
 ARROWS = {"rightarrow": "→", "Rightarrow": "⇒", "leftarrow": "←",
