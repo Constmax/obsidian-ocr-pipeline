@@ -516,6 +516,11 @@ def vertical_overlap(a, b):
     return min(a[3], b[3]) - max(a[1], b[1])
 
 
+def same_row(a, b):
+    """Do two boxes overlap by more than half the lower one's height?"""
+    return vertical_overlap(a, b) > 0.5 * min(a[3] - a[1], b[3] - b[1])
+
+
 def _attach_footnote_numbers(lines, footer=900, proximity=40):
     """Attach out-dented footnote number at page footer with its text.
 
@@ -550,8 +555,7 @@ def _attach_footnote_numbers(lines, footer=900, proximity=40):
         p = out[-1] if out else None
         if (footnote_number and text_of(z, p)
                 and 0 <= p.box[0] - z.box[2] <= proximity
-                and vertical_overlap(z.box, p.box)
-                > 0.5 * min(z.box[3] - z.box[1], p.box[3] - p.box[1])):
+                and same_row(z.box, p.box)):
             out[-1] = joined(z, p)
             i += 1
             continue
@@ -654,16 +658,20 @@ def _short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
     return short, block
 
 
-def _shares_row(line, lines, context, ocr_page):
-    """Does a kept line share line's row? A text layer splits a justified
-    line into word spans, so a citation's page number in a footnote can sit
-    alone on the footer edge (Issue #132); a page number shares its row with
-    a running footer at most."""
+def _shares_row(line, lines, context, ocr_page, proximity=40):
+    """Does a kept line stand right beside line on its row? A text layer
+    splits a justified line into word pieces, so a citation's page number in
+    a footnote can sit alone on the footer edge (Issue #132). A page number
+    stands apart, or beside a running footer."""
     a = line.box
+
+    def kept(z):
+        text = clean_text(z.text)
+        return bool(text) and _boilerplate_reason(text, z.box[1], context,
+                                                  ocr_page) is None
     return bool(a) and any(
-        z is not line and z.box
-        and vertical_overlap(a, z.box) > 0.5 * min(a[3] - a[1], z.box[3] - z.box[1])
-        and _boilerplate_reason(clean_text(z.text), z.box[1], context, ocr_page) is None
+        z is not line and z.box and same_row(a, z.box)
+        and max(z.box[0] - a[2], a[0] - z.box[2]) <= proximity and kept(z)
         for z in lines)
 
 
