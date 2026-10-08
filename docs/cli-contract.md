@@ -26,7 +26,7 @@ To change the contract, change the JSON file first, then both sides, in one PR.
 | Code | Contract name | Meaning |
 |---|---|---|
 | 0 | `success` | Preview written (`fertig` emitted); `--check`: all checks passed |
-| 1 | `error` | Error with a one-line message on stderr (bad input, page range, unmergeable preview, missing venv in the wrapper) |
+| 1 | `error` | Error with a one-line message on stderr (bad input, page range, unmergeable preview, missing venv in the wrapper; an unreadable file, an unwritable `--out` or a failed model load as `pdf2md: <message>`) |
 | 2 | `usage` | argparse usage error |
 | 4 | `check-failed` | `--check`: at least one check failed |
 | 6 | `cancelled-partial` | Cancelled (SIGINT/SIGTERM); a partial file was written |

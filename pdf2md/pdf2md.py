@@ -343,6 +343,8 @@ def main():
         page_count = page_count_of(source)
     except UnsupportedInput as error:
         sys.exit(str(error))
+    except (OSError, RuntimeError) as error:  # fitz errors are RuntimeErrors
+        sys.exit(f"pdf2md: {error}")
     selection = page_option("--pages/--seiten", args.pages, page_count)
     forced = page_option("--diagram-pages/--diagramm-seiten",
                          args.diagram_pages, page_count) or set()
@@ -378,6 +380,10 @@ def main():
         sys.exit(EXIT_CANCELLED_EMPTY)
     except PreviewFormatError as error:
         sys.exit(str(error))
+    except (OSError, RuntimeError) as error:
+        # A read-only --out, a full disk, the model load, a page fitz cannot
+        # read: one line for the plugin instead of a traceback (Issue #220).
+        sys.exit(f"pdf2md: {error}")
     if result.cancelled:
         sys.exit(EXIT_CANCELLED_PARTIAL if result.pages else EXIT_CANCELLED_EMPTY)
     if not result.pages:

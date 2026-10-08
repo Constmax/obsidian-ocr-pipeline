@@ -65,7 +65,8 @@ ASSUMED_PAGE_LONG_SIDE = 842.0
 
 
 class UnsupportedInput(ValueError):
-    """Input the pipeline does not accept — by suffix or by frame count."""
+    """Input the pipeline does not accept — by suffix, frame count, password
+    or an empty page tree."""
 
 
 def is_image_input(path: Path) -> bool:
@@ -139,6 +140,12 @@ def open_document(path: Path):
     ensure_supported_input(path)
     if not is_image_input(path):
         with fitz.open(path) as document:
+            if document.needs_pass:
+                raise UnsupportedInput(
+                    f"encrypted PDF needs a password: {path.name} — "
+                    "save it without a password first")
+            if not document.page_count:
+                raise UnsupportedInput(f"PDF has no pages: {path.name}")
             yield document
         return
     document = _wrap_image(path)
@@ -167,8 +174,26 @@ def page_image_dpi(document, page) -> float | None:
     return long_pixels / (max(page.rect.width, page.rect.height) / 72)
 
 
-# Pixel modes PIL writes as PNG, which is what the tilers save their crops as.
-_PNG_MODES = frozenset({"1", "L", "LA", "P", "RGB", "RGBA", "I", "I;16"})
+# Pixel modes PIL writes as PNG, which is what the tilers save their crops as,
+# and that convert("L"/"RGB") keeps. Deep grayscale (I;16, I, F) is not one:
+# PIL clips it to 255 there, so the page would reach the model blank.
+_PNG_MODES = frozenset({"1", "L", "LA", "P", "RGB", "RGBA"})
+
+
+def _is_deep_gray(mode: str) -> bool:
+    return mode in ("I", "F") or mode.startswith("I;16")
+
+
+def _deep_gray_to_l(image):
+    """Stretch the image's own value range onto 0..255 (Issue #220).
+
+    Its range, not its bit depth: an `I` or `F` image declares none.
+    """
+    low, high = image.getextrema()
+    if high <= low:
+        return image.convert("F").point(lambda _: 255).convert("L")
+    scale = 255 / (high - low)
+    return image.convert("F").point(lambda v: v * scale - low * scale).convert("L")
 
 
 def _page_image_from_source(source: Path, stem: Path) -> Path:
@@ -179,7 +204,8 @@ def _page_image_from_source(source: Path, stem: Path) -> Path:
     file with plain PIL: a phone photo stored sideways would be cut along the
     wrong axis and its tiles handed to the model sideways. Such a file, and
     one in a mode the tilers cannot save as PNG (CMYK), is written upright as
-    a PNG instead — same pixels, no resampling.
+    a PNG instead — same pixels, no resampling. Deep grayscale is scaled to
+    8 bits on the way.
     """
     from PIL import ExifTags, Image, ImageOps
 
@@ -190,7 +216,9 @@ def _page_image_from_source(source: Path, stem: Path) -> Path:
             shutil.copyfile(source, target)
             return target
         upright = ImageOps.exif_transpose(image)
-    if upright.mode not in _PNG_MODES:
+    if _is_deep_gray(upright.mode):
+        upright = _deep_gray_to_l(upright)
+    elif upright.mode not in _PNG_MODES:
         upright = upright.convert("RGB")
     target = stem.with_name(stem.name + ".png")
     upright.save(target)

@@ -333,3 +333,39 @@ def test_a_cmyk_jpeg_can_be_tiled(tmp_path):
     )
 
     assert result.completed is True
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("mode", ["I;16", "I", "F"])
+def test_a_deep_grayscale_image_reaches_the_model_with_its_ink(tmp_path, mode):
+    """PIL clips 16-bit, 32-bit and float pixels to 255 on convert("L"):
+    copied byte for byte, the page reaches the model, the ink count and the
+    bold check almost blank (Issue #220)."""
+    import numpy
+    from PIL import Image
+
+    pixmap = _page_pixmap(200)
+    gray = numpy.asarray(Image.frombytes(
+        "RGB", (pixmap.width, pixmap.height), pixmap.samples).convert("L"))
+    deep = gray.astype(numpy.uint16 if mode == "I;16" else
+                       numpy.int32 if mode == "I" else numpy.float32) * 257
+    source = tmp_path / "scan.tif"
+    Image.fromarray(deep, mode).save(source, dpi=(200, 200))
+    seen = []
+
+    def fake_ocr(image, max_tokens=None):
+        with Image.open(image) as tile:
+            seen.append((tile.mode, tile.convert("L").getextrema()))
+        return "Seite aus einem Scan"
+
+    result = convert_document(
+        ConversionRequest(pdf=source, output_dir=tmp_path / "out",
+                          temp_root=tmp_path / "scratch", no_dictionary=True),
+        fake_ocr,
+    )
+
+    assert result.completed is True
+    assert seen
+    for tile_mode, (darkest, lightest) in seen:
+        assert tile_mode == "L"
+        assert darkest < 64 and lightest > 192
