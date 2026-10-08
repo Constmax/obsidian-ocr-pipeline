@@ -12,6 +12,7 @@ import fitz
 import pytest
 
 import cases
+import page_cache
 import pdf2md
 from conversion import UnsupportedInput, open_document
 
@@ -116,25 +117,37 @@ def test_a_read_only_out_folder_exits_with_one_line(tmp_path, make_vector_pdf):
     assert "Permission denied" in _last_line(result.stderr)
 
 
-@pytest.mark.parametrize("error", [
-    OSError(28, "No space left on device"),     # write_page mid-run
-    RuntimeError("model could not be loaded"),  # the model load
-])
-def test_a_failure_during_the_conversion_exits_with_one_line(
-        tmp_path, monkeypatch, capsys, make_vector_pdf, error):
+def _main(monkeypatch, source, out):
+    monkeypatch.setattr(sys, "argv", ["pdf2md", str(source), "--out", str(out)])
+    with pytest.raises(SystemExit) as exit_:
+        pdf2md.main()
+    return exit_.value.code  # sys.exit(str): exit 1, the string on stderr
+
+
+def test_a_failing_page_write_exits_with_one_line(tmp_path, monkeypatch, make_vector_pdf):
+    source = tmp_path / "input.pdf"
+    make_vector_pdf(source, pages=2)
+
+    def full_disk(*_args, **_kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(page_cache, "write_page", full_disk)
+
+    assert _main(monkeypatch, source, tmp_path / "out") == \
+        "pdf2md: [Errno 28] No space left on device"
+
+
+def test_a_failing_model_load_exits_with_one_line(tmp_path, monkeypatch, make_vector_pdf):
     source = tmp_path / "input.pdf"
     make_vector_pdf(source, pages=1)
 
-    def fail(*_args, **_kwargs):
-        raise error
+    def failed_load(*_args, **_kwargs):
+        raise RuntimeError("model could not be loaded")
 
-    monkeypatch.setattr(pdf2md, "convert_document", fail)
-    monkeypatch.setattr(sys, "argv", ["pdf2md", str(source), "--out", str(tmp_path / "out")])
+    monkeypatch.setattr(pdf2md, "convert_document", failed_load)
 
-    with pytest.raises(SystemExit) as exit_:
-        pdf2md.main()
-
-    assert exit_.value.code == f"pdf2md: {error}"  # sys.exit(str): exit 1, stderr
+    assert _main(monkeypatch, source, tmp_path / "out") == \
+        "pdf2md: model could not be loaded"
 
 
 @pytest.mark.parametrize("error", [PermissionError(13, "Permission denied"),

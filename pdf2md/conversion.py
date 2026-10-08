@@ -185,15 +185,19 @@ def _is_deep_gray(mode: str) -> bool:
 
 
 def _deep_gray_to_l(image):
-    """Stretch the image's own value range onto 0..255 (Issue #220).
+    """Scale deep grayscale to 8 bits (Issue #220).
 
-    Its range, not its bit depth: an `I` or `F` image declares none.
+    16-bit by its bit depth, so a faint page stays faint. `I` and `F` declare
+    no range: their own range is stretched onto 0..255, and a uniform one
+    keeps its value, clipped.
     """
-    low, high = image.getextrema()
-    if high <= low:
-        return image.convert("F").point(lambda _: 255).convert("L")
-    scale = 255 / (high - low)
-    return image.convert("F").point(lambda v: v * scale - low * scale).convert("L")
+    if image.mode.startswith("I;16"):
+        scale, offset = 1 / 257, 0
+    else:
+        low, high = image.getextrema()
+        scale = 255 / (high - low) if high > low else 0
+        offset = -low * scale if high > low else min(max(low, 0), 255)
+    return image.convert("F").point(lambda v: v * scale + offset).convert("L")
 
 
 def _page_image_from_source(source: Path, stem: Path) -> Path:

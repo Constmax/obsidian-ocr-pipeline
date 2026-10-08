@@ -347,6 +347,7 @@ def test_a_deep_grayscale_image_reaches_the_model_with_its_ink(tmp_path, mode):
     pixmap = _page_pixmap(200)
     gray = numpy.asarray(Image.frombytes(
         "RGB", (pixmap.width, pixmap.height), pixmap.samples).convert("L"))
+    # × 257 puts 8-bit values on the 16-bit scale (255 → 65535).
     deep = gray.astype(numpy.uint16 if mode == "I;16" else
                        numpy.int32 if mode == "I" else numpy.float32) * 257
     source = tmp_path / "scan.tif"
