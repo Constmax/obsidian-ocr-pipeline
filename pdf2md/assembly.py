@@ -516,6 +516,33 @@ def vertical_overlap(a, b):
     return min(a[3], b[3]) - max(a[1], b[1])
 
 
+def same_row(a, b):
+    """Do two boxes sit on one row? They overlap by more than half the taller
+    one, so a table or a box spanning many rows is on none of them."""
+    return vertical_overlap(a, b) > 0.5 * max(a[3] - a[1], b[3] - b[1])
+
+
+def word_gap_apart(a, b):
+    """Are two boxes side by side on one row, at most a word gap apart: two
+    line heights, the widest a justified line spreads its words? Further
+    apart they are separate items on that row (a page number beside a
+    footer, the boxes of a diagram); overlapping, one is laid over the other
+    (a slide's page number over a body line)."""
+    gap = max(b[0] - a[2], a[0] - b[2])
+    return same_row(a, b) and -2 <= gap <= 2 * max(a[3] - a[1], b[3] - b[1])
+
+
+def _beside_text(z, lines, context=None, ocr_page=False):
+    """Does a line that is not boilerplate sit a word gap beside z? Then
+    digits in z are part of that line, a citation span, not a page number
+    (Issue #132). A running footer beside a page number does not count."""
+    return z.box is not None and any(
+        o is not z and o.box and word_gap_apart(z.box, o.box)
+        and _boilerplate_reason(clean_text(o.text), o.box[1], context,
+                                ocr_page) is None
+        for o in lines)
+
+
 def _attach_footnote_numbers(lines, footer=900, proximity=40):
     """Attach out-dented footnote number at page footer with its text.
 
@@ -678,6 +705,7 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
     out, buffer, last_y, discarded = [], "", None, []
     was_heading, last_marker, prev_idx, buffer_x0 = False, None, None, None
     buffer_columns, last_column, notes = set(), None, []
+    last_box = None
     for i, z in enumerate(lines):
         text, box, marker, column = z.text, z.box, z.container, z.column
         line_columns = set() if column is None else {column}
@@ -694,6 +722,8 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
         if not text:
             continue
         reason = _boilerplate_reason(text, y, context, ocr_page)
+        if reason == "page_number" and _beside_text(z, lines, context, ocr_page):
+            reason = None
         if reason is not None:
             discarded.append((replace(z, text=text), reason))
             continue
@@ -743,11 +773,19 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
             joins_box = (gap_known and not wide_gap
                          and (runs_on or bool(MID_SENTENCE.search(buffer))))
 
+        # A text layer splits a justified line into word spans: a span one
+        # word gap along the row of the line before it is no enumeration
+        # label, even when it reads like one ("v.", Issue #132). A model
+        # reads whole lines.
+        on_row = (not ocr_page and box is not None and last_box is not None
+                  and column == last_column and box[0] > last_box[0]
+                  and word_gap_apart(box, last_box))
+
         if not buffer or hyphen:
             new_p = False
         elif marker != last_marker and not joins_box:
             new_p = True
-        elif (ENUMERATION.match(unbolded) or KEYWORD.match(unbolded)
+        elif ((ENUMERATION.match(unbolded) and not on_row) or KEYWORD.match(unbolded)
               or (heading and not continues and not runs_on)
               or (was_heading and not runs_on)):
             new_p = True
@@ -782,6 +820,7 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
                            and (len(_without_bold(buffer)) <= 90
                                 or _only_bold(buffer))))
         last_y, last_marker, prev_idx, last_column = y, marker, i, column
+        last_box = box
     if buffer:
         out.append((buffer, buffer_columns))
     out += notes

@@ -179,6 +179,55 @@ def test_page_number_is_discarded_at_the_page_edge_only():
     assert discarded([z("543", 480, 500, 520), z("Der Satz.", y0=200)]) == []
 
 
+def test_digits_on_a_row_with_other_text_are_no_page_number():
+    """A text layer splits a justified footnote line into word spans; a
+    span of digits is part of its citation (Issue #132)."""
+    lines = [z("Der Satz.", y0=200),
+             z("24 Gericht, Zeitschrift 2013,", 88, 908, 300, height=9),
+             z("570", 306, 908, 330, height=9),
+             z("(571); Autor, Rn. 5.", 336, 908, 600, height=9)]
+    assert discarded(lines) == []
+    assert "570" in paragraphs(lines)[-1]
+
+
+def test_a_span_further_along_its_row_starts_no_paragraph():
+    """`v.` reads as an enumeration label at the start of a line, but this
+    span carries on the row before it (Issue #132)."""
+    lines = [z("Der Satz.", y0=200),
+             z("24", 50, 908, 70, height=9),
+             z("Muster, Beschl.", 88, 908, 300, height=9),
+             z("v.", 306, 908, 320, height=9),
+             z("01.02.2020 - 1 B 2.20 (Rn. 6).", 88, 919, 500, height=9),
+             z("25", 50, 932, 70, height=9),
+             z("Vgl. Autor, Rn. 7.", 88, 932, 400, height=9)]
+    assert paragraphs(lines)[-2:] == [
+        "[^24]: Muster, Beschl. v. 01.02.2020 - 1 B 2.20 (Rn. 6).",
+        "[^25]: Vgl. Autor, Rn. 7."]
+
+
+def test_a_label_along_the_row_starts_a_paragraph_on_an_ocr_page_only():
+    """A model reads whole lines, so a label it returns apart is one."""
+    lines = [*stack("Der Satz.", "Muster, Beschl.", x1=300),
+             z("v. 01.02.2020.", 310, 118, 500)]
+    assert paragraphs(lines) == ["Der Satz. Muster, Beschl. v. 01.02.2020."]
+    assert paragraphs(lines, source="ocr") == [
+        "Der Satz. Muster, Beschl.", "v. 01.02.2020."]
+
+
+def test_page_number_set_apart_from_the_footer_text_is_still_discarded():
+    lines = [z("Der Satz.", y0=200),
+             z("Autor - 03/2026", 300, 960, 600, height=10),
+             z("7", 880, 960, 900, height=10)]
+    assert ("7", "page_number") in discarded(lines)
+
+
+def test_page_number_beside_a_running_footer_is_still_discarded():
+    lines = [z("Der Satz.", y0=200),
+             z(FOOTER, 100, 960, 700, height=10), z("7", 880, 960, 900, height=10)]
+    assert discarded(lines, running={FOOTER}) == [
+        (FOOTER, "running_line"), ("7", "page_number")]
+
+
 def test_provider_lines_are_discarded_as_boilerplate():
     assert discarded([
         z("Juristisches Repetitorium für Recht"),
