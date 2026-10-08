@@ -22,13 +22,14 @@ pytestmark = [
 ]
 
 LIB = Path(__file__).resolve().parent.parent / "pdf-lib.sh"
+BASH = "/bin/bash" if Path("/bin/bash").exists() else "bash"  # macOS: bash 3.2
 A4 = (595, 842)
 PIXEL = (2439, 3413)
 SLIDE = (960, 540)
 LANDSCAPE_A4 = (842, 595)
 
 
-def _upright(size):
+def _unrotated(size):
     return (*size, 0)
 
 
@@ -43,7 +44,7 @@ def _pdf(path, sizes):
 def _fix(tmp_path, sizes):
     src, out = tmp_path / "in.pdf", tmp_path / "out.pdf"
     _pdf(src, sizes)
-    subprocess.run(["bash", "-c", f'source "{LIB}"; fix_mediabox "$1" "$2"', "_",
+    subprocess.run([BASH, "-c", f'source "{LIB}"; fix_mediabox "$1" "$2"', "_",
                     str(src), str(out)], check=True, capture_output=True)
     doc = fitz.open(out)
     # The MediaBox and /Rotate as written: Ghostscript's fit turns a landscape
@@ -56,18 +57,18 @@ def _fix(tmp_path, sizes):
 def test_page_that_is_not_pixel_sized_keeps_its_size(tmp_path, size):
     sizes, _ = _fix(tmp_path, [size])
 
-    assert sizes == [_upright(size)]
+    assert sizes == [_unrotated(size)]
 
 
 def test_pixel_sized_page_becomes_a4(tmp_path):
     sizes, texts = _fix(tmp_path, [PIXEL, PIXEL])
 
-    assert sizes == [_upright(A4)] * 2
+    assert sizes == [_unrotated(A4)] * 2
     assert texts == ["page1", "page2"]
 
 
 def test_mixed_document_refits_only_the_pixel_sized_pages(tmp_path):
     sizes, texts = _fix(tmp_path, [SLIDE, PIXEL, LANDSCAPE_A4, PIXEL, A4])
 
-    assert sizes == [_upright(s) for s in (SLIDE, A4, LANDSCAPE_A4, A4, A4)]
+    assert sizes == [_unrotated(s) for s in (SLIDE, A4, LANDSCAPE_A4, A4, A4)]
     assert texts == ["page1", "page2", "page3", "page4", "page5"]

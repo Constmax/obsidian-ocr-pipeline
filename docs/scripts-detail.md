@@ -216,8 +216,8 @@ Prior to OCR, every PDF passes through three automated stages without requiring 
 ```
 Stage 1: MediaBox Fix        Stage 2: Downscale         Stage 3: Column Split
 ┌──────────────────┐       ┌─────────────────┐        ┌──────────────────┐
-│ Page > 650×900   │  →    │ 300 DPI         │   →    │ (if --split-     │
-│ pts?             │       │ Bicubic         │        │  columns active) │
+│ Page side >      │  →    │ 300 DPI         │   →    │ (if --split-     │
+│ 1263 pts?        │       │ Bicubic         │        │  columns active) │
 │ → scale to A4    │       │                 │        │ Left + right     │
 │   (595×842 pts)  │       │                 │        │ half-page        │
 └──────────────────┘       └─────────────────┘        └──────────────────┘
