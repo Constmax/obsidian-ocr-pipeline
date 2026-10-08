@@ -179,6 +179,17 @@ def test_page_number_is_discarded_at_the_page_edge_only():
     assert discarded([z("543", 480, 500, 520), z("Der Satz.", y0=200)]) == []
 
 
+def test_a_number_span_inside_a_footnote_row_is_no_page_number():
+    """A text layer splits a justified line into word spans; a citation's
+    page number on the footer edge keeps its row (Issue #132)."""
+    lines = [z("Der Satz.", y0=200),
+             z("Gericht NVwZ 2013,", 100, 908, 300, height=10),
+             z("570", 310, 908, 340, height=10),
+             z("(571); Beschl. v. 1.1.2013.", 350, 908, 600, height=10)]
+    assert discarded(lines) == []
+    assert "Gericht NVwZ 2013, 570 (571); Beschl. v. 1.1.2013." in paragraphs(lines)
+
+
 def test_provider_lines_are_discarded_as_boilerplate():
     assert discarded([
         z("Juristisches Repetitorium für Recht"),

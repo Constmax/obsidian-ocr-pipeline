@@ -654,6 +654,19 @@ def _short_lines(lines, window=15, margin_slack=0.08, block_ratio=0.55):
     return short, block
 
 
+def _shares_row(line, lines, context, ocr_page):
+    """Does a kept line share line's row? A text layer splits a justified
+    line into word spans, so a citation's page number in a footnote can sit
+    alone on the footer edge (Issue #132); a page number shares its row with
+    a running footer at most."""
+    a = line.box
+    return bool(a) and any(
+        z is not line and z.box
+        and vertical_overlap(a, z.box) > 0.5 * min(a[3] - a[1], z.box[3] - z.box[1])
+        and _boilerplate_reason(clean_text(z.text), z.box[1], context, ocr_page) is None
+        for z in lines)
+
+
 def assemble_paragraphs(lines, context=None, ocr_page=False):
     """Resolve hyphens and merge recognized lines into paragraphs.
 
@@ -694,6 +707,8 @@ def assemble_paragraphs(lines, context=None, ocr_page=False):
         if not text:
             continue
         reason = _boilerplate_reason(text, y, context, ocr_page)
+        if reason == "page_number" and _shares_row(z, lines, context, ocr_page):
+            reason = None
         if reason is not None:
             discarded.append((replace(z, text=text), reason))
             continue

@@ -488,7 +488,9 @@ paragraph is dropped too. It drops the document's running lines and:
 - `NUMBERED_HEADS`, short header lines that carry the page number
   ("Fall 3 - Lösung - Seite 4"), anywhere: they differ on every page, so
   `assembly_context()` cannot find them, and they sit below the header zone;
-- a bare page number near the page edge;
+- a bare page number near the page edge, unless a kept line shares its row:
+  a text layer splits a justified footnote line into word spans, and a
+  citation's page number is one of them (#132);
 - `ZONE_SIGNALS` (provider name, a bare "BGB AT", "Seite 3", "Fall 3 - Lö")
   only near the page edge: in the body they are the statute line of a
   citation broken across lines or a heading (#221);
