@@ -349,8 +349,9 @@ one-line error (exit code 1) naming the accepted formats. WebP and HEIC are not
 on the list because fitz does not open them; HEIC would need `pillow-heif`.
 
 A **16-bit, 32-bit or float grayscale image** (PIL modes `I;16`, `I`, `F`)
-is scaled to 8-bit grayscale (`L`), its own value range stretched onto
-0..255, before the model, the ink count and the bold check read it: PIL
+is scaled to 8-bit grayscale (`L`) before the model, the ink count and the
+bold check read it: 16-bit by its bit depth, `I` and `F`, which declare no
+range, by stretching their own value range onto 0..255. PIL
 clips such pixels to 255 on conversion, which left the page almost blank
 (#220).
 
