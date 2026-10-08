@@ -736,7 +736,7 @@ def main(argv=None) -> int:
             return 0
         _print_run(outcomes, args.promote)
         return 1 if any(outcome.failed for outcome in outcomes) else 0
-    except CaseError as error:
+    except (CaseError, OSError, RuntimeError) as error:  # fitz errors are RuntimeErrors
         print(f"pdf2md case: {error}", file=sys.stderr)
         return 1
 

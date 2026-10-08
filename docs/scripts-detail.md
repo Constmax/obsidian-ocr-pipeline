@@ -348,6 +348,20 @@ Anything else is rejected by suffix before a single page is processed, with a
 one-line error (exit code 1) naming the accepted formats. WebP and HEIC are not
 on the list because fitz does not open them; HEIC would need `pillow-heif`.
 
+A **16-bit, 32-bit or float grayscale image** (PIL modes `I;16`, `I`, `F`)
+is scaled to 8-bit grayscale (`L`) before the model, the ink count and the
+bold check read it: 16-bit by its bit depth, `I` and `F`, which declare no
+range, by stretching their own value range onto 0..255. PIL
+clips such pixels to 255 on conversion, which left the page almost blank
+(#220).
+
+A PDF that needs a password, or one without pages, is rejected the same way
+before the `--out` folder is created. A file fitz cannot open (corrupt,
+0 bytes), a `--out` folder that cannot be written and any other `OSError` or
+`RuntimeError` during the run, a failed model load included, end in one line
+`pdf2md: <message>` with exit code 1 instead of a traceback; `pdf2md case`
+prints `pdf2md case: <message>` (#220).
+
 A **multi-frame TIFF** — what a sheet feeder emits — is rejected too, by frame
 count rather than by suffix, and therefore only once the file is opened:
 
