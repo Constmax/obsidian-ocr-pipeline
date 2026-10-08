@@ -205,6 +205,15 @@ def test_a_span_further_along_its_row_starts_no_paragraph():
         "[^25]: Vgl. Autor, Rn. 7."]
 
 
+def test_a_label_along_the_row_starts_a_paragraph_on_an_ocr_page_only():
+    """A model reads whole lines, so a label it returns apart is one."""
+    lines = [*stack("Der Satz.", "Muster, Beschl.", x1=300),
+             z("v. 01.02.2020.", 310, 118, 500)]
+    assert paragraphs(lines) == ["Der Satz. Muster, Beschl. v. 01.02.2020."]
+    assert paragraphs(lines, source="ocr") == [
+        "Der Satz. Muster, Beschl.", "v. 01.02.2020."]
+
+
 def test_page_number_set_apart_from_the_footer_text_is_still_discarded():
     lines = [z("Der Satz.", y0=200),
              z("Autor - 03/2026", 300, 960, 600, height=10),

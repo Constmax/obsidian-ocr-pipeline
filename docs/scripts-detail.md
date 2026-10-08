@@ -489,7 +489,7 @@ paragraph is dropped too. It drops the document's running lines and:
   ("Fall 3 - Lösung - Seite 4"), anywhere: they differ on every page, so
   `assembly_context()` cannot find them, and they sit below the header zone;
 - a bare page number near the page edge, unless a line that is not
-  boilerplate sits a word gap beside it on its row (at most two line
+  boilerplate sits a word gap beside it on its row (on either page kind) (at most two line
   heights apart, not overlapping): then the digits are a span of that line,
   a citation page or a footnote number (#132);
 - `ZONE_SIGNALS` (provider name, a bare "BGB AT", "Seite 3", "Fall 3 - Lö")
