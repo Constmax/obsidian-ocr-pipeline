@@ -14,6 +14,7 @@ All three scripts share these flags:
 | `--split-columns-all` | off | Same as `--split-columns`, but without detection — splits every page |
 | `--keep-split` | off | Suppress re-merge (output remains split into half-pages) |
 | `--no-quality-gate` | off | Disable automated quality check + auto-retry |
+| `--min-average-chars N` | `200` | The quality gate's floor for characters per page on average. `reprocess-raw` passes `1`: its B5 gate checks every page (#218) |
 | `--text-only` | off | Add only a text layer, keep the pages: no MediaBox fix, downscaling, rotation, deskew, unpaper, optimization (`--optimize 0`) or column-split retry. Set by `reprocess-raw --in-place` (#180); not meant to be combined with the split or `--dpi` flags |
 
 These flags are parsed and validated in one place (`parse_common_option` in
@@ -78,7 +79,7 @@ pdf-auto <folder> [--output-dir <dir>] [--engine ...] [--dpi N] [--jobs N] \
 ### Quality Gate
 
 After every OCR run, the pipeline automatically validates:
-1. **Characters/page** ≥ 200 (catches total failures)
+1. **Characters/page** on average ≥ `--min-average-chars` (default 200; catches total failures). `reprocess-raw`, and with it the plugin, passes `1`: lecture slides, diagrams and mostly blank pages stay under 200 and used to fail after three full OCR passes, while its B5 gate (Check 2 below) checks every page anyway. On that path only a result with less than one character per page on average (in practice: no text) moves to the next engine (#218). Characters are counted as bytes of `pdftotext -raw` output without its page-ending form feeds, so an umlaut counts twice
 2. **Garbage score** < 0.40 (catches column mixing, §→88 corruption, unexpected mid-word capitals)
 3. **iso ratio** < 0.40 (special check: >40% 1-2 character words = guaranteed column mixing)
 
@@ -92,7 +93,7 @@ On failure the gate walks a fixed fallback matrix:
 | Tesseract | Tesseract with column split | Apple Vision (if installed) |
 | PaddleOCR | Apple Vision, or Tesseract without it | Tesseract, after Apple Vision (#198) |
 
-The column-split retry needs `pikepdf`, re-merges to the original format and is skipped when `--split-columns` already splits. PaddleOCR never splits: it orders both columns itself, and `--split-columns`/`--split-columns-all` with `--engine paddle` are ignored with a warning, for the fallback engine too (#153; split mode cost words and order in `bench/ERGEBNIS.md`, Nachtrag 26). An engine switch re-runs OCR on the same pre-OCR input with the first attempt's text handling: `--skip-text` unless the run asked for `--force-ocr`, so pages that already carry text are not rasterized (#215). A gate failure caused by a bad existing text layer is therefore not repaired by the fallback; rerun with `--force-ocr` (CLI only: the plugin never passes it). Every switch is printed on stderr with its reason (`🔄 Fallback: PaddleOCR accurate → Apple Vision (quality gate failed)`), and the summary names the engine that produced the file (`pdf-auto`: per file, plus a fallback count). If every attempt fails, no file is written, and the run's last `❌` line names why (#217): `❌ Quality gate failed: <metric> — no file written` when an attempt produced a result (the metric of the last one, e.g. `only 0 characters per page (min: 200)`), `❌ OCR failed on every attempt — no file written` when every OCR run failed. `pdf-combine`, `pdf-workflow` and `reprocess-raw` add no `❌` line after it.
+The column-split retry needs `pikepdf`, re-merges to the original format and is skipped when `--split-columns` already splits. PaddleOCR never splits: it orders both columns itself, and `--split-columns`/`--split-columns-all` with `--engine paddle` are ignored with a warning, for the fallback engine too (#153; split mode cost words and order in `bench/ERGEBNIS.md`, Nachtrag 26). An engine switch re-runs OCR on the same pre-OCR input with the first attempt's text handling: `--skip-text` unless the run asked for `--force-ocr`, so pages that already carry text are not rasterized (#215). A gate failure caused by a bad existing text layer is therefore not repaired by the fallback; rerun with `--force-ocr` (CLI only: the plugin never passes it). Every switch is printed on stderr with its reason (`🔄 Fallback: PaddleOCR accurate → Apple Vision (quality gate failed)`), and the summary names the engine that produced the file (`pdf-auto`: per file, plus a fallback count). If every attempt fails, no file is written, and the run's last `❌` line names why (#217): `❌ Quality gate failed: <metric> — no file written` when an attempt produced a result (the metric of the last one, e.g. `only 0 characters per page (min: 200)`, or `(min: 1)` from `reprocess-raw`), `❌ OCR failed on every attempt — no file written` when every OCR run failed. `pdf-combine`, `pdf-workflow` and `reprocess-raw` add no `❌` line after it.
 
 ### Multi-Part File Detection
 
@@ -161,7 +162,7 @@ reprocess-raw --check-engine [--engine E] [--paddle-mode M]
 
 Wrapper around `pdf-combine` for the scenario "re-process an existing `raw/` file with the updated pipeline" (e.g. after bug fixes). Workflow:
 
-1. Copies source file to a private temporary directory (`$TMPDIR`, outside the vault) and executes `pdf-combine` with passed options.
+1. Copies source file to a private temporary directory (`$TMPDIR`, outside the vault) and executes `pdf-combine` with passed options plus `--min-average-chars 1`: Check 2 replaces the quality gate's average, so a slide deck gets its text layer in one OCR pass; the garbage and split checks still run (#218).
 2. **Check 1 — Page Count:** Output page count must match original exactly. Mismatch → original remains unchanged, result saved as `<name>_FAILED_pagecount.pdf` alongside source.
 3. **Check 2 — B5 Gate (`column_tools.py verify-pages`):** Every page must contain ≥ `--min-chars` characters (Default 50, via `pdftotext -raw`). A document-wide character average (as checked by standard quality gate) can mask a single textless page inside an otherwise healthy large document — which corrupted fourteen `raw/` files on 2026-07-06 (see `BUGREPORT-2026-07-06-split-merge.md`). Mismatch → original remains unchanged, result saved as `<name>_FAILED_pages.pdf`, affected pages reported individually.
 4. Only if both checks pass: the result replaces the source in one rename. It is copied to a hidden `.<name>.pdf.XXXXXX` file beside the source (a copy of the source first, so mode and attributes carry over) and renamed over it with `mv`, so the source is never a partial file. If the source no longer matches the copy OCR started from (it changed while OCR ran), it is left alone and the result goes to `<name>_FAILED_changed.pdf`. A symlinked source is resolved: the file it points to is replaced. A read-only or locked source (`chmod a-w`, Finder's *Locked*) is refused before OCR; one that becomes read-only during OCR is left alone and the result goes to `<name>_FAILED_readonly.pdf`.

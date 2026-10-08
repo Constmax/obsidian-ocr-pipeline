@@ -150,7 +150,7 @@ def test_output_publishes_result_and_keeps_source(sb):
     assert sb.dest.read_text() == sb.result.read_text()
     _assert_clean(sb, ["casebook.pdf", "casebook-ocr.pdf"])
     calls = sb.log.read_text().splitlines()
-    assert len(calls) == 1 and calls[0].endswith(" casebook_reprocessed --engine tesseract")
+    assert len(calls) == 1 and calls[0].endswith(" casebook_reprocessed --min-average-chars 1 --engine tesseract")
     # Existing text is preserved: --force-ocr is never added.
     assert "--force-ocr" not in calls[0]
 
@@ -401,7 +401,7 @@ def test_in_place_replaces_source_and_keeps_its_mode(sb):
     assert sb.source.stat().st_mode & 0o777 == 0o640
     _assert_only_source(sb)
     calls = sb.log.read_text().splitlines()
-    assert len(calls) == 1 and calls[0].endswith(" casebook_reprocessed --engine tesseract --text-only")
+    assert len(calls) == 1 and calls[0].endswith(" casebook_reprocessed --min-average-chars 1 --engine tesseract --text-only")
     assert "--force-ocr" not in calls[0]
 
 

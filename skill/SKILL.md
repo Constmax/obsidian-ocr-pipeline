@@ -59,7 +59,7 @@ pdf-auto <ordner> [--output-dir <dir>] [--engine auto|apple|tesseract|paddle] \
 - `--split-columns`: Zweispaltige Seiten automatisch erkennen (pro Seite!), vor OCR trennen und danach wieder zum Originalformat zusammenführen — Pflicht für Hemmer/Kaiser-Zweispalter, auch in gemischten Dokumenten
 - `--split-columns-all`: Wie `--split-columns`, aber ohne Erkennung — jede Seite wird getrennt (Fallback, falls die Erkennung danebenliegt)
 - `--keep-split`: Unterdrückt das Re-Merge — Output bleibt in (doppelt so vielen) Halbseiten
-- **Quality-Gate**: Prüft automatisch Zeichen/Seite + Garbage-Score; bei Fehlschlag feste Fallback-Kette: Apple Vision → Tesseract → Tesseract mit Spalten-Split; Tesseract → Spalten-Split → Apple Vision; PaddleOCR → Apple Vision → Tesseract (ohne Apple Vision gleich Tesseract), nie ein impliziter Split. Jeder Wechsel steht mit Grund auf stderr und in der Zusammenfassung. Deaktivierbar via `--no-quality-gate`.
+- **Quality-Gate**: Prüft automatisch Zeichen/Seite + Garbage-Score; bei Fehlschlag feste Fallback-Kette: Apple Vision → Tesseract → Tesseract mit Spalten-Split; Tesseract → Spalten-Split → Apple Vision; PaddleOCR → Apple Vision → Tesseract (ohne Apple Vision gleich Tesseract), nie ein impliziter Split. Jeder Wechsel steht mit Grund auf stderr und in der Zusammenfassung. Deaktivierbar via `--no-quality-gate`; die Mindestzahl Zeichen/Seite im Schnitt (200) setzt `--min-average-chars N`. `reprocess-raw` übergibt `1`, weil sein B5-Gate jede Seite prüft: Foliensätze und fast leere Dokumente scheitern dort nicht mehr am Durchschnitt (#218).
 
 ### `pdf-workflow` — Bilder+PDFs → 1 PDF
 
@@ -233,7 +233,7 @@ pdf-auto "$VAULT_ROOT/raw/assets" --cleanup --fast --engine tesseract --split-co
 | `PriorOcrFoundError` | `--force-ocr` nachreichen |
 | Umlaute falsch | `--engine apple` (besser bei deutschen Umlauten) |
 | `No module named expat` | Python 3.14 Bug — siehe `references/installation.md` |
-| Quality-Gate schlägt trotz gutem OCR fehl | `--no-quality-gate` setzen (false positive bei kurzen/grafischen Dokumenten) |
+| Quality-Gate schlägt trotz gutem OCR fehl | Kurze/grafische Dokumente (Folien): `reprocess-raw` verwenden (prüft jede Seite per B5, Durchschnitt nur ≥ 1 Zeichen/Seite) oder `--min-average-chars N` senken; notfalls `--no-quality-gate` |
 | `DecompressionBombWarning` | Tritt bei oversized MediaBox auf — `fix_mediabox()` verhindert das automatisch |
 
 ## Weiterführende Referenzen

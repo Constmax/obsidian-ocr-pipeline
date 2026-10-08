@@ -176,9 +176,12 @@ stays silent, and the action shows a persistent notice naming the pages with
 a **Run with page exemptions…** button. The modal (`src/exemption-modal.ts`)
 is prefilled and accepts only explicit pages or ranges. If a rerun fails on
 further pages, the new prefill keeps the confirmed exemptions and adds the new
-pages. A cancelled run never offers exemptions. Limit: exemptions only affect
-B5. `pdf-combine`'s document-wide quality gate (200 characters per page on
-average) still rejects a document that is mostly blank pages.
+pages. A cancelled run never offers exemptions. Exemptions only affect B5;
+`pdf-combine`'s document-wide average no longer stands in their way:
+`reprocess-raw` lowers it to 1 character per page, so slide decks and mostly
+blank documents rely on B5 plus the garbage check, and only a result with
+less than one character per page on average (in practice: no text) moves to
+the next engine (#218).
 
 An exceptional **Rebuild OCR text layer…** action may be designed after the
 safe workflow ships. It must warn that force OCR rasterizes born-digital text

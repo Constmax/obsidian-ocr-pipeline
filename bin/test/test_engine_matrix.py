@@ -20,15 +20,10 @@ from pathlib import Path
 
 import pytest
 
-from test_pipeline import _write, box  # noqa: F401  (fixture)
+from test_pipeline import _ocr_calls, _write, box  # noqa: F401  (fixture)
 
 
 pytestmark = pytest.mark.slow  # end-to-end runs; `make test-fast` skips them
-
-
-def _ocr_calls(box):
-    """OCRmyPDF calls that read pages; the PaddleOCR readiness probe reads none."""
-    return [call for call in box.calls("ocrmypdf") if "--paddle-check" not in call.split()]
 
 
 def _engines(box):

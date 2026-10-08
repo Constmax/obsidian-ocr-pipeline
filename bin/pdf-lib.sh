@@ -50,6 +50,7 @@ DPI_SET=false             # true once --dpi was given (even with the default val
 JOBS=$DEFAULT_JOBS
 JOBS_SET=false            # true once --jobs was given (even with the default value)
 NO_QUALITY_GATE=false     # --no-quality-gate flag
+MIN_AVERAGE_CHARS=200     # --min-average-chars: the gate's floor for characters per page on average
 SPLIT_COLUMNS=false       # --split-columns flag
 SPLIT_ALL_PAGES=false     # --split-columns-all flag (force --all instead of per-page --auto)
 KEEP_SPLIT=false          # --keep-split flag (suppress merge)
@@ -125,6 +126,13 @@ parse_common_option() {
         --keep-split)        KEEP_SPLIT=true ;;
         --text-only)         TEXT_ONLY=true ;;
         --no-quality-gate)   NO_QUALITY_GATE=true ;;
+        --min-average-chars)
+            require_option_value "$@"
+            case "$2" in
+                *[!0-9]*) usage_error "--min-average-chars must be a whole number, got '$2'" ;;
+            esac
+            MIN_AVERAGE_CHARS=$((10#$2))
+            OPTION_SHIFT=2 ;;
         *) usage_error "Unknown option: $1" ;;
     esac
 }
@@ -588,14 +596,15 @@ run_ocr() {
 #  QUALITY GATE (Post-OCR)
 # ════════════════════════════════════════════════════════════
 
-# quality_check <pdf> [--threshold N]
+# quality_check <pdf>
 # Checks OCR quality of a PDF. Exits 0 if OK, 1 if garbage, with
 # QUALITY_FAIL_REASON set to the failed metric.
 # Metrics:
-#   1. chars/page ≥ threshold (default 200)
+#   1. chars/page on average ≥ MIN_AVERAGE_CHARS (--min-average-chars,
+#      default 200)
 #   2. garbage_score < 0.40 (column-mixing / symbol corruption)
 quality_check() {
-    local pdf="$1" threshold="${2:-200}"
+    local pdf="$1" threshold="$MIN_AVERAGE_CHARS"
     local text chars pages chars_per_page
 
     # -raw: stream order, not Poppler's reconstructed reading order. For
@@ -609,7 +618,8 @@ quality_check() {
     # way, but -raw is the representative choice for what a human actually
     # gets when reading these files.
     text=$(pdftotext -raw "$pdf" - 2>/dev/null || true)
-    chars=$(printf '%s' "$text" | wc -c | tr -d ' ')
+    # pdftotext ends every page in a form feed, an empty page too: not text.
+    chars=$(printf '%s' "$text" | tr -d '\f' | wc -c | tr -d ' ')
     pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/^Pages:/ {print $2}')
 
     if [ -z "$pages" ] || [ "$pages" -eq 0 ]; then
@@ -680,6 +690,7 @@ print(total, isolated, mixed_case, digit_alpha)
 
     if [ -z "$total_words" ] || [ "$total_words" -lt 50 ]; then
         # Too few words to compute reliable stats — defer to metric 1
+        # (and to reprocess-raw's per-page B5 gate)
         return 0
     fi
 

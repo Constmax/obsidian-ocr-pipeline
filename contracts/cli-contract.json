@@ -68,8 +68,8 @@
     "qualityGate": {
       "comment": "Issue #217: the pipeline's cause line is the last ❌ line; pdf-combine and reprocess-raw add no marker after it. `line` is trimmed, as the plugin reads it.",
       "command": "reprocess-raw.sh scan.pdf --in-place",
-      "line": "❌ Quality gate failed: only 0 characters per page (min: 200) — no file written",
-      "reason": "Quality gate failed: only 0 characters per page (min: 200) — no file written"
+      "line": "❌ Quality gate failed: only 0 characters per page (min: 1) — no file written",
+      "reason": "Quality gate failed: only 0 characters per page (min: 1) — no file written"
     },
     "checkEngine": {
       "comment": "Issue #73: the plugin offers PaddleOCR only when this check exits 0 (success); check-failed carries the reason on stderr.",
