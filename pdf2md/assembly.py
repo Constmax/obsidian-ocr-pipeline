@@ -63,15 +63,24 @@ BOILERPLATE = [
     re.compile(r"^\d{1,3}\s*[-–]\s*[Il1]\s*$"),           # "26-I"
 ]
 
-# Weak signals that count as boilerplate only in header/footer zones.
+# Running heads that carry the page number. assembly_context() cannot find
+# them in a text layer, the number differs on every page, and they sit below
+# the header zone (Issue #221): they count anywhere, as short lines.
+RUNNING_HEADS = [
+    re.compile(r"(Lösung|Sachverhalte?|Übersicht)\s*[-–]\s*Seite", re.I),
+    re.compile(r"^(Lösung|Sachverhalte?|Übersicht)\s*,\s*Seite\s+\d+\s*$", re.I),
+    re.compile(r"^Lösung\s*[-–].*Seite\s+\d+\s*$"),
+    re.compile(r"^Klausur\s*Nr\.?\s*\d+\s*[-–]\s*Lösung,\s*Seite\s+\d+\s*$"),
+]
+RUNNING_HEAD_MAX = 45
+
+# Weak signals that count as boilerplate only in header/footer zones: in the
+# body they are a statute line of a broken citation ("BGB") or a heading
+# ("Fall 3 Lösung"), Issue #221.
 ZONE_SIGNALS = [
     re.compile(r"^he[mn]+er\s*[.,:]?$", re.I),
     re.compile(r"^\W*(Juristisches\s*)?Repetitorium\W*$", re.I),
     re.compile(r"^(BGB|StGB|StR|ZR|OeR|ÖR)[\s-]*(AT|BT)?\s*$"),
-    re.compile(r"(Lösung|Sachverhalte?|Übersicht)\s*[-–]\s*Seite", re.I),
-    re.compile(r"^(Lösung|Sachverhalte?|Übersicht)\s*,\s*Seite\s+\d+\s*$", re.I),
-    re.compile(r"^Lösung\s*[-–].*Seite\s+\d+\s*$"),          # running head
-    re.compile(r"^Klausur\s*Nr\.?\s*\d+\s*[-–]\s*Lösung,\s*Seite\s+\d+\s*$"),
     re.compile(r"^Fall\s*\d*\s*[-–]?\s*L[äöa]?"),      # "Fall 3 - Lä" (truncated)
     re.compile(r"^\s*Seite\s*\d+\s*$", re.I),
 ]
@@ -80,7 +89,7 @@ ZONE_SIGNALS = [
 # In thousandths of the page height from the top. A recognized line's y is
 # its top on this scale. A weaker boilerplate signal needs a zone nearer the
 # page edge.
-HEADER_ZONE = 70            # zone signals and city lines
+HEADER_ZONE = 70            # zone signals on a text-layer page
 FOOTER_ZONE = 950
 PAGE_NUMBER_HEADER = 80     # a bare page number
 PAGE_NUMBER_FOOTER = 905
@@ -206,12 +215,7 @@ def _boilerplate_reason(text, y=None, context=None, ocr_page=False):
         return "running_line"
     if any(p.search(t) for p in BOILERPLATE):
         return "boilerplate"
-    if t.count(" - ") >= 2 and sum(1 for s in CITIES if s in t) >= 2:
-        return "boilerplate"
-    if CITY_FRAGMENT.match(t):
-        return "boilerplate"
-
-    if len(t) <= 45 and any(p.search(t) for p in ZONE_SIGNALS):
+    if len(t) <= RUNNING_HEAD_MAX and any(p.search(t) for p in RUNNING_HEADS):
         return "boilerplate"
 
     if (y is not None
@@ -219,12 +223,22 @@ def _boilerplate_reason(text, y=None, context=None, ocr_page=False):
             and re.fullmatch(r"\d{1,4}", t)):
         return "page_number"
 
-    in_zone = y is not None and (y <= HEADER_ZONE or y >= FOOTER_ZONE)
-    if in_zone:
-        if any(p.search(t) for p in ZONE_SIGNALS):
-            return "boilerplate"
-        if len(t) <= 40 and sum(1 for s in CITIES if s in t) >= 1 and "-" in t:
-            return "boilerplate"
+    # A scan's header (provider line, subject label) sits lower than a text
+    # layer's, down to the course-label zone (Issue #221).
+    header_zone = RUNNING_LABEL_ZONE if ocr_page else HEADER_ZONE
+    at_edge = y is not None and (y <= header_zone or y >= FOOTER_ZONE)
+    if at_edge and any(p.search(t) for p in ZONE_SIGNALS):
+        return "boilerplate"
+    # City lines only on a scan: a text layer's running lines are found by
+    # assembly_context(), and no text-layer page in the vault has one left.
+    # A line the model returned without a box may be one.
+    if (ocr_page and (at_edge or y is None)
+            and (CITY_FRAGMENT.match(t)
+                 or (t.count(" - ") >= 2
+                     and sum(1 for s in CITIES if s in t) >= 2)
+                 or (len(t) <= 40 and "-" in t
+                     and any(s in t for s in CITIES)))):
+        return "boilerplate"
     return None
 
 

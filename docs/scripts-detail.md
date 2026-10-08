@@ -482,14 +482,25 @@ a `daten/` directory would be lost during flat file copies.
 
 `is_boilerplate()` drops a recognized line as a header or footer before the
 page's paragraphs are assembled, so a header the model glued to the first
-paragraph is dropped too. Besides fixed patterns (`BOILERPLATE`, the city
-lists, bare page numbers near the page edge, and `ZONE_SIGNALS` for short
-lines and lines near the page edge), it drops the document's running lines.
+paragraph is dropped too. It drops the document's running lines and:
+
+- fixed patterns (`BOILERPLATE`) anywhere;
+- `RUNNING_HEADS`, short running heads that carry the page number
+  ("Fall 3 - Lösung - Seite 4"), anywhere: they differ on every page, so
+  `assembly_context()` cannot find them, and they sit below the header zone;
+- a bare page number near the page edge;
+- `ZONE_SIGNALS` (provider name, a bare "BGB AT", "Seite 3", "Fall 3 - Lö")
+  only near the page edge: in the body they are the statute line of a
+  citation broken across lines or a heading (#221);
+- city lines only near the edge of an OCR page; a text layer has no city
+  line left once its running lines are found.
 
 The page zones are constants in thousandths of the page height, in one
 place at the top of `assembly.py`. A recognized line is placed by its top;
-a weaker signal needs a zone nearer the edge: zone signals and city lines
-above 70 or below 950, a bare page number above 80 or below 905.
+a weaker signal needs a zone nearer the edge: zone signals above 70 or below
+950 on a text-layer page; on an OCR page zone signals and city lines above
+120 (a scan's header and subject label sit lower) or below 950, and a city
+line without a box counts as well; a bare page number above 80 or below 905.
 
 - `assembly_context()` in `conversion.py` reads the running lines from the
   PDF's text layer, placing a line by its centre. A line counts when it
