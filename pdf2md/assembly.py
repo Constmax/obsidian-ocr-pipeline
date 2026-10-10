@@ -847,8 +847,8 @@ def _format_headings(paragraphs, max_heading=90):
             out.append(p)
             continue
         blank = _without_bold(raw)
-        if ((len(blank) <= max_heading or _only_bold(raw))
-                and (not _ends_like_body(blank) or _only_bold(raw))):
+        if _only_bold(raw) or (len(blank) <= max_heading
+                               and not _ends_like_body(blank)):
             out.append("#" * lvl + " " + blank)
         elif not raw.startswith("**"):
             marker, rest = raw.split(None, 1) if " " in raw else (raw, "")
