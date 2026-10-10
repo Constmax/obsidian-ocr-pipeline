@@ -303,6 +303,14 @@ def test_a_bold_label_counts_for_the_level():
         "##### b) Gemäß der herrschenden Meinung"]
 
 
+def test_a_sentence_after_a_bold_label_stays_body_text():
+    # Issue #204: only a fully bold paragraph is a heading despite a sentence end.
+    assert paragraphs([z("**1.** Die Klage ist zulässig.", y0=100),
+                       z("**cc)** Diese Ansicht ist abzulehnen.", y0=150)]) == [
+        "**1.** Die Klage ist zulässig.",
+        "**cc)** Diese Ansicht ist abzulehnen."]
+
+
 def test_a_bold_label_starts_a_new_item_at_body_spacing():
     # Issue #190: the text layer bolds the label span only. Whether the item
     # then reads as a heading is a rule of its own, not pinned here.
