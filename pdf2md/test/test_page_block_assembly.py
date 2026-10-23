@@ -133,7 +133,22 @@ def test_mark_glued_to_an_abbreviation_ending_in_a_roman_letter():
 def test_latex_footnote_marks_become_obsidian_marks():
     assert paragraphs([
         *stack(r"Erster Satz.\(^{2}\) Zweiter Satz.$^{3}$ Dritter.^{4}"),
-    ], source="ocr") == ["Erster Satz.[^2] Zweiter Satz.[^3] Dritter.[^4]"]
+        *stack("2 Vgl. Muster.", "3 Vgl. Autor.", "4 Vgl. Gericht.",
+               y=900, step=12),
+    ], source="ocr") == ["Erster Satz.[^2] Zweiter Satz.[^3] Dritter.[^4]", "",
+                         "[^2]: Vgl. Muster.", "[^3]: Vgl. Autor.",
+                         "[^4]: Vgl. Gericht."]
+
+
+def test_latex_mark_without_a_definition_stays_a_superscript():
+    # Sentence numbers in a quoted statute restart per paragraph (Issue #199).
+    assert paragraphs([
+        *stack(r"Die Norm lautet: (1) \( ^{1}\)Der erste Satz. \( ^{2}\)Der",
+               r"zweite Satz. (2) \( ^{1} \)Noch ein Satz. Ein Beleg.$^{12}$"),
+        z("12 Vgl. Gericht.", y0=900),
+    ], source="ocr") == ["Die Norm lautet: (1) ¹Der erste Satz. ²Der zweite "
+                         "Satz. (2) ¹Noch ein Satz. Ein Beleg.[^12]", "",
+                         "[^12]: Vgl. Gericht."]
 
 
 def test_a_table_gets_no_footnote_marks():
@@ -439,8 +454,9 @@ def test_latex_and_private_use_glyphs_become_plain_characters():
 
 
 def test_latex_footnote_mark_becomes_an_obsidian_mark():
-    assert paragraphs([z(r"Der Besitzer haftet.^{12}")]) \
-        == ["Der Besitzer haftet.[^12]"]
+    assert paragraphs([z(r"Der Besitzer haftet.^{12} Er zahlt.", y0=100),
+                       z("12 Vgl. Gericht.", y0=900)]) \
+        == ["Der Besitzer haftet.[^12] Er zahlt.", "", "[^12]: Vgl. Gericht."]
 
 
 def test_inline_math_delimiters_are_dropped():
