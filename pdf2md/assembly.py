@@ -256,8 +256,9 @@ LATEX = [
     (re.compile(r"\\\(\\underline\{\\text\{(.*?)\}\}\\\)"), r"\1"),
     (re.compile(r"\\underline\{(.*?)\}"), r"\1"),
     (re.compile(r"\\text\{(.*?)\}"), r"\1"),
+    # Footnote mark → Obsidian; the wrapped forms first, or \( \) or $ remain
+    (re.compile(r"\\\(\s*\^\{(\d{1,2})\}\s*\\\)"), r"[^\1]"),
     (re.compile(r"\\\(|\\\)"), ""),
-    # Footnote mark → Obsidian; the $-wrapped form first, or its $ remain
     (re.compile(r"\$\^\{(\d{1,2})\}\$"), r"[^\1]"),
     (re.compile(r"\^\{(\d{1,2})\}"), r"[^\1]"),
 ]
@@ -349,6 +350,9 @@ def _merge_definitions(definitions, paragraphs, columns):
     return defs, [v for k, v in texts.items() if not isinstance(k, int)]
 
 
+SUPERSCRIPT = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
 def _footnotes_obsidian(paragraphs, columns=None):
     """Convert footnotes to Obsidian syntax: [^n] in text, [^n]: at block end.
 
@@ -380,11 +384,15 @@ def _footnotes_obsidian(paragraphs, columns=None):
         rest.append(p)
         rest_columns.append(column)
 
-    if not found:
-        return rest
-
     defs, strays = _merge_definitions(found, rest, rest_columns)
     nums = sorted(defs)
+    # clean_text writes every model superscript as [^n]; one with no
+    # definition n on the page is a sentence number ("(1) ¹…", Issue #199).
+    rest = [re.sub(r"\[\^(\d{1,2})\]",
+                   lambda m: m[0] if int(m[1]) in defs
+                   else m[1].translate(SUPERSCRIPT), p) for p in rest]
+    if not found:
+        return rest
 
     def mark(s):
         for n in nums:
