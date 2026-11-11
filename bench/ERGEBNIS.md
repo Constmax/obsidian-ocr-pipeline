@@ -2927,3 +2927,46 @@ ungesehene Belege für den Nutzen fehlen. Folgeissue #246.
 - **Rücksprünge bleiben:** Auf p004 liest die rechte Spalte 7 Zeilenpaare
   vertauscht, weil das Rechteck einer schrägen Zeile höher ist als die Toleranz
   einer Reihe.
+
+## Nachtrag 2026-11-11 (33): Markierung im Textlayer — eine Zeile, ein Stück
+
+**Anlass:** In Obsidian (pdf.js) zerfällt die Markierung einer Zeile in Stücke
+mit Lücken; auf schiefen Scans stehen die Stücke als Treppe.
+
+**Aufbau:** Synthetische Seiten, A4 mit 300 dpi, Blocksatz in einer
+Serifenschrift (11 pt), Zeilen- und Wortrechtecke so nachgebildet, wie Vision
+sie liefert (Wortrechtecke bis zur Mitte des Leerraums). Vier Seiten:
+einspaltig mit 0°, 0,5° und 1° Schräglage, zweispaltig mit 0,3°. Textlayer
+durch `ocrmypdf_paddle` mit ersetztem Erkenner und OCRmyPDF 17.8.0, mit den
+Flags von `--in-place` (kein Entzerren). Gemessen in pdf.js 4.10.38 in
+Chromium: Markierungsstücke (Textlayer-Spans mit Text) je gedruckter Zeile.
+Wortlage zusätzlich mit `pdftotext -bbox` gegen die gedruckten Wörter.
+
+| Seite | Stücke je Zeile vorher | nachher | Lücken in der Zeile vorher (Median) |
+|---|---:|---:|---:|
+| einspaltig 0° | 1,89 | 1,00 | 0,6 Schriftgrößen |
+| einspaltig 0,5° | 2,78 | 1,00 | 0,6 |
+| einspaltig 1° | 4,09 | 1,00 | 0,5 |
+| zweispaltig 0,3° | 1,72 | 1,00 | 0,6 |
+
+**Befunde:**
+- **Lücken auf geraden Zeilen:** pdf.js misst den Abstand zum nächsten Wort ab
+  dem letzten Buchstaben, nicht ab dem angehängten Leerzeichen. Über 0,6
+  Schriftgrößen beginnt ein neues Textstück; das trat hinter jedem Wort ein,
+  das stärker als etwa 1,35-fach gestreckt wird (Versalien wie Gesetzeskürzel).
+- **Treppe auf schiefen Zeilen:** Die flachen Teilstücke je Zeile (Nachtrag
+  zur Markierung in `docs/paddle-textlayer.md`) liegen auf verschiedenen
+  Höhen. `--in-place` entzerrt nicht (#180), also trifft das die meisten Scans.
+- **Nachher:** Jede Zeile ist ein Wort im hOCR und damit ein Textstück, auch
+  gedreht. `pdftotext -raw` liefert dieselben Wörter wie vorher.
+- **Preis:** Wörter liegen in Betrachtern, die jedes Wort aus dem PDF setzen
+  (Vorschau, Poppler), ungenauer: Wortkante im Median 0,25 → 0,27 em neben dem
+  Druck, größte Abweichung 0,40 → 1,08 em (einspaltig 0°).
+
+**Grenzen:**
+- **Keine Vault-Seiten:** Die Messung lief ohne Vault und ohne Apple Vision.
+  Die Rechtecke sind nachgebildet, nicht erkannt. Der Nachweis auf echten
+  Seiten steht aus.
+- **Übersprungene Zeilen:** nicht untersucht. Vertauschte Zeilenpaare auf
+  gewölbten Spalten sind bekannt (#246, Nachtrag 32) und sehen beim Markieren
+  so aus.

@@ -172,14 +172,11 @@ def test_engine_hocr_parses_and_renders_in_line_order(tmp_path, ocrmypdf, plugin
             yield from walk(child)
 
     parsed = [e for e in walk(page) if e.baseline is not None]
-    assert [w.text for line in parsed for w in line.children] == text.split()
-    # Every line is flat; the skewed one becomes pieces stepping down its slope.
-    assert all(line.baseline.slope == 0 for line in parsed)
-    skewed_pieces = parsed[-2:]
-    assert [w.text for line in skewed_pieces for w in line.children] == ["schief", "gedruckt"]
-    first, second = (line.bbox.bottom + line.baseline.intercept for line in skewed_pieces)
-    assert second > first
-    assert skewed_pieces[0].children[0].confidence == pytest.approx(0.87)
+    # One word per line; only the skewed line carries a slope.
+    assert [w.text for line in parsed for w in line.children] == text.splitlines()
+    assert [line.baseline.slope != 0 for line in parsed] == [False] * (len(parsed) - 1) + [True]
+    assert parsed[-1].baseline.slope == pytest.approx(66 / 950, abs=1e-3)
+    assert parsed[-1].children[0].confidence == pytest.approx(0.87)
 
     pdf = tmp_path / "page.pdf"
     fonts = MultiFontManager(Path(ocrmypdf.__file__).parent / "data")
@@ -188,8 +185,8 @@ def test_engine_hocr_parses_and_renders_in_line_order(tmp_path, ocrmypdf, plugin
     assert raw_words(pdftotext, pdf) == expected_words() + ["schief", "gedruckt"]
 
 
-def test_touching_word_boxes_render_as_separate_words(tmp_path, ocrmypdf, plugin, pdftotext):
-    """Recognizers box words up to their neighbours; pdftotext must still split them."""
+def test_the_words_of_a_line_render_as_separate_words(tmp_path, ocrmypdf, plugin, pdftotext):
+    """A line is one hOCR word; pdftotext must still split it, flat or sloped."""
     from ocrmypdf.font import MultiFontManager
     from ocrmypdf.fpdf_renderer import Fpdf2PdfRenderer
     from ocrmypdf.hocrtransform.hocr_parser import HocrParser
