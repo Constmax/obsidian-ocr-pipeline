@@ -5,6 +5,20 @@ Pure module: no OCRmyPDF, RapidOCR or numpy imports.
 OCRmyPDF 17.8.0 writes the text layer in hOCR element order
 (bin/test/test_hocr_text_layer_order.py), so the hOCR and the plain-text
 sidecar are both generated here from one ordered line sequence.
+
+Every recognized line is written as one hOCR word that holds the whole line.
+OCRmyPDF's renderer stretches each hOCR word to its own box (Tz), and pdf.js
+4.10 (Obsidian) then judges the room between two words from the end of the
+first word's last letter: above 0.6 font sizes (SPACE_IN_FLOW_MAX_FACTOR) it
+starts a new text item, and each item is its own highlight block with a hole
+before the next. Word boxes left that much room after every word stretched
+beyond about 1.35 ("BGB", "VwGO"). In a rotated line pdf.js also compares
+heights at a scale that includes each word's stretch (applyInverseRotation),
+so every word became its own block. One word per line has one stretch: the
+line is one text item, flat or rotated, and its spaces are the font's own,
+which pdftotext reads as spaces. OCRmyPDF also picks the font per hOCR word,
+so a line with a character NotoSans lacks ("⇒", "≥") is written in its
+glyphless font as a whole; it stays one piece and reads the same.
 """
 
 from __future__ import annotations
@@ -18,31 +32,22 @@ from html import escape
 Point = tuple[float, float]
 Box = tuple[int, int, int, int]
 
-#: Every recognized line is written as one hOCR word that holds the whole
-#: line. OCRmyPDF's renderer stretches each hOCR word to its own box (Tz), and
-#: pdf.js 4.10 (Obsidian) then judges the room between two words from the end
-#: of the first word's last letter: above 0.6 font sizes
-#: (SPACE_IN_FLOW_MAX_FACTOR) it starts a new text item, and each item is its
-#: own highlight block with a hole before the next. Word boxes left that much
-#: room after every word stretched beyond about 1.35 ("BGB", "VwGO"). In a
-#: rotated line pdf.js also compares heights at a scale that includes each
-#: word's stretch (applyInverseRotation), so every word became its own block.
-#: One word per line has one stretch: the line is one text item, flat or
-#: rotated, and its spaces are the font's own, which pdftotext reads as spaces.
-
 #: Recognizers split a printed line into lines that touch or overlap on one
 #: baseline. A line therefore starts and ends this share of the font size
 #: inside its box, so that two such lines keep a space between them.
-WORD_ROOM = 0.25
+LINE_INSET = 0.25
 
 #: ...but by at most this share of the line's width at either end, so a short
 #: line ("I", "§") keeps most of its box.
-EDGE_ROOM_MAX = 0.3
+LINE_INSET_MAX = 0.3
 
-#: OCRmyPDF 17.8.0 renders a line whose baseline slope is below this flat
-#: (fpdf_renderer, _render_line) and turns a steeper one about the baseline at
-#: the left edge of its box.
+#: OCRmyPDF 17.8.0 renders a line whose baseline slope is below FLAT_SLOPE
+#: flat (fpdf_renderer, _render_line) and turns a steeper one about the
+#: baseline at the left edge of its box. Above STEEP_SLOPE it takes the slope
+#: for a text angle instead; such a line is written flat, as every line was
+#: before.
 FLAT_SLOPE = 0.005
+STEEP_SLOPE = 1.0
 
 #: Where the baseline lies in a recognizer's line box, as a share of the line
 #: height from its top edge. Neither recognizer's box ends at the baseline:
@@ -58,7 +63,7 @@ BASELINE_SHARE = 0.75
 class Word:
     """A piece of a line as the recognizer boxed it: a word or a character.
 
-    The text layer does not use the pieces (see WORD_ROOM); they stay in the
+    The text layer does not use the pieces (see the module docstring); they stay in the
     debug record.
     """
 
@@ -193,15 +198,15 @@ def render_page(
         polygon = clamp_polygon(line.polygon, width, height)
         if not tokens or polygon is None:
             continue
-        n = len(texts)
+        n, text = len(texts), " ".join(tokens)
         box = bounding_box(polygon)
         blocks.append(
             f'<div class="ocr_carea" id="block_{n}" title="{_bbox(box)}">\n'
             f'<p class="ocr_par" id="par_{n}" lang="{escape(language)}" title="{_bbox(box)}">\n'
-            f"{_line(n, ' '.join(tokens), box, LineGeometry(polygon), wconf(line.confidence))}"
+            f"{_line(n, text, box, LineGeometry(polygon), wconf(line.confidence))}"
             "\n</p>\n</div>"
         )
-        texts.append(" ".join(tokens))
+        texts.append(text)
     hocr = _TEMPLATE.format(width=width, height=height, content="\n".join(blocks))
     return hocr, ("\n".join(texts) + "\n") if texts else ""
 
@@ -215,10 +220,10 @@ def _line(n: int, text: str, box: Box, geometry: LineGeometry, confidence: int) 
     left end of a sloped line, the middle of one rendered flat.
     """
     x0, _, x1, _ = box
-    inset = min(WORD_ROOM * geometry.font_size, EDGE_ROOM_MAX * (x1 - x0))
+    inset = min(LINE_INSET * geometry.font_size, LINE_INSET_MAX * (x1 - x0))
     left = min(math.ceil(x0 + inset), x1 - 1)
     right = max(left + 1, math.floor(x1 - inset))
-    sloped = abs(geometry.slope) >= FLAT_SLOPE
+    sloped = FLAT_SLOPE <= abs(geometry.slope) <= STEEP_SLOPE
     at = left if sloped else (left + right) / 2
     top, bottom = math.floor(geometry.top(at)), math.ceil(geometry.bottom(at))
     intercept = min(0, round(geometry.baseline(at) - bottom))

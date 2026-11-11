@@ -152,6 +152,7 @@ def run_ocr(ocrmypdf, source, output, **overrides):
 # ── Rendering through OCRmyPDF's hOCR parser and fpdf2 renderer ────────────
 
 
+@pytest.mark.slow
 def test_engine_hocr_parses_and_renders_in_line_order(tmp_path, ocrmypdf, plugin, pdftotext):
     from ocrmypdf.font import MultiFontManager
     from ocrmypdf.fpdf_renderer import Fpdf2PdfRenderer
@@ -185,33 +186,30 @@ def test_engine_hocr_parses_and_renders_in_line_order(tmp_path, ocrmypdf, plugin
     assert raw_words(pdftotext, pdf) == expected_words() + ["schief", "gedruckt"]
 
 
+@pytest.mark.slow
 def test_the_words_of_a_line_render_as_separate_words(tmp_path, ocrmypdf, plugin, pdftotext):
-    """A line is one hOCR word; pdftotext must still split it, flat or sloped."""
+    """A line is one hOCR word; pdftotext must still split it: flat, sloped, or
+    in OCRmyPDF's glyphless font because NotoSans lacks one of its characters."""
     from ocrmypdf.font import MultiFontManager
     from ocrmypdf.fpdf_renderer import Fpdf2PdfRenderer
     from ocrmypdf.hocrtransform.hocr_parser import HocrParser
 
-    from ocrmypdf_paddle.hocr import TextLine, Word, render_page
+    from ocrmypdf_paddle.hocr import TextLine, render_page
 
-    def line(y, slope):
-        pieces, x = [], 200
-        for token in "Dabei ist der Verein gegründet".split():
-            x1 = x + 22 * len(token)
-            pieces.append(Word(token, ((x, y + slope * x), (x1, y + slope * x1),
-                                       (x1, y + 60 + slope * x1), (x, y + 60 + slope * x)), 0.9))
-            x = x1  # the next word's box starts where this one ends
-        return TextLine("Dabei ist der Verein gegründet",
-                        (pieces[0].polygon[0], pieces[-1].polygon[1], pieces[-1].polygon[2],
-                         pieces[0].polygon[3]), 0.9, tuple(pieces))
+    def line(y, slope, text="Dabei ist der Verein gegründet"):
+        x0, x1 = 200, 200 + 22 * len(text)
+        return TextLine(text, ((x0, y + slope * x0), (x1, y + slope * x1),
+                               (x1, y + 60 + slope * x1), (x0, y + 60 + slope * x0)), 0.9)
 
     hocr = tmp_path / "page.hocr"
-    hocr.write_text(render_page([line(400, 0), line(600, 0.02)], REF_W, REF_H)[0],
-                    encoding="utf-8")
+    lines = [line(400, 0), line(600, 0.02), line(800, 0, "Tatbestand ⇒ Rechtsfolge gegeben")]
+    hocr.write_text(render_page(lines, REF_W, REF_H)[0], encoding="utf-8")
     pdf = tmp_path / "page.pdf"
     fonts = MultiFontManager(Path(ocrmypdf.__file__).parent / "data")
     Fpdf2PdfRenderer(page=HocrParser(hocr).parse(), dpi=300, multi_font_manager=fonts,
                      invisible_text=True).render(pdf)
-    assert raw_words(pdftotext, pdf) == "Dabei ist der Verein gegründet".split() * 2
+    assert raw_words(pdftotext, pdf) == ("Dabei ist der Verein gegründet".split() * 2
+                                         + "Tatbestand ⇒ Rechtsfolge gegeben".split())
 
 
 # ── Full OCRmyPDF pipeline ─────────────────────────────────────────────────

@@ -542,7 +542,12 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
     instead of their own boxes. pdf.js already placed them that way inside a
     text item; viewers that place every word from the PDF (Preview, Poppler)
     now show a word up to about two characters beside its print in a long
-    justified line (measured below).
+    justified line (measured below). OCRmyPDF also picks the font per hOCR
+    word: a line with a character NotoSans lacks (arrows, "≥", "✓") is
+    written in its glyphless font as a whole, where before only that word
+    was. The line stays one piece and reads the same. A line steeper than
+    45° is written flat, because OCRmyPDF would take its slope for a text
+    angle.
 
   Measured on synthetic pages (justified serif text; one column at 0°, 0.5°
   and 1° skew, two columns at 0.3°) in pdf.js 4.10: highlight blocks per

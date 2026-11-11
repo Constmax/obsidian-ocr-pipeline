@@ -115,7 +115,7 @@ def _words(candidate: Any, text: str, width: int, height: int) -> tuple[Word, ..
 
     Vision's word boxes reach into half the space on either side, so
     neighbouring words touch. They go to the debug record only; the text
-    layer holds each line as one piece (hocr.WORD_ROOM).
+    layer holds each line as one piece (hocr module docstring).
     """
     words = []
     for match in re.finditer(r"\S+", text):

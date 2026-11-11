@@ -8,9 +8,8 @@ import pytest
 
 from ocrmypdf_paddle.hocr import (
     BASELINE_SHARE,
-    EDGE_ROOM_MAX,
     FLAT_SLOPE,
-    WORD_ROOM,
+    LINE_INSET_MAX,
     LineGeometry,
     TextLine,
     Word,
@@ -207,7 +206,7 @@ def test_a_line_is_one_piece_whatever_word_boxes_the_recognizer_gave():
     hocr, _ = render_page([line], W, H)
 
     (title, words), = parsed_lines(hocr)
-    # One word holds the line, WORD_ROOM inside the box at either end.
+    # One word holds the line, LINE_INSET inside the box at either end.
     assert [t for t, _ in words] == ["Satz eins BGB"]
     assert word_box(words[0][1]) == word_box(title) == (108, 100, 392, 140)
     assert line_font_size(title) == 30
@@ -243,13 +242,22 @@ def test_a_line_below_the_renderers_slope_floor_lies_flat_on_its_middle():
         geometry.baseline(500), abs=1)
 
 
+def test_a_line_steeper_than_45_degrees_is_written_flat():
+    # OCRmyPDF would take such a slope for a text angle.
+    hocr, _ = render_page([TextLine("hoch", rotated(500, 400, 300, 40, 80), 0.9)], W, H)
+
+    (title, _), = parsed_lines(hocr)
+    assert BASELINE.search(title).group(1) == "0"
+    assert line_font_size(title) > 0
+
+
 @pytest.mark.parametrize("text, width", [("I", 16), ("§", 18), ("a)", 25)])
 def test_a_short_word_alone_on_its_line_keeps_most_of_its_box(text, width):
     polygon = rect(100, 100, 100 + width, 140)
-    hocr, _ = render_page([TextLine(text, polygon, 0.9, words=(Word(text, polygon, 0.9),))], W, H)
+    hocr, _ = render_page([TextLine(text, polygon, 0.9)], W, H)
 
     x0, _, x1, _ = word_box(parsed_lines(hocr)[0][1][0][1])
-    assert x1 - x0 >= (1 - 2 * EDGE_ROOM_MAX) * width - 2
+    assert x1 - x0 >= (1 - 2 * LINE_INSET_MAX) * width - 2
 
 
 @pytest.mark.parametrize("polygon", [
@@ -260,9 +268,7 @@ def test_a_short_word_alone_on_its_line_keeps_most_of_its_box(text, width):
 def test_slivers_clipped_at_the_page_edge_render_upright_boxes(polygon):
     assert clamp_polygon(polygon, W, H) == polygon
     assert LineGeometry(polygon).font_size > 0
-    line = TextLine("ab cd", polygon, 0.9, words=(Word("ab", polygon, 0.9),
-                                                  Word("cd", polygon, 0.9)))
-    hocr, _ = render_page([line], W, H)
+    hocr, _ = render_page([TextLine("ab cd", polygon, 0.9)], W, H)
 
     for title, words in parsed_lines(hocr):
         for t in (title, *(word_title for _, word_title in words)):
