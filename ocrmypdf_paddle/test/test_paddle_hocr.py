@@ -7,19 +7,15 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from ocrmypdf_paddle.hocr import (
-    AVERAGE_ADVANCE,
     BASELINE_SHARE,
-    EDGE_ROOM_MAX,
-    FLAT_DRIFT,
-    SPACE_ADVANCE,
-    WORD_ROOM,
+    FLAT_SLOPE,
+    LINE_INSET_MAX,
     LineGeometry,
     TextLine,
     Word,
     bounding_box,
     clamp_polygon,
     render_page,
-    spaced_word_boxes,
     wconf,
 )
 
@@ -146,7 +142,7 @@ def test_text_and_hocr_follow_the_given_line_order():
 
     assert text == "zweite Zeile\nerste Zeile\nrechte Spalte\n"
     words = [w for _, line_words in parsed_lines(hocr) for w, _ in line_words]
-    assert words == text.split()
+    assert words == text.splitlines()
 
 
 def test_unplaceable_lines_are_left_out_of_hocr_and_text():
@@ -173,7 +169,7 @@ def test_an_empty_page_is_valid_hocr_without_text():
 def test_markup_in_recognized_text_is_escaped():
     hocr, text = render_page([TextLine('a<b & "c" §', rect(10, 10, 300, 40), 0.9)], W, H)
     assert text == 'a<b & "c" §\n'
-    assert [w for w, _ in parsed_lines(hocr)[0][1]] == ["a<b", "&", '"c"', "§"]
+    assert [w for w, _ in parsed_lines(hocr)[0][1]] == ['a<b & "c" §']
 
 
 def test_titles_use_the_formats_ocrmypdf_parses():
@@ -186,13 +182,13 @@ def test_titles_use_the_formats_ocrmypdf_parses():
         assert BBOX.match(title)
         match = BASELINE.search(title)
         assert match and match.group(0) == title.split("; ")[1]
-        assert match.group(1) == "0"
+        assert re.fullmatch(r"0|-?0\.\d+", match.group(1))
         for _, word_title in words:
             assert BBOX.match(word_title) and WCONF.search(word_title)
     assert "e-" not in hocr
 
 
-# ── Word placement ─────────────────────────────────────────────────────────
+# ── Line placement ─────────────────────────────────────────────────────────
 
 
 def line_font_size(title):
@@ -201,61 +197,67 @@ def line_font_size(title):
     return bottom + int(BASELINE.search(title).group(2)) - top
 
 
-def test_word_pieces_that_spell_the_line_give_the_word_boxes():
-    line = TextLine("Satz eins", rect(100, 100, 400, 140), 0.9, words=(
+def test_a_line_is_one_piece_whatever_word_boxes_the_recognizer_gave():
+    line = TextLine("Satz  eins BGB", rect(100, 100, 400, 140), 0.9, words=(
         Word("Satz", rect(101, 102, 180, 138), 0.8),
         Word("eins", rect(190, 101, 300, 139), 0.6),
+        Word("BGB", rect(300, 101, 400, 139), 0.6),
     ))
     hocr, _ = render_page([line], W, H)
 
-    title, words = parsed_lines(hocr)[0]
-    boxes = [word_box(t) for _, t in words]
-    assert [t for t, _ in words] == ["Satz", "eins"]
-    # The line's words start and end WORD_ROOM inside their boxes; the first
-    # one also ends early enough for its space. Words take the line's height.
-    assert boxes[0][0] == 101 + round(WORD_ROOM * 30) and boxes[0][2] < 180
-    assert boxes[1] == (190, 100, 300 - round(WORD_ROOM * 30), 140)
+    (title, words), = parsed_lines(hocr)
+    # One word holds the line, LINE_INSET inside the box at either end.
+    assert [t for t, _ in words] == ["Satz eins BGB"]
+    assert word_box(words[0][1]) == word_box(title) == (108, 100, 392, 140)
     assert line_font_size(title) == 30
-    assert [WCONF.search(t).group(1) for _, t in words] == ["80", "60"]
+    assert WCONF.search(words[0][1]).group(1) == "90"
 
 
-def test_room_after_each_rendered_space_is_the_word_room():
-    font_size = 40
-    placed = [("Wagen", (100, 0, 330, 50)), ("im", (338, 0, 430, 50)),
-              ("Auftrag", (438, 0, 700, 50))]
-    boxes = spaced_word_boxes(placed, font_size)
+def test_a_skewed_line_keeps_its_slope_and_stays_one_piece():
+    polygon = ((100.0, 301.0), (900.0, 309.0), (900.0, 349.0), (100.0, 341.0))
+    geometry = LineGeometry(polygon)
+    hocr, _ = render_page([TextLine("eins zwei drei vier", polygon, 0.9)], W, H)
 
-    assert boxes[0][0] == 100 + WORD_ROOM * font_size
-    for (text, _), box, following in zip(placed, boxes, boxes[1:]):
-        stretch = (box[2] - box[0]) / (AVERAGE_ADVANCE * len(text) * font_size)
-        space_end = box[2] + SPACE_ADVANCE * font_size * stretch
-        assert (following[0] - space_end) / font_size == pytest.approx(WORD_ROOM, abs=0.05)
-    assert boxes[-1] == (438, 0, 700 - WORD_ROOM * font_size, 50)
-
-
-def test_word_boxes_never_grow_into_a_real_gap():
-    boxes = spaced_word_boxes([("K", (100, 0, 130, 50)), ("weit", (600, 0, 700, 50))], 40)
-    # The first word starts WORD_ROOM inside, but by at most EDGE_ROOM_MAX of 30 px.
-    assert boxes[0] == (109, 0, 130, 50)
+    (title, words), = parsed_lines(hocr)
+    left, _, _, bottom = word_box(title)
+    assert len(words) == 1
+    assert float(BASELINE.search(title).group(1)) == pytest.approx(0.01, abs=1e-4)
+    # OCRmyPDF turns the line about the baseline at the box's left edge.
+    assert bottom + int(BASELINE.search(title).group(2)) == pytest.approx(
+        geometry.baseline(left), abs=1)
+    assert line_font_size(title) == pytest.approx(geometry.font_size, abs=1)
 
 
-def test_a_word_too_short_for_its_space_pushes_the_next_word_on():
-    font_size = 40
-    boxes = spaced_word_boxes([("I", (100, 0, 104, 50)), ("x", (105, 0, 120, 50))], font_size)
-    # "I" keeps one pixel; "x" starts after its space and the word room.
-    assert boxes[0] == (102, 0, 103, 50)
-    space_end = 103 + SPACE_ADVANCE * font_size * 1 / (AVERAGE_ADVANCE * font_size)
-    assert boxes[1][0] - space_end >= WORD_ROOM * font_size
-    assert boxes[1][2] > boxes[1][0]
+def test_a_line_below_the_renderers_slope_floor_lies_flat_on_its_middle():
+    slope = FLAT_SLOPE * 0.8
+    polygon = ((100.0, 300.0), (900.0, 300 + 800 * slope), (900.0, 340 + 800 * slope),
+               (100.0, 340.0))
+    geometry = LineGeometry(polygon)
+    hocr, _ = render_page([TextLine("eins zwei", polygon, 0.9)], W, H)
+
+    (title, _), = parsed_lines(hocr)
+    _, _, _, bottom = word_box(title)
+    assert BASELINE.search(title).group(1) == "0"
+    assert bottom + int(BASELINE.search(title).group(2)) == pytest.approx(
+        geometry.baseline(500), abs=1)
+
+
+def test_a_line_steeper_than_45_degrees_is_written_flat():
+    # OCRmyPDF would take such a slope for a text angle.
+    hocr, _ = render_page([TextLine("hoch", rotated(500, 400, 300, 40, 80), 0.9)], W, H)
+
+    (title, _), = parsed_lines(hocr)
+    assert BASELINE.search(title).group(1) == "0"
+    assert line_font_size(title) > 0
 
 
 @pytest.mark.parametrize("text, width", [("I", 16), ("§", 18), ("a)", 25)])
 def test_a_short_word_alone_on_its_line_keeps_most_of_its_box(text, width):
     polygon = rect(100, 100, 100 + width, 140)
-    hocr, _ = render_page([TextLine(text, polygon, 0.9, words=(Word(text, polygon, 0.9),))], W, H)
+    hocr, _ = render_page([TextLine(text, polygon, 0.9)], W, H)
 
     x0, _, x1, _ = word_box(parsed_lines(hocr)[0][1][0][1])
-    assert x1 - x0 >= (1 - 2 * EDGE_ROOM_MAX) * width - 2
+    assert x1 - x0 >= (1 - 2 * LINE_INSET_MAX) * width - 2
 
 
 @pytest.mark.parametrize("polygon", [
@@ -266,73 +268,10 @@ def test_a_short_word_alone_on_its_line_keeps_most_of_its_box(text, width):
 def test_slivers_clipped_at_the_page_edge_render_upright_boxes(polygon):
     assert clamp_polygon(polygon, W, H) == polygon
     assert LineGeometry(polygon).font_size > 0
-    line = TextLine("ab cd", polygon, 0.9, words=(Word("ab", polygon, 0.9),
-                                                  Word("cd", polygon, 0.9)))
-    hocr, _ = render_page([line], W, H)
+    hocr, _ = render_page([TextLine("ab cd", polygon, 0.9)], W, H)
 
     for title, words in parsed_lines(hocr):
         for t in (title, *(word_title for _, word_title in words)):
             x0, top, x1, bottom = word_box(t)
             assert x0 < x1 and top < bottom
         assert line_font_size(title) > 0
-
-
-def test_character_pieces_are_merged_per_word():
-    pieces = tuple(
-        Word(ch, rect(100 + 20 * i, 100, 118 + 20 * i, 130), score)
-        for i, (ch, score) in enumerate(zip("Grünab", (0.9, 0.9, 0.6, 0.9, 0.8, 0.8)))
-    )
-    line = TextLine("Grün ab", rect(100, 100, 220, 130), 0.9, words=pieces)
-    hocr, _ = render_page([line], W, H)
-
-    words = parsed_lines(hocr)[0][1]
-    # The unions (100-178, 180-218) nearly touch; the first word gives way.
-    assert [(t, word_box(title)[0]) for t, title in words] == [("Grün", 106), ("ab", 180)]
-    assert word_box(words[0][1])[2] < 170
-    assert [WCONF.search(title).group(1) for _, title in words] == ["82", "80"]
-
-
-def test_a_skewed_line_is_written_as_flat_pieces_along_its_baseline():
-    words, x, slope = [], 100, 0.01
-    for token in "eins zwei drei vier fünf sechs sieben acht".split():
-        x1 = x + 100
-        words.append(Word(token, ((x, 300 + slope * x), (x1, 300 + slope * x1),
-                                  (x1, 340 + slope * x1), (x, 340 + slope * x)), 0.9))
-        x = x1 + 10
-    polygon = (words[0].polygon[0], words[-1].polygon[1], words[-1].polygon[2],
-               words[0].polygon[3])
-    line = TextLine(" ".join(w.text for w in words), polygon, 0.9, tuple(words))
-    geometry = LineGeometry(polygon)
-    hocr, text = render_page([line], W, H)
-
-    pieces = parsed_lines(hocr)
-    assert len(pieces) > 1
-    assert [t for _, ws in pieces for t, _ in ws] == text.split()
-    for title, piece_words in pieces:
-        left, top, right, bottom = word_box(title)
-        assert BASELINE.search(title).group(1) == "0"
-        base = bottom + int(BASELINE.search(title).group(2))
-        # Flat, yet on the real baseline within half the allowed drift.
-        for x in (left, right):
-            assert abs(base - geometry.baseline(x)) <= FLAT_DRIFT * geometry.font_size / 2 + 1
-        assert line_font_size(title) == pytest.approx(geometry.font_size, abs=2)
-
-
-@pytest.mark.parametrize("pieces", [
-    (Word("Grun", rect(100, 100, 180, 130), 0.9), Word("ab", rect(190, 100, 220, 130), 0.9)),
-    (Word("Grün", rect(100, 100, 180, 130), 0.9),),                       # a word missing
-    (Word("Grün", rect(100, 100, 180, 130), 0.9), Word("ab", rect(190, 100, 220, 130), 0.9),
-     Word("x", rect(230, 100, 240, 130), 0.9)),                           # a piece left over
-    (Word("Grün", ((0, 0), (1, 1)), 0.9), Word("ab", rect(190, 100, 220, 130), 0.9)),
-])
-def test_unusable_pieces_fall_back_to_spreading_words_across_the_line(pieces):
-    line = TextLine("Grün ab", rect(100, 100, 220, 130), 0.7, words=pieces)
-    hocr, _ = render_page([line], W, H)
-
-    words = parsed_lines(hocr)[0][1]
-    boxes = [word_box(title) for _, title in words]
-    assert [t for t, _ in words] == ["Grün", "ab"]
-    assert boxes[0][0] == 100 and boxes[-1][2] <= 220
-    assert boxes[0][2] <= boxes[1][0]
-    assert all((b[1], b[3]) == (100, 130) for b in boxes)
-    assert all(title.endswith("x_wconf 70") for _, title in words)

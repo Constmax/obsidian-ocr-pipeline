@@ -5,6 +5,20 @@ Pure module: no OCRmyPDF, RapidOCR or numpy imports.
 OCRmyPDF 17.8.0 writes the text layer in hOCR element order
 (bin/test/test_hocr_text_layer_order.py), so the hOCR and the plain-text
 sidecar are both generated here from one ordered line sequence.
+
+Every recognized line is written as one hOCR word that holds the whole line.
+OCRmyPDF's renderer stretches each hOCR word to its own box (Tz), and pdf.js
+4.10 (Obsidian) then judges the room between two words from the end of the
+first word's last letter: above 0.6 font sizes (SPACE_IN_FLOW_MAX_FACTOR) it
+starts a new text item, and each item is its own highlight block with a hole
+before the next. Word boxes left that much room after every word stretched
+beyond about 1.35 ("BGB", "VwGO"). In a rotated line pdf.js also compares
+heights at a scale that includes each word's stretch (applyInverseRotation),
+so every word became its own block. One word per line has one stretch: the
+line is one text item, flat or rotated, and its spaces are the font's own,
+which pdftotext reads as spaces. OCRmyPDF also picks the font per hOCR word,
+so a line with a character NotoSans lacks ("⇒", "≥") is written in its
+glyphless font as a whole; it stays one piece and reads the same.
 """
 
 from __future__ import annotations
@@ -18,31 +32,22 @@ from html import escape
 Point = tuple[float, float]
 Box = tuple[int, int, int, int]
 
-#: OCRmyPDF's renderer stretches each word to its box (Tz) and appends a
-#: space at the same stretch. Two readers then judge the room left between
-#: that space and the next word, in shares of the font size (OCRmyPDF
-#: 17.8.0): pdftotext -raw glues the words below about 0.12 (measured on
-#: synthetic lines), and pdf.js 4.10 starts a new text item above 0.6
-#: (SPACE_IN_FLOW_MAX_FACTOR), which splits a selection highlight into one
-#: block per word. Recognizers box a word up to its neighbours (Apple Vision
-#: reaches into half the space on either side, and in justified lines into
-#: half the widened space), which left no room at all ("Dabeiistder Verein",
-#: bench/ERGEBNIS.md). Each word's right edge is therefore placed so that
-#: this much room remains after its space.
-WORD_ROOM = 0.25
+#: Recognizers split a printed line into lines that touch or overlap on one
+#: baseline. A line therefore starts and ends this share of the font size
+#: inside its box, so that two such lines keep a space between them.
+LINE_INSET = 0.25
 
-#: The line's first word starts and its last word ends WORD_ROOM inside their
-#: boxes, but by at most this share of the word's width, so a short word on
-#: its own ("I", "§") keeps most of its box.
-EDGE_ROOM_MAX = 0.3
+#: ...but by at most this share of the line's width at either end, so a short
+#: line ("I", "§") keeps most of its box.
+LINE_INSET_MAX = 0.3
 
-#: Advance widths in em of NotoSans, OCRmyPDF's Latin text-layer font, for
-#: the stretch above: a flat average over German prose, and the space. On a
-#: one-column page the font's real widths placed the words no better, and
-#: narrower widths for narrow characters split five vault pages into 1 %
-#: more pdf.js text items without separating any more words.
-AVERAGE_ADVANCE = 0.55
-SPACE_ADVANCE = 0.26
+#: OCRmyPDF 17.8.0 renders a line whose baseline slope is below FLAT_SLOPE
+#: flat (fpdf_renderer, _render_line) and turns a steeper one about the
+#: baseline at the left edge of its box. Above STEEP_SLOPE it takes the slope
+#: for a text angle instead; such a line is written flat, as every line was
+#: before.
+FLAT_SLOPE = 0.005
+STEEP_SLOPE = 1.0
 
 #: Where the baseline lies in a recognizer's line box, as a share of the line
 #: height from its top edge. Neither recognizer's box ends at the baseline:
@@ -54,20 +59,13 @@ SPACE_ADVANCE = 0.26
 #: at 0.75.
 BASELINE_SHARE = 0.75
 
-#: Every hOCR line is written flat. OCRmyPDF 17.8.0 renders a sloped line
-#: (slope 0.005 or more) rotated, and pdf.js 4.10 undoes a rotation with a
-#: scale that includes each word's horizontal stretch (applyInverseRotation),
-#: so words of different stretch land on different heights and every word of
-#: the line becomes its own highlight block. That hit most lines of
-#: one-column pages, whose long lines keep a residual skew after deskewing. A
-#: sloped line is therefore cut into flat pieces, each short enough that the
-#: real baseline drifts at most this share of the font size across it.
-FLAT_DRIFT = 0.2
-
-
 @dataclass(frozen=True)
 class Word:
-    """A piece of a line as the recognizer boxed it: a word or a character."""
+    """A piece of a line as the recognizer boxed it: a word or a character.
+
+    The text layer does not use the pieces (see the module docstring); they stay in the
+    debug record.
+    """
 
     text: str
     polygon: tuple[Point, ...]
@@ -200,168 +198,47 @@ def render_page(
         polygon = clamp_polygon(line.polygon, width, height)
         if not tokens or polygon is None:
             continue
-        n = len(texts)
+        n, text = len(texts), " ".join(tokens)
         box = bounding_box(polygon)
-        geometry = LineGeometry(polygon)
-        placed = _placed_words(line, tokens, box, geometry.font_size, width, height)
-        pieces = "\n".join(
-            _flat_line(f"{n}_{k}", piece, geometry)
-            for k, piece in enumerate(_flat_pieces(placed, geometry))
-        )
         blocks.append(
             f'<div class="ocr_carea" id="block_{n}" title="{_bbox(box)}">\n'
             f'<p class="ocr_par" id="par_{n}" lang="{escape(language)}" title="{_bbox(box)}">\n'
-            f"{pieces}\n</p>\n</div>"
+            f"{_line(n, text, box, LineGeometry(polygon), wconf(line.confidence))}"
+            "\n</p>\n</div>"
         )
-        texts.append(" ".join(tokens))
+        texts.append(text)
     hocr = _TEMPLATE.format(width=width, height=height, content="\n".join(blocks))
     return hocr, ("\n".join(texts) + "\n") if texts else ""
 
 
-def _flat_pieces(
-    placed: list[tuple[str, Box, int]], geometry: LineGeometry
-) -> list[list[tuple[str, Box, int]]]:
-    """The line's words in runs over which the baseline drifts at most
-    FLAT_DRIFT font sizes; a single word always makes a run."""
-    reach = FLAT_DRIFT * geometry.font_size / max(abs(geometry.slope), 1e-9)
-    pieces: list[list[tuple[str, Box, int]]] = []
-    for word in placed:
-        if pieces and word[1][2] - pieces[-1][0][1][0] <= reach:
-            pieces[-1].append(word)
-        else:
-            pieces.append([word])
-    return pieces
+def _line(n: int, text: str, box: Box, geometry: LineGeometry, confidence: int) -> str:
+    """One ocr_line holding the whole line as one word.
 
-
-def _flat_line(ident: str, piece: list[tuple[str, Box, int]], geometry: LineGeometry) -> str:
-    """One flat ocr_line for a run of words, on the baseline at its middle.
-
-    OCRmyPDF's renderer reads the font size from the box top to the baseline,
-    so the box takes the line's top and bottom edge at the same point.
+    OCRmyPDF's renderer reads the font size from the box top to the baseline
+    and places the baseline `intercept` above the box bottom at the box's left
+    edge, so the box takes the line's top and bottom edge at one point: the
+    left end of a sloped line, the middle of one rendered flat.
     """
-    left, right = piece[0][1][0], max(word_box[2] for _, word_box, _ in piece)
-    middle = (left + right) / 2
-    top, bottom = math.floor(geometry.top(middle)), math.ceil(geometry.bottom(middle))
-    intercept = min(0, round(geometry.baseline(middle) - bottom))
-    words = "\n".join(
-        f'<span class="ocrx_word" id="word_{ident}_{i}" '
-        f'title="{_bbox((word_box[0], top, word_box[2], bottom))}; '
-        f'x_wconf {confidence}">{escape(text)}</span>'
-        for i, (text, word_box, confidence) in enumerate(piece)
-    )
+    x0, _, x1, _ = box
+    inset = min(LINE_INSET * geometry.font_size, LINE_INSET_MAX * (x1 - x0))
+    left = min(math.ceil(x0 + inset), x1 - 1)
+    right = max(left + 1, math.floor(x1 - inset))
+    sloped = FLAT_SLOPE <= abs(geometry.slope) <= STEEP_SLOPE
+    at = left if sloped else (left + right) / 2
+    top, bottom = math.floor(geometry.top(at)), math.ceil(geometry.bottom(at))
+    intercept = min(0, round(geometry.baseline(at) - bottom))
+    title = _bbox((left, top, right, bottom))
+    # Fixed notation: the parser drops a baseline whose slope has an exponent.
+    slope = f"{geometry.slope:.4f}" if sloped else "0"
     return (
-        f'<span class="ocr_line" id="line_{ident}" title="{_bbox((left, top, right, bottom))}; '
-        f'baseline 0 {intercept}">\n{words}\n</span>'
+        f'<span class="ocr_line" id="line_{n}" title="{title}; baseline {slope} {intercept}">\n'
+        f'<span class="ocrx_word" id="word_{n}" title="{title}; x_wconf {confidence}">'
+        f"{escape(text)}</span>\n</span>"
     )
 
 
 def _bbox(box: Box) -> str:
     return f"bbox {box[0]} {box[1]} {box[2]} {box[3]}"
-
-
-def spaced_word_boxes(placed: Sequence[tuple[str, Box]], font_size: float) -> list[Box]:
-    """Word boxes of one line that leave WORD_ROOM after each word.
-
-    Inside the line a word keeps its left edge, and its right edge moves so
-    that the space appended at the word's stretch ends WORD_ROOM font sizes
-    before the next word. Recognizers also split a printed line into lines
-    that touch or overlap on one baseline, so the line's first word starts
-    and its last word ends WORD_ROOM (at most EDGE_ROOM_MAX of the word's
-    width) inside their boxes. A word never passes the recognizer's own right
-    edge, so a real gap stays a gap, and keeps at least one pixel; a word too
-    short for its space pushes the next word's left edge on instead.
-    """
-    if not placed:
-        return []
-    room, space = WORD_ROOM * font_size, SPACE_ADVANCE * font_size
-    lefts = [word_box[0] for _, word_box in placed]
-    x0, _, x1, _ = placed[0][1]
-    lefts[0] = min(math.ceil(x0 + min(room, EDGE_ROOM_MAX * (x1 - x0))), x1 - 1)
-    boxes = []
-    for i, (text, (original, top, x1, bottom)) in enumerate(placed):
-        x0 = lefts[i]
-        if i + 1 == len(placed):
-            end = x1 - min(room, EDGE_ROOM_MAX * (x1 - original))
-            boxes.append((x0, top, max(x0 + 1, math.floor(end)), bottom))
-            break
-        natural = AVERAGE_ADVANCE * len(text) * font_size
-        # right + space * (right - x0) / natural = lefts[i + 1] - room
-        end = min(x1, (lefts[i + 1] - room + space * x0 / natural) / (1 + space / natural))
-        right = max(x0 + 1, math.floor(end))
-        boxes.append((x0, top, right, bottom))
-        if right > end:
-            following_x1 = placed[i + 1][1][2]
-            lefts[i + 1] = max(lefts[i + 1], min(
-                math.ceil(right + space * (right - x0) / natural + room), following_x1 - 1))
-    return boxes
-
-
-def _placed_words(
-    line: TextLine,
-    tokens: list[str],
-    box: Box,
-    font_size: float,
-    width: int,
-    page_height: int,
-) -> list[tuple[str, Box, int]]:
-    """The line's words with their boxes and x_wconf.
-
-    Uses the recognizer's pieces when they spell the words exactly, merging
-    character pieces per word and leaving room between words (WORD_ROOM).
-    Otherwise the words are spread across the line box by character count,
-    which leaves a gap between them; the spike (#62) showed that spread words
-    glue together on skewed lines, so this is only the fallback for results
-    without usable pieces.
-    """
-    grouped = _group_pieces(line.words, tokens, width, page_height)
-    if grouped is not None:
-        boxes = spaced_word_boxes([(text, word_box) for text, word_box, _ in grouped],
-                                  font_size)
-        return [(text, word_box, confidence)
-                for (text, _, confidence), word_box in zip(grouped, boxes)]
-    return _spread_evenly(tokens, box, wconf(line.confidence))
-
-
-def _group_pieces(
-    pieces: Sequence[Word], tokens: list[str], width: int, height: int
-) -> list[tuple[str, Box, int]] | None:
-    queue = [piece for piece in pieces if isinstance(piece.text, str) and piece.text.strip()]
-    if not queue:
-        return None
-    placed = []
-    for token in tokens:
-        text, boxes, confidences = "", [], []
-        while len(text) < len(token) and queue:
-            piece = queue.pop(0)
-            polygon = clamp_polygon(piece.polygon, width, height)
-            if polygon is None:
-                return None
-            text += "".join(piece.text.split())
-            boxes.append(bounding_box(polygon))
-            confidences.append(wconf(piece.confidence))
-        if text != token:
-            return None
-        union = (
-            min(b[0] for b in boxes),
-            min(b[1] for b in boxes),
-            max(b[2] for b in boxes),
-            max(b[3] for b in boxes),
-        )
-        placed.append((token, union, round(sum(confidences) / len(confidences))))
-    return None if queue else placed
-
-
-def _spread_evenly(tokens: list[str], box: Box, confidence: int) -> list[tuple[str, Box, int]]:
-    left, top, right, bottom = box
-    # One unit per character plus one per gap between words.
-    step = (right - left) / (sum(len(token) for token in tokens) + len(tokens) - 1)
-    placed, cursor = [], 0
-    for token in tokens:
-        x0 = math.floor(left + cursor * step)
-        x1 = min(right, max(x0 + 1, math.ceil(left + (cursor + len(token)) * step)))
-        placed.append((token, (x0, top, x1, bottom), confidence))
-        cursor += len(token) + 1
-    return placed
 
 
 _TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>

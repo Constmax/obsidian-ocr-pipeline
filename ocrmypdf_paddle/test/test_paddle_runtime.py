@@ -330,7 +330,7 @@ def test_word_box_failure_retries_without_word_boxes(page_image, caplog):
 
     assert [flag for _, flag in engine.calls] == [True, False]
     assert [line.text for line in page.lines] == ["Text"]
-    assert "spreading words evenly" in caplog.text
+    assert "without them" in caplog.text
 
 
 def test_oversized_images_are_downscaled_and_mapped_back(tmp_path):

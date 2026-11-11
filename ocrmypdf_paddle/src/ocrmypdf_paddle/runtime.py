@@ -353,7 +353,7 @@ class Recognizer:
             # RapidOCR 3.9.2 indexes word groups per line after dropping the
             # groups of lines without word boxes (filter_by_text_score).
             log.warning(
-                "%s: RapidOCR could not align word boxes; spreading words evenly within their lines",
+                "%s: RapidOCR could not align word boxes; reading the page without them",
                 image_path.name,
             )
             return self._engine(source, return_word_box=False)

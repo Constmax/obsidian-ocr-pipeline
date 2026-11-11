@@ -271,9 +271,9 @@ pages; and no direct recognition call can run concurrently.
 - **Everything kept:** `Global.text_score` is 0, so RapidOCR drops no line
   before calibration. Pages with a long side over 4000 px are downscaled
   first, and their coordinates are mapped back.
-- **Word boxes:** words use RapidOCR's word boxes, with character pieces
-  merged per word, when the pieces spell the line's words exactly.
-  Otherwise the words are spread across the line box. RapidOCR 3.9.2 drops
+- **Word boxes:** RapidOCR's word boxes go to the debug record only; the
+  text layer holds each line as one piece (step 3a, "Selection in viewers").
+  RapidOCR 3.9.2 drops
   the word group of a line without word boxes and then indexes the groups
   per line. The plugin therefore attaches groups only when each line has
   exactly one, and retries a page without word boxes if RapidOCR raises
@@ -517,36 +517,44 @@ ocrmypdf --plugin ocrmypdf_paddle --paddle-mode fast -l deu input.pdf output.pdf
   text of at least 0.6; the line then carries RapidOCR's score. A citation
   fix changes a few characters, a reading of noise or of a neighbouring line
   most of them. Both thresholds are not calibrated yet (#71).
-- **Word boxes:** Vision's word boxes reach into half the space on either
-  side. Rendered unchanged, `pdftotext` glues the words of a line together
-  (0.3–2 % of the words survived on four truth pages). Accurate mode's text
-  layer glues RapidOCR's words the same way. A re-read line keeps Vision's
-  word boxes when it has the same number of words, otherwise the words are
-  spread across the line box.
-- **Selection in viewers** (both modes): trimming every word box by a
-  quarter of the line height separated the words for `pdftotext`, but in
-  Obsidian (pdf.js) a selection fell apart into one block per word, sat half
-  a line too low, and was too tall. `render_page()` now
-  - puts the baseline at 75 % of the line height instead of on the box
-    bottom (both recognizers' boxes reach below the descenders; measured
-    0.68–0.81 for Vision, 0.75 for RapidOCR);
-  - places each word's right edge so that 0.25 font sizes remain after the
-    space the renderer appends at the word's stretch: `pdftotext -raw` needs
-    about 0.12, pdf.js 4.10 keeps a line in one text item up to 0.6. The
-    line's first and last word also start and end 0.25 (at most 30 % of the
-    word's width) inside their boxes, because recognizers split a printed
-    line into touching lines; and
-  - writes every line flat. OCRmyPDF renders a line with a slope of 0.005 or
-    more rotated, and pdf.js undoes that rotation with a scale that includes
-    each word's stretch, so the words of such a line land on different
-    heights. Long one-column lines keep that much skew after deskewing, which
-    is why two-column pages looked fine. A sloped line becomes flat pieces
-    over which the baseline drifts at most 0.2 font sizes.
+- **Word boxes:** both recognizers return word boxes (Vision's reach into
+  half the space on either side). They go to the debug record only; the text
+  layer does not use them.
+- **Selection in viewers** (both modes): `render_page()` writes each
+  recognized line as one hOCR word that holds the whole line.
+  - *Why not word boxes:* OCRmyPDF stretches each hOCR word to its own box.
+    pdf.js 4.10 (Obsidian) measures the room to the next word from the end
+    of a word's last letter and starts a new text item above 0.6 font sizes,
+    which every word stretched beyond about 1.35 reached ("BGB", "VwGO"):
+    the highlight broke there with a hole. In a rotated line pdf.js also
+    compares heights at a scale that includes each word's stretch, so every
+    word became its own block; the earlier answer, flat pieces stepping down
+    the slope, made a staircase. `--in-place` does not deskew (#180), so
+    most scans have such lines.
+  - *What a line is now:* one word, one stretch, with the line's own slope
+    (OCRmyPDF renders a slope below 0.005 flat; such a line sits on the
+    baseline at its middle). The baseline lies at 75 % of the line height
+    (both recognizers' boxes reach below the descenders; measured 0.68–0.81
+    for Vision, 0.75 for RapidOCR). The line starts and ends 0.25 font sizes
+    (at most 30 % of its width) inside its box, because recognizers split a
+    printed line into touching lines.
+  - *Cost:* words inside a line follow the text-layer font's proportions
+    instead of their own boxes. pdf.js already placed them that way inside a
+    text item; viewers that place every word from the PDF (Preview, Poppler)
+    now show a word up to about two characters beside its print in a long
+    justified line (measured below). OCRmyPDF also picks the font per hOCR
+    word: a line with a character NotoSans lacks (arrows, "≥", "✓") is
+    written in its glyphless font as a whole, where before only that word
+    was. The line stays one piece and reads the same. A line steeper than
+    45° is written flat, because OCRmyPDF would take its slope for a text
+    angle.
 
-  On five vault pages (one- and two-column, both modes) pdf.js text items
-  dropped from 3,250 to 1,198, and `pdftotext -raw` text is unchanged apart
-  from whitespace. 2 of 4,100 words newly glue to a neighbour, where two
-  recognized lines overlap; one pair glued on `main` is now separate.
+  Measured on synthetic pages (justified serif text; one column at 0°, 0.5°
+  and 1° skew, two columns at 0.3°) in pdf.js 4.10: highlight blocks per
+  printed line went from 1.9, 2.8, 4.1 and 1.7 to 1.0 on all four, with no
+  hole and no step; `pdftotext -raw` words are unchanged. Word edges in
+  Poppler: median 0.25 → 0.27 em beside the print, largest 0.4 → 1.1 em.
+  Vault pages are not measured yet (`bench/ERGEBNIS.md`, Nachtrag 33).
 - **Dependencies:** macOS 13 or later with `pyobjc-framework-Vision` (extra
   `[fast]`) plus everything accurate mode needs, because the models re-read
   lines. `check_options` refuses fast mode before the first page when Vision

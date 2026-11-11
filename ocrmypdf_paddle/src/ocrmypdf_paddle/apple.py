@@ -114,8 +114,8 @@ def _words(candidate: Any, text: str, width: int, height: int) -> tuple[Word, ..
     """One Word per whitespace token, or none if Vision cannot box every token.
 
     Vision's word boxes reach into half the space on either side, so
-    neighbouring words touch; hocr.render_page() trims them like any
-    recognizer's word boxes.
+    neighbouring words touch. They go to the debug record only; the text
+    layer holds each line as one piece (hocr module docstring).
     """
     words = []
     for match in re.finditer(r"\S+", text):
@@ -275,8 +275,8 @@ class FastRecognizer:
         if not accepts_rereading(line.text, text, score):
             return line
         # Vision's word boxes fit the re-read words only word for word ("$ 935"
-        # → "§ 935"); otherwise the hOCR spreads the words across the line box.
-        # The score is RapidOCR's, since the text is.
+        # → "§ 935"); otherwise the line carries none. The score is RapidOCR's,
+        # since the text is.
         tokens = text.split()
         words = ()
         if len(tokens) == len(line.words):
